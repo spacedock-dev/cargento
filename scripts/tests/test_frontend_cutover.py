@@ -213,9 +213,13 @@ class FluidityReceiptTest(unittest.TestCase):
 
     def test_the_sources_the_runs_were_taken_with_cannot_be_rewritten(self) -> None:
         # What was measured is bound by what every run recorded of itself, not by the tree: the
-        # driver and fixture of the committed runs no longer exist as they were.
+        # tree may change after the runs, and the binding must not follow it.
         receipt = self.mutated()
-        self.assertNotEqual(receipt["source_bindings"], receipt["current_sources"])
+        recorded = receipt["runs"][0]["sources"]
+        self.assertEqual(
+            {name: recorded[name] for name in receipt["source_bindings"]},
+            receipt["source_bindings"],
+        )
         receipt["source_bindings"]["driver"]["sha256"] = "0" * 64
         problems = self.check(receipt)
         self.assertTrue(any("different driver than the receipt binds" in p for p in problems))
@@ -1170,8 +1174,10 @@ class FluidityDriverTest(unittest.TestCase):
                     str(chrome),
                     "--port",
                     str(port),
+                    # The same budget bounds the backend child's readiness, so a short one lets a loaded
+                    # machine fail the child first and the run never reaches the navigation it is about.
                     "--timeout-ms",
-                    "1500",
+                    "5000",
                 ],
                 capture_output=True,
                 text=True,

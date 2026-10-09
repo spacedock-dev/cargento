@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "date": "2026-10-09",
-  "candidate_base_commit": "254e6095f47b6f086b2965990e714cffb6bf981f",
+  "date": "2026-10-10",
+  "candidate_base_commit": "fd3bc28a5b4dfd2377510e746d073e9cc8a8332e",
   "purpose": "The assembled production React page measured the way the pre-React baseline was measured, against the budgets that receipt fixes.",
   "cohort_sizing": "Controlled synthetic 5/50/250 cohorts. The median label is the middle scenario, not a measured real-user median.",
   "methodology": {
@@ -53,35 +53,31 @@
     },
     "load_average_at_start": [
       [
-        2.0322265625,
-        3.74072265625,
-        6.77392578125
+        3.92578125,
+        4.005859375,
+        3.63720703125
       ],
       [
-        1.873046875,
-        3.64990234375,
-        6.7060546875
+        4.251953125,
+        4.07177734375,
+        3.66259765625
       ],
       [
-        2.04296875,
-        3.6552734375,
-        6.68994140625
+        4.052734375,
+        4.03564453125,
+        3.65478515625
       ]
     ],
     "comparability": "Same platform and architecture. Chrome moved from Chrome/156.0.8078.4 to Chrome/156.0.8078.12 (same major) and Node from v26.8.2 to v26.10.0; the baseline's own receipt says its timings are not compared across machines or browsers, so the control block re-runs the unchanged baseline on this day."
   },
   "source_bindings": {
     "driver": {
-      "sha256": "c05824eab0b31093dbb72d8d1280c205255f5d5b345bd838c118519a3813929e",
-      "bytes": 28992
+      "sha256": "14159347ec0bdbb8c25191fd45f8f63225eb3641cac4b592db5a00d9d0d38226",
+      "bytes": 28963
     },
     "fixture": {
-      "sha256": "b3a5bcbf91112a124017dcee3a178d0938ca944991495d77b1929c14909f2074",
-      "bytes": 4063
-    },
-    "baselineFixture": {
-      "sha256": "260e88b5b5f3150e6b24ce3f78bf109e5c3b73ab6809f8744034d8281027c6c0",
-      "bytes": 8044
+      "sha256": "fa9d5413925af80d91e0d1dc7eb4794b5728db7d1a56e942270a3f79647f3b8d",
+      "bytes": 9241
     }
   },
   "current_sources": {
@@ -100,10 +96,10 @@
     "bytes": 81097
   },
   "page": {
-    "sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-    "bytes": 1376372,
+    "sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+    "bytes": 1376448,
     "legacy_page_bytes": 1453021,
-    "change_vs_legacy_pct": -5.28,
+    "change_vs_legacy_pct": -5.27,
     "max_bytes": 1816276,
     "optional_terminal_bytes": {
       "javascript": 488663,
@@ -136,25 +132,25 @@
         "poll_median_ms": 46.5
       },
       "new_document_samples": [
-        140.40000009536743,
-        134.20000004768372,
-        126.5
+        131.40000009536743,
+        124.29999995231628,
+        120.29999995231628
       ],
-      "new_document_median_ms": 134.20000004768372,
-      "new_document_worst_ms": 140.40000009536743,
+      "new_document_median_ms": 124.29999995231628,
+      "new_document_worst_ms": 131.40000009536743,
       "poll_samples_ms": [
-        46.10000014305115,
-        44.09999990463257,
+        47.299999952316284,
+        47,
+        46.80000019073486,
         44.5,
-        46.40000009536743,
-        45.89999985694885,
-        45.69999980926514,
-        45.10000014305115,
-        43.5,
-        43.69999980926514
+        46.10000014305115,
+        44.40000009536743,
+        47,
+        47.299999952316284,
+        43.700000047683716
       ],
-      "poll_median_ms": 45.10000014305115,
-      "poll_worst_ms": 46.40000009536743,
+      "poll_median_ms": 46.80000019073486,
+      "poll_worst_ms": 47.299999952316284,
       "comparison_budget_ms": {
         "new_document": 199.10000014305115,
         "poll_to_render": 119.75
@@ -210,25 +206,25 @@
         "poll_median_ms": 47.60000014305115
       },
       "new_document_samples": [
-        94.79999995231628,
-        94,
-        94.20000004768372
+        94.60000014305115,
+        95.59999990463257,
+        95
       ],
-      "new_document_median_ms": 94.20000004768372,
-      "new_document_worst_ms": 94.79999995231628,
+      "new_document_median_ms": 95,
+      "new_document_worst_ms": 95.59999990463257,
       "poll_samples_ms": [
-        48,
-        45.40000009536743,
-        44.60000014305115,
-        47.10000014305115,
-        46.39999985694885,
-        44.90000009536743,
+        47.200000047683716,
         47.39999985694885,
-        46.5,
-        46.299999952316284
+        45.700000047683716,
+        48.09999990463257,
+        46.200000047683716,
+        46.200000047683716,
+        47,
+        45.5,
+        47.5
       ],
-      "poll_median_ms": 46.39999985694885,
-      "poll_worst_ms": 48,
+      "poll_median_ms": 47,
+      "poll_worst_ms": 48.09999990463257,
       "comparison_budget_ms": {
         "new_document": 159.5,
         "poll_to_render": 121.40000021457672
@@ -284,25 +280,25 @@
         "poll_median_ms": 64.29999995231628
       },
       "new_document_samples": [
-        126.20000004768372,
-        128.10000014305115,
-        128.70000004768372
+        128.5,
+        129.20000004768372,
+        127.79999995231628
       ],
-      "new_document_median_ms": 128.10000014305115,
-      "new_document_worst_ms": 128.70000004768372,
+      "new_document_median_ms": 128.5,
+      "new_document_worst_ms": 129.20000004768372,
       "poll_samples_ms": [
-        63.39999985694885,
-        63,
-        64.59999990463257,
         63.90000009536743,
-        63,
-        63.60000014305115,
-        63.69999980926514,
+        62.90000009536743,
+        63.299999952316284,
+        63.90000009536743,
         64.39999985694885,
+        63.10000014305115,
+        63.90000009536743,
+        62.69999980926514,
         63.5
       ],
-      "poll_median_ms": 63.60000014305115,
-      "poll_worst_ms": 64.59999990463257,
+      "poll_median_ms": 63.5,
+      "poll_worst_ms": 64.39999985694885,
       "comparison_budget_ms": {
         "new_document": 192.80000007152557,
         "poll_to_render": 146.44999992847443
@@ -355,7 +351,7 @@
     {
       "budget": "first_render_median",
       "cohort": "small",
-      "measured": 134.20000004768372,
+      "measured": 124.29999995231628,
       "limit": 199.10000014305115,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -364,7 +360,7 @@
     {
       "budget": "poll_to_paint_median",
       "cohort": "small",
-      "measured": 45.10000014305115,
+      "measured": 46.80000019073486,
       "limit": 119.75,
       "pass": true,
       "statistic": "median of 9 background polls",
@@ -381,7 +377,7 @@
     {
       "budget": "first_render_median",
       "cohort": "median",
-      "measured": 94.20000004768372,
+      "measured": 95,
       "limit": 159.5,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -390,7 +386,7 @@
     {
       "budget": "poll_to_paint_median",
       "cohort": "median",
-      "measured": 46.39999985694885,
+      "measured": 47,
       "limit": 121.40000021457672,
       "pass": true,
       "statistic": "median of 9 background polls",
@@ -407,7 +403,7 @@
     {
       "budget": "first_render_median",
       "cohort": "large",
-      "measured": 128.10000014305115,
+      "measured": 128.5,
       "limit": 192.80000007152557,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -416,7 +412,7 @@
     {
       "budget": "poll_to_paint_median",
       "cohort": "large",
-      "measured": 63.60000014305115,
+      "measured": 63.5,
       "limit": 146.44999992847443,
       "pass": true,
       "statistic": "median of 9 background polls",
@@ -639,7 +635,7 @@
     {
       "budget": "core_html_bytes",
       "cohort": null,
-      "measured": 1376372,
+      "measured": 1376448,
       "limit": 1816276,
       "pass": true
     }
@@ -1619,7 +1615,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -1636,7 +1632,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -1744,7 +1740,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -1761,7 +1757,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -1869,7 +1865,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -1886,7 +1882,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -2223,7 +2219,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -2240,7 +2236,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -2348,7 +2344,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -2365,7 +2361,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -2473,7 +2469,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -2490,7 +2486,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -2827,7 +2823,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -2844,7 +2840,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -2952,7 +2948,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -2969,7 +2965,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -3077,7 +3073,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               },
               {
                 "state": "unavailable",
@@ -3094,7 +3090,7 @@
                   "status": "unavailable",
                   "reason": "No unique sequence marker rendered for this state"
                 },
-                "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+                "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
               }
             ],
             "footprint": {
@@ -3335,9 +3331,9 @@
         "arch": "arm64",
         "cores": 10,
         "loadAverageAtStart": [
-          2.0322265625,
-          3.74072265625,
-          6.77392578125
+          3.92578125,
+          4.005859375,
+          3.63720703125
         ],
         "chrome": {
           "protocolVersion": "1.3",
@@ -3376,59 +3372,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 2",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
           },
-          "firstRenderMs": 140.40000009536743,
+          "firstRenderMs": 131.40000009536743,
           "firstGetToPaint": {
             "sequence": 2,
-            "startedMs": 85.60000014305115,
-            "responseMs": 93.29999995231628,
-            "payloadBytes": 29664,
+            "startedMs": 83.5,
+            "responseMs": 92,
+            "payloadBytes": 29643,
             "sessionCount": 5,
             "status": 200,
-            "paintedMs": 140.40000009536743,
-            "getToPaintMs": 54.799999952316284
+            "paintedMs": 131.40000009536743,
+            "getToPaintMs": 47.90000009536743
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 3,
-              "startedMs": 143.5,
-              "responseMs": 149,
-              "payloadBytes": 29664,
+              "startedMs": 134.5,
+              "responseMs": 138.40000009536743,
+              "payloadBytes": 29643,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 189.60000014305115,
-              "getToPaintMs": 46.10000014305115,
+              "paintedMs": 181.79999995231628,
+              "getToPaintMs": 47.299999952316284,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 4,
-              "startedMs": 226.90000009536743,
-              "responseMs": 232.70000004768372,
-              "payloadBytes": 29664,
+              "startedMs": 218.5,
+              "responseMs": 222.79999995231628,
+              "payloadBytes": 29643,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 271,
-              "getToPaintMs": 44.09999990463257,
+              "paintedMs": 265.5,
+              "getToPaintMs": 47,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 5,
-              "startedMs": 310.10000014305115,
-              "responseMs": 315.2000000476837,
-              "payloadBytes": 29664,
+              "startedMs": 301.09999990463257,
+              "responseMs": 305.59999990463257,
+              "payloadBytes": 29643,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 354.60000014305115,
-              "getToPaintMs": 44.5,
+              "paintedMs": 347.90000009536743,
+              "getToPaintMs": 46.80000019073486,
               "removedNodes": 0,
               "fetchesForSequence": 2
             }
@@ -3439,9 +3435,9 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 6,
-                "startedMs": 393.5,
-                "responseMs": 398.10000014305115,
-                "payloadBytes": 4238,
+                "startedMs": 385.5,
+                "responseMs": 389.90000009536743,
+                "payloadBytes": 4217,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -3449,16 +3445,16 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             },
             {
               "state": "unavailable",
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 7,
-                "startedMs": 441.7999999523163,
-                "responseMs": 446.40000009536743,
-                "payloadBytes": 4278,
+                "startedMs": 434.7000000476837,
+                "responseMs": 438.7000000476837,
+                "payloadBytes": 4257,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -3466,7 +3462,7 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             }
           ],
           "footprint": {
@@ -3508,59 +3504,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 8",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
           },
-          "firstRenderMs": 94.79999995231628,
+          "firstRenderMs": 94.60000014305115,
           "firstGetToPaint": {
             "sequence": 8,
-            "startedMs": 43.5,
-            "responseMs": 57.59999990463257,
-            "payloadBytes": 238588,
+            "startedMs": 43.40000009536743,
+            "responseMs": 57,
+            "payloadBytes": 238567,
             "sessionCount": 50,
             "status": 200,
-            "paintedMs": 94.79999995231628,
-            "getToPaintMs": 51.299999952316284
+            "paintedMs": 94.60000014305115,
+            "getToPaintMs": 51.200000047683716
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 9,
-              "startedMs": 97.90000009536743,
-              "responseMs": 110.40000009536743,
-              "payloadBytes": 238588,
+              "startedMs": 97.40000009536743,
+              "responseMs": 108,
+              "payloadBytes": 238567,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 145.90000009536743,
-              "getToPaintMs": 48,
+              "paintedMs": 144.60000014305115,
+              "getToPaintMs": 47.200000047683716,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 10,
-              "startedMs": 182,
-              "responseMs": 196.09999990463257,
-              "payloadBytes": 238640,
+              "startedMs": 180.60000014305115,
+              "responseMs": 192.70000004768372,
+              "payloadBytes": 238619,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 227.40000009536743,
-              "getToPaintMs": 45.40000009536743,
+              "paintedMs": 228,
+              "getToPaintMs": 47.39999985694885,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 11,
-              "startedMs": 266.7999999523163,
-              "responseMs": 280.5,
-              "payloadBytes": 238640,
+              "startedMs": 264.5,
+              "responseMs": 276.7000000476837,
+              "payloadBytes": 238619,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 311.40000009536743,
-              "getToPaintMs": 44.60000014305115,
+              "paintedMs": 310.2000000476837,
+              "getToPaintMs": 45.700000047683716,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -3571,9 +3567,9 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 12,
-                "startedMs": 350.7999999523163,
-                "responseMs": 358.40000009536743,
-                "payloadBytes": 4241,
+                "startedMs": 348.2000000476837,
+                "responseMs": 354.60000014305115,
+                "payloadBytes": 4220,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -3581,16 +3577,16 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             },
             {
               "state": "unavailable",
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 13,
-                "startedMs": 399.40000009536743,
-                "responseMs": 406.2000000476837,
-                "payloadBytes": 4281,
+                "startedMs": 397,
+                "responseMs": 402.10000014305115,
+                "payloadBytes": 4260,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -3598,7 +3594,7 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             }
           ],
           "footprint": {
@@ -3640,855 +3636,32 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 14",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
           },
-          "firstRenderMs": 126.20000004768372,
+          "firstRenderMs": 128.5,
           "firstGetToPaint": {
             "sequence": 14,
-            "startedMs": 47.200000047683716,
-            "responseMs": 83.79999995231628,
-            "payloadBytes": 1167238,
+            "startedMs": 44.90000009536743,
+            "responseMs": 82.90000009536743,
+            "payloadBytes": 1167217,
             "sessionCount": 250,
             "status": 200,
-            "paintedMs": 126.20000004768372,
-            "getToPaintMs": 79
+            "paintedMs": 128.5,
+            "getToPaintMs": 83.59999990463257
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 15,
-              "startedMs": 129.20000004768372,
-              "responseMs": 162.70000004768372,
-              "payloadBytes": 1167238,
+              "startedMs": 131,
+              "responseMs": 163.20000004768372,
+              "payloadBytes": 1167217,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 192.59999990463257,
-              "getToPaintMs": 63.39999985694885,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 16,
-              "startedMs": 229.70000004768372,
-              "responseMs": 263.7999999523163,
-              "payloadBytes": 1167238,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 292.7000000476837,
-              "getToPaintMs": 63,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 17,
-              "startedMs": 328,
-              "responseMs": 361.59999990463257,
-              "payloadBytes": 1167238,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 392.59999990463257,
-              "getToPaintMs": 64.59999990463257,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 18,
-                "startedMs": 428.5,
-                "responseMs": 438.5,
-                "payloadBytes": 4240,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 19,
-                "startedMs": 478.7999999523163,
-                "responseMs": 483.59999990463257,
-                "payloadBytes": 4280,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 3,
-            "nodes": 9984,
-            "jsEventListeners": 1667,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 0,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        }
-      ],
-      "editor": {
-        "status": "measured",
-        "trigger": "fallbackPollCallback",
-        "before": {
-          "value": "Implement the synthetic baseline task.Baseline native editor draft",
-          "start": 66,
-          "end": 66,
-          "focused": true,
-          "detailsOpen": true,
-          "selectIndex": 0,
-          "selectOptions": 1
-        },
-        "after": {
-          "value": "Implement the synthetic baseline task.Baseline native editor draft",
-          "start": 66,
-          "end": 66,
-          "focused": true,
-          "sameNode": true,
-          "sameDetailsNode": true,
-          "detailsStillAttached": true,
-          "detailsOpen": true,
-          "sameSelectNode": true,
-          "selectIndex": 0,
-          "selectOptions": 1
-        },
-        "draftRetained": true,
-        "focusRetained": true,
-        "selectionRetained": true,
-        "keyboardEndApplied": true,
-        "nativeTypingApplied": true,
-        "nodeRetained": true,
-        "nativeUndo": {
-          "handled": true,
-          "valueBeforeTyping": "Implement the synthetic baseline task.",
-          "valueAfterUndo": "Implement the synthetic baseline task.",
-          "restoredPriorWords": true
-        }
-      },
-      "retention": {
-        "status": "measured",
-        "trigger": "fallbackPollCallback",
-        "removedNodesDuringUpdate": 2,
-        "editedNodeReplacements": 0,
-        "openDisclosureReplacements": 0,
-        "openDisclosureKeptOpen": true,
-        "focusedSelectReplacements": 0,
-        "focusedSelectKeptChoice": true,
-        "scope": "The goal textarea (typed and focused), the opened session-facts disclosure and the prompt select, on the small cohort over one fallback poll that changed every row title."
-      },
-      "navigation": [
-        {
-          "step": 0,
-          "documents": 3,
-          "nodes": 10535,
-          "jsEventListeners": 1815,
-          "removedNodeObservations": 5860,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 1,
-          "documents": 3,
-          "nodes": 11066,
-          "jsEventListeners": 1852,
-          "removedNodeObservations": 6156,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 2,
-          "documents": 3,
-          "nodes": 11597,
-          "jsEventListeners": 1889,
-          "removedNodeObservations": 6459,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 3,
-          "documents": 3,
-          "nodes": 12128,
-          "jsEventListeners": 1926,
-          "removedNodeObservations": 6762,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 4,
-          "documents": 3,
-          "nodes": 12659,
-          "jsEventListeners": 1963,
-          "removedNodeObservations": 7065,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 5,
-          "documents": 3,
-          "nodes": 13190,
-          "jsEventListeners": 2000,
-          "removedNodeObservations": 7368,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        }
-      ],
-      "navigationAfterCollection": [
-        {
-          "step": 0,
-          "documents": 1,
-          "nodes": 664,
-          "jsEventListeners": 207,
-          "removedNodeObservations": 7368,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 1,
-          "documents": 1,
-          "nodes": 664,
-          "jsEventListeners": 207,
-          "removedNodeObservations": 7671,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 2,
-          "documents": 1,
-          "nodes": 664,
-          "jsEventListeners": 207,
-          "removedNodeObservations": 7974,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 3,
-          "documents": 1,
-          "nodes": 664,
-          "jsEventListeners": 207,
-          "removedNodeObservations": 8277,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 4,
-          "documents": 1,
-          "nodes": 664,
-          "jsEventListeners": 207,
-          "removedNodeObservations": 8580,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 5,
-          "documents": 1,
-          "nodes": 664,
-          "jsEventListeners": 207,
-          "removedNodeObservations": 8883,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        }
-      ],
-      "leadership": {
-        "leaderAcquired": true
-      },
-      "sources": {
-        "driver": {
-          "sha256": "c05824eab0b31093dbb72d8d1280c205255f5d5b345bd838c118519a3813929e",
-          "bytes": 28992
-        },
-        "fixture": {
-          "sha256": "b3a5bcbf91112a124017dcee3a178d0938ca944991495d77b1929c14909f2074",
-          "bytes": 4063
-        },
-        "baselineFixture": {
-          "sha256": "260e88b5b5f3150e6b24ce3f78bf109e5c3b73ab6809f8744034d8281027c6c0",
-          "bytes": 8044
-        }
-      },
-      "fixture": {
-        "ready": true,
-        "port": 4581,
-        "frontend": "react",
-        "cohort": "small",
-        "state": "healthy",
-        "sequence": 1,
-        "session_count": 5,
-        "current_session": {
-          "harness": "claude",
-          "sid": "b0000000",
-          "project": "baseline-project"
-        },
-        "marker": "Baseline 1",
-        "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-        "page_bytes": 1376372,
-        "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-        "assembled_page_bytes": 1376372
-      }
-    },
-    {
-      "schema": 1,
-      "environment": {
-        "node": "v26.10.0",
-        "platform": "darwin",
-        "release": "27.0.0",
-        "arch": "arm64",
-        "cores": 10,
-        "loadAverageAtStart": [
-          1.873046875,
-          3.64990234375,
-          6.7060546875
-        ],
-        "chrome": {
-          "protocolVersion": "1.3",
-          "product": "Chrome/156.0.8078.12",
-          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "jsVersion": "15.6.75.8"
-        }
-      },
-      "options": {
-        "port": 4581,
-        "samples": 3,
-        "navigations": 5
-      },
-      "methodology": {
-        "paint": "Actual /api/data fetch start to two animation frames after the fixture title is rendered; a frame boundary proxy, not compositor presentation time.",
-        "updateTrigger": "The page's own fallback-poll callback (the 20 s setInterval the live transport registers), captured from setInterval and invoked: the production background-poll path, including its focus/open-choice paint deferrals; no manual refresh bypass. The React page has no global poll function to call as the baseline did.",
-        "browserProfile": "One fresh owned profile per invocation. Each cohort gets one new-document load per invocation; later cohorts share cache with earlier cohorts. Repeat invocations for independent profiles, not independent cold-cache cohorts.",
-        "observers": "Main-window fetch/timer/WebSocket wrappers, primitive MutationObserver counts and long-task observer, identical to the baseline's, plus two declared additions: the setInterval wrapper keeps each callback (to invoke the poll) and an EventSource wrapper counts open streams.",
-        "sockets": "WebSocket instances only; TCP/socket descriptors are unavailable.",
-        "retention": "Removed node observations and CDP DOM counters are trends, not proof of retained detached-node memory.",
-        "statePaint": "Empty/unavailable have no unique sequence marker in production DOM; update-to-paint unavailable."
-      },
-      "cohorts": [
-        {
-          "cohort": "small",
-          "fixture": {
-            "ack": true,
-            "cohort": "small",
-            "state": "healthy",
-            "sequence": 2,
-            "session_count": 5,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 2",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
-          },
-          "firstRenderMs": 134.20000004768372,
-          "firstGetToPaint": {
-            "sequence": 2,
-            "startedMs": 88,
-            "responseMs": 102.70000004768372,
-            "payloadBytes": 29664,
-            "sessionCount": 5,
-            "status": 200,
-            "paintedMs": 134.20000004768372,
-            "getToPaintMs": 46.200000047683716
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 3,
-              "startedMs": 137.79999995231628,
-              "responseMs": 142.90000009536743,
-              "payloadBytes": 29664,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 184.20000004768372,
-              "getToPaintMs": 46.40000009536743,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 4,
-              "startedMs": 221.60000014305115,
-              "responseMs": 226.79999995231628,
-              "payloadBytes": 29664,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 267.5,
-              "getToPaintMs": 45.89999985694885,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 5,
-              "startedMs": 305.10000014305115,
-              "responseMs": 311,
-              "payloadBytes": 29664,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 350.7999999523163,
-              "getToPaintMs": 45.69999980926514,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 6,
-                "startedMs": 388.90000009536743,
-                "responseMs": 394.7000000476837,
-                "payloadBytes": 4238,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 7,
-                "startedMs": 438.2999999523163,
-                "responseMs": 443.7000000476837,
-                "payloadBytes": 4278,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 4,
-            "nodes": 369,
-            "jsEventListeners": 249,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 1,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        },
-        {
-          "cohort": "median",
-          "fixture": {
-            "ack": true,
-            "cohort": "median",
-            "state": "healthy",
-            "sequence": 8,
-            "session_count": 50,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 8",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
-          },
-          "firstRenderMs": 94,
-          "firstGetToPaint": {
-            "sequence": 8,
-            "startedMs": 46.299999952316284,
-            "responseMs": 60,
-            "payloadBytes": 238588,
-            "sessionCount": 50,
-            "status": 200,
-            "paintedMs": 94,
-            "getToPaintMs": 47.700000047683716
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 9,
-              "startedMs": 96.79999995231628,
-              "responseMs": 108.20000004768372,
-              "payloadBytes": 238588,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 143.90000009536743,
-              "getToPaintMs": 47.10000014305115,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 10,
-              "startedMs": 180.90000009536743,
-              "responseMs": 194,
-              "payloadBytes": 238640,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 227.29999995231628,
-              "getToPaintMs": 46.39999985694885,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 11,
-              "startedMs": 264.5,
-              "responseMs": 277.59999990463257,
-              "payloadBytes": 238640,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 309.40000009536743,
-              "getToPaintMs": 44.90000009536743,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 12,
-                "startedMs": 348.90000009536743,
-                "responseMs": 357.40000009536743,
-                "payloadBytes": 4241,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 13,
-                "startedMs": 397.2000000476837,
-                "responseMs": 402.59999990463257,
-                "payloadBytes": 4281,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 6,
-            "nodes": 2448,
-            "jsEventListeners": 1044,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 0,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        },
-        {
-          "cohort": "large",
-          "fixture": {
-            "ack": true,
-            "cohort": "large",
-            "state": "healthy",
-            "sequence": 14,
-            "session_count": 250,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 14",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
-          },
-          "firstRenderMs": 128.10000014305115,
-          "firstGetToPaint": {
-            "sequence": 14,
-            "startedMs": 44,
-            "responseMs": 81.10000014305115,
-            "payloadBytes": 1167238,
-            "sessionCount": 250,
-            "status": 200,
-            "paintedMs": 128.10000014305115,
-            "getToPaintMs": 84.10000014305115
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 15,
-              "startedMs": 130.70000004768372,
-              "responseMs": 164.5,
-              "payloadBytes": 1167238,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 194.60000014305115,
+              "paintedMs": 194.90000009536743,
               "getToPaintMs": 63.90000009536743,
               "removedNodes": 0,
               "fetchesForSequence": 1
@@ -4496,26 +3669,26 @@
             {
               "trigger": "fallbackPollCallback",
               "sequence": 16,
-              "startedMs": 231.70000004768372,
-              "responseMs": 266.2000000476837,
-              "payloadBytes": 1167238,
+              "startedMs": 232,
+              "responseMs": 264.7999999523163,
+              "payloadBytes": 1167217,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 294.7000000476837,
-              "getToPaintMs": 63,
+              "paintedMs": 294.90000009536743,
+              "getToPaintMs": 62.90000009536743,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 17,
-              "startedMs": 331,
-              "responseMs": 364.5,
-              "payloadBytes": 1167238,
+              "startedMs": 331.60000014305115,
+              "responseMs": 364.10000014305115,
+              "payloadBytes": 1167217,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 394.60000014305115,
-              "getToPaintMs": 63.60000014305115,
+              "paintedMs": 394.90000009536743,
+              "getToPaintMs": 63.299999952316284,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -4526,9 +3699,9 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 18,
-                "startedMs": 431.7999999523163,
-                "responseMs": 442.40000009536743,
-                "payloadBytes": 4240,
+                "startedMs": 430.90000009536743,
+                "responseMs": 440,
+                "payloadBytes": 4219,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -4536,16 +3709,16 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             },
             {
               "state": "unavailable",
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 19,
-                "startedMs": 480.7000000476837,
-                "responseMs": 485.7000000476837,
-                "payloadBytes": 4280,
+                "startedMs": 481.10000014305115,
+                "responseMs": 485.2000000476837,
+                "payloadBytes": 4259,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -4553,7 +3726,7 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             }
           ],
           "footprint": {
@@ -4940,22 +4113,17 @@
       },
       "sources": {
         "driver": {
-          "sha256": "c05824eab0b31093dbb72d8d1280c205255f5d5b345bd838c118519a3813929e",
-          "bytes": 28992
+          "sha256": "14159347ec0bdbb8c25191fd45f8f63225eb3641cac4b592db5a00d9d0d38226",
+          "bytes": 28963
         },
         "fixture": {
-          "sha256": "b3a5bcbf91112a124017dcee3a178d0938ca944991495d77b1929c14909f2074",
-          "bytes": 4063
-        },
-        "baselineFixture": {
-          "sha256": "260e88b5b5f3150e6b24ce3f78bf109e5c3b73ab6809f8744034d8281027c6c0",
-          "bytes": 8044
+          "sha256": "fa9d5413925af80d91e0d1dc7eb4794b5728db7d1a56e942270a3f79647f3b8d",
+          "bytes": 9241
         }
       },
       "fixture": {
         "ready": true,
         "port": 4581,
-        "frontend": "react",
         "cohort": "small",
         "state": "healthy",
         "sequence": 1,
@@ -4966,10 +4134,10 @@
           "project": "baseline-project"
         },
         "marker": "Baseline 1",
-        "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-        "page_bytes": 1376372,
-        "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-        "assembled_page_bytes": 1376372
+        "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+        "page_bytes": 1376448,
+        "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+        "assembled_page_bytes": 1376448
       }
     },
     {
@@ -4981,9 +4149,9 @@
         "arch": "arm64",
         "cores": 10,
         "loadAverageAtStart": [
-          2.04296875,
-          3.6552734375,
-          6.68994140625
+          4.251953125,
+          4.07177734375,
+          3.66259765625
         ],
         "chrome": {
           "protocolVersion": "1.3",
@@ -5022,59 +4190,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 2",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
           },
-          "firstRenderMs": 126.5,
+          "firstRenderMs": 124.29999995231628,
           "firstGetToPaint": {
             "sequence": 2,
-            "startedMs": 78.30000019073486,
-            "responseMs": 93.10000014305115,
-            "payloadBytes": 29664,
+            "startedMs": 79.79999995231628,
+            "responseMs": 94.5,
+            "payloadBytes": 29643,
             "sessionCount": 5,
             "status": 200,
-            "paintedMs": 126.5,
-            "getToPaintMs": 48.19999980926514
+            "paintedMs": 124.29999995231628,
+            "getToPaintMs": 44.5
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 3,
-              "startedMs": 130.20000004768372,
-              "responseMs": 135.5,
-              "payloadBytes": 29664,
+              "startedMs": 127.29999995231628,
+              "responseMs": 131.29999995231628,
+              "payloadBytes": 29643,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 175.30000019073486,
-              "getToPaintMs": 45.10000014305115,
+              "paintedMs": 171.79999995231628,
+              "getToPaintMs": 44.5,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 4,
-              "startedMs": 215.10000014305115,
-              "responseMs": 220.90000009536743,
-              "payloadBytes": 29664,
+              "startedMs": 209.89999985694885,
+              "responseMs": 214.39999985694885,
+              "payloadBytes": 29643,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 258.60000014305115,
-              "getToPaintMs": 43.5,
+              "paintedMs": 256,
+              "getToPaintMs": 46.10000014305115,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 5,
-              "startedMs": 298.80000019073486,
-              "responseMs": 304.90000009536743,
-              "payloadBytes": 29664,
+              "startedMs": 294.89999985694885,
+              "responseMs": 300.2999999523163,
+              "payloadBytes": 29643,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 342.5,
-              "getToPaintMs": 43.69999980926514,
+              "paintedMs": 339.2999999523163,
+              "getToPaintMs": 44.40000009536743,
               "removedNodes": 0,
               "fetchesForSequence": 2
             }
@@ -5085,9 +4253,9 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 6,
-                "startedMs": 381.80000019073486,
-                "responseMs": 387.10000014305115,
-                "payloadBytes": 4238,
+                "startedMs": 376.89999985694885,
+                "responseMs": 381.2999999523163,
+                "payloadBytes": 4217,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -5095,16 +4263,16 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             },
             {
               "state": "unavailable",
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 7,
-                "startedMs": 430.10000014305115,
-                "responseMs": 435,
-                "payloadBytes": 4278,
+                "startedMs": 426,
+                "responseMs": 430.09999990463257,
+                "payloadBytes": 4257,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -5112,7 +4280,7 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             }
           ],
           "footprint": {
@@ -5154,59 +4322,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 8",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
           },
-          "firstRenderMs": 94.20000004768372,
+          "firstRenderMs": 95.59999990463257,
           "firstGetToPaint": {
             "sequence": 8,
-            "startedMs": 43.799999952316284,
-            "responseMs": 57.40000009536743,
-            "payloadBytes": 238588,
+            "startedMs": 41.89999985694885,
+            "responseMs": 54.799999952316284,
+            "payloadBytes": 238567,
             "sessionCount": 50,
             "status": 200,
-            "paintedMs": 94.20000004768372,
-            "getToPaintMs": 50.40000009536743
+            "paintedMs": 95.59999990463257,
+            "getToPaintMs": 53.700000047683716
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 9,
-              "startedMs": 96.70000004768372,
-              "responseMs": 108.20000004768372,
-              "payloadBytes": 238588,
+              "startedMs": 98.79999995231628,
+              "responseMs": 109.19999980926514,
+              "payloadBytes": 238567,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 144.09999990463257,
-              "getToPaintMs": 47.39999985694885,
+              "paintedMs": 146.89999985694885,
+              "getToPaintMs": 48.09999990463257,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 10,
-              "startedMs": 179.90000009536743,
-              "responseMs": 191.40000009536743,
-              "payloadBytes": 238640,
+              "startedMs": 182.19999980926514,
+              "responseMs": 194,
+              "payloadBytes": 238619,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 226.40000009536743,
-              "getToPaintMs": 46.5,
+              "paintedMs": 228.39999985694885,
+              "getToPaintMs": 46.200000047683716,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 11,
-              "startedMs": 264.5,
-              "responseMs": 276.7000000476837,
-              "payloadBytes": 238640,
+              "startedMs": 267.2999999523163,
+              "responseMs": 279.59999990463257,
+              "payloadBytes": 238619,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 310.7999999523163,
-              "getToPaintMs": 46.299999952316284,
+              "paintedMs": 313.5,
+              "getToPaintMs": 46.200000047683716,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -5217,9 +4385,9 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 12,
-                "startedMs": 348.59999990463257,
-                "responseMs": 355.90000009536743,
-                "payloadBytes": 4241,
+                "startedMs": 349.5,
+                "responseMs": 357.19999980926514,
+                "payloadBytes": 4220,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -5227,16 +4395,16 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             },
             {
               "state": "unavailable",
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 13,
-                "startedMs": 397.7000000476837,
-                "responseMs": 404.5,
-                "payloadBytes": 4281,
+                "startedMs": 400.39999985694885,
+                "responseMs": 405,
+                "payloadBytes": 4260,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -5244,7 +4412,7 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             }
           ],
           "footprint": {
@@ -5286,45 +4454,45 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 14",
-            "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "page_bytes": 1376372,
-            "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-            "assembled_page_bytes": 1376372
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
           },
-          "firstRenderMs": 128.70000004768372,
+          "firstRenderMs": 129.20000004768372,
           "firstGetToPaint": {
             "sequence": 14,
-            "startedMs": 46.700000047683716,
-            "responseMs": 84.80000019073486,
-            "payloadBytes": 1167238,
+            "startedMs": 43.89999985694885,
+            "responseMs": 81.59999990463257,
+            "payloadBytes": 1167217,
             "sessionCount": 250,
             "status": 200,
-            "paintedMs": 128.70000004768372,
-            "getToPaintMs": 82
+            "paintedMs": 129.20000004768372,
+            "getToPaintMs": 85.30000019073486
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 15,
-              "startedMs": 131.30000019073486,
-              "responseMs": 164.80000019073486,
-              "payloadBytes": 1167238,
+              "startedMs": 131.59999990463257,
+              "responseMs": 163.59999990463257,
+              "payloadBytes": 1167217,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 195,
-              "getToPaintMs": 63.69999980926514,
+              "paintedMs": 195.5,
+              "getToPaintMs": 63.90000009536743,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 16,
-              "startedMs": 230.60000014305115,
-              "responseMs": 265.30000019073486,
-              "payloadBytes": 1167238,
+              "startedMs": 231.20000004768372,
+              "responseMs": 264.2999999523163,
+              "payloadBytes": 1167217,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 295,
+              "paintedMs": 295.59999990463257,
               "getToPaintMs": 64.39999985694885,
               "removedNodes": 0,
               "fetchesForSequence": 1
@@ -5332,12 +4500,830 @@
             {
               "trigger": "fallbackPollCallback",
               "sequence": 17,
-              "startedMs": 331.5,
-              "responseMs": 365.40000009536743,
-              "payloadBytes": 1167238,
+              "startedMs": 332.39999985694885,
+              "responseMs": 365.5,
+              "payloadBytes": 1167217,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 395,
+              "paintedMs": 395.5,
+              "getToPaintMs": 63.10000014305115,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 18,
+                "startedMs": 432.7000000476837,
+                "responseMs": 441.5,
+                "payloadBytes": 4219,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 19,
+                "startedMs": 480.89999985694885,
+                "responseMs": 484.89999985694885,
+                "payloadBytes": 4259,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 3,
+            "nodes": 9984,
+            "jsEventListeners": 1667,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 0,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        }
+      ],
+      "editor": {
+        "status": "measured",
+        "trigger": "fallbackPollCallback",
+        "before": {
+          "value": "Implement the synthetic baseline task.Baseline native editor draft",
+          "start": 66,
+          "end": 66,
+          "focused": true,
+          "detailsOpen": true,
+          "selectIndex": 0,
+          "selectOptions": 1
+        },
+        "after": {
+          "value": "Implement the synthetic baseline task.Baseline native editor draft",
+          "start": 66,
+          "end": 66,
+          "focused": true,
+          "sameNode": true,
+          "sameDetailsNode": true,
+          "detailsStillAttached": true,
+          "detailsOpen": true,
+          "sameSelectNode": true,
+          "selectIndex": 0,
+          "selectOptions": 1
+        },
+        "draftRetained": true,
+        "focusRetained": true,
+        "selectionRetained": true,
+        "keyboardEndApplied": true,
+        "nativeTypingApplied": true,
+        "nodeRetained": true,
+        "nativeUndo": {
+          "handled": true,
+          "valueBeforeTyping": "Implement the synthetic baseline task.",
+          "valueAfterUndo": "Implement the synthetic baseline task.",
+          "restoredPriorWords": true
+        }
+      },
+      "retention": {
+        "status": "measured",
+        "trigger": "fallbackPollCallback",
+        "removedNodesDuringUpdate": 2,
+        "editedNodeReplacements": 0,
+        "openDisclosureReplacements": 0,
+        "openDisclosureKeptOpen": true,
+        "focusedSelectReplacements": 0,
+        "focusedSelectKeptChoice": true,
+        "scope": "The goal textarea (typed and focused), the opened session-facts disclosure and the prompt select, on the small cohort over one fallback poll that changed every row title."
+      },
+      "navigation": [
+        {
+          "step": 0,
+          "documents": 3,
+          "nodes": 10535,
+          "jsEventListeners": 1815,
+          "removedNodeObservations": 5860,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 1,
+          "documents": 3,
+          "nodes": 11066,
+          "jsEventListeners": 1852,
+          "removedNodeObservations": 6156,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 2,
+          "documents": 3,
+          "nodes": 11597,
+          "jsEventListeners": 1889,
+          "removedNodeObservations": 6459,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 3,
+          "documents": 3,
+          "nodes": 12128,
+          "jsEventListeners": 1926,
+          "removedNodeObservations": 6762,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 4,
+          "documents": 3,
+          "nodes": 12659,
+          "jsEventListeners": 1963,
+          "removedNodeObservations": 7065,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 5,
+          "documents": 3,
+          "nodes": 13190,
+          "jsEventListeners": 2000,
+          "removedNodeObservations": 7368,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        }
+      ],
+      "navigationAfterCollection": [
+        {
+          "step": 0,
+          "documents": 1,
+          "nodes": 664,
+          "jsEventListeners": 207,
+          "removedNodeObservations": 7368,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 1,
+          "documents": 1,
+          "nodes": 664,
+          "jsEventListeners": 207,
+          "removedNodeObservations": 7671,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 2,
+          "documents": 1,
+          "nodes": 664,
+          "jsEventListeners": 207,
+          "removedNodeObservations": 7974,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 3,
+          "documents": 1,
+          "nodes": 664,
+          "jsEventListeners": 207,
+          "removedNodeObservations": 8277,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 4,
+          "documents": 1,
+          "nodes": 664,
+          "jsEventListeners": 207,
+          "removedNodeObservations": 8580,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 5,
+          "documents": 1,
+          "nodes": 664,
+          "jsEventListeners": 207,
+          "removedNodeObservations": 8883,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        }
+      ],
+      "leadership": {
+        "leaderAcquired": true
+      },
+      "sources": {
+        "driver": {
+          "sha256": "14159347ec0bdbb8c25191fd45f8f63225eb3641cac4b592db5a00d9d0d38226",
+          "bytes": 28963
+        },
+        "fixture": {
+          "sha256": "fa9d5413925af80d91e0d1dc7eb4794b5728db7d1a56e942270a3f79647f3b8d",
+          "bytes": 9241
+        }
+      },
+      "fixture": {
+        "ready": true,
+        "port": 4581,
+        "cohort": "small",
+        "state": "healthy",
+        "sequence": 1,
+        "session_count": 5,
+        "current_session": {
+          "harness": "claude",
+          "sid": "b0000000",
+          "project": "baseline-project"
+        },
+        "marker": "Baseline 1",
+        "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+        "page_bytes": 1376448,
+        "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+        "assembled_page_bytes": 1376448
+      }
+    },
+    {
+      "schema": 1,
+      "environment": {
+        "node": "v26.10.0",
+        "platform": "darwin",
+        "release": "27.0.0",
+        "arch": "arm64",
+        "cores": 10,
+        "loadAverageAtStart": [
+          4.052734375,
+          4.03564453125,
+          3.65478515625
+        ],
+        "chrome": {
+          "protocolVersion": "1.3",
+          "product": "Chrome/156.0.8078.12",
+          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "jsVersion": "15.6.75.8"
+        }
+      },
+      "options": {
+        "port": 4581,
+        "samples": 3,
+        "navigations": 5
+      },
+      "methodology": {
+        "paint": "Actual /api/data fetch start to two animation frames after the fixture title is rendered; a frame boundary proxy, not compositor presentation time.",
+        "updateTrigger": "The page's own fallback-poll callback (the 20 s setInterval the live transport registers), captured from setInterval and invoked: the production background-poll path, including its focus/open-choice paint deferrals; no manual refresh bypass. The React page has no global poll function to call as the baseline did.",
+        "browserProfile": "One fresh owned profile per invocation. Each cohort gets one new-document load per invocation; later cohorts share cache with earlier cohorts. Repeat invocations for independent profiles, not independent cold-cache cohorts.",
+        "observers": "Main-window fetch/timer/WebSocket wrappers, primitive MutationObserver counts and long-task observer, identical to the baseline's, plus two declared additions: the setInterval wrapper keeps each callback (to invoke the poll) and an EventSource wrapper counts open streams.",
+        "sockets": "WebSocket instances only; TCP/socket descriptors are unavailable.",
+        "retention": "Removed node observations and CDP DOM counters are trends, not proof of retained detached-node memory.",
+        "statePaint": "Empty/unavailable have no unique sequence marker in production DOM; update-to-paint unavailable."
+      },
+      "cohorts": [
+        {
+          "cohort": "small",
+          "fixture": {
+            "ack": true,
+            "cohort": "small",
+            "state": "healthy",
+            "sequence": 2,
+            "session_count": 5,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 2",
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
+          },
+          "firstRenderMs": 120.29999995231628,
+          "firstGetToPaint": {
+            "sequence": 2,
+            "startedMs": 81.29999995231628,
+            "responseMs": 96.09999990463257,
+            "payloadBytes": 29643,
+            "sessionCount": 5,
+            "status": 200,
+            "paintedMs": 120.29999995231628,
+            "getToPaintMs": 39
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 3,
+              "startedMs": 123.19999980926514,
+              "responseMs": 127.19999980926514,
+              "payloadBytes": 29643,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 170.19999980926514,
+              "getToPaintMs": 47,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 4,
+              "startedMs": 206.89999985694885,
+              "responseMs": 211.5,
+              "payloadBytes": 29643,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 254.19999980926514,
+              "getToPaintMs": 47.299999952316284,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 5,
+              "startedMs": 291.89999985694885,
+              "responseMs": 296.89999985694885,
+              "payloadBytes": 29643,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 335.59999990463257,
+              "getToPaintMs": 43.700000047683716,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 6,
+                "startedMs": 376.09999990463257,
+                "responseMs": 381,
+                "payloadBytes": 4217,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 7,
+                "startedMs": 424.5,
+                "responseMs": 428.59999990463257,
+                "payloadBytes": 4257,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 4,
+            "nodes": 369,
+            "jsEventListeners": 249,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 1,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        },
+        {
+          "cohort": "median",
+          "fixture": {
+            "ack": true,
+            "cohort": "median",
+            "state": "healthy",
+            "sequence": 8,
+            "session_count": 50,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 8",
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
+          },
+          "firstRenderMs": 95,
+          "firstGetToPaint": {
+            "sequence": 8,
+            "startedMs": 42.799999952316284,
+            "responseMs": 55.5,
+            "payloadBytes": 238567,
+            "sessionCount": 50,
+            "status": 200,
+            "paintedMs": 95,
+            "getToPaintMs": 52.200000047683716
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 9,
+              "startedMs": 98.10000014305115,
+              "responseMs": 108.5,
+              "payloadBytes": 238567,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 145.10000014305115,
+              "getToPaintMs": 47,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 10,
+              "startedMs": 182.90000009536743,
+              "responseMs": 195.20000004768372,
+              "payloadBytes": 238619,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 228.40000009536743,
+              "getToPaintMs": 45.5,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 11,
+              "startedMs": 264.2000000476837,
+              "responseMs": 275.60000014305115,
+              "payloadBytes": 238619,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 311.7000000476837,
+              "getToPaintMs": 47.5,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 12,
+                "startedMs": 348.7999999523163,
+                "responseMs": 355.40000009536743,
+                "payloadBytes": 4220,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 13,
+                "startedMs": 398.60000014305115,
+                "responseMs": 403.2999999523163,
+                "payloadBytes": 4260,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 6,
+            "nodes": 2448,
+            "jsEventListeners": 1044,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 0,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        },
+        {
+          "cohort": "large",
+          "fixture": {
+            "ack": true,
+            "cohort": "large",
+            "state": "healthy",
+            "sequence": 14,
+            "session_count": 250,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 14",
+            "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "page_bytes": 1376448,
+            "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+            "assembled_page_bytes": 1376448
+          },
+          "firstRenderMs": 127.79999995231628,
+          "firstGetToPaint": {
+            "sequence": 14,
+            "startedMs": 43.40000009536743,
+            "responseMs": 80.59999990463257,
+            "payloadBytes": 1167217,
+            "sessionCount": 250,
+            "status": 200,
+            "paintedMs": 127.79999995231628,
+            "getToPaintMs": 84.39999985694885
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 15,
+              "startedMs": 130.29999995231628,
+              "responseMs": 163,
+              "payloadBytes": 1167217,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 194.20000004768372,
+              "getToPaintMs": 63.90000009536743,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 16,
+              "startedMs": 230.90000009536743,
+              "responseMs": 263.40000009536743,
+              "payloadBytes": 1167217,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 293.59999990463257,
+              "getToPaintMs": 62.69999980926514,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 17,
+              "startedMs": 330.7999999523163,
+              "responseMs": 362.7999999523163,
+              "payloadBytes": 1167217,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 394.2999999523163,
               "getToPaintMs": 63.5,
               "removedNodes": 0,
               "fetchesForSequence": 1
@@ -5349,9 +5335,9 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 18,
-                "startedMs": 431.10000014305115,
-                "responseMs": 441.10000014305115,
-                "payloadBytes": 4240,
+                "startedMs": 431.7999999523163,
+                "responseMs": 440.7000000476837,
+                "payloadBytes": 4219,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -5359,7 +5345,7 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             },
             {
               "state": "unavailable",
@@ -5367,8 +5353,8 @@
               "request": {
                 "sequence": 19,
                 "startedMs": 480.5,
-                "responseMs": 485.80000019073486,
-                "payloadBytes": 4280,
+                "responseMs": 484.59999990463257,
+                "payloadBytes": 4259,
                 "sessionCount": 0,
                 "status": 200
               },
@@ -5376,7 +5362,7 @@
                 "status": "unavailable",
                 "reason": "No unique sequence marker rendered for this state"
               },
-              "bodyText": "Projects\nSessions\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+              "bodyText": "Projects\nSessions\nAttention\nIntent log\n● 0 running · 0 subagents observed\nCOMMAND SURFACE\nSession operations\n\nNo session has been checked for drift yet; open one to check it.\n\nHow rows are split\nGoal sources\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nEXACT REQUESTS\n0\n0 of 0 sessions carry an exact request\nREPORTED BLOCKS\n0\n0 of 0 sessions report block state\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
             }
           ],
           "footprint": {
@@ -5763,22 +5749,17 @@
       },
       "sources": {
         "driver": {
-          "sha256": "c05824eab0b31093dbb72d8d1280c205255f5d5b345bd838c118519a3813929e",
-          "bytes": 28992
+          "sha256": "14159347ec0bdbb8c25191fd45f8f63225eb3641cac4b592db5a00d9d0d38226",
+          "bytes": 28963
         },
         "fixture": {
-          "sha256": "b3a5bcbf91112a124017dcee3a178d0938ca944991495d77b1929c14909f2074",
-          "bytes": 4063
-        },
-        "baselineFixture": {
-          "sha256": "260e88b5b5f3150e6b24ce3f78bf109e5c3b73ab6809f8744034d8281027c6c0",
-          "bytes": 8044
+          "sha256": "fa9d5413925af80d91e0d1dc7eb4794b5728db7d1a56e942270a3f79647f3b8d",
+          "bytes": 9241
         }
       },
       "fixture": {
         "ready": true,
         "port": 4581,
-        "frontend": "react",
         "cohort": "small",
         "state": "healthy",
         "sequence": 1,
@@ -5789,10 +5770,10 @@
           "project": "baseline-project"
         },
         "marker": "Baseline 1",
-        "page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-        "page_bytes": 1376372,
-        "assembled_page_sha256": "fa35d735ae166efddadf9bdff2db04086566566e4440f3ea87e19b83c498c51b",
-        "assembled_page_bytes": 1376372
+        "page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+        "page_bytes": 1376448,
+        "assembled_page_sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349",
+        "assembled_page_bytes": 1376448
       }
     }
   ]

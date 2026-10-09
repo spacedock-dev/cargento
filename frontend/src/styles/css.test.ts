@@ -61,9 +61,9 @@ function declaredProperties(): Set<string> {
   return declared;
 }
 
-/* Used and never declared, held as a set so the fix removes the pin: `--e-raise` is the popover's shadow, declared
-   by the previous page's root block and not carried into `shell.css`, so the popover draws no shadow. */
-const UNDECLARED = ['--e-raise'];
+/* Used and never declared. None is held: a rule that names an undeclared custom property resolves to nothing, as
+   the popover's shadow once did, so a new one fails here rather than joining this list. */
+const UNDECLARED: string[] = [];
 
 // The five type steps of `styles/shell.css`, spelled as the rem values they hold.
 const STEPS = ['0.8125rem', '0.9375rem', '1.125rem', '1.5rem', '2.125rem'];

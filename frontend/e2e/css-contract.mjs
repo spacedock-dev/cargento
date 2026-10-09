@@ -135,9 +135,8 @@ const MUTATIONS = {
    - uaLinks: links no rule colours, which draw in the browser's link colour, as the previous page's did.
    - offScale: headings with no size rule, which draw at the browser's default heading size (2em, 1.5em), off
      the five steps, as the previous page's did.
-   - unresolved: a DEFECT, not a choice. The popover's `box-shadow: var(--e-raise)` names a token the previous
-     page declared in its root block and `shell.css` did not carry, so the popover draws no shadow. Declare
-     `--e-raise` in `shell.css` and delete this entry. */
+   - unresolved: custom properties a rule uses and no sheet declares, which resolve to nothing. None is held, so
+     a new one fails; add the declaration rather than an entry. */
 const INVENTORY = {
   sentencesAtLabel: [
     'article.next-attention-item > div.next-attention-risk-source > span.next-attention-risk-next',
@@ -190,7 +189,7 @@ const INVENTORY = {
     'main > section.next-intent > h2',
     'section.next-cockpit-panel > section.next-stage-conditions > h2',
   ],
-  unresolved: ['--e-raise'],
+  unresolved: [],
 };
 const near = (a, b) => Math.abs(a - b) < 0.01;
 
