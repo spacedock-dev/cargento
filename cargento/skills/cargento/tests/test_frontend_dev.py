@@ -154,7 +154,7 @@ class FrontendDevelopmentTest(unittest.TestCase):
     def write_slow_response(
         handler: BaseHTTPRequestHandler, mode: str, body: bytes, stop: threading.Event
     ) -> None:
-        with suppress(BrokenPipeError, ConnectionResetError):
+        with suppress(ConnectionError):
             if mode == "slow-headers":
                 handler.wfile.write(b"HTTP/1.1 200 OK\r\n")
                 for index in range(16):
@@ -221,7 +221,7 @@ class FrontendDevelopmentTest(unittest.TestCase):
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Location", "http://192.0.2.1/")
                 self.end_headers()
-                with suppress(BrokenPipeError, ConnectionResetError):
+                with suppress(ConnectionError):
                     self.wfile.write(body)
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
