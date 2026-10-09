@@ -216,8 +216,14 @@ const routable = (row) =>
   typeof row.sid === 'string' &&
   row.sid;
 
+/* A recorded page says how long ago a session was active, counted from when the board was recorded; this run counts
+   from its own start, so a sub-minute age is two seconds either way on a loaded runner (10s against 12s failed the
+   Windows leg). Only that seconds count is set aside: a minute or hour age, the words around it and everything
+   else still compare exactly. */
+const seconds = (value) => JSON.stringify(value)?.replace(/\d+s ago/g, 'Ns ago');
+
 function firstDifference(left, right, path = '$') {
-  if (JSON.stringify(left) === JSON.stringify(right)) return null;
+  if (seconds(left) === seconds(right)) return null;
   if (left && right && typeof left === 'object' && typeof right === 'object') {
     for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
       const found = firstDifference(left[key], right[key], `${path}.${key}`);
