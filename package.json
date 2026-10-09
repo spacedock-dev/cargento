@@ -33,6 +33,8 @@
     "test:drift:browser": "node frontend/e2e/drift-parity.mjs",
     "test:console:browser": "node frontend/e2e/console-parity.mjs",
     "test:project:browser": "node frontend/e2e/project-parity.mjs",
+    "test:attention:browser": "node frontend/e2e/attention-parity.mjs",
+    "test:capacity:browser": "node frontend/e2e/capacity-parity.mjs",
     "test:terminal:browser": "node frontend/e2e/terminal-parity.mjs && node frontend/e2e/timeline-filter.mjs"
   },
   "dependencies": {

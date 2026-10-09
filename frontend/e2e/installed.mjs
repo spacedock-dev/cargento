@@ -145,10 +145,14 @@ try {
     try {
       await probe.page.goto(probe.origin + '/');
       await probe.page.getByRole('heading', { level: 1, name: 'Session operations' }).waitFor();
-      // Sessions is real; a view a later step owns still says so.
+      // Attention is real too: it draws its own sections from the board, and nothing stands in for it.
       await probe.page.goto(probe.origin + '/#n=attention');
       await probe.page.getByRole('heading', { level: 1, name: 'Attention' }).waitFor();
-      await probe.page.getByText(/not available in the React interface yet/i).waitFor();
+      await probe.page.getByRole('heading', { name: 'Not on this board yet' }).waitFor();
+      assert.equal(
+        await probe.page.getByText(/not available in the React interface yet/i).count(),
+        0,
+      );
       const structure = await probe.page.evaluate(() => ({
         scripts: globalThis.document.scripts.length,
         roots: globalThis.document.querySelectorAll('#root').length,
