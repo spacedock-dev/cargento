@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Disclosure } from '../controls/Disclosure';
 import { formatDuration } from '../shell/format';
+import { GraphRail } from './Lanes';
+import { laneStyle, type Flow } from './rails';
 import { ScopeCue } from './ScopeCue';
 import { timelineDisclosureKey, timelineFocusKey, type RowScope } from './scope';
 import {
@@ -10,6 +12,7 @@ import {
   gateApplicationDisposition,
   taskTitle,
   type Fact,
+  type Lane,
   type TaskLane,
   type TimelineEvent,
 } from './semantic';
@@ -189,9 +192,21 @@ export interface EventRowProps {
   readonly generated: number | null;
   /** The harness labels the board published, for the scope cue's detail. */
   readonly harnessLabels: ReadonlyMap<string, string>;
+  /** Every lane of the registry, in order: the rail beside the row has one cell for each. */
+  readonly lanes: readonly Lane[];
+  /** Where each lane's line runs through this row. */
+  readonly flows: ReadonlyMap<string, Flow>;
 }
 
-export function EventRow({ event, scope, first, generated, harnessLabels }: EventRowProps) {
+export function EventRow({
+  event,
+  scope,
+  first,
+  generated,
+  harnessLabels,
+  lanes,
+  flows,
+}: EventRowProps) {
   const { fact, lane } = event;
   const stage =
     fact.stage || (first && lane.kind === 'task' && lane.head ? lane.head.stage : '') || '';
@@ -245,9 +260,22 @@ export function EventRow({ event, scope, first, generated, harnessLabels }: Even
       className={`pc-graph-row ${kindClass}`}
       data-graph-node={kindClass}
       data-lane-key={lane.key}
+      style={laneStyle(
+        lanes.length,
+        lanes.findIndex((candidate) => candidate.key === lane.key),
+      )}
+      {...(flows.size ? { 'data-lane-connect': 'next' } : {})}
       {...attributes}
     >
       {age}
+      <GraphRail
+        lanes={lanes}
+        active={lane}
+        kind={kindClass}
+        tip={event.meaning}
+        hasEvent={hasTime}
+        flows={flows}
+      />
       <div className="pc-trail-body">
         <ScopeCue scope={cue} detail={detail} />
         <Disclosure

@@ -517,6 +517,16 @@ jobs:
         env:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:drift:browser
+      - name: Project views, workstream and human context browser proof
+        timeout-minutes: 8
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:project:browser
+      - name: Steering, tripwires, Decisions and Console browser proof
+        timeout-minutes: 8
+        env:
+          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: pnpm test:console:browser
       - name: Timeline and output-only terminal browser proof
         timeout-minutes: 5
         env:

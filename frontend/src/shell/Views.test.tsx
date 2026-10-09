@@ -10,11 +10,7 @@ async function open(fragment: string, data: unknown = BOARD) {
 }
 
 describe('a view this step does not own says so, and names the step that does', () => {
-  it.each([
-    ['#n=attention', 'attention'],
-    ['#n=projects', 'projects'],
-    ['#n=project:alpha%2Fapp', 'projects'],
-  ])('%s is owned by %s', async (fragment, step) => {
+  it.each([['#n=attention', 'attention']])('%s is owned by %s', async (fragment, step) => {
     await open(fragment);
     const note = document.querySelector('[data-next-placeholder]');
     expect(note?.getAttribute('data-next-owner')).toBe(step);
@@ -22,6 +18,15 @@ describe('a view this step does not own says so, and names the step that does', 
     expect(note?.textContent).not.toMatch(/DRC-/);
     expect(note?.textContent).toContain('not available in the React interface yet');
     expect(document.body.textContent).not.toContain('Session views are not available');
+  });
+
+  it('draws the Projects list and a project page themselves, with a stated slot only where the steering step is still to come', async () => {
+    await open('#n=projects');
+    expect(document.querySelector('[data-next-placeholder]')).toBeNull();
+    expect(document.querySelectorAll('article.next-project-row').length).toBeGreaterThan(0);
+    await open('#n=project:alpha%2Fapp');
+    expect(document.querySelector('article.next-project-detail')).not.toBeNull();
+    expect(document.querySelector('[data-next-placeholder]')).toBeNull();
   });
 
   it('draws the Sessions screen, the session page, the Intent panel and the drift reading themselves, with no stated slot left', async () => {
@@ -37,7 +42,7 @@ describe('a view this step does not own says so, and names the step that does', 
   });
 
   it('keeps one owner per view in a table the later steps read', () => {
-    expect(Object.keys(OWNERS).sort()).toEqual(['attention', 'project', 'projects']);
+    expect(Object.keys(OWNERS).sort()).toEqual(['attention']);
   });
 });
 

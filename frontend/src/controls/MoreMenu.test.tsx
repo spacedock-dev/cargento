@@ -86,11 +86,11 @@ describe('the project More menu', () => {
     expect(kit.controls.briefing.read(contextKey('alpha/app', null))).toBe('copied');
   });
 
-  it('says the briefing is not available yet, rather than blaming the clipboard, when no builder exists', async () => {
+  it('says why the briefing cannot be built, rather than blaming the clipboard', async () => {
     const unbuilt = mount(
       menu({
         briefingText: () => {
-          throw new BriefingUnavailable('not migrated');
+          throw new BriefingUnavailable('The project is not in the current payload.');
         },
       }),
     );
@@ -98,7 +98,7 @@ describe('the project More menu', () => {
     await flush();
     expect(unbuilt.view.getByRole('button', { name: 'Copy unavailable' })).toBeInTheDocument();
     expect(unbuilt.kit.announced.map((entry) => entry.text)).toEqual([
-      'The project briefing is not available in the React interface yet',
+      'The project is not in the current payload.',
     ]);
   });
 

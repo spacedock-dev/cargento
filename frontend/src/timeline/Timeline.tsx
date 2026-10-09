@@ -7,6 +7,8 @@ import { useDisplayed, useShell } from '../shell/context';
 import { selectContextRead, selectHarnessSources } from '../store/selectors';
 import { ActivityFilter } from './ActivityFilter';
 import { EventRow } from './EventRow';
+import { LaneLegend, UnboundContext } from './Lanes';
+import { eventFlows } from './rails';
 import { useTimelineMode } from './modes';
 import { timelineDisclosureKey, timelineFocusKey, type RowScope } from './scope';
 import {
@@ -14,6 +16,7 @@ import {
   historyEmptyText,
   type Delegation,
   type GraphMode,
+  type Lane,
   type TimelineEvent,
 } from './semantic';
 import { deriveView } from './view';
@@ -47,12 +50,17 @@ function Rows({
   scope,
   generated,
   harnessLabels,
+  lanes,
 }: {
   readonly events: readonly TimelineEvent[];
   readonly scope: RowScope;
   readonly generated: number | null;
   readonly harnessLabels: ReadonlyMap<string, string>;
+  readonly lanes: readonly Lane[];
 }) {
+  // Over every row the mode kept, in drawn order, so the rows folded into "Earlier meaningful" still join
+  // their lane's line to the ones above them.
+  const flows = eventFlows(events);
   const seenLanes = new Set<string>();
   const seenIds = new Map<string, number>();
   let directions = 0;
@@ -62,7 +70,7 @@ function Rows({
     directions += 1;
     if (directions === PRIMARY_DIRECTIONS + 1 && splitAt === events.length) splitAt = index;
   });
-  const rows = events.map((event) => {
+  const rows = events.map((event, index) => {
     const first = !seenLanes.has(event.lane.key);
     seenLanes.add(event.lane.key);
     // A repeated fact id is still two rows, and React needs two keys; the disclosure state stays by id.
@@ -76,6 +84,8 @@ function Rows({
         first={first}
         generated={generated}
         harnessLabels={harnessLabels}
+        lanes={lanes}
+        flows={flows[index] ?? new Map()}
       />
     );
   });
@@ -197,21 +207,27 @@ export function Timeline({
         className="pc-semantic-timeline"
         data-order="newest-first"
         data-model="fact-projection"
+        data-graph-layout="fo-task-lanes"
         data-graph-mode={mode}
       >
         <ActivityFilter mode={mode} onChoose={setMode} />
         {events.length ? (
-          <Rows
-            events={events}
-            scope={scope}
-            generated={
-              typeof generated === 'number' && Number.isFinite(generated) ? generated : null
-            }
-            harnessLabels={harnessLabels}
-          />
+          <>
+            <LaneLegend lanes={view.registry.lanes} />
+            <Rows
+              events={events}
+              scope={scope}
+              generated={
+                typeof generated === 'number' && Number.isFinite(generated) ? generated : null
+              }
+              harnessLabels={harnessLabels}
+              lanes={view.registry.lanes}
+            />
+          </>
         ) : (
           <p className="pc-substrate-empty">{historyEmptyText(view.model, mode)}</p>
         )}
+        <UnboundContext contributors={view.registry.unboundContributors} scope={scope} />
       </section>
     </section>
   );

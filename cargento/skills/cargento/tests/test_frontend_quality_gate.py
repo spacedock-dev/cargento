@@ -217,6 +217,8 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "pnpm test:sessions:browser",
             "pnpm test:intent:browser",
             "pnpm test:drift:browser",
+            "pnpm test:project:browser",
+            "pnpm test:console:browser",
             "pnpm test:terminal:browser",
         ):
             with self.subTest(command=command):
@@ -242,6 +244,8 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "pnpm test:sessions:browser",
             "pnpm test:intent:browser",
             "pnpm test:drift:browser",
+            "pnpm test:project:browser",
+            "pnpm test:console:browser",
             "pnpm test:terminal:browser",
         ):
             self.assertLess(
@@ -257,6 +261,8 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "test:sessions:browser": ("sessions-parity.mjs",),
             "test:intent:browser": ("intent-parity.mjs",),
             "test:drift:browser": ("drift-parity.mjs",),
+            "test:project:browser": ("project-parity.mjs",),
+            "test:console:browser": ("console-parity.mjs",),
             "test:shell:browser": ("shell-routing.mjs",),
             "test:controls:browser": ("controls-continuity.mjs",),
             "test:storage:browser": ("storage-conformance.mjs",),
