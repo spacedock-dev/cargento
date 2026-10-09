@@ -953,9 +953,10 @@ class ReviewFixTest(unittest.TestCase):
                     list(runtime_io.reverse_lines(make_config(), str(path)))
                     samples.append(time.perf_counter() - start)
                 timings.append(min(samples))
-        # Quadratic would be ~16x for 4x the bytes. Linear is ~4x; allow 8x for
-        # a loaded CI runner while still failing a quadratic regression.
-        self.assertLess(timings[1], max(timings[0], 0.01) * 8, f"non-linear: {timings}")
+        # Quadratic would be ~16x for 4x the bytes. Linear is ~4x, and a loaded
+        # hosted macOS runner measured 8.3x (13 ms against 112 ms) on code that is
+        # linear, so allow 12x: still a clear margin under a quadratic regression.
+        self.assertLess(timings[1], max(timings[0], 0.01) * 12, f"non-linear: {timings}")
 
 
 class CodexInstructionTest(unittest.TestCase):
