@@ -574,12 +574,15 @@ try {
           context: contextReads(),
         };
         assert.equal(after.counts.stream, 1, 'navigation opened no second stream');
+        // The board's revision ticks with the wall clock, so a slow runner that spends several seconds on the five
+        // rounds sees a follow-up read per tick. A read per navigation would be at least fifteen (five rounds of
+        // three moves) and a context read per round at least five; these bounds sit below both.
         assert.ok(
-          after.counts.data <= first.counts.data + 1,
+          after.counts.data <= first.counts.data + 8,
           `navigation read ${after.counts.data - first.counts.data} more times`,
         );
         assert.ok(
-          after.context <= first.context + 2,
+          after.context <= first.context + 4,
           `navigation asked for the context ${after.context - first.context} more times`,
         );
         assert.equal(after.counts.nonGet, 0);
