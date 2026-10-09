@@ -32,6 +32,11 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/* A recording is replayed on other machines, so every run reads the same clock and locale: UTC and en-US, for the
+   Python backends (`dev/protocol.mjs` carries it), the browsers (`BROWSER_CONTEXT`) and this process. */
+process.env.TZ = 'UTC';
+export const BROWSER_CONTEXT = { timezoneId: 'UTC', locale: 'en-US' };
+
 export const MODES = ['replay', 'record', 'live'];
 export const MODE = process.env.CARGENTO_LEGACY || 'replay';
 if (!MODES.includes(MODE))

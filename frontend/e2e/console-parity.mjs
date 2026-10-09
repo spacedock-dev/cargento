@@ -276,10 +276,11 @@ const readCourse = () => {
    same thing about the board either way. */
 const comparable = (value) =>
   JSON.stringify(value)
+    // Ids first: a hex id can hold a digit followed by d, which the age pattern below would otherwise take.
+    .replace(/fact:[0-9a-f]{16}/g, '<fact>')
     .replace(/(?<!\d)\d+[smhd]( \d+[smh])?(?![A-Za-z0-9])/g, '<age>')
     .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>')
-    .replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, '<time>')
-    .replace(/fact:[0-9a-f]{16}/g, '<fact>');
+    .replace(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, '<time>');
 
 async function settled(read, { deadline = patience(9000), every = 150 } = {}) {
   let previous = comparable(await read());
@@ -1262,6 +1263,7 @@ try {
               height: box.height,
               // Where it sits inside what holds it, so the page chrome around both does not matter.
               rightGap: Math.round(parent.right - box.right),
+              leftGap: Math.round(box.left - parent.left),
             };
           }
           return out;
@@ -1293,7 +1295,17 @@ try {
             };
             const diffs = [];
             for (const name of Object.keys(pair.legacy)) {
+              // A box sized by its text moves its free edge with the typeface (the add button's right gap was 308 on
+              // macOS and 306 under Liberation on Linux) and keeps the edge it is anchored to, so the side it sits
+              // against is the one that must agree: the smaller of the two gap differences, not each of them.
+              const gap = (side) =>
+                Math.abs(pair.legacy[name][side] - (pair.react[name]?.[side] ?? Number.NaN));
+              if (Math.min(gap('leftGap'), gap('rightGap')) > 1.5 || Number.isNaN(gap('leftGap')))
+                diffs.push(
+                  `${name}.gaps: legacy ${pair.legacy[name].leftGap}/${pair.legacy[name].rightGap}, react ${pair.react[name]?.leftGap}/${pair.react[name]?.rightGap}`,
+                );
               for (const [prop, was] of Object.entries(pair.legacy[name])) {
+                if (prop === 'leftGap' || prop === 'rightGap') continue;
                 const now = pair.react[name]?.[prop];
                 const number = typeof was === 'number';
                 // A width can differ by the shared chevron's own column and a wrap by a pixel; a typeface,

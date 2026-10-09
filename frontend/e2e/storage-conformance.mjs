@@ -30,7 +30,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { build } from 'vite';
-import { digest, goldenFor } from './support/golden.mjs';
+import { BROWSER_CONTEXT, digest, goldenFor } from './support/golden.mjs';
 
 const golden = goldenFor('storage-conformance');
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -167,7 +167,10 @@ const problems = { external: [], pageErrors: [], unexpectedPosts: [] };
 const observations = [];
 
 async function newContext({ blocked = false } = {}) {
-  const context = await browser.newContext({ viewport: { width: 1700, height: 1100 } });
+  const context = await browser.newContext({
+    ...BROWSER_CONTEXT,
+    viewport: { width: 1700, height: 1100 },
+  });
   await context.route('**/*', (route) => {
     const url = route.request().url();
     if (url.startsWith(origin + '/') || url.startsWith('data:')) return route.continue();

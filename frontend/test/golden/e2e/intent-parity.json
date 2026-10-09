@@ -1,897 +1,6 @@
 {
  "proof": "intent-parity",
  "observations": {
-  "editor: a chosen prompt": {
-   "caveats": "",
-   "fields": [
-    {
-     "absent": [
-      [
-       "No goal typed for this session.",
-       true
-      ]
-     ],
-     "boxes": [
-      "Rename the worker's settings file."
-     ],
-     "buttons": [
-      [
-       "Clear",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "34/240"
-     ],
-     "cues": [],
-     "full": [],
-     "kind": "goal",
-     "label": "Goal",
-     "marks": "from your prompt · <clock>",
-     "menu": [
-      [
-       "",
-       "Use your prompt"
-      ],
-      [
-       "<fact>",
-       "First prompt · <clock> — Rename the worker's settings file."
-      ]
-     ],
-     "sources": []
-    },
-    {
-     "absent": [
-      [
-       "No expected outcome typed.",
-       false
-      ]
-     ],
-     "boxes": [
-      ""
-     ],
-     "buttons": [
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "+ Add a line",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "0/240"
-     ],
-     "cues": [],
-     "full": [
-      [
-       "An expected outcome holds six lines. Replace or merge a line to add another.",
-       true
-      ]
-     ],
-     "kind": "lines",
-     "label": "Expected outcome",
-     "marks": "",
-     "menu": [],
-     "sources": []
-    }
-   ],
-   "footer": {
-    "buttons": [
-     [
-      "Undo changes",
-      false,
-      false
-     ],
-     [
-      "Save intent",
-      false,
-      false
-     ]
-    ],
-    "cue": "",
-    "hint": "Drift is measured against these. Edit anything that is off."
-   },
-   "heading": "Intent",
-   "later": "",
-   "monitor": "false",
-   "notes": [],
-   "question": null
-  },
-  "editor: a pending line": {
-   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
-   "fields": [
-    {
-     "absent": [],
-     "boxes": [
-      "Rename the worker's settings file."
-     ],
-     "buttons": [
-      [
-       "Clear",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "34/240"
-     ],
-     "cues": [
-      "from your prompt · <clock>."
-     ],
-     "full": [],
-     "kind": "goal",
-     "label": "Goal",
-     "marks": "",
-     "menu": [
-      [
-       "",
-       "Use your prompt"
-      ]
-     ],
-     "sources": []
-    },
-    {
-     "absent": [
-      [
-       "No expected outcome typed.",
-       false
-      ]
-     ],
-     "boxes": [
-      "",
-      "Also write the rollback steps down before anything else is changed."
-     ],
-     "buttons": [
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "SaveSaving…",
-       false,
-       false
-      ],
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "+ Add a line",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "0/240",
-      "67/240"
-     ],
-     "cues": [],
-     "full": [
-      [
-       "An expected outcome holds six lines. Replace or merge a line to add another.",
-       true
-      ]
-     ],
-     "kind": "lines",
-     "label": "Expected outcome",
-     "marks": "",
-     "menu": [],
-     "sources": [
-      [
-       "from #4 · not saved",
-       false
-      ]
-     ]
-    }
-   ],
-   "footer": {
-    "buttons": [
-     [
-      "Undo changes",
-      true,
-      false
-     ],
-     [
-      "Save intent",
-      true,
-      false
-     ]
-    ],
-    "cue": "",
-    "hint": "Drift is measured against these. Edit anything that is off."
-   },
-   "heading": "Intent",
-   "later": "",
-   "monitor": "false",
-   "notes": [
-    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · saved <age> agoEach save is a revision.claude:intent-4"
-   ],
-   "question": {
-    "buttons": [
-     "Keep my intent",
-     "Add it to my intent",
-     "Use this as my goal"
-    ],
-    "said": "You gave 2 later directions since saving your intent, the selected direction at #4: \"Also write the rollback steps down before anything else is changed.\""
-   }
-  },
-  "editor: an armed discard": {
-   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Confirm discardPress it again to discard. Every revision of what you asked of this session will go, along with any reading of it, and nothing raised against those words will quote them any more; the record that a check ran stays. Nothing has been deleted yet, and this offer lapses on its own.",
-   "fields": [
-    {
-     "absent": [],
-     "boxes": [
-      "Rename the worker's settings file."
-     ],
-     "buttons": [
-      [
-       "Clear",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "34/240"
-     ],
-     "cues": [
-      "from your prompt · <clock>."
-     ],
-     "full": [],
-     "kind": "goal",
-     "label": "Goal",
-     "marks": "",
-     "menu": [
-      [
-       "",
-       "Use your prompt"
-      ]
-     ],
-     "sources": []
-    },
-    {
-     "absent": [
-      [
-       "No expected outcome typed.",
-       false
-      ]
-     ],
-     "boxes": [
-      "",
-      "Also write the rollback steps down before anything else is changed."
-     ],
-     "buttons": [
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "SaveSaving…",
-       false,
-       false
-      ],
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "+ Add a line",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "0/240",
-      "67/240"
-     ],
-     "cues": [],
-     "full": [
-      [
-       "An expected outcome holds six lines. Replace or merge a line to add another.",
-       true
-      ]
-     ],
-     "kind": "lines",
-     "label": "Expected outcome",
-     "marks": "",
-     "menu": [],
-     "sources": [
-      [
-       "from #4 · not saved",
-       false
-      ]
-     ]
-    }
-   ],
-   "footer": {
-    "buttons": [
-     [
-      "Undo changes",
-      true,
-      false
-     ],
-     [
-      "Save intent",
-      true,
-      false
-     ]
-    ],
-    "cue": "",
-    "hint": "Drift is measured against these. Edit anything that is off."
-   },
-   "heading": "Intent",
-   "later": "",
-   "monitor": "false",
-   "notes": [
-    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · saved <age> agoEach save is a revision.claude:intent-4"
-   ],
-   "question": {
-    "buttons": [
-     "Keep my intent",
-     "Add it to my intent",
-     "Use this as my goal"
-    ],
-    "said": "You gave 2 later directions since saving your intent, the selected direction at #4: \"Also write the rollback steps down before anything else is changed.\""
-   }
-  },
-  "editor: drafted": {
-   "caveats": "",
-   "fields": [
-    {
-     "absent": [
-      [
-       "No goal typed for this session.",
-       true
-      ]
-     ],
-     "boxes": [
-      "Ship the queue worker behind a flag."
-     ],
-     "buttons": [
-      [
-       "Clear",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "36/240"
-     ],
-     "cues": [],
-     "full": [],
-     "kind": "goal",
-     "label": "Goal",
-     "marks": "from your prompt",
-     "menu": [
-      [
-       "",
-       "Use your prompt"
-      ]
-     ],
-     "sources": []
-    },
-    {
-     "absent": [
-      [
-       "No expected outcome typed.",
-       false
-      ]
-     ],
-     "boxes": [
-      ""
-     ],
-     "buttons": [
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "+ Add a line",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "0/240"
-     ],
-     "cues": [],
-     "full": [
-      [
-       "An expected outcome holds six lines. Replace or merge a line to add another.",
-       true
-      ]
-     ],
-     "kind": "lines",
-     "label": "Expected outcome",
-     "marks": "",
-     "menu": [],
-     "sources": []
-    }
-   ],
-   "footer": {
-    "buttons": [
-     [
-      "Undo changes",
-      true,
-      false
-     ],
-     [
-      "Save intent",
-      false,
-      false
-     ]
-    ],
-    "cue": "",
-    "hint": "Drift is measured against these. Edit anything that is off."
-   },
-   "heading": "Intent",
-   "later": "",
-   "monitor": "false",
-   "notes": [],
-   "question": null
-  },
-  "editor: later directions": {
-   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
-   "fields": [
-    {
-     "absent": [],
-     "boxes": [
-      "Rename the worker's settings file."
-     ],
-     "buttons": [
-      [
-       "Clear",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "34/240"
-     ],
-     "cues": [
-      "from your prompt · <clock>."
-     ],
-     "full": [],
-     "kind": "goal",
-     "label": "Goal",
-     "marks": "",
-     "menu": [
-      [
-       "",
-       "Use your prompt"
-      ]
-     ],
-     "sources": []
-    },
-    {
-     "absent": [
-      [
-       "No expected outcome typed.",
-       false
-      ]
-     ],
-     "boxes": [
-      ""
-     ],
-     "buttons": [
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "+ Add a line",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "0/240"
-     ],
-     "cues": [],
-     "full": [
-      [
-       "An expected outcome holds six lines. Replace or merge a line to add another.",
-       true
-      ]
-     ],
-     "kind": "lines",
-     "label": "Expected outcome",
-     "marks": "",
-     "menu": [],
-     "sources": []
-    }
-   ],
-   "footer": {
-    "buttons": [
-     [
-      "Undo changes",
-      true,
-      false
-     ],
-     [
-      "Save intent",
-      true,
-      false
-     ]
-    ],
-    "cue": "",
-    "hint": "Drift is measured against these. Edit anything that is off."
-   },
-   "heading": "Intent",
-   "later": "",
-   "monitor": "false",
-   "notes": [
-    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · saved <age> agoEach save is a revision.claude:intent-4"
-   ],
-   "question": {
-    "buttons": [
-     "Keep my intent",
-     "Add it to my intent",
-     "Use this as my goal"
-    ],
-    "said": "You gave 2 later directions since saving your intent, the selected direction at #4: \"Also write the rollback steps down before anything else is changed.\""
-   }
-  },
-  "editor: saved": {
-   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
-   "fields": [
-    {
-     "absent": [],
-     "boxes": [
-      "Fix the redirect for signed-in readers"
-     ],
-     "buttons": [
-      [
-       "Clear",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "38/240"
-     ],
-     "cues": [],
-     "full": [],
-     "kind": "goal",
-     "label": "Goal",
-     "marks": "",
-     "menu": [
-      [
-       "",
-       "Use your prompt"
-      ]
-     ],
-     "sources": []
-    },
-    {
-     "absent": [],
-     "boxes": [
-      "Readers land on the last page",
-      "Back still works"
-     ],
-     "buttons": [
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "+ Add a line",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "29/240",
-      "16/240"
-     ],
-     "cues": [],
-     "full": [
-      [
-       "An expected outcome holds six lines. Replace or merge a line to add another.",
-       true
-      ]
-     ],
-     "kind": "lines",
-     "label": "Expected outcome",
-     "marks": "",
-     "menu": [],
-     "sources": []
-    }
-   ],
-   "footer": {
-    "buttons": [
-     [
-      "Undo changes",
-      true,
-      false
-     ],
-     [
-      "Save intent",
-      true,
-      false
-     ]
-    ],
-    "cue": "",
-    "hint": "Drift is measured against these. Edit anything that is off."
-   },
-   "heading": "Intent",
-   "later": "Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.",
-   "monitor": "false",
-   "notes": [
-    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · typed <age> agoEach save is a revision.claude:intent-1"
-   ],
-   "question": null
-  },
-  "editor: typed": {
-   "caveats": "",
-   "fields": [
-    {
-     "absent": [
-      [
-       "No goal typed for this session.",
-       true
-      ]
-     ],
-     "boxes": [
-      "Ship the worker, then verify"
-     ],
-     "buttons": [
-      [
-       "Clear",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "28/240"
-     ],
-     "cues": [],
-     "full": [],
-     "kind": "goal",
-     "label": "Goal",
-     "marks": "",
-     "menu": [
-      [
-       "",
-       "Use your prompt"
-      ]
-     ],
-     "sources": []
-    },
-    {
-     "absent": [
-      [
-       "No expected outcome typed.",
-       true
-      ]
-     ],
-     "boxes": [
-      "",
-      "The queue drains"
-     ],
-     "buttons": [
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "Remove",
-       false,
-       false
-      ],
-      [
-       "+ Add a line",
-       false,
-       false
-      ]
-     ],
-     "counts": [
-      "0/240",
-      "16/240"
-     ],
-     "cues": [],
-     "full": [
-      [
-       "An expected outcome holds six lines. Replace or merge a line to add another.",
-       true
-      ]
-     ],
-     "kind": "lines",
-     "label": "Expected outcome",
-     "marks": "",
-     "menu": [],
-     "sources": []
-    }
-   ],
-   "footer": {
-    "buttons": [
-     [
-      "Undo changes",
-      false,
-      false
-     ],
-     [
-      "Save intent",
-      false,
-      false
-     ]
-    ],
-    "cue": "",
-    "hint": "Drift is measured against these. Edit anything that is off."
-   },
-   "heading": "Intent",
-   "later": "",
-   "monitor": "false",
-   "notes": [],
-   "question": null
-  },
-  "log: discarded": [
-   [
-    "heading",
-    "Intent log"
-   ],
-   [
-    "note",
-    "4 sessions listed: 4 on the board, 0 retained after leaving the board."
-   ],
-   [
-    "note",
-    "1 session you have saved words against, and 1 whose words you discarded. The annotation store keeps the newest 256 and sixteen revisions each. A row whose words you discarded goes before any row that still holds words, and the oldest of what is left goes next. These limits apply only to retained annotation records. Session history keeps a fourteen-day copy of the goal and each outcome line; this list does not recover saved words from that copy. Removal by the annotation store is an eviction and not an expiry."
-   ],
-   [
-    "heading",
-    "On the board"
-   ],
-   [
-    "row",
-    [
-     [
-      "next-intent-key",
-      "Fix the login redirect so a signed-in reader lands on their last page."
-     ],
-     [
-      "next-intent-words",
-      "Typed goal: Fix the redirect for signed-in readers"
-     ],
-     [
-      "next-intent-words",
-      "Expected outcome, line 1: Readers land on the last page"
-     ],
-     [
-      "next-intent-words",
-      "Expected outcome, line 2: Back still works"
-     ],
-     [
-      "next-intent-words",
-      "Cached deterministic goal: No cached deterministic goal available."
-     ],
-     [
-      "next-intent-words",
-      "Workflow goal: Spacedock is off for this run."
-     ],
-     [
-      "next-intent-revision",
-      "revision 1 of 1 · typed <age> ago"
-     ],
-     [
-      "next-intent-revision",
-      "No reading asked for"
-     ],
-     [
-      "next-intent-why",
-      "Bound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words."
-     ]
-    ],
-    "#n=session:w%2Falpha:claude:intent-1"
-   ],
-   [
-    "row",
-    [
-     [
-      "next-intent-key",
-      "Ship the queue worker behind a flag."
-     ],
-     [
-      "next-intent-words",
-      "Typed words: No goal or expected outcome typed."
-     ],
-     [
-      "next-intent-words",
-      "Cached deterministic goal: No cached deterministic goal available."
-     ],
-     [
-      "next-intent-words",
-      "Workflow goal: Spacedock is off for this run."
-     ],
-     [
-      "next-intent-why",
-      "No goal available from these sources."
-     ]
-    ],
-    "#n=session:w%2Falpha:claude:intent-2"
-   ],
-   [
-    "row",
-    [
-     [
-      "next-intent-key",
-      "Tidy the unlabelled project."
-     ],
-     [
-      "next-intent-words",
-      "Your words: What you asked of this session was discarded, along with any reading of it. None of it is kept here: this record says only that the act happened and when. Where session history is recording, it holds its own fourteen-day copy of the goal and each outcome line, and --forget deletes that store."
-     ],
-     [
-      "next-intent-words",
-      "Cached deterministic goal: No cached deterministic goal available."
-     ],
-     [
-      "next-intent-words",
-      "Workflow goal: Spacedock is off for this run."
-     ],
-     [
-      "next-intent-why",
-      "No goal available from these sources."
-     ],
-     [
-      "next-intent-revision",
-      "discarded <age> ago"
-     ],
-     [
-      "next-intent-why",
-      "Bound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words."
-     ]
-    ],
-    "#n=session:w%2Funlabelled:claude:intent-3"
-   ],
-   [
-    "row",
-    [
-     [
-      "next-intent-key",
-      "Rename the worker's settings file."
-     ],
-     [
-      "next-intent-words",
-      "Typed words: No goal or expected outcome typed."
-     ],
-     [
-      "next-intent-words",
-      "Cached deterministic goal: No cached deterministic goal available."
-     ],
-     [
-      "next-intent-words",
-      "Workflow goal: Spacedock is off for this run."
-     ],
-     [
-      "next-intent-why",
-      "No goal available from these sources."
-     ]
-    ],
-    "#n=session:w%2Falpha:claude:intent-4"
-   ],
-   [
-    "note",
-    "No retained annotation carries a reading, and nothing watches for one. A reading is never a verification that the work was done."
-   ]
-  ],
   "log: empty": [
    [
     "heading",
@@ -1171,6 +280,897 @@
     "note",
     "No retained annotation carries a reading, and nothing watches for one. A reading is never a verification that the work was done."
    ]
-  ]
+  ],
+  "log: discarded": [
+   [
+    "heading",
+    "Intent log"
+   ],
+   [
+    "note",
+    "4 sessions listed: 4 on the board, 0 retained after leaving the board."
+   ],
+   [
+    "note",
+    "1 session you have saved words against, and 1 whose words you discarded. The annotation store keeps the newest 256 and sixteen revisions each. A row whose words you discarded goes before any row that still holds words, and the oldest of what is left goes next. These limits apply only to retained annotation records. Session history keeps a fourteen-day copy of the goal and each outcome line; this list does not recover saved words from that copy. Removal by the annotation store is an eviction and not an expiry."
+   ],
+   [
+    "heading",
+    "On the board"
+   ],
+   [
+    "row",
+    [
+     [
+      "next-intent-key",
+      "Fix the login redirect so a signed-in reader lands on their last page."
+     ],
+     [
+      "next-intent-words",
+      "Typed goal: Fix the redirect for signed-in readers"
+     ],
+     [
+      "next-intent-words",
+      "Expected outcome, line 1: Readers land on the last page"
+     ],
+     [
+      "next-intent-words",
+      "Expected outcome, line 2: Back still works"
+     ],
+     [
+      "next-intent-words",
+      "Cached deterministic goal: No cached deterministic goal available."
+     ],
+     [
+      "next-intent-words",
+      "Workflow goal: Spacedock is off for this run."
+     ],
+     [
+      "next-intent-revision",
+      "revision 1 of 1 · typed <age> ago"
+     ],
+     [
+      "next-intent-revision",
+      "No reading asked for"
+     ],
+     [
+      "next-intent-why",
+      "Bound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words."
+     ]
+    ],
+    "#n=session:w%2Falpha:claude:intent-1"
+   ],
+   [
+    "row",
+    [
+     [
+      "next-intent-key",
+      "Ship the queue worker behind a flag."
+     ],
+     [
+      "next-intent-words",
+      "Typed words: No goal or expected outcome typed."
+     ],
+     [
+      "next-intent-words",
+      "Cached deterministic goal: No cached deterministic goal available."
+     ],
+     [
+      "next-intent-words",
+      "Workflow goal: Spacedock is off for this run."
+     ],
+     [
+      "next-intent-why",
+      "No goal available from these sources."
+     ]
+    ],
+    "#n=session:w%2Falpha:claude:intent-2"
+   ],
+   [
+    "row",
+    [
+     [
+      "next-intent-key",
+      "Tidy the unlabelled project."
+     ],
+     [
+      "next-intent-words",
+      "Your words: What you asked of this session was discarded, along with any reading of it. None of it is kept here: this record says only that the act happened and when. Where session history is recording, it holds its own fourteen-day copy of the goal and each outcome line, and --forget deletes that store."
+     ],
+     [
+      "next-intent-words",
+      "Cached deterministic goal: No cached deterministic goal available."
+     ],
+     [
+      "next-intent-words",
+      "Workflow goal: Spacedock is off for this run."
+     ],
+     [
+      "next-intent-why",
+      "No goal available from these sources."
+     ],
+     [
+      "next-intent-revision",
+      "discarded <age> ago"
+     ],
+     [
+      "next-intent-why",
+      "Bound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words."
+     ]
+    ],
+    "#n=session:w%2Funlabelled:claude:intent-3"
+   ],
+   [
+    "row",
+    [
+     [
+      "next-intent-key",
+      "Rename the worker's settings file."
+     ],
+     [
+      "next-intent-words",
+      "Typed words: No goal or expected outcome typed."
+     ],
+     [
+      "next-intent-words",
+      "Cached deterministic goal: No cached deterministic goal available."
+     ],
+     [
+      "next-intent-words",
+      "Workflow goal: Spacedock is off for this run."
+     ],
+     [
+      "next-intent-why",
+      "No goal available from these sources."
+     ]
+    ],
+    "#n=session:w%2Falpha:claude:intent-4"
+   ],
+   [
+    "note",
+    "No retained annotation carries a reading, and nothing watches for one. A reading is never a verification that the work was done."
+   ]
+  ],
+  "editor: saved": {
+   "heading": "Intent",
+   "notes": [
+    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · typed <age> agoEach save is a revision.claude:intent-1"
+   ],
+   "fields": [
+    {
+     "kind": "goal",
+     "label": "Goal",
+     "boxes": [
+      "Fix the redirect for signed-in readers"
+     ],
+     "counts": [
+      "38/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Clear",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [
+      [
+       "",
+       "Use your prompt"
+      ]
+     ],
+     "absent": [],
+     "full": []
+    },
+    {
+     "kind": "lines",
+     "label": "Expected outcome",
+     "boxes": [
+      "Readers land on the last page",
+      "Back still works"
+     ],
+     "counts": [
+      "29/240",
+      "16/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "+ Add a line",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [],
+     "absent": [],
+     "full": [
+      [
+       "An expected outcome holds six lines. Replace or merge a line to add another.",
+       true
+      ]
+     ]
+    }
+   ],
+   "footer": {
+    "hint": "Drift is measured against these. Edit anything that is off.",
+    "buttons": [
+     [
+      "Undo changes",
+      true,
+      false
+     ],
+     [
+      "Save intent",
+      true,
+      false
+     ]
+    ],
+    "cue": ""
+   },
+   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "later": "Later directions: noneNothing you have said since you saved these words is in the observed record read for this session.Nothing here decides whether it changes what you are asking for. That is yours, and Cargento does not write into the session either way.",
+   "monitor": "false",
+   "question": null
+  },
+  "editor: drafted": {
+   "heading": "Intent",
+   "notes": [],
+   "fields": [
+    {
+     "kind": "goal",
+     "label": "Goal",
+     "boxes": [
+      "Ship the queue worker behind a flag."
+     ],
+     "counts": [
+      "36/240"
+     ],
+     "marks": "from your prompt",
+     "sources": [],
+     "buttons": [
+      [
+       "Clear",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [
+      [
+       "",
+       "Use your prompt"
+      ]
+     ],
+     "absent": [
+      [
+       "No goal typed for this session.",
+       true
+      ]
+     ],
+     "full": []
+    },
+    {
+     "kind": "lines",
+     "label": "Expected outcome",
+     "boxes": [
+      ""
+     ],
+     "counts": [
+      "0/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "+ Add a line",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [],
+     "absent": [
+      [
+       "No expected outcome typed.",
+       false
+      ]
+     ],
+     "full": [
+      [
+       "An expected outcome holds six lines. Replace or merge a line to add another.",
+       true
+      ]
+     ]
+    }
+   ],
+   "footer": {
+    "hint": "Drift is measured against these. Edit anything that is off.",
+    "buttons": [
+     [
+      "Undo changes",
+      true,
+      false
+     ],
+     [
+      "Save intent",
+      false,
+      false
+     ]
+    ],
+    "cue": ""
+   },
+   "caveats": "",
+   "later": "",
+   "monitor": "false",
+   "question": null
+  },
+  "editor: typed": {
+   "heading": "Intent",
+   "notes": [],
+   "fields": [
+    {
+     "kind": "goal",
+     "label": "Goal",
+     "boxes": [
+      "Ship the worker, then verify"
+     ],
+     "counts": [
+      "28/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Clear",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [
+      [
+       "",
+       "Use your prompt"
+      ]
+     ],
+     "absent": [
+      [
+       "No goal typed for this session.",
+       true
+      ]
+     ],
+     "full": []
+    },
+    {
+     "kind": "lines",
+     "label": "Expected outcome",
+     "boxes": [
+      "",
+      "The queue drains"
+     ],
+     "counts": [
+      "0/240",
+      "16/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "+ Add a line",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [],
+     "absent": [
+      [
+       "No expected outcome typed.",
+       true
+      ]
+     ],
+     "full": [
+      [
+       "An expected outcome holds six lines. Replace or merge a line to add another.",
+       true
+      ]
+     ]
+    }
+   ],
+   "footer": {
+    "hint": "Drift is measured against these. Edit anything that is off.",
+    "buttons": [
+     [
+      "Undo changes",
+      false,
+      false
+     ],
+     [
+      "Save intent",
+      false,
+      false
+     ]
+    ],
+    "cue": ""
+   },
+   "caveats": "",
+   "later": "",
+   "monitor": "false",
+   "question": null
+  },
+  "editor: a chosen prompt": {
+   "heading": "Intent",
+   "notes": [],
+   "fields": [
+    {
+     "kind": "goal",
+     "label": "Goal",
+     "boxes": [
+      "Rename the worker's settings file."
+     ],
+     "counts": [
+      "34/240"
+     ],
+     "marks": "from your prompt · <clock>",
+     "sources": [],
+     "buttons": [
+      [
+       "Clear",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [
+      [
+       "",
+       "Use your prompt"
+      ],
+      [
+       "<fact>",
+       "First prompt · <clock> — Rename the worker's settings file."
+      ]
+     ],
+     "absent": [
+      [
+       "No goal typed for this session.",
+       true
+      ]
+     ],
+     "full": []
+    },
+    {
+     "kind": "lines",
+     "label": "Expected outcome",
+     "boxes": [
+      ""
+     ],
+     "counts": [
+      "0/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "+ Add a line",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [],
+     "absent": [
+      [
+       "No expected outcome typed.",
+       false
+      ]
+     ],
+     "full": [
+      [
+       "An expected outcome holds six lines. Replace or merge a line to add another.",
+       true
+      ]
+     ]
+    }
+   ],
+   "footer": {
+    "hint": "Drift is measured against these. Edit anything that is off.",
+    "buttons": [
+     [
+      "Undo changes",
+      false,
+      false
+     ],
+     [
+      "Save intent",
+      false,
+      false
+     ]
+    ],
+    "cue": ""
+   },
+   "caveats": "",
+   "later": "",
+   "monitor": "false",
+   "question": null
+  },
+  "editor: later directions": {
+   "heading": "Intent",
+   "notes": [
+    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · saved <age> agoEach save is a revision.claude:intent-4"
+   ],
+   "fields": [
+    {
+     "kind": "goal",
+     "label": "Goal",
+     "boxes": [
+      "Rename the worker's settings file."
+     ],
+     "counts": [
+      "34/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Clear",
+       false,
+       false
+      ]
+     ],
+     "cues": [
+      "from your prompt · <clock>."
+     ],
+     "menu": [
+      [
+       "",
+       "Use your prompt"
+      ]
+     ],
+     "absent": [],
+     "full": []
+    },
+    {
+     "kind": "lines",
+     "label": "Expected outcome",
+     "boxes": [
+      ""
+     ],
+     "counts": [
+      "0/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "+ Add a line",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [],
+     "absent": [
+      [
+       "No expected outcome typed.",
+       false
+      ]
+     ],
+     "full": [
+      [
+       "An expected outcome holds six lines. Replace or merge a line to add another.",
+       true
+      ]
+     ]
+    }
+   ],
+   "footer": {
+    "hint": "Drift is measured against these. Edit anything that is off.",
+    "buttons": [
+     [
+      "Undo changes",
+      true,
+      false
+     ],
+     [
+      "Save intent",
+      true,
+      false
+     ]
+    ],
+    "cue": ""
+   },
+   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "later": "",
+   "monitor": "false",
+   "question": {
+    "said": "You gave 2 later directions since saving your intent, the selected direction at #4: \"Also write the rollback steps down before anything else is changed.\"",
+    "buttons": [
+     "Keep my intent",
+     "Add it to my intent",
+     "Use this as my goal"
+    ]
+   }
+  },
+  "editor: a pending line": {
+   "heading": "Intent",
+   "notes": [
+    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · saved <age> agoEach save is a revision.claude:intent-4"
+   ],
+   "fields": [
+    {
+     "kind": "goal",
+     "label": "Goal",
+     "boxes": [
+      "Rename the worker's settings file."
+     ],
+     "counts": [
+      "34/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Clear",
+       false,
+       false
+      ]
+     ],
+     "cues": [
+      "from your prompt · <clock>."
+     ],
+     "menu": [
+      [
+       "",
+       "Use your prompt"
+      ]
+     ],
+     "absent": [],
+     "full": []
+    },
+    {
+     "kind": "lines",
+     "label": "Expected outcome",
+     "boxes": [
+      "",
+      "Also write the rollback steps down before anything else is changed."
+     ],
+     "counts": [
+      "0/240",
+      "67/240"
+     ],
+     "marks": "",
+     "sources": [
+      [
+       "from #4 · not saved",
+       false
+      ]
+     ],
+     "buttons": [
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "SaveSaving…",
+       false,
+       false
+      ],
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "+ Add a line",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [],
+     "absent": [
+      [
+       "No expected outcome typed.",
+       false
+      ]
+     ],
+     "full": [
+      [
+       "An expected outcome holds six lines. Replace or merge a line to add another.",
+       true
+      ]
+     ]
+    }
+   ],
+   "footer": {
+    "hint": "Drift is measured against these. Edit anything that is off.",
+    "buttons": [
+     [
+      "Undo changes",
+      true,
+      false
+     ],
+     [
+      "Save intent",
+      true,
+      false
+     ]
+    ],
+    "cue": ""
+   },
+   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Discard everything",
+   "later": "",
+   "monitor": "false",
+   "question": {
+    "said": "You gave 2 later directions since saving your intent, the selected direction at #4: \"Also write the rollback steps down before anything else is changed.\"",
+    "buttons": [
+     "Keep my intent",
+     "Add it to my intent",
+     "Use this as my goal"
+    ]
+   }
+  },
+  "editor: an armed discard": {
+   "heading": "Intent",
+   "notes": [
+    "Saved · reads from <clock>Adding a line keeps this window; saving new goal words opens another.revision 1 of 1 · saved <age> agoEach save is a revision.claude:intent-4"
+   ],
+   "fields": [
+    {
+     "kind": "goal",
+     "label": "Goal",
+     "boxes": [
+      "Rename the worker's settings file."
+     ],
+     "counts": [
+      "34/240"
+     ],
+     "marks": "",
+     "sources": [],
+     "buttons": [
+      [
+       "Clear",
+       false,
+       false
+      ]
+     ],
+     "cues": [
+      "from your prompt · <clock>."
+     ],
+     "menu": [
+      [
+       "",
+       "Use your prompt"
+      ]
+     ],
+     "absent": [],
+     "full": []
+    },
+    {
+     "kind": "lines",
+     "label": "Expected outcome",
+     "boxes": [
+      "",
+      "Also write the rollback steps down before anything else is changed."
+     ],
+     "counts": [
+      "0/240",
+      "67/240"
+     ],
+     "marks": "",
+     "sources": [
+      [
+       "from #4 · not saved",
+       false
+      ]
+     ],
+     "buttons": [
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "SaveSaving…",
+       false,
+       false
+      ],
+      [
+       "Remove",
+       false,
+       false
+      ],
+      [
+       "+ Add a line",
+       false,
+       false
+      ]
+     ],
+     "cues": [],
+     "menu": [],
+     "absent": [
+      [
+       "No expected outcome typed.",
+       false
+      ]
+     ],
+     "full": [
+      [
+       "An expected outcome holds six lines. Replace or merge a line to add another.",
+       true
+      ]
+     ]
+    }
+   ],
+   "footer": {
+    "hint": "Drift is measured against these. Edit anything that is off.",
+    "buttons": [
+     [
+      "Undo changes",
+      true,
+      false
+     ],
+     [
+      "Save intent",
+      true,
+      false
+     ]
+    ],
+    "cue": ""
+   },
+   "caveats": "About these saved wordsBound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.Discard everythingThe clear beside the goal and the remove beside each outcome line empty them, and the save after it keeps every earlier revision, so anything raised against those words goes on quoting them. Discarding everything is the other act.Confirm discardPress it again to discard. Every revision of what you asked of this session will go, along with any reading of it, and nothing raised against those words will quote them any more; the record that a check ran stays. Nothing has been deleted yet, and this offer lapses on its own.",
+   "later": "",
+   "monitor": "false",
+   "question": {
+    "said": "You gave 2 later directions since saving your intent, the selected direction at #4: \"Also write the rollback steps down before anything else is changed.\"",
+    "buttons": [
+     "Keep my intent",
+     "Add it to my intent",
+     "Use this as my goal"
+    ]
+   }
+  }
  }
 }

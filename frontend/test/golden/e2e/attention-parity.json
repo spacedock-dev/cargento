@@ -1,30 +1,13 @@
 {
  "proof": "attention-parity",
  "observations": {
-  "the banners the legacy page raised": [
-   {
-    "body": "[alpha/app] a prompt appeared",
-    "tag": "claude:gate-1",
-    "title": "Claude Code is waiting on you"
-   }
-  ],
-  "the lane the legacy page reported": [
-   {
-    "permission": "granted",
-    "supported": true
-   }
-  ],
   "the screen, collapsed": {
    "brief": "OBSERVED11 of 18 sessions carry a subject: 5 waiting on you · 4 at risk · 2 to close the loop. The other 7: 2 moving · 5 quiet; of these, 0 partially read.",
-   "open": [
-    "Attention accountingDelegation share is measured per project, not yet aggregated across the week.",
-    "Ended with unpushed commitsThe board reports uncommitted work, not commits that never reached a remote.",
-    "Finished and never readNothing on the board publishes whether you have read a finished session. The dismissal store is server-side and does not reach the page."
-   ],
-   "reports": "Command-shape reports2 reports shown · newest firstCommand shape reported: rm -rf <dir>claude · long-turn · Bash · 2023-11-14T<clock>:20.000ZCommand shape reported: git push --forceclaude · nobody · Bash · 2023-11-14T<clock>:00.000ZA shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.",
    "sections": [
     {
+     "name": "risk",
      "heading": "At risk",
+     "toggle": null,
      "items": [
       {
        "hidden": false,
@@ -46,12 +29,15 @@
        "subject": "session:[\"claude\",\"delegated\"]",
        "text": "4Quiet delegated launchdelta · delegatedDelegated work: 2 recorded launches; 1 of this session's launches has no recorded completion. Latest launch <clock>. Last recorded activity <clock>. Nothing recorded for 40 minutes. A server left running can also show here. Cargento cannot see all work this session started.Delegated work: 2 recorded launches; 1 of this session's launches has no recorded completion. Latest launch <clock>. Last recorded activity <clock>. Nothing recorded for 40 minutes. A server left running can also show here. Cargento cannot see all work this session started.Recorded activity only; not a process check.source · claude"
       }
-     ],
-     "name": "risk",
-     "toggle": null
+     ]
     },
     {
+     "name": "needs",
      "heading": "Needs you now (5)",
+     "toggle": [
+      "Show 2 more",
+      "false"
+     ],
      "items": [
       {
        "hidden": false,
@@ -78,15 +64,12 @@
        "subject": "session:[\"claude\",\"gate-5\"]",
        "text": "Question waitingIDENTITYalpha/app · Claude Code · gate-5NOWApprove step 5?2 published optionsSOURCENEEDS YOU · Claude Code · 4mCopy command"
       }
-     ],
-     "name": "needs",
-     "toggle": [
-      "Show 2 more",
-      "false"
      ]
     },
     {
+     "name": "close",
      "heading": "Close the loop (2)",
+     "toggle": null,
      "items": [
       {
        "hidden": false,
@@ -98,12 +81,15 @@
        "subject": "session:[\"claude\",\"ended-2\"]",
        "text": "Session ended; git state cleanIDENTITYdone/2 · Claude Code · ended-2NOWGit state reported clean · ended 3m agoThis session id reported its own endSOURCEClaude Code · 4m"
       }
-     ],
-     "name": "close",
-     "toggle": null
+     ]
     },
     {
+     "name": "next",
      "heading": "Coming next (4)",
+     "toggle": [
+      "Show 1 more",
+      "false"
+     ],
      "items": [
       {
        "hidden": false,
@@ -125,15 +111,12 @@
        "subject": "session:[\"codex\",\"task-4\"]",
        "text": "Published taskIDENTITYlater/4 · Codex · task-4NOWlater/4 · Codex · task-4: PendingNEXTlater/4 · Codex · task-4: Step 4SOURCECodex"
       }
-     ],
-     "name": "next",
-     "toggle": [
-      "Show 1 more",
-      "false"
      ]
     },
     {
+     "name": "board-risk",
      "heading": "Also at risk, off the session count",
+     "toggle": null,
      "items": [
       {
        "hidden": false,
@@ -155,23 +138,23 @@
        "subject": "ask:ask-nobody",
        "text": "4Exact request without an identified sessionask-nobodyA question no session owns?A question no session owns?source · claude"
       }
-     ],
-     "name": "board-risk",
-     "toggle": null
+     ]
     }
+   ],
+   "reports": "Command-shape reports2 reports shown · newest firstCommand shape reported: rm -rf <dir>claude · long-turn · Bash · 2023-11-14T<clock>:20.000ZCommand shape reported: git push --forceclaude · nobody · Bash · 2023-11-14T<clock>:00.000ZA shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.",
+   "open": [
+    "Attention accountingDelegation share is measured per project, not yet aggregated across the week.",
+    "Ended with unpushed commitsThe board reports uncommitted work, not commits that never reached a remote.",
+    "Finished and never readNothing on the board publishes whether you have read a finished session. The dismissal store is server-side and does not reach the page."
    ]
   },
   "the screen, every section expanded": {
    "brief": "OBSERVED11 of 18 sessions carry a subject: 5 waiting on you · 4 at risk · 2 to close the loop. The other 7: 2 moving · 5 quiet; of these, 0 partially read.",
-   "open": [
-    "Attention accountingDelegation share is measured per project, not yet aggregated across the week.",
-    "Ended with unpushed commitsThe board reports uncommitted work, not commits that never reached a remote.",
-    "Finished and never readNothing on the board publishes whether you have read a finished session. The dismissal store is server-side and does not reach the page."
-   ],
-   "reports": "Command-shape reports2 reports shown · newest firstCommand shape reported: rm -rf <dir>claude · long-turn · Bash · 2023-11-14T<clock>:20.000ZCommand shape reported: git push --forceclaude · nobody · Bash · 2023-11-14T<clock>:00.000ZA shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.",
    "sections": [
     {
+     "name": "risk",
      "heading": "At risk",
+     "toggle": null,
      "items": [
       {
        "hidden": false,
@@ -193,12 +176,15 @@
        "subject": "session:[\"claude\",\"delegated\"]",
        "text": "4Quiet delegated launchdelta · delegatedDelegated work: 2 recorded launches; 1 of this session's launches has no recorded completion. Latest launch <clock>. Last recorded activity <clock>. Nothing recorded for 40 minutes. A server left running can also show here. Cargento cannot see all work this session started.Delegated work: 2 recorded launches; 1 of this session's launches has no recorded completion. Latest launch <clock>. Last recorded activity <clock>. Nothing recorded for 40 minutes. A server left running can also show here. Cargento cannot see all work this session started.Recorded activity only; not a process check.source · claude"
       }
-     ],
-     "name": "risk",
-     "toggle": null
+     ]
     },
     {
+     "name": "needs",
      "heading": "Needs you now (5)",
+     "toggle": [
+      "Show fewer (hide 2)",
+      "true"
+     ],
      "items": [
       {
        "hidden": false,
@@ -225,15 +211,12 @@
        "subject": "session:[\"claude\",\"gate-5\"]",
        "text": "Question waitingIDENTITYalpha/app · Claude Code · gate-5NOWApprove step 5?2 published optionsSOURCENEEDS YOU · Claude Code · 4mCopy command"
       }
-     ],
-     "name": "needs",
-     "toggle": [
-      "Show fewer (hide 2)",
-      "true"
      ]
     },
     {
+     "name": "close",
      "heading": "Close the loop (2)",
+     "toggle": null,
      "items": [
       {
        "hidden": false,
@@ -245,12 +228,15 @@
        "subject": "session:[\"claude\",\"ended-2\"]",
        "text": "Session ended; git state cleanIDENTITYdone/2 · Claude Code · ended-2NOWGit state reported clean · ended 3m agoThis session id reported its own endSOURCEClaude Code · 4m"
       }
-     ],
-     "name": "close",
-     "toggle": null
+     ]
     },
     {
+     "name": "next",
      "heading": "Coming next (4)",
+     "toggle": [
+      "Show fewer (hide 1)",
+      "true"
+     ],
      "items": [
       {
        "hidden": false,
@@ -272,15 +258,12 @@
        "subject": "session:[\"codex\",\"task-4\"]",
        "text": "Published taskIDENTITYlater/4 · Codex · task-4NOWlater/4 · Codex · task-4: PendingNEXTlater/4 · Codex · task-4: Step 4SOURCECodex"
       }
-     ],
-     "name": "next",
-     "toggle": [
-      "Show fewer (hide 1)",
-      "true"
      ]
     },
     {
+     "name": "board-risk",
      "heading": "Also at risk, off the session count",
+     "toggle": null,
      "items": [
       {
        "hidden": false,
@@ -302,11 +285,28 @@
        "subject": "ask:ask-nobody",
        "text": "4Exact request without an identified sessionask-nobodyA question no session owns?A question no session owns?source · claude"
       }
-     ],
-     "name": "board-risk",
-     "toggle": null
+     ]
     }
+   ],
+   "reports": "Command-shape reports2 reports shown · newest firstCommand shape reported: rm -rf <dir>claude · long-turn · Bash · 2023-11-14T<clock>:20.000ZCommand shape reported: git push --forceclaude · nobody · Bash · 2023-11-14T<clock>:00.000ZA shape match does not prove the action succeeded.Claude Code and Codex after-tool hooks only. Reports may repeat or arrive out of order. This run keeps up to 1,000 reports, 20 per session, for at most 24 hours; restarting clears them.",
+   "open": [
+    "Attention accountingDelegation share is measured per project, not yet aggregated across the week.",
+    "Ended with unpushed commitsThe board reports uncommitted work, not commits that never reached a remote.",
+    "Finished and never readNothing on the board publishes whether you have read a finished session. The dismissal store is server-side and does not reach the page."
    ]
-  }
+  },
+  "the lane the legacy page reported": [
+   {
+    "supported": true,
+    "permission": "granted"
+   }
+  ],
+  "the banners the legacy page raised": [
+   {
+    "title": "Claude Code is waiting on you",
+    "body": "[alpha/app] a prompt appeared",
+    "tag": "claude:gate-1"
+   }
+  ]
  }
 }

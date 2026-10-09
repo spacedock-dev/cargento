@@ -897,6 +897,9 @@ try {
         ),
         react: await height('react', react, board.react.origin),
       };
+      // The legacy height is a recording from macOS; the page is as tall as its wrapped text, so the typeface moves it.
+      // Measured: legacy 3227 against React 3262 on macOS (+1.1%) and 3297 on Linux with Liberation fonts (+2.2%), so the
+      // operating system moves the ratio by about one point of the twelve allowed.
       assert.ok(
         Math.abs(heights.react - heights.legacy) <= 0.12 * heights.legacy,
         JSON.stringify(heights),

@@ -25,7 +25,7 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { BOARD, openPage, observeShell, startBoard } from './support/browser.mjs';
-import { goldenFor } from './support/golden.mjs';
+import { BROWSER_CONTEXT, goldenFor } from './support/golden.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and draws frames,
    fires timers and delivers stream events later than a desktop does, so each wait is tripled there. A wait that is too
@@ -1187,6 +1187,7 @@ try {
       ];
       for (const shape of shapes) {
         const context = await browser.newContext({
+          ...BROWSER_CONTEXT,
           viewport: { width: shape.width, height: shape.height },
           deviceScaleFactor: shape.dpr,
         });

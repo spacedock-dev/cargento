@@ -139,12 +139,13 @@ const summarizeCard = () => {
    thing about the reader's words either way. */
 const comparable = (value) =>
   JSON.stringify(value)
+    // Ids first: a hex id can hold a digit followed by d, which the age pattern below would otherwise take.
+    .replace(/fact:[0-9a-f]{16}/g, '<fact>')
     // A call's moment is printed whole, with its date and seconds, and a recording must not carry the day it was made.
     .replace(/\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC/g, '<instant>')
     // No word boundary before the digits: a list row prints "exact" and its age with nothing between.
     .replace(/(?<!\d)\d+[smhd]( \d+[smh])?(?![A-Za-z0-9])/g, '<age>')
-    .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>')
-    .replace(/fact:[0-9a-f]{16}/g, '<fact>');
+    .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>');
 
 async function settled(read, { deadline = patience(6000), every = 120 } = {}) {
   let previous = comparable(await read());

@@ -156,10 +156,11 @@ const summarizeEditor = () => {
    backends started at different moments, and say the same thing about the reader's words either way. */
 const comparable = (value) =>
   JSON.stringify(value)
+    // Ids first: a hex id can hold a digit followed by d, which the age pattern below would otherwise take.
+    .replace(/fact:[0-9a-f]{16}/g, '<fact>')
     .replace(/(?<!\d)\d+[smhd]( \d+[smh])?(?![A-Za-z0-9])/g, '<age>')
     // No word boundary after the minutes: the page prints "13:09Adding a line..." with the next sentence glued on.
-    .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>')
-    .replace(/fact:[0-9a-f]{16}/g, '<fact>');
+    .replace(/(?<!\d)\d\d:\d\d(?!\d)/g, '<clock>');
 
 async function settled(read, { deadline = patience(6000), every = 100 } = {}) {
   let previous = comparable(await read());

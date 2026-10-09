@@ -16,7 +16,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEGACY_LIVE } from './golden.mjs';
+import { BROWSER_CONTEXT, LEGACY_LIVE } from './golden.mjs';
 import { startReactWorld } from './world.mjs';
 import { isolatedEnvironment } from '../../dev/protocol.mjs';
 
@@ -178,7 +178,12 @@ export async function startBoard({ legacy = false, root = REPOSITORY } = {}) {
  */
 export async function openPage(browser, origins, { viewport, reducedMotion, locale } = {}) {
   const allowed = [].concat(origins);
-  const context = await browser.newContext({ viewport, reducedMotion, locale });
+  const context = await browser.newContext({
+    ...BROWSER_CONTEXT,
+    viewport,
+    reducedMotion,
+    ...(locale ? { locale } : {}),
+  });
   const log = { consoleErrors: [], pageErrors: [], externalRequests: [], nonGet: [], requests: [] };
   const inside = (url) =>
     url.startsWith('data:') ||
