@@ -15,7 +15,6 @@ import contextlib
 import dataclasses
 import json
 import os
-import shutil
 import stat
 import tempfile
 import threading
@@ -32,7 +31,6 @@ from cargento_runtime.config import build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
 from . import support
-from .next_harness import NextPageJsHarness
 from .test_history import (
     isolated_environment,
     no_instance,
@@ -695,112 +693,6 @@ class NothingClaimsAnEndItDidNotSeeTest(ColdRowTestCase):
             app.overlays = LiveEndSource()
             row = self._row(app)
         self.assertEqual(END_AT, row["ended_at"])
-
-
-@unittest.skipUnless(shutil.which("node"), "node not available")
-class TheColdRowRendersAsEndedTest(ColdRowTestCase, NextPageJsHarness):
-    """AC1 and AC3 on the rendered row, on all three surfaces that derive it.
-
-    The Sessions list tag (`next-sessions.js`), the session page OUTCOME row and
-    the Held-to END EVIDENCE card (both off `nextObservedLanding`, the card
-    drawn by `next-cockpit.js`) each derive the sentence separately, so one
-    assertion on the stored value proves none of them. The row is a real
-    collected row, JSON-spliced into the page's payload, never a fixture typed
-    to look like one.
-    """
-
-    def _rendered(self, row: dict[str, Any]) -> dict[str, Any]:
-        payload = {
-            "generated": NOW,
-            "ask": True,
-            "rate_window_sec": 600,
-            "summary": {"working": 0, "needs_input": 0},
-            "harnesses": [
-                {
-                    "key": "claude",
-                    "label": "Claude",
-                    "discovered": True,
-                    "reports_needs_input": True,
-                    "reports_rate": True,
-                }
-            ],
-            "sessions": [row],
-            "asks": [],
-            "history": [],
-            "usage": [],
-        }
-        out = self._run_page_js(
-            f"const payload = {json.dumps(payload)};\n"
-            """
-nextData = payload;
-const m = nextObserved(payload);
-const s = m.sessions[0];
-const listRow = nextOperationsObservedRow(s, payload.sessions[0], new Map([["claude", "Claude"]]),
-  nextOperationsAsks(payload.sessions), true);
-const card = nextCockpitLanded(s);
-console.log(JSON.stringify({
-  tag: (listRow.match(/next-operation-state">([A-Z]*)</) || [, ""])[1],
-  now: (listRow.match(/NOW · [A-Z ]*/) || [""])[0],
-  outcome: s.outcomeText,
-  endKind: s.landing.endKind,
-  endEvidence: (card.match(/landed-label">END EVIDENCE<\\/span><span class="[^"]*">([^<]*)</) || [, ""])[1],
-}));
-"""
-        )
-        assert isinstance(out, dict)
-        return out
-
-    def test_a_session_that_ended_before_a_restart_still_renders_as_ended(self) -> None:
-        with self._board() as (app, _config):
-            second = self._end_then_restart(app)
-            row = self._row(second)
-        out = self._rendered(row)
-        self.assertEqual("ENDED", out["tag"])
-        self.assertEqual("NOW · ENDED", out["now"])
-        self.assertEqual("Session ended; git state not measured", out["outcome"])
-        self.assertEqual("A session end was observed", out["endEvidence"])
-        self.assertEqual("session-end", out["endKind"])
-
-    def test_a_session_that_never_ended_is_unaffected_by_a_restart(self) -> None:
-        # AC3. A stop is observed in the first run so the write path had an event
-        # to be tempted by; the second run has no stop mark, so the row is the
-        # plain quiet one, and no store file may have come into being.
-        with self._board() as (app, config):
-            first = observation.Observation(
-                app, clock=lambda: END_AT, diagnostic_sink=lambda _m: None
-            )
-            app.overlays = first
-            first.submit("claude", {"v": 1, "event": "turn_stopped", "session_id": SESSION})
-            first.submit("claude", {"v": 1, "event": "session_started", "session_id": SESSION})
-            second = self._application()
-            second.overlays = observation.Observation(
-                second, clock=lambda: NOW, diagnostic_sink=lambda _m: None
-            )
-            row = self._row(second)
-            store_exists = os.path.exists(ends.store_path(config))
-        self.assertFalse(store_exists, "a session that never ended created an end store")
-        out = self._rendered(row)
-        self.assertEqual("QUIET", out["tag"])
-        self.assertEqual("No stop or end observed", out["outcome"])
-        self.assertEqual(
-            "Idle with completion unknown: no stop and no end was observed", out["endEvidence"]
-        )
-
-    def test_without_the_store_the_same_row_renders_quiet(self) -> None:
-        # The mutation check the issue map asks for, kept as a test: delete the
-        # store between the runs and the three surfaces must fall back to what
-        # they say today. It is what makes the ended assertions above bind to
-        # the store rather than to anything the fixture happened to carry.
-        with self._board() as (app, config):
-            second = self._end_then_restart(app)
-            os.unlink(ends.store_path(config))
-            row = self._row(second)
-        out = self._rendered(row)
-        self.assertEqual("QUIET", out["tag"])
-        self.assertEqual("No stop or end observed", out["outcome"])
-        self.assertEqual(
-            "Idle with completion unknown: no stop and no end was observed", out["endEvidence"]
-        )
 
 
 class OneShotCommandsAndTheStoreTest(unittest.TestCase):

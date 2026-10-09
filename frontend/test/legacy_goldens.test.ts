@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { decode, encode, legacyHarness, legacyMode, seedSample } from './legacy_goldens';
+import { decode, encode, legacyHarness, seedSample } from './legacy_goldens';
 
-/* The seam that stands in for the legacy page has to keep what a comparison reads, and has to refuse rather
-   than guess. These tests need no golden file and no legacy code. */
+/* The seam that stands in for the removed page has to keep what a comparison reads, and has to refuse rather
+   than guess. These tests need no golden file and no page. */
 
 const roundTrip = (value: unknown): unknown => decode(JSON.parse(JSON.stringify(encode(value))));
 
@@ -44,18 +44,15 @@ describe('the seed sample', () => {
   });
 });
 
-describe.skipIf(legacyMode() !== 'replay')('replay', () => {
-  it('never loads the legacy page, and fails with the name of a call that has no golden', () => {
-    let loads = 0;
-    const page = legacyHarness(
-      'unit',
-      () => {
-        loads += 1;
-        return { answer: (value: number) => value };
-      },
-      { pure: ['answer'] },
-    );
+describe('the harness', () => {
+  it('fails with the name of a call that has no golden, for a method, a snapshot and a promise', () => {
+    const page = legacyHarness<{
+      answer(value: number): number;
+      settle(): Promise<void>;
+      snapshot: unknown;
+    }>('unit', { pure: ['answer'], props: ['snapshot'], async: ['settle'] });
     expect(() => page.answer(1)).toThrow(/No golden for unit\.answer/);
-    expect(loads).toBe(0);
+    expect(() => page.snapshot).toThrow(/No golden for unit\.prop snapshot/);
+    expect(() => page.settle()).toThrow(/No golden for unit\.settle/);
   });
 });

@@ -106,7 +106,7 @@ test('a corrupt canonical font fails instead of silently falling back', async ()
   });
 });
 
-test('an actual autocrlf checkout preserves legacy assembly and every candidate artifact', async () => {
+test('an actual autocrlf checkout preserves the served page and every candidate artifact', async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'cargento-line-endings-'));
   try {
     const source = join(temporary, 'source'),
@@ -158,7 +158,7 @@ test('an actual autocrlf checkout preserves legacy assembly and every candidate 
         python,
         [
           '-c',
-          'import sys,hashlib;sys.path.insert(0,sys.argv[1]);from cargento_runtime.web.page import load_page;print(hashlib.sha256(load_page()).hexdigest())',
+          'import sys,hashlib;sys.path.insert(0,sys.argv[1]);from cargento_runtime.web.page import load_frontend_page;print(hashlib.sha256(load_frontend_page()).hexdigest())',
           join(directory, 'cargento/skills/cargento'),
         ],
         { encoding: 'utf8', timeout: 10000 },

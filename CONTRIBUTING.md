@@ -55,7 +55,7 @@ at `http://127.0.0.1:4582/`. Open the Python URL. React edits refresh through Vi
 the terminal to restart Python, then reload the page for its new instance. Ctrl+C stops both.
 The command uses isolated fixture locations and disables model calls, quota fetching and native
 actions. It reads no personal harness transcripts, so start the ordinary launcher to see your own
-sessions: React is its default, and `--frontend legacy` is the temporary rollback to the previous page.
+sessions; it serves the React page, which is the only page there is.
 
 Use `--python` with an absolute Python executable and `--port`/`--vite-port` with distinct ports
 when the defaults are occupied. Both servers bind to IPv4 loopback and refuse a collision rather
@@ -82,25 +82,27 @@ Python dashboard still requires neither.
 
 The typed client is tested against fixtures captured from the real server. After changing a route's
 response, run `python3 scripts/regen_client_fixtures.py` and commit the result; `--check` shows
-whether anything is stale. `pnpm test:storage:browser` drives the legacy page in Chromium to prove
-the React storage codecs read and write what the legacy page does. `pnpm test:shell:browser` compares
-the React shell's routes against the legacy page in the same browser, and `pnpm test:controls:browser`
+whether anything is stale. `pnpm test:storage:browser` proves in Chromium that the React storage codecs read
+and write what the retired page did with its storage. `pnpm test:shell:browser` checks the React shell's routes
+against what that page did, and `pnpm test:controls:browser`
 checks that focus, drafts, composition and open selects survive live updates. `pnpm test:sessions:browser`
-compares Sessions and session detail with the legacy page, and `pnpm test:terminal:browser` does the same for
-the timeline filter and the output-only terminal. `pnpm test:intent:browser` compares the Intent log and the
-Intent panel's editors with the legacy page, including native undo and IME composition, and
+checks Sessions and session detail against it, and `pnpm test:terminal:browser` does the same for
+the timeline filter and the output-only terminal. `pnpm test:intent:browser` checks the Intent log and the
+Intent panel's editors, including native undo and IME composition, and
 `pnpm test:drift:browser` does the same for the Drift section, Analyze and its consent step, the result, Steer back
-and the departures, over a scripted board that never reaches a model. `pnpm test:project:browser` compares the
-Projects list and each project's recovery strip, scopes, Now and Course with the legacy page (text, order, links and
-computed layout), and checks that the workstream collapse, a human-context note's caret and undo, a scope and an open
+and the departures, over a scripted board that never reaches a model. `pnpm test:project:browser` checks the
+Projects list and each project's recovery strip, scopes, Now and Course (text, order, links and
+computed layout), and that the workstream collapse, a human-context note's caret and undo, a scope and an open
 plan survive live updates and navigation, with no write, copy or notification the reader did not press for.
-`pnpm test:console:browser` compares the
-steering bar, the tripwires, the workflow stage conditions, the Decisions tab and the Console tab with the legacy
-page over a real backend, and checks that drafts, carets, an open disclosure and the retained terminal survive
+`pnpm test:console:browser` checks the
+steering bar, the tripwires, the workflow stage conditions, the Decisions tab and the Console tab
+over a real backend, and that drafts, carets, an open disclosure and the retained terminal survive
 live updates, a change of tab and a route away and back; it takes no native action. `pnpm test:attention:browser`
-compares the Attention view and the notification control with the legacy page against a scripted Notification
+checks the Attention view and the notification control against a scripted Notification
 API, and `pnpm test:capacity:browser` does the same for the capacity strip, the usage consent and the observer
 consent, checking that no usage parameter, model request or notification starts without an explicit press.
+`pnpm test:css:browser` is the stylesheet's readability contract on the rendered page, over the Sessions, session,
+Drift, Intent, Projects, project, Attention and capacity views of the fixture boards.
 
 Every proof above serves the React side through the development server by default. `pnpm test:production:browser`
 runs the same eleven proofs with `CARGENTO_E2E_BUNDLE=production`, which has the Python backend serve the minified
@@ -115,30 +117,21 @@ by what a reader can observe, and the proofs say so where they do it; the receip
 lists the limits. Set the variable yourself to run one proof against the bundle, for example
 `CARGENTO_E2E_BUNDLE=production pnpm test:attention:browser`.
 
-The parity proofs and the unit differentials hold the React page to what the legacy page said, and they read
-that from recordings, so the legacy page does not have to run. `CARGENTO_LEGACY` picks one of three modes for both
-(an environment variable; the script names above do not change):
-
-| Mode | What runs | Use it for |
-|---|---|---|
-| `replay` (the default, and what CI runs) | The React page alone. The legacy backend is not started and no legacy page is opened; each legacy reading comes from `frontend/test/golden/e2e/<proof>.json` or, for the unit differentials, `frontend/test/golden/vitest/`. | Everyday work. It needs no legacy code and is faster. |
-| `live` | The legacy page runs beside the React page, as before the recordings existed, and every legacy reading must also equal its recording. `CARGENTO_LEGACY_STRICT=1` fails a reading that has no recording. | Proving that the recordings still say what the legacy code says. |
-| `record` | Like `live`, and the readings are written to the golden files once the run has passed. A run of some steps (`CARGENTO_E2E_STEPS`), or one with a failed step, writes nothing. | Re-recording after a deliberate change to what a proof reads. Only possible while the legacy code exists. |
+The parity proofs and the unit differentials hold the React page to what the retired page said. That page no
+longer exists, so what it said is a set of recordings, and nothing starts it. Browser proofs read
+`frontend/test/golden/e2e/<proof>.json` through `frontend/e2e/support/golden.mjs`; the unit differentials read
+`frontend/test/golden/vitest/` through `frontend/test/legacy_goldens.ts`. These are fixtures of record. They are
+never regenerated, there is no mode or environment variable that records one, and a diff to one is a mistake
+to undo.
 
 A recording is keyed by the step and the input, so a step that was renamed, an input a generator now produces
-differently, or a reading that was added fails with "no golden for this input" instead of comparing against
-nothing. Every key a recording holds must be read by the run, so a removed step fails too. To re-record a browser
-proof, run it three times into scratch directories on an idle machine and keep the file only if the three agree:
-
-```bash
-for i in 1 2 3; do
-  CARGENTO_LEGACY=record CARGENTO_GOLDEN_DIR="$(mktemp -d)/run$i" node frontend/e2e/<proof>.mjs
-done
-```
-
-(`<proof>` is a script name from `frontend/e2e/`; copy the agreed file to `frontend/test/golden/e2e/<proof>.json`.)
-Values a run invents, such as ports, clock times and ids, are normalised before they are stored, and a value
-the legacy page measured in pixels is compared through a distance that does not depend on the font, because the
+differently, or a reading that was added fails with "no golden" instead of comparing against nothing. Every
+key a recording holds must be read by the run, so a removed step fails too. A few step names still say "both
+pages" or "the legacy page" because a key was recorded under that text; renaming one orphans its keys. A change
+that has to read something different is an edit to the proof that says so, plus an entry in
+[the design record](docs/design-frontend-migration.md#held-to-recorded-answers) naming the departure and why.
+Values a run invents, such as ports, clock times and ids, were normalised before they were stored, and a value
+the retired page measured in pixels is compared through a distance that does not depend on the font, because the
 recordings are replayed on other operating systems. The recordings are committed and small (browser proofs under
 3 MB in total, unit differentials under 4 MB); do not commit a raw session or a payload from a real store.
 
@@ -171,7 +164,6 @@ same directories through the relative symlinks under `.agents/skills/`.
   `pyproject.toml`. Do not add an ignore without one.
 - `ruff format --check .`
 - `mypy` in `--strict` mode with `warn_unreachable`.
-- `scripts/lint_embedded.py`, which lints the shipped HTML, CSS and JS source files directly.
 - `runtime-floor`, which launches the shipped `server.py` entry point directly from outside the
   checkout on Python 3.11, exercises `--help` and `--diagnose --json`, and then runs the whole suite
   on the floor without coverage.
@@ -183,7 +175,7 @@ same directories through the relative symlinks under `.agents/skills/`.
 - The frontend matrix, with exact Node and pnpm pins, lint, strict types, unit tests and clean
   preview builds on Linux, macOS and Windows. Linux compares the
   canonical build with tracked assets. Every platform runs browser checks against an installed
-  Python-only copy, plus owned development lifecycle, real Python/Vite hot-refresh, legacy storage
+  Python-only copy, plus owned development lifecycle, real Python/Vite hot-refresh, storage
   conformance, React shell routing and shared-controls continuity checks.
 
 Those checks run when the diff contains something they can measure. A change to prose
@@ -297,13 +289,6 @@ A flipped comparison is the cheapest mutation to try, and the most revealing: ch
 `<=`, or one `and` to `or`, and run the suite. Anything that still passes is a boundary nothing
 pins.
 
-The page tests share one long-lived `node` process rather than starting one per check. It is
-started on the first check that needs it and replaced every 150, so a full suite spawns about three
-instead of 425. If it dies, every page test after it fails with `page-JS worker died:` followed by
-whatever node wrote to stderr. A check that never settles is reported by the worker itself after 30
-seconds as `page check did not settle within 30000ms`, which is a hung check rather than a slow
-runner: read it as a page bug, not as something to re-run.
-
 ### Rules the validator enforces
 
 - The plugin version must be identical in the Claude, Codex and Gemini manifests, and the
@@ -362,64 +347,69 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
 - Read nothing inside a project except what `SECURITY.md` § Project reads permits. Today that is
   Spacedock workflow and entity-state frontmatter, from absolute paths the session itself recorded.
   Never derive a project path by guessing, scanning or walking.
-- The legacy frontend (now the explicit rollback; React is the default) rebuilds `#app` from scratch on every refresh. What triggers one moved in
-  Phase 1c:
-  the leader tab holds an `EventSource` on `/api/stream` and refetches when the server announces a
-  new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
-  falls back to a five-second poll. The rebuild itself is unchanged, so anything the reader
-  set needs an explicit lifetime outside the replaced nodes.
-  [The reader-state inventory](docs/design-reader-state.md) owns what is restored and what is not,
-  including document scroll and text selection. Two rules follow. Escape every payload-derived string through
-  `esc()`, because the page builds HTML by concatenation and session titles come from files a
+- The React page reconciles each refreshed board into its existing nodes rather than rebuilding them. What
+  triggers a refresh: the leader tab holds an `EventSource` on `/api/stream` and refetches when the server
+  announces a new revision, with a 20-second safety net behind it, and only a browser without `EventSource`
+  falls back to a five-second poll. A refresh that unmounts something (a route change, a list that drops
+  a row) still loses whatever the reader set in it, so anything the reader set needs an explicit lifetime
+  outside the node that holds it.
+  [The reader-state inventory](docs/design-reader-state.md) owns what is kept and by which owner, and what is
+  not, including document scroll and text selection. Two rules follow. Draw payload-derived strings as React
+  text: nothing sets `innerHTML`, and a test fails if code does, because session titles come from files a
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
-- The legacy frontend is one assembled scope under `web/`. The retired `next` query is rejected at the
-  page boundary, not routed to another assembly path. The promoted files retain their `next-*` names and
-  `cargento.next.*` browser keys so old bookmarks and stored leases stay harmless, and the imported
-  cockpit sits beside them in `project.js` under its own `cargento.project*` keys; do not infer a
-  second frontend from either set of internal names. [docs/design-next-ui.md](docs/design-next-ui.md) owns
-  the promotion decision and route grammar.
-  The [frontend migration contract](docs/design-frontend-migration.md) and its machine-readable
-  inventory define what replacements must preserve, including browser-only checks that the Node
-  VM suite cannot establish.
-- Keep stylesheet edits inside the region owned by the surface you are changing, including its
-  media queries. [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface)
-  names all nine regions, the dark-only palette and the type floor. Board sentences use
+- The retired `next` query is rejected at the page boundary, not routed to another assembly path. The React
+  page keeps the `cargento.next.*` and `cargento.project*` browser keys the previous page wrote, so old
+  bookmarks and stored leases stay harmless, and `next-*` class names and `data-next-*` attributes survive in
+  its markup; do not infer a second frontend from any of them. [docs/design-next-ui.md](docs/design-next-ui.md)
+  owns the promotion decision and route grammar as history. The
+  [React frontend record](docs/design-frontend-migration.md) and its machine-readable
+  inventory define what the frontend preserves, including the browser-only checks that unit tests
+  cannot establish.
+- Keep stylesheet edits inside the file of the surface you are changing (`frontend/src/<area>/<area>.css`; the
+  tokens and page chrome are `frontend/src/styles/shell.css`), including its media queries.
+  [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface) records the
+  dark-only palette and the type floor, which the React sheets keep. Board sentences use
   `--fs-body` (0.9375rem); compact labels and source metadata sit on one tier, `--fs-label`
   (0.8125rem). The scale is rem against a `100%` root, so the board follows the reader's own
   font-size setting; the rem figures are computed against 16px, which is what makes a default
   browser render what it always did. Borders stay px on purpose: a hairline in rem blurs.
-  Every `font-size` is one of the five scale steps: a test bans raw pixel
-  sizes and unused steps, and a second one holds control boundaries to 3:1. The earlier scale-only rule followed twenty ad-hoc values
-  between 8px and 15px; new sizes still need a named role.
+  Every `font-size` is one of the five scale steps, `inherit`, `100%` or zero: `frontend/src/styles/css.test.ts`
+  bans a pixel size, a step below 13px, an `@import`, a remote or relative `url()` (quoted or not), a
+  `prefers-color-scheme` rule, an unclosed rule and a `var()` no sheet declares. It reads declarations, so it
+  cannot see a rule that reaches an element through ancestors the selector never names. `pnpm test:css:browser`
+  asks the browser's own cascade the same questions of every route and tab the fixture boards draw: nothing
+  below the 13px step, sentences on the 15px step, absences sans and in the absence ink and never larger than
+  what they replace, labels in the label register, actions on the sentence step, and a focus ring on every
+  focusable element. A sentence that must sit at 13px, an absence that must stand at a figure's size or a
+  control that relies on the browser's focus ring is named, with its reason, in the inventories at the top of
+  `frontend/e2e/css-contract.mjs`; the sets are exact, so a new shape fails and so does a stale one. New sizes
+  still need a named role.
 - Reach an ink through its role register, not through its hex. `--ink-label`, `--ink-value`,
-  `--ink-absence` and `--ink-caption` are declared in the one `:root` block, and a label or absence
-  rule that spells `var(--ink3)` in its own declaration block fails a test. Three of the four resolve
-  to the same ink on purpose; the stylesheet contract says why, and why an absence separates on
-  shape rather than on brightness.
-- Preserve the fixed palette's contrast. The asset test pins its tokens and checks every text ink
-  against `--bg`, `--panel` and `--sunk` at more than 4.5:1. It no longer tests two themes or a
-  25-percent contrast gap between adjacent ink steps. Keep selection tied to `--sel-bg` and
-  `--sel-bd`; the former dashboard's panel-on-background treatment measured 1.2:1 and made on and
-  off indistinguishable. Its metadata ink once measured 3.1:1, below AA, on the smallest type.
-- Test the page by running it, not by matching strings against its source. `NextPageJsHarness` in
-  `next_harness.py` executes the real dashboard script (every part named in `APP_PARTS`,
-  concatenated in that order, which since the cockpit import includes `project.js` alongside the
-  `next-*.js` files) under node against a stub DOM. A test can fire a click or a keystroke and assert
-  on what the page did. A source-text assertion passes forever after the behavior behind it breaks.
-  Each check runs in a fresh `vm` context inside the shared worker described above, so it still gets
-  a clean set of globals, but it is no longer a clean process: anything a check leaves on a timer
-  outlives it. Isolate through the stubs rather than by assuming the interpreter restarts.
-- Load and verify the selected frontend before creating the daemon log, binding the socket, forking, or
+  `--ink-absence` and `--ink-caption` are declared in the one `:root` block of `shell.css`. Three of the
+  four resolve to the same ink on purpose; the stylesheet contract says why, and why an absence separates
+  on shape rather than on brightness. `pnpm test:css:browser` holds it on the rendered page: label,
+  absence and caption share one register, the value ink is another, and the third ink is spent only on what is
+  inactive.
+- Preserve the fixed palette's contrast. Every text ink measured above 4.5:1 against `--bg`, `--panel` and
+  `--sunk` when the palette was set, and no test rechecks it, so recheck when you change a token. A selected
+  state must stay distinguishable from an unselected one: the former dashboard's panel-on-background
+  treatment measured 1.2:1 and made on and off indistinguishable. Its metadata ink once measured 3.1:1, below
+  AA, on the smallest type.
+- Test the page by running it, not by matching strings against its source. Component and model tests
+  render the real component with Testing Library in jsdom and fire a click or a keystroke (`pnpm test`),
+  and the browser proofs (`pnpm test:*:browser`) cover what jsdom cannot: native undo, IME composition, an
+  open select list, layout and focus. A source-text assertion passes forever after the behavior behind
+  it breaks.
+- Load and verify the frontend before creating the daemon log, binding the socket, forking, or
   spawning a Windows child. Then acquire the log file and listening socket before forking (or, on Windows,
   before waiting on the re-spawned child). After the fork there is nowhere for a failure to go.
   Reporting one means pointing the user at the very log that could not be opened. Note that
   `os.makedirs(exist_ok=True)` is not this check: it succeeds for a directory that already exists
   whatever its mode, which is the likeliest bad state of all.
-  Every asset required by the selected renderer must load before bind. A broken selected React
-  build refuses and names `--frontend legacy` as the rollback; it never silently substitutes the
-  legacy dashboard or starts a Node build. The renderer default is `DEFAULT_FRONTEND` in
-  `config.py`, forwarded explicitly to a detached child, and no environment variable selects it.
+  Every asset the page needs must load before bind. A broken React build refuses and says to reinstall
+  the plugin; it never serves a stand-in or starts a Node build. There is one renderer, so no option
+  or environment variable selects it, and `--frontend` is refused.
 - Never use `os.kill`, including `os.kill(pid, 0)` for liveness. CPython implements it on Windows
   through `TerminateProcess`, so a liveness check would kill the process it was asked to inspect.
   Probe `/api/health` instead.

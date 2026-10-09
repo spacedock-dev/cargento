@@ -2,14 +2,13 @@
 /*
  * The Intent log and the Intent panel in a real browser, against the real backend.
  *
- * Two kinds of proof. The DIFFERENTIAL half drives the legacy page and the React page in the same Chromium
- * over one real backend (the real annotation store behind both, one at a time, given the same sequence of
- * writes) and compares what a reader can read: the Intent log's notes, groups, rows and links, and the
- * editor's boxes, counts, marks, controls and cues, in each state a reader reaches. The legacy side of that
- * half is a RECORDING (`support/golden.mjs`, `CARGENTO_LEGACY=replay|live|record`, default replay): in replay no
- * legacy backend or page is started and the React page is held to what the legacy page said when it was
- * recorded. The one legacy-only measurement, the legacy page's own horizontal overflow and screenshots in the
- * layout step, was a receipt nothing asserted against, so it runs in live and record only. The BEHAVIOUR half
+ * Two kinds of proof. The DIFFERENTIAL half drives the React page over one real backend (the real annotation
+ * store behind it, given a fixed sequence of writes) and compares what a reader can read with what the previous
+ * interface showed over the same writes: the Intent log's notes, groups, rows and links, and the editor's boxes,
+ * counts, marks, controls and cues, in each state a reader reaches. What the previous interface showed is a
+ * RECORDING (`support/golden.mjs`, `frontend/test/golden/e2e/intent-parity.json`) that cannot be remade because
+ * that interface is gone. Its own horizontal overflow and screenshots in the layout step were a receipt nothing
+ * asserted against, and went with it. The BEHAVIOUR half
  * holds the React page to what a unit test cannot see: the native editor's text, caret, selection, undo history
  * and input-method composition surviving the board's own revisions (announced over the real stream), a
  * route away and back, the native select, the discard's dwell, the live monitor switch's storage key, the
@@ -44,7 +43,6 @@ const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`
   '/',
 );
 const golden = goldenFor('intent-parity');
-const LIVE = golden.live;
 /* The React reading in the stable form a recorded observation has, so the two compare as plain data. */
 const norm = (value) => jsonSafe(normalise(value));
 const receipts = {};
@@ -174,101 +172,80 @@ async function settled(read, { deadline = patience(6000), every = 100 } = {}) {
   }
 }
 
-const board = await startIntentBoard({ legacy: LIVE });
+const board = await startIntentBoard();
 const browser = await chromium.launch();
-const origins = [
-  board.react.origin,
-  board.react.viteOrigin,
-  ...(LIVE ? [board.legacy.origin] : []),
-];
+const origins = [board.react.origin, board.react.viteOrigin];
 const opened = [];
-async function newPage(kind, viewport = { width: 1280, height: 900 }) {
+async function newPage(viewport = { width: 1280, height: 900 }) {
   const o = await openPage(browser, origins, { viewport });
   await o.context.addInitScript(() => {
     globalThis.__announced = [];
   });
   await recordClipboard(o.context);
   await instrumentResources(o.context);
-  o.kind = kind;
   opened.push(o);
   return o;
 }
 
 async function load(o, fragment) {
-  const origin = o.kind === 'legacy' ? board.legacy.origin : board.react.origin;
   await o.page.goto('about:blank');
-  await o.page.goto(`${origin}/${fragment}`);
-  if (o.kind === 'legacy')
-    await o.page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
-  else
-    await o.page.waitForFunction(
-      () =>
-        document.querySelector('nav[aria-label="Primary"]') &&
-        !/Waiting for the first board|first payload has not arrived/.test(document.body.innerText),
-    );
+  await o.page.goto(`${board.react.origin}/${fragment}`);
+  await o.page.waitForFunction(
+    () =>
+      document.querySelector('nav[aria-label="Primary"]') &&
+      !/Waiting for the first board|first payload has not arrived/.test(document.body.innerText),
+  );
 }
 
-const origin = (kind) => (kind === 'legacy' ? board.legacy.origin : board.react.origin);
-
-/* One write, made identically on both backends. A prompt adoption names its prompt as that backend published
-   it, because the two started at different moments. */
-async function writeBoth(sid, body) {
-  const out = {};
-  for (const kind of LIVE ? ['legacy', 'react'] : ['react']) {
-    const data = (await call(origin(kind), 'GET', '/api/data')).body;
-    const row = data.sessions.find((s) => s.sid === sid);
-    const request = { harness: 'claude', sid, expected_revision: row.annotation_revision || 0 };
-    if (body.adopt === 'first-prompt') {
-      Object.assign(request, {
-        adopt: 'first-prompt',
-        expected_prompt: row.first_prompt,
-        expected_prompt_at: row.first_prompt_at,
-      });
-    } else Object.assign(request, body);
-    out[kind] = await call(origin(kind), 'POST', '/api/annotate', request);
-    assert.equal(out[kind].body.ok, true, `${kind} refused ${JSON.stringify(body)}`);
-  }
+/* One write to the backend. A prompt adoption names its prompt as the backend published it. */
+async function write(sid, body) {
+  const data = (await call(board.react.origin, 'GET', '/api/data')).body;
+  const row = data.sessions.find((s) => s.sid === sid);
+  const request = { harness: 'claude', sid, expected_revision: row.annotation_revision || 0 };
+  if (body.adopt === 'first-prompt') {
+    Object.assign(request, {
+      adopt: 'first-prompt',
+      expected_prompt: row.first_prompt,
+      expected_prompt_at: row.first_prompt_at,
+    });
+  } else Object.assign(request, body);
+  const out = await call(board.react.origin, 'POST', '/api/annotate', request);
+  assert.equal(out.body.ok, true, `the backend refused ${JSON.stringify(body)}`);
   return out;
 }
 
 try {
-  const legacy = LIVE ? await newPage('legacy') : null;
-  const react = await newPage('react');
-  /* The pages a state-changing action is made on: the legacy page exists only while it is read or recorded. */
-  const pages = LIVE ? [legacy, react] : [react];
+  const react = await newPage();
 
   /* ===================== DIFFERENTIAL: the Intent log ===================== */
   async function compareLog(label) {
     const read = (o) => settled(() => o.page.evaluate(summarizeLog));
     await load(react, '#n=intent');
     const mine = await read(react);
-    const old = await golden.observe(`log: ${label}`, async () => {
-      await load(legacy, '#n=intent');
-      return read(legacy);
-    });
-    assert.deepEqual(norm(mine), old, `the Intent log differs from the legacy log (${label})`);
+    const old = golden.observe(`log: ${label}`);
+    assert.deepEqual(norm(mine), old, `the Intent log differs from the recorded log (${label})`);
     return old;
   }
 
-  await step('the Intent log reads as the legacy log does, empty', async () => {
+  await step('the Intent log reads as the recorded log does, empty', async () => {
     const log = await compareLog('empty');
     assert.ok(JSON.stringify(log).includes('No goal or expected outcome has been saved yet.'));
     return `${log.length} blocks`;
   });
 
   await step(
-    'the Intent log reads as the legacy log does over saved words, a prompt adoption and a discard',
+    'the Intent log reads as the recorded log does over saved words, a prompt adoption and a discard',
     async () => {
-      await writeBoth('intent-1', {
+      await write('intent-1', {
         goal: 'Fix the redirect for signed-in readers',
         lines: ['Readers land on the last page', 'Back still works'],
       });
-      await writeBoth('intent-3', { adopt: 'first-prompt' });
+      await write('intent-3', { adopt: 'first-prompt' });
       const saved = await compareLog('saved');
       const text = JSON.stringify(saved);
       assert.ok(text.includes('Typed goal: Fix the redirect for signed-in readers'));
       assert.ok(text.includes('Goal from your prompt: Tidy the unlabelled project.'));
-      await writeBoth('intent-3', { clear: true });
+      await write('intent-3', { clear: true });
       const discarded = await compareLog('discarded');
       assert.ok(JSON.stringify(discarded).includes('Your words'));
       return { rows: discarded.filter((block) => block[0] === 'row').length };
@@ -277,10 +254,10 @@ try {
 
   /* ===================== DIFFERENTIAL: the editor ===================== */
   const readEditor = (o) => settled(() => o.page.evaluate(summarizeEditor));
-  /* The React editor against the legacy editor's recorded reading of the same state, under `key`. */
+  /* The React editor against the previous editor's recorded reading of the same state, under `key`. */
   async function versus(key, message) {
     const mine = await readEditor(react);
-    const old = await golden.observe(key, () => readEditor(legacy));
+    const old = golden.observe(key);
     assert.deepEqual(norm(mine), old, message);
     return old;
   }
@@ -288,17 +265,13 @@ try {
     await load(react, fragmentOf(sid));
     await prepare(react);
     const mine = await readEditor(react);
-    const old = await golden.observe(`editor: ${label}`, async () => {
-      await load(legacy, fragmentOf(sid));
-      await prepare(legacy);
-      return readEditor(legacy);
-    });
-    assert.deepEqual(norm(mine), old, `the editor differs from the legacy editor (${label})`);
+    const old = golden.observe(`editor: ${label}`);
+    assert.deepEqual(norm(mine), old, `the editor differs from the recorded editor (${label})`);
     return old;
   }
 
   await step(
-    'the editor reads as the legacy editor does over a saved goal and its lines',
+    'the editor reads as the recorded editor does over a saved goal and its lines',
     async () => {
       const state = await compareEditor('saved');
       assert.deepEqual(state.fields[1].boxes, [
@@ -314,7 +287,7 @@ try {
   );
 
   await step(
-    'the editor reads as the legacy editor does over a drafted first prompt, a typed edit and an added line',
+    'the editor reads as the recorded editor does over a drafted first prompt, a typed edit and an added line',
     async () => {
       const drafted = await compareEditor('drafted', 'intent-2');
       assert.equal(drafted.fields[0].boxes[0], 'Ship the queue worker behind a flag.');
@@ -335,61 +308,60 @@ try {
   );
 
   await step(
-    'the editor reads as the legacy editor does over a chosen prompt, later directions, a pending line and an armed discard',
+    'the editor reads as the recorded editor does over a chosen prompt, later directions, a pending line and an armed discard',
     async () => {
       const options = {};
-      await Promise.all(pages.map((o) => load(o, fragmentOf('intent-4'))));
+      await load(react, fragmentOf('intent-4'));
       // A chosen prompt, picked through the native list.
-      for (const o of pages) {
-        const select = o.page.locator('[data-next-cockpit-prompt-select]');
-        await select.click();
-        await o.page.waitForFunction(
-          () => document.querySelectorAll('[data-next-cockpit-prompt-select] option').length > 1,
-        );
-        await select.selectOption({ index: 1 });
-      }
+      const select = react.page.locator('[data-next-cockpit-prompt-select]');
+      await select.click();
+      await react.page.waitForFunction(
+        () => document.querySelectorAll('[data-next-cockpit-prompt-select] option').length > 1,
+      );
+      await select.selectOption({ index: 1 });
       let old = await versus(
         'editor: a chosen prompt',
-        'the editor differs from the legacy editor over a chosen prompt',
+        'the editor differs from the recorded editor over a chosen prompt',
       );
       assert.match(old.fields[0].boxes[0], /Rename the worker/);
       options.chosen = old.fields[0].menu.length;
-      // Save it (one adoption on each backend), which is what makes later directions the page can ask about.
-      for (const o of pages) {
-        await o.page.locator('[data-next-cockpit-action="held-save"]').click();
-        await o.page.waitForFunction(
-          () => document.querySelector('.next-cockpit-held-footer small')?.textContent,
-        );
-      }
+      // Save it (one adoption), which is what makes later directions the page can ask about.
+      await react.page.locator('[data-next-cockpit-action="held-save"]').click();
+      await react.page.waitForFunction(
+        () => document.querySelector('.next-cockpit-held-footer small')?.textContent,
+      );
       await new Promise((resolve) => setTimeout(resolve, patience(1800)));
-      await Promise.all(pages.map((o) => load(o, fragmentOf('intent-4'))));
+      await load(react, fragmentOf('intent-4'));
+      // The observed record is read after the page draws; a slow runner compared before it arrived and saw
+      // 'Later directions: unknown (record unread)' where the recording has the question.
+      await react.page.waitForFunction(
+        () => !/record unread|not been read yet/.test(document.body.textContent ?? ''),
+        null,
+        { timeout: patience(30000) },
+      );
       old = await versus(
         'editor: later directions',
-        'the editor differs from the legacy editor over later directions',
+        'the editor differs from the recorded editor over later directions',
       );
       assert.ok(old.question, 'no later direction was asked about');
       options.question = old.question.buttons;
       // Add opens the selected direction as a pending line.
-      for (const o of pages) {
-        await o.page
-          .locator(
-            '[data-next-cockpit-direction-question] [data-next-cockpit-action="direction-add"]',
-          )
-          .click();
-        await o.page.waitForSelector('[data-next-cockpit-direction-key]');
-      }
+      await react.page
+        .locator(
+          '[data-next-cockpit-direction-question] [data-next-cockpit-action="direction-add"]',
+        )
+        .click();
+      await react.page.waitForSelector('[data-next-cockpit-direction-key]');
       old = await versus(
         'editor: a pending line',
-        'the editor differs from the legacy editor over a pending line',
+        'the editor differs from the recorded editor over a pending line',
       );
       // An armed discard.
-      for (const o of pages) {
-        await o.page.locator('.next-cockpit-held-discard-offer summary').click();
-        await o.page.locator('[data-next-cockpit-action="held-discard"]').click();
-      }
+      await react.page.locator('.next-cockpit-held-discard-offer summary').click();
+      await react.page.locator('[data-next-cockpit-action="held-discard"]').click();
       old = await versus(
         'editor: an armed discard',
-        'the editor differs from the legacy editor over an armed discard',
+        'the editor differs from the recorded editor over an armed discard',
       );
       assert.match(old.caveats, /Confirm discard/);
       return options;
@@ -903,37 +875,31 @@ try {
       const report = {};
       const wide = [];
       for (const shape of SHAPES) {
-        const pair = {};
-        const kinds = LIVE ? ['legacy', 'react'] : ['react'];
-        for (const kind of kinds)
-          pair[kind] = await newPage(kind, { width: shape.width, height: shape.height });
+        const o = await newPage({ width: shape.width, height: shape.height });
         try {
           for (const [label, fragment] of [
             ['log', '#n=intent'],
             ['drafted', fragmentOf('intent-2')],
             ['saved', fragmentOf('intent-1')],
           ]) {
-            for (const kind of kinds) {
-              const o = pair[kind];
-              await load(o, fragment);
-              await settled(() => o.page.evaluate(() => document.body.innerText.length));
-              if (shape.zoom)
-                await o.page.evaluate(() => {
-                  document.documentElement.style.zoom = '2';
-                });
-              const measured = await overflow(o.page);
-              report[`${shape.name} ${label} ${kind}`] = measured;
-              if (kind === 'react' && measured.scroll > measured.client)
-                wide.push(`${shape.name} ${label}: ${JSON.stringify(measured)}`);
-              if (shape.name === '375' || shape.name === '1280') {
-                const name = `intent-${label}-${kind}-${shape.name}.png`;
-                await o.page.screenshot({ path: SHOTS + name, fullPage: true });
-                shots.push(name);
-              }
+            await load(o, fragment);
+            await settled(() => o.page.evaluate(() => document.body.innerText.length));
+            if (shape.zoom)
+              await o.page.evaluate(() => {
+                document.documentElement.style.zoom = '2';
+              });
+            const measured = await overflow(o.page);
+            report[`${shape.name} ${label} react`] = measured;
+            if (measured.scroll > measured.client)
+              wide.push(`${shape.name} ${label}: ${JSON.stringify(measured)}`);
+            if (shape.name === '375' || shape.name === '1280') {
+              const name = `intent-${label}-react-${shape.name}.png`;
+              await o.page.screenshot({ path: SHOTS + name, fullPage: true });
+              shots.push(name);
             }
           }
         } finally {
-          for (const kind of kinds) await pair[kind].close();
+          await o.close();
         }
       }
       assert.deepEqual(wide, [], 'horizontal page overflow on the React page: ' + wide.join(' | '));

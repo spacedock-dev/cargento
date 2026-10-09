@@ -1,13 +1,15 @@
-"""The press check, the job and the page agree on what an Allow covers (owner, 2026-10-02).
+"""The press check and the job agree on what an Allow covers (owner, 2026-10-02).
 
 "Bind the allow to the destination": an Allow for the reader's words covers a
 press only while the provider's destination is exactly the one the Allow's
-disclosure named. Three places decide it, and each row of one table is put to
-all three, after a restart, on a machine whose environment the row names:
+disclosure named. Two places decide it, and each row of one table is put to
+both, after a restart, on a machine whose environment the row names:
 
 - the press handler, over a socket (`http_api._reading_permission`);
-- the job, at the reservation (`reading_policy.GuardedModel`);
-- the page, from what the board publishes (`nextReadingNeedsAllow`).
+- the job, at the reservation (`reading_policy.GuardedModel`).
+
+The page reads the destination the board publishes and asks for an Allow when it
+moved; that half is checked on the React side, against the same published route.
 
 A Pi session read by Claude Code, so no tool-output grant is involved and the
 words' own binding is the only rule that can refuse.
@@ -23,8 +25,9 @@ from unittest import mock
 from cargento_runtime import io as runtime_io
 from cargento_runtime import reading_policy, reading_route
 
-from . import test_http_api, test_next_sessions
-from .next_harness import NextPageJsHarness, named_machine
+from . import test_http_api
+from .reading_pins import named_machine
+from .support import RuntimeTestCase
 
 PRE = object()
 # Built at run time, so no credential shape sits in source, and masked in every
@@ -53,9 +56,7 @@ ROWS: tuple[tuple[str, Any, bool, str, bool], ...] = (
 )
 
 
-class ThePressTheJobAndThePageAgree(NextPageJsHarness):
-    FIXTURE = test_next_sessions.NextSessionsBehaviorTest.FIXTURE
-
+class ThePressAndTheJobAgree(RuntimeTestCase):
     def setUp(self) -> None:
         super().setUp()
         # The socket helpers `ReadingRouteTest` already proved can observe a
@@ -133,34 +134,7 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
             "job": model.call_count,
         }
 
-    def _page(self, board: dict[str, Any], route: dict[str, Any]) -> Any:
-        return self._run_page_js(
-            "await __settle();\nawait __settle();\n"
-            "nextData.annotate = true;\n"
-            f"nextData.reading_check = {json.dumps(board['reading_check'])};\n"
-            f"nextData.reading_routes = {json.dumps({'pi': route})};\n"
-            f"nextData.reading = {json.dumps(board['reading'])};\n"
-            "const session = nextData.sessions[0];\n"
-            'session.harness = "pi";\n'
-            'session.annotation_goal = "Ship the parser";\n'
-            "session.annotation_revision = 1;\n"
-            "const posts = [];\n"
-            "__fetchImpl = async (url, init) => {\n"
-            "  if(init && init.method === 'POST'){ posts.push(JSON.parse(init.body));"
-            " return {ok:true,status:200,json:async()=>({ok:true,produced:true})}; }\n"
-            "  return {ok:true,json:async()=>nextData};\n"
-            "};\n"
-            "const route = nextReadingRoute(session);\n"
-            "const needs = nextReadingNeedsAllow(route);\n"
-            "await nextCockpitAskForReading(session, null);\n"
-            "const asked = posts.length;\n"
-            "const html = nextCockpitReadingControl(session, nextCockpitAnnotation(session), null);\n"
-            "if(needs) await nextCockpitAskForReading(session, null, true);\n"
-            "console.log(JSON.stringify({needs, asked, html, posts}));\n",
-            self.FIXTURE,
-        )
-
-    def test_every_row_is_answered_the_same_by_the_press_the_job_and_the_page(self) -> None:
+    def test_every_row_is_answered_the_same_by_the_press_and_the_job(self) -> None:
         for name, given, declined, today, covered in ROWS:
             with self.subTest(row=name):
                 config, state = self.route._runtime()
@@ -175,26 +149,6 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
                 self.assertEqual(1 if covered else 0, seen["pressed"], "sent before an Allow")
                 # The job.
                 self.assertEqual(1 if covered else 0, seen["job"])
-                # The page.
-                page = self._page(seen["board"], seen["route"])
-                assert isinstance(page, dict)
-                self.assertIs(not covered, page["needs"])
-                self.assertEqual(1 if covered else 0, page["asked"], "the page sent first")
-                moved = given is not None and not declined and not covered
-                self.assertEqual(
-                    1 if moved else 0, page["html"].count(reading_policy.DESTINATION_CHANGED)
-                )
-                if not covered:
-                    # The step names the receiver, and the line comes before Allow.
-                    self.assertIn("Allow and analyze", page["html"])
-                    if moved:
-                        self.assertLess(
-                            page["html"].index(reading_policy.DESTINATION_CHANGED),
-                            page["html"].index("Allow and analyze"),
-                        )
-                    self.assertEqual(1, len(page["posts"]))
-                    self.assertIs(True, page["posts"][0]["allow"])
-                    self.assertEqual(today, page["posts"][0]["words_destination"])
 
     def test_a_url_the_cli_reads_differently_binds_and_publishes_no_name(self) -> None:
         """Consent F1 and F3 (ui5), end to end: where the CLI's parser and this
@@ -236,11 +190,10 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
                     self.assertFalse(PATH_KEY.lower() in where.lower(), "the key was stored")
                     self.assertFalse("4598" in where, "a host the CLI never reaches was bound")
 
-    def test_a_press_refused_for_a_moved_destination_shows_the_new_one(self) -> None:
-        """Regressions minor 2 (ui5): the page drawn before the move presses,
-        the server answers 403 with the changed line, and the consent step it
-        opens names where the words go now, not where they went when the page
-        was drawn. The reply carries today's route, which the page adopts."""
+    def test_a_press_refused_for_a_moved_destination_answers_with_the_new_one(self) -> None:
+        """Regressions minor 2 (ui5): a page drawn before the move presses, the server
+        answers 403 with the changed line, and the reply carries today's route, which the
+        page adopts so its consent step names where the words go now."""
         config, state = self.route._runtime()
         self._give(config, state, "Anthropic", False)
         stack, _calls = self._on("Anthropic")
@@ -256,30 +209,5 @@ class ThePressTheJobAndThePageAgree(NextPageJsHarness):
         reply = json.loads(raw)
         self.assertEqual(403, status)
         self.assertEqual([], calls)
-        page = self._run_page_js(
-            "await __settle();\nawait __settle();\n"
-            "nextData.annotate = true;\n"
-            f"nextData.reading_check = {json.dumps(drawn['reading_check'])};\n"
-            f"nextData.reading_routes = {json.dumps({'pi': drawn['reading_routes']['pi']})};\n"
-            f"nextData.reading = {json.dumps(drawn['reading'])};\n"
-            "const session = nextData.sessions[0];\n"
-            'session.harness = "pi";\n'
-            'session.annotation_goal = "Ship the parser";\n'
-            "session.annotation_revision = 1;\n"
-            "__fetchImpl = async (url, init) => {\n"
-            "  if(init && init.method === 'POST') return "
-            f"{{ok:false,status:{status},json:async()=>({json.dumps(reply)})}};\n"
-            "  return {ok:true,json:async()=>nextData};\n"
-            "};\n"
-            "await nextCockpitAskForReading(session, null);\n"
-            "const html = nextCockpitReadingControl(session, nextCockpitAnnotation(session), null);\n"
-            "console.log(JSON.stringify({html}));\n",
-            self.FIXTURE,
-        )
-        assert isinstance(page, dict)
-        html = page["html"]
-        self.assertIn("Allow and analyze", html)
-        self.assertEqual(1, html.count(reading_policy.DESTINATION_CHANGED))
-        self.assertIn("To: gw.corp.example", html)
-        self.assertNotIn("To: Anthropic", html)
+        self.assertIn(reading_policy.DESTINATION_CHANGED, raw.decode())
         self.assertEqual("gw.corp.example", reply["route"]["words_destination"])

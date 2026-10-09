@@ -1,5 +1,3 @@
-import base64
-import binascii
 import functools
 import hashlib
 import json
@@ -10,22 +8,24 @@ from typing import Any
 
 WEB_DIR = Path(__file__).resolve().parent
 
-# The dashboard script is split by responsibility and concatenated in this
-# order into index.html's one script slot. The parts share a single script
-# scope, so order carries meaning.
+# The previous interface's script parts, in the order the old page concatenated them into one
+# scope. The dashboard no longer serves them. They stay, byte for byte, because the recorded
+# Intent and drift replay (`scripts/drift_page.js`, run by `scripts/drift_replay.py`) evaluates
+# this text and its closure ledger binds the digest of `load_script()`; changing a byte would
+# unfreeze that study. Nothing in the runtime or the page reads this table.
 APP_PARTS: tuple[str, ...] = (
     "next-boot.js",
     "next-observed.js",
     "next-attention.js",
     "next-notify.js",
     "next-cockpit-compat.js",
-    "project.js",  # semantic timeline and exact-session terminal substrate
+    "project.js",
     "next-chrome.js",
     "next-capacity.js",
     "next-sessions.js",
     "next-projects.js",
     "next-project.js",
-    "next-intent.js",  # reads next-project.js's revision line and value helpers
+    "next-intent.js",
     "next-activity.js",
     "next-session.js",
     "next-workstream.js",
@@ -33,11 +33,13 @@ APP_PARTS: tuple[str, ...] = (
     "next-controls.js",
     "next-cockpit.js",
     "next-render.js",
-    "next-live.js",  # namespaced leader election starts the refresh loop last
+    "next-live.js",
 )
 
-# The page remains one self-contained response. Encoding the packaged font
-# subsets into it avoids adding a second HTTP asset surface.
+# The page is one self-contained response, so the packaged font subsets travel inside it as
+# base64 rather than behind a second HTTP asset surface. Python never reads this table: the
+# build (`frontend/build/package.mjs`, `readFonts`) parses it and the `@font-face` rows of
+# `styles.css`, pairing each file with its slot, and embeds the decoded subsets in `react.html`.
 FONT_ASSETS: tuple[tuple[str, str], ...] = (
     (
         "fonts/space-grotesk-v22-vietnamese.woff2.b64",
@@ -107,58 +109,15 @@ def asset_path(name: str) -> Path:
 
 
 def load_script() -> str:
-    """Return every script part, in execution order, as one text.
-
-    A part that reads as empty refuses by name. The legacy assembly carries no integrity
-    metadata, and measured on a scratch plugin an emptied `next-cockpit.js` served a 200
-    page with no message, where a deleted part refused. Full integrity is deferred to the
-    legacy page's retirement; this closes the silent case only.
-    """
-    parts = []
+    """Return the previous interface's script parts, in order, as one text (study replay only)."""
+    pieces = []
     for name in APP_PARTS:
         text = asset_path(name).read_text(encoding="utf-8")
         if not text.strip():
             msg = f"{name} is empty"
             raise RuntimeError(msg)
-        parts.append(text)
-    return "".join(parts)
-
-
-def load_styles() -> str:
-    """Return the stylesheet with every pinned local font embedded."""
-    styles = asset_path("styles.css").read_text(encoding="utf-8")
-    for name, slot in FONT_ASSETS:
-        if styles.count(slot) != 1:
-            msg = f"styles.css must contain one {slot} slot"
-            raise RuntimeError(msg)
-        encoded = "".join(asset_path(name).read_text(encoding="ascii").splitlines())
-        try:
-            payload = base64.b64decode(encoded, validate=True)
-        except binascii.Error as exc:
-            msg = f"font asset {name} must be base64 WOFF2"
-            raise RuntimeError(msg) from exc
-        if not payload.startswith(b"wOF2"):
-            msg = f"font asset {name} must be base64 WOFF2"
-            raise RuntimeError(msg)
-        styles = styles.replace(slot, f"data:font/woff2;base64,{encoded}")
-    return styles
-
-
-def load_page() -> bytes:
-    template = asset_path("index.html").read_text(encoding="utf-8")
-    if template.count("{{CARGENTO_STYLES}}") != 1:
-        msg = "index.html must contain one CARGENTO_STYLES slot"
-        raise RuntimeError(msg)
-    if template.count("{{CARGENTO_APP}}") != 1:
-        msg = "index.html must contain one CARGENTO_APP slot"
-        raise RuntimeError(msg)
-    styles = load_styles()
-    script = load_script()
-    return (
-        template.replace("{{CARGENTO_STYLES}}", styles)
-        .replace("{{CARGENTO_APP}}", script)
-        .encode("utf-8")
-    )
+        pieces.append(text)
+    return "".join(pieces)
 
 
 def _object(value: Any, keys: set[str]) -> dict[str, Any]:
@@ -275,12 +234,8 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def load_frontend_page(mode: str) -> bytes:
+def load_frontend_page() -> bytes:
     """Load fixed installed bytes; contributor tools are never invoked here."""
-    if mode == "legacy":
-        return load_page()
-    if mode != "react":
-        raise RuntimeError(f"unknown frontend {mode!r}")
     try:
         content = _load_react_page()
     except (ValueError, UnicodeError, RecursionError) as exc:
@@ -331,7 +286,7 @@ def _load_react_page() -> bytes:
 
 
 @functools.cache
-def build_id(mode: str) -> str:
+def build_id() -> str:
     """A short digest of the page this process serves, or "" if it cannot load.
 
     Published on the board (regressions major 1, ui5) so a tab left open across
@@ -340,7 +295,6 @@ def build_id(mode: str) -> str:
     is assembled once at start and served unchanged.
     """
     try:
-        prefix = "react-" if mode == "react" else ""
-        return prefix + hashlib.sha256(load_frontend_page(mode)).hexdigest()[:16]
+        return "react-" + hashlib.sha256(load_frontend_page()).hexdigest()[:16]
     except (OSError, UnicodeError, RuntimeError):
         return ""

@@ -30,7 +30,7 @@
       "annotate_unreadable": "",
       "browser_lane": false,
       "browser_lane_at": null,
-      "build": "ccef38406f1c2355",
+      "build": "react-ccef38406f1c2355",
       "cleared": 0,
       "delivery_counts": {
         "attempted": 0,
@@ -39,7 +39,6 @@
       },
       "dismiss": true,
       "ends_observable": false,
-      "frontend": "legacy",
       "generated": 1900000000.0,
       "harnesses": [
         {
@@ -112,7 +111,7 @@
     },
     "headers": {
       "Cache-Control": "no-store",
-      "Content-Length": "3978",
+      "Content-Length": "3962",
       "Content-Security-Policy": "frame-ancestors 'none'",
       "Content-Type": "application/json",
       "X-Cargento-Revision": "1900000000.1"

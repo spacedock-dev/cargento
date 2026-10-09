@@ -1300,7 +1300,7 @@ class TheUnaskedLaneNeverSendsACheckTest(unittest.TestCase):
     def test_a_reader_who_allowed_tool_output_still_gets_no_check_sent_unasked(self) -> None:
         from cargento_runtime import reading_policy  # noqa: PLC0415
 
-        from .next_harness import named_machine  # noqa: PLC0415
+        from .reading_pins import named_machine  # noqa: PLC0415
 
         config = _config(self.root)
         # The words' own Allow at OpenAI as well, which the lane sends under.
@@ -1416,7 +1416,7 @@ class TheLaneSendsOnlyWhereAPressWouldNotAskAgainTest(unittest.TestCase):
     def _run(self, environ: dict[str, str], allow: str | None, *, off: bool = False) -> Any:
         from cargento_runtime import reading_policy  # noqa: PLC0415
 
-        from .next_harness import named_machine  # noqa: PLC0415
+        from .reading_pins import named_machine  # noqa: PLC0415
 
         config = _config(self.root / str(len(list(self.root.iterdir()))))
         if allow is not None:

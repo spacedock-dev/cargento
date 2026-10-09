@@ -54,7 +54,7 @@ class ValidatorTests(unittest.TestCase):
             "runtime module": "skills/cargento/cargento_runtime/cli.py",
             "collector": "skills/cargento/cargento_runtime/collectors/goose.py",
             "JavaScript adapter": "skills/cargento/opencode_plugin.js",
-            "frontend asset": "skills/cargento/cargento_runtime/web/next-boot.js",
+            "frontend asset": "skills/cargento/cargento_runtime/web/react.html",
         }
         for category, relative in categories.items():
             with self.subTest(category=category):

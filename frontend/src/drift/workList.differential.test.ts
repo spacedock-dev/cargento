@@ -11,7 +11,6 @@ import type { ContextEntry } from '../store/board';
 import { genEntries, mulberry32, pick, type Rng } from './generate.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import { workList } from './workList';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The numbered activity list, run next to the legacy page's over generated records: which entries it draws,
    at which numbers, with which flags, and every sentence about what it left out. Compared as the words a
@@ -54,7 +53,7 @@ legacy.lift(['nextSessionStop'], 'next-observed.js');
 legacy.lift(['nextHarnessLabels'], 'next-boot.js');
 
 const CASES = 80;
-const SEEDS = caseCount(CASES, 'DRIFT_SEEDS');
+const SEEDS = CASES;
 const squash = (value: string): string => value.replace(/\s+/g, '');
 const text = (html: string): string => {
   const node = document.createElement('div');

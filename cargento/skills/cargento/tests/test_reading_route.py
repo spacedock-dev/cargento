@@ -31,7 +31,7 @@ from cargento_runtime import (
 )
 from cargento_runtime import annotations as annotation_store
 
-from .next_harness import named_machine, named_platform
+from .reading_pins import named_machine, named_platform
 from .support import make_runtime
 
 HARNESSES = ("claude", "codex", "pi", "gemini")

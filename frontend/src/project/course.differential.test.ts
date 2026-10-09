@@ -17,14 +17,13 @@ import { projectLanes, semanticOf } from './recovery';
 import { sessKey, stableKey } from './group';
 import { cueGloss, cueMark, tabCue, tabLede } from './tabs';
 import { createWorkstream, projectChanges, projectWindow } from '../workstream/model';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The Course tab and the tab strip, held to the legacy functions over generated boards and context reads:
    the delegation lanes the tab reads contributors from, the canonical semantic, the episodes and the
    directions beside them, the review findings, the evidence an episode discloses, and each tab's cue. */
 
 const CASES = 25;
-const SEEDS = caseCount(CASES, 'PROJECT_SEEDS');
+const SEEDS = CASES;
 
 function entry(data: Record<string, unknown> | null, error: boolean, revision = 1): ContextEntry {
   return { data: data as never, revision, error: error ? { kind: 'network-error' } : null };

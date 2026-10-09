@@ -1,0 +1,211 @@
+{
+  "annotationFields": [
+    "assessment",
+    "at",
+    "binding_why",
+    "discarded_at",
+    "discarded_why",
+    "goal",
+    "goal_saved_at",
+    "goal_source",
+    "goal_source_at",
+    "goal_why",
+    "line_1",
+    "line_1_source",
+    "line_1_source_id",
+    "line_2",
+    "line_2_source",
+    "line_2_source_id",
+    "line_3",
+    "line_3_source",
+    "line_3_source_id",
+    "line_4",
+    "line_4_source",
+    "line_4_source_id",
+    "line_5",
+    "line_5_source",
+    "line_5_source_id",
+    "line_6",
+    "line_6_source",
+    "line_6_source_id",
+    "lines_why",
+    "not_accurate",
+    "reading_count",
+    "reading_refused",
+    "reading_withheld",
+    "reading_withheld_at",
+    "revision",
+    "revision_count",
+    "settled_at",
+    "settled_revision",
+    "settled_through",
+    "window_start"
+  ],
+  "askDetails": [
+    {
+      "detail": "Which branch? · alpha/app",
+      "project": "alpha/app",
+      "question": "Which branch?"
+    },
+    {
+      "detail": "Which branch?",
+      "project": "",
+      "question": "Which branch?"
+    }
+  ],
+  "assessmentKeys": [
+    "goal_source",
+    "goal_source_at",
+    "revision_read",
+    "revision_read_at",
+    "window_start",
+    "read_at",
+    "stamp",
+    "cutoff",
+    "scope",
+    "scope_text",
+    "ended_at_read",
+    "evidence_through",
+    "coverage",
+    "criteria"
+  ],
+  "checkBeforeLastChange": "before the last change",
+  "checkEarlierFailed": "an earlier run failed",
+  "checkNotRecorded": "ran, result not recorded",
+  "checkResultWords": {
+    "failed flag": "failed, as the tool reported",
+    "failed marker": "failed, per a failure line in its output",
+    "failed summary": "failed, per its summary line",
+    "passed flag": "passed, as the tool reported",
+    "passed summary": "passed, per its summary line"
+  },
+  "criterionKeys": [
+    "result",
+    "cites",
+    "detail",
+    "clause",
+    "why"
+  ],
+  "format": 1,
+  "levelReasons": [
+    "draft-unsaved",
+    "failed-check",
+    "pass-then-write",
+    "writes-outside-folders",
+    "most-writes-outside-folders",
+    "intent-names-no-folder",
+    "no-passing-check",
+    "check-not-recorded",
+    "background-run",
+    "command-after-pass",
+    "pass-older-than-read",
+    "later-direction",
+    "entries-not-listed",
+    "floor-met",
+    "no-reading",
+    "no-outcome-line",
+    "departure",
+    "line-not-shown-by-a-check",
+    "outcome-not-reached",
+    "reading-malformed",
+    "scan-incomplete",
+    "claim-contradicted",
+    "claim-not-shown"
+  ],
+  "maxOutcomeLines": 6,
+  "promptChosen": "chosen-prompt",
+  "promptSources": [
+    "latest-prompt",
+    "first-prompt",
+    "chosen-prompt"
+  ],
+  "results": [
+    "departure",
+    "consistent with the evidence read",
+    "not verifiable from available evidence",
+    "not shown by the record",
+    "not reached at this stop"
+  ],
+  "titles": {
+    "asking": {
+      "": "An agent is asking you",
+      "Claude Code": "Claude Code is asking you"
+    },
+    "waiting": {
+      "": " is waiting on you",
+      "Claude Code": "Claude Code is waiting on you"
+    }
+  },
+  "turnStopHarnesses": [
+    "claude"
+  ],
+  "unsafeChars": {
+    "codePoints": [
+      [
+        0,
+        31
+      ],
+      [
+        127,
+        127
+      ],
+      [
+        8203,
+        8203
+      ],
+      [
+        8206,
+        8207
+      ],
+      [
+        8234,
+        8238
+      ],
+      [
+        8294,
+        8297
+      ]
+    ],
+    "pattern": "[\\x00-\\x1f\\x7f\\u200b\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]+"
+  },
+  "waitBodies": [
+    {
+      "body": "[alpha/app] needs your input",
+      "project": "alpha/app",
+      "state_detail": ""
+    },
+    {
+      "body": "[alpha/app] Run the migration?",
+      "project": "alpha/app",
+      "state_detail": "Run the migration?"
+    }
+  ],
+  "whyStands": "",
+  "whyTokens": [
+    "not-asked",
+    "unreadable",
+    "uncited",
+    "no-work-shown",
+    "board-quoting-itself",
+    "uncorroborated",
+    "verdict-stated",
+    "check-does-not-show-it",
+    "failed-check-unread",
+    "changed-after-check",
+    "check-read-incomplete",
+    "checks-not-read",
+    "tells-the-person",
+    "failed-check-on-record",
+    "claim-uncited",
+    "claim-record-unread"
+  ],
+  "workEvidenceByHarness": {
+    "claude": [
+      "tool_report"
+    ],
+    "pi": [
+      "result",
+      "work_result"
+    ]
+  }
+}

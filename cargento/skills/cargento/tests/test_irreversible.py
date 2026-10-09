@@ -25,7 +25,6 @@ import event_hook
 from cargento_runtime import aggregate, cli, irreversible, lifecycle, observation, sessions
 
 from . import support
-from .next_harness import NextPageJsHarness
 from .test_events_ingress import FakeApplication
 
 if TYPE_CHECKING:
@@ -732,84 +731,3 @@ class CommandReportTest(unittest.TestCase):
         self.assertEqual("accepted", coordinator.submit("claude", report))
         coordinator.submit("claude", {"v": 1, "event": "session_ended", "session_id": SESSION})
         self.assertEqual(2, len(coordinator.command_reports()))
-
-
-class CommandReportReaderTest(NextPageJsHarness):
-    def test_the_cross_session_count_is_the_rendered_list_and_does_not_change_risk(self) -> None:
-        out = self._run_page_js("""
-__els.app = {innerHTML: ""};
-nextData = {generated: 1700000000, irreversible_enabled: true, sessions: [
-  {harness: "claude", sid: "one", project: "project", state: "idle"}
-], command_reports: Array.from({length: 25}, (_, i) => ({harness: "claude", sid: "one",
-  label: "force push", pattern_id: "git_force_push", tool_name: "Bash", timestamp: 1700000000 - i}))};
-nextAttention = nextAttentionModel(nextData);
-nextRoute = {view: "attention", project: null, session: null};
-renderNext(); const html = __els.app.innerHTML;
-console.log(JSON.stringify({html, risks: nextObserved(nextData).risks.length}));
-""")
-        assert isinstance(out, dict)
-        self.assertEqual(0, out["risks"])
-        self.assertEqual(20, out["html"].count("Command shape reported: force push"))
-        self.assertIn("20 reports shown", out["html"])
-        self.assertIn('data-next-route="session:project:claude:one"', out["html"])
-
-    def rendered(
-        self,
-        *,
-        enabled: bool = True,
-        harness: str = "claude",
-        reports: bool = True,
-        view: str = "attention",
-    ) -> str:
-        report = {
-            "harness": harness,
-            "sid": "one",
-            "pattern_id": "git_force_push",
-            "label": "force push",
-            "timestamp": NOW,
-            "tool_name": "Bash",
-        }
-        data = {
-            "generated": NOW,
-            "irreversible_enabled": enabled,
-            "command_reports": [report] if reports else [],
-            "sessions": [
-                {
-                    "harness": harness,
-                    "sid": "one",
-                    "project": "project",
-                    "state": "idle",
-                    "command_reports": [report] if reports else [],
-                }
-            ],
-        }
-        out = self._run_page_js(
-            '__els.app = {innerHTML: ""}; nextData = ' + json.dumps(data) + ";"
-            "nextAttention = nextAttentionModel(nextData); nextRoute = "
-            + json.dumps({"view": view, "project": "project", "harness": harness, "session": "one"})
-            + "; renderNext(); console.log(JSON.stringify(__els.app.innerHTML));"
-        )
-        assert isinstance(out, str)
-        return out
-
-    def test_a_reader_sees_a_report_and_its_effect_limit_on_both_surfaces(self) -> None:
-        for view in ("attention", "session"):
-            html = self.rendered(view=view)
-            self.assertIn("Command shape reported: force push", html)
-            self.assertIn("A shape match does not prove the action succeeded.", html)
-            self.assertIn("1 report", html)
-
-    def test_a_reader_cannot_mistake_missing_reports_for_an_all_clear(self) -> None:
-        for view in ("attention", "session"):
-            self.assertIn(
-                "No matching reports received; missing hooks and unmatched commands can look the same.",
-                self.rendered(reports=False, view=view),
-            )
-            self.assertIn(
-                "Command-shape reports are disabled for this run.",
-                self.rendered(enabled=False, view=view),
-            )
-        self.assertIn(
-            "Command-shape reporting is unsupported for this harness.",
-            self.rendered(harness="gemini", reports=False, view="session"),
-        )

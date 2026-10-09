@@ -373,7 +373,7 @@ would be reviewing its own work.
   - **Review depth chosen from the diff and stated up front**, per the Calibrating Effort table:
     self-verify for a change with no user-visible behaviour that nothing calls yet; full adversarial
     for security, credential handling or data loss; two lenses plus an arbiter for everything else,
-    including anything touching `cargento_runtime/web/` byte pins, `SKILL.md` or `config.py`.
+    including anything touching `frontend/`, the built `cargento_runtime/web/` bundle, `SKILL.md` or `config.py`.
     Uniform depth is the failure this table exists to prevent — it cost 35 agents and 6.9M tokens
     for 10 blocking findings on one measured run.
   - **An arbiter that reproduces findings rather than ranking them.** On the measured run it refuted
@@ -403,8 +403,8 @@ would be reviewing its own work.
   three-argument form to reveal conflicts; it did not, and a real conflict followed. Promoting a
   deferred finding into this PR — file it; promoting buys another implement-and-CI round for
   something already judged not worth blocking on, and four promotions cost about an hour once.
-  Resolving a frontend byte-pin conflict textually: recompute from the assets, because each side is
-  correct for a tree that no longer exists. Editing the PR branch from this stage at all — a fix
+  Resolving a conflict in the built bundle (`react.html`, `react.integrity.json`) textually: rebuild
+  it with `pnpm build`, because each side is correct for a tree that no longer exists. Editing the PR branch from this stage at all — a fix
   belongs to `implementation`, and a reviewer that has edited can no longer say the change was
   checked by someone who did not write it. Reading only top-level reviews and calling the review
   complete.
@@ -779,9 +779,10 @@ only proof is a review of its own prose. The rules below add the specifics of th
 - **Evidence must be able to fail.** Each AC's cited evidence names the concrete change that would
   flip it. An author who cannot name what would make the evidence fail has not shown it can fail,
   and the criterion does not count.
-- **Frontend byte pins are the conflict you will get.** `tests/test_next_page.py` holds per-part sizes
-  and digests plus the assembled page. Recompute them from the assets rather than resolving a
-  conflict textually. Exactly one in-flight PR may touch `cargento_runtime/web/`.
+- **The built bundle is the conflict you will get.** `react.html`, `react.integrity.json` and
+  `react-licenses.txt` are generated from `frontend/`. Rebuild with `pnpm build` and confirm with
+  `pnpm build:check` rather than resolving a conflict textually. Exactly one in-flight PR may touch
+  `frontend/` or `cargento_runtime/web/`.
 - **A session you spawn leaves daemons behind.** Driving a harness to reproduce something starts
   that harness's own hooks and they outlive the sandbox. Thirteen survived a deleted directory once
   and drove the load average to 18, which caused the contention failures above. Kill what you

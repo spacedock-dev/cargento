@@ -1765,26 +1765,6 @@ class HostAndSocketTest(unittest.TestCase):
         other = OSError(errno.EINVAL, "Invalid argument")
         self.assertIn("cannot bind", http_api.bind_error_message(other, 4553))
 
-    def test_a_busy_port_names_the_renderer_already_serving_it(self) -> None:
-        in_use = OSError(errno.EADDRINUSE, "Address already in use")
-        # A reader who asked for the rollback must not be told to use the page that is
-        # already running; it keeps its renderer until it is stopped.
-        message = http_api.bind_error_message(in_use, 4553, serving="react", requested="legacy")
-        self.assertIn("react", message)
-        self.assertIn("--stop", message)
-        self.assertIn("start again with the flag you want", message)
-        self.assertNotIn("use it", message)
-        self.assertNotIn("curl", message)
-        # Asking for what is already there is the one case where using it is the answer.
-        same = http_api.bind_error_message(in_use, 4553, serving="react", requested="react")
-        self.assertIn("use it", same)
-        # Nothing known about the occupant: the message is the one it always was.
-        self.assertEqual(
-            http_api.bind_error_message(in_use, 4553),
-            http_api.bind_error_message(in_use, 4553, serving=None, requested=None),
-        )
-        self.assertIn("use it", http_api.bind_error_message(in_use, 4553))
-
     def test_windows_error_codes_are_recognized(self) -> None:
         # winerror, not errno, is what Windows populates. 10013 is also what an
         # in-use port reports once SO_EXCLUSIVEADDRUSE is set.
@@ -2817,21 +2797,17 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
         # regression to 0.0.0.0 cannot pass merely because this test chose 127.
         serve("--port", "4553")
         self.assertEqual([("127.0.0.1", 4553)], captured_addresses)
-        # The assembled page plus this run's focus capability, which `cli.main`
+        # The verified page plus this run's focus capability, which `cli.main`
         # injects between `load_frontend_page()` and this constructor. Compared
-        # against the assembly rather than against a pinned byte count, so the
-        # subject stays the bind address and the page identity: `test_next_page`
-        # owns the digests, and a second pin here would red this module on any
+        # against the loaded page rather than against a pinned byte count, so the
+        # subject stays the bind address and the page identity: `react.integrity.json`
+        # owns the digest, and a second pin here would red this module on any
         # frontend edit.
-        # React is the default page; the legacy assembly is the explicit rollback.
-        default_page = frontend_page.load_frontend_page("react")
+        default_page = frontend_page.load_frontend_page()
         self.assertEqual(1, len(captured_pages))
         served = captured_pages[0]
         self.assertEqual(default_page, without_focus_meta(served))
         self.assertIn(b'<meta name="cargento-focus" content="', served)
-        captured_pages.clear()
-        serve("--port", "4553", "--frontend", "legacy")
-        self.assertEqual([PAGE_BYTES], [without_focus_meta(page) for page in captured_pages])
 
         # And the other direction, through the same launcher: `--host` has to
         # reach the bind tuple. Nothing pinned that, so reverting cli.py's

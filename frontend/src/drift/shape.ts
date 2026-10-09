@@ -571,7 +571,7 @@ export interface Shape {
   readonly malformed: string;
 }
 
-const ASSESSMENT_KEYS = [
+export const ASSESSMENT_KEYS = [
   'goal_source',
   'goal_source_at',
   'revision_read',

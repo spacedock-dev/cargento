@@ -994,7 +994,7 @@ class RouteTest(unittest.TestCase):
 
 
 class CapabilityDeliveryTest(unittest.TestCase):
-    """The token reaches the page by injection, outside the pinned assembly."""
+    """The token reaches the page by injection, outside the verified page bytes."""
 
     def test_the_meta_is_injected_into_the_served_document(self) -> None:
         page = b"<html><head><title>Cargento</title></head><body></body></html>"
@@ -1007,23 +1007,6 @@ class CapabilityDeliveryTest(unittest.TestCase):
         for bad in ('">', "<script>", "a b", ""):
             with self.subTest(token=bad):
                 self.assertEqual(page, cli.inject_focus_capability(page, bad))
-
-    def test_the_pinned_assembly_is_untouched(self) -> None:
-        # The injection happens between `load_frontend_page()` and the server
-        # construction, so `frontend_page.load_page()` stays byte-identical and
-        # the pinned digests do not move.
-        import cargento_runtime.web.page as frontend_page  # noqa: PLC0415
-
-        assembled = frontend_page.load_page()
-        # The TAG, not the name. DRC-4017's control reads the capability back out
-        # of the document, so the bundle now carries the selector
-        # `meta[name="cargento-focus"]` as a literal and a bare-name assertion
-        # would fail on the reader rather than on an injected token.
-        self.assertNotIn(b'<meta name="cargento-focus"', assembled)
-        self.assertEqual(
-            "1ba446438a0d6acd87aac0741dedf585e5fe4ff50e5aa66a7292e8a7048a15b5",
-            hashlib.sha256(assembled).hexdigest(),
-        )
 
 
 class OffSwitchTest(unittest.TestCase):

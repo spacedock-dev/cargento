@@ -1,27 +1,25 @@
 /*
  * The Sessions screen and the session page in a real browser, against the real backend (DRC-4824).
  *
- * Two kinds of proof. The DIFFERENTIAL half drives the legacy page and the React page in the same Chromium
- * over the same payload and compares what a reader can read: each group, each row in order, its text and its
- * one-step link, then each session's page. The payload is the real board's (frozen once so both pages see one
- * clock) and then a run of generated payloads that reach the states the real board does not. The BEHAVIOUR
- * half holds the React page to what a unit test cannot see: StrictMode resource counts over repeated
- * navigation, answering a held request through the real route (and a refusal, and a stale card), a disclosure
- * and a focused link surviving a poll, keyboard operation, hostile text, and 320/375/640/1280 CSS px layouts
- * with no horizontal page scroll.
+ * Two kinds of proof. The DIFFERENTIAL half drives the React page over a payload and compares what a reader can
+ * read with what the previous interface showed for it: each group, each row in order, its text and its one-step
+ * link, then each session's page. The payload is the real board's (frozen once so the page sees one clock) and then
+ * a run of generated payloads that reach the states the real board does not. The BEHAVIOUR half holds the React
+ * page to what a unit test cannot see: StrictMode resource counts over repeated navigation, answering a held
+ * request through the real route (and a refusal, and a stale card), a disclosure and a focused link surviving a
+ * poll, keyboard operation, hostile text, and 320/375/640/1280 CSS px layouts with no horizontal page scroll.
  *
  * Models, usage, notifications, the clipboard and the terminal are off or replaced: the page's clipboard is a
- * recorder, the terminal raise is inert, and the Intent panel the legacy page draws beside the activity column
- * is outside the comparison (it is a stated slot in the React page). Run with `pnpm test:sessions:browser`;
- * `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name matches, `SESSIONS_E2E_SEEDS` sets how many
- * generated payloads the differential compares.
+ * recorder, the terminal raise is inert, and the Intent panel the previous interface drew beside the activity
+ * column is outside the comparison (it is a stated slot in the React page). Run with
+ * `pnpm test:sessions:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name matches,
+ * `SESSIONS_E2E_SEEDS` sets how many generated payloads the differential compares.
  *
- * What the legacy page said is read through `support/golden.mjs`: `CARGENTO_LEGACY=replay` (the default)
- * reads it from `frontend/test/golden/e2e/sessions-parity.json` and starts no legacy backend and opens no
- * legacy page; `live` and `record` run the legacy page. A generated payload is keyed by seed and by the
- * digest of the payload, so a generator that changes misses its golden. Dropped in replay, with the reason:
- * the legacy page's own overflow numbers and screenshots in the layout step (nothing there is asserted of
- * the legacy page), and the legacy page's external-request check.
+ * What the previous interface said is read through `support/golden.mjs` from
+ * `frontend/test/golden/e2e/sessions-parity.json`, a recording that cannot be remade because that interface is
+ * gone. A generated payload is keyed by seed and by the digest of the payload, so a generator that changes misses
+ * its golden. Dropped with the interface, with the reason: its own overflow numbers and screenshots in the layout
+ * step (nothing there was asserted of it), and its external-request check.
  */
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
@@ -149,7 +147,7 @@ const summarizeDetail = () => {
     })
     .filter(Boolean);
   const header = clone.querySelector('.next-session-detail-header');
-  // The legacy measured line ends in the activity list's own count, which the list that is not drawn here carries.
+  // The previous measured line ended in the activity list's own count, which the list that is not drawn here carries.
   const meta = header.querySelector('.next-session-detail-meta');
   if (meta) meta.textContent = meta.textContent.replace(/ · \d+ entr(?:y|ies)\b/, '');
   const ask = clone.querySelector('[data-next-session-section="ask"]');
@@ -178,8 +176,6 @@ const summarizeDetail = () => {
 };
 
 /* ---- pages ---- */
-const legacyReady = (page) =>
-  page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
 const reactReady = (page) =>
   page.waitForFunction(
     () =>
@@ -189,14 +185,14 @@ const reactReady = (page) =>
       ),
   );
 
-async function load(opened, origin, kind, fragment = '') {
+async function load(opened, origin, fragment = '') {
   await opened.page.goto('about:blank');
   await opened.page.goto(origin + '/' + fragment);
-  await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
+  await reactReady(opened.page);
   await opened.page.waitForTimeout(patience(120));
 }
 
-/* One payload for both pages, so they share one clock: every read of /api/data answers it, and the stream is
+/* One payload for the page, so it has one clock: every read of /api/data answers it, and the stream is
    refused so nothing else moves. */
 async function freeze(opened, holder) {
   await opened.page.route('**/api/data*', (route) =>
@@ -236,16 +232,12 @@ const DEVIATIONS = [];
 
 const browser = await chromium.launch();
 const golden = goldenFor('sessions-parity');
-const board = await startSessionsBoard({ legacy: golden.live });
+const board = await startSessionsBoard();
 const reactOrigins = [board.react.origin, board.react.viteOrigin];
 const shots = [];
 const opened = [];
-async function newPage(kind, options = {}) {
-  const page = await openPage(
-    browser,
-    kind === 'legacy' ? board.legacy.origin : reactOrigins,
-    options,
-  );
+async function newPage(options = {}) {
+  const page = await openPage(browser, reactOrigins, options);
   await recordClipboard(page.context);
   await instrumentResources(page.context);
   opened.push(page);
@@ -254,26 +246,21 @@ async function newPage(kind, options = {}) {
 
 try {
   await mkdir(SHOTS, { recursive: true });
-  const legacy = golden.live ? await newPage('legacy') : null;
-  const react = await newPage('react');
+  const react = await newPage();
   const real = await (await fetch(board.react.origin + '/api/data')).json();
   const holder = { body: real };
-  if (legacy) await freeze(legacy, holder);
   await freeze(react, holder);
 
   /* ===================== DIFFERENTIAL: the real board ===================== */
   await step(
-    'differential: the real board reads the same on both pages, group by group and row by row',
+    'differential: the real board reads as the recording does, group by group and row by row',
     async () => {
-      const old = await golden.observe('real board: list', async () => {
-        await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
-        return legacy.page.evaluate(summarizeList);
-      });
-      await load(react, board.react.origin, 'react', '#n=sessions');
+      const old = golden.observe('real board: list');
+      await load(react, board.react.origin, '#n=sessions');
       const mine = await react.page.evaluate(summarizeList);
       assert.ok(
         old.groups?.length === 2 && mine.groups?.length === 2,
-        'both pages draw both groups',
+        'the page and the recording draw both groups',
       );
       const rowCount = mine.groups.reduce((sum, group) => sum + group.rows.length, 0);
       assert.ok(rowCount >= 12, `the real board carries its sessions (${rowCount})`);
@@ -287,17 +274,14 @@ try {
   );
 
   await step(
-    'differential: every session of the real board has the same page, reached by its one-step link',
+    'differential: every session of the real board has the recorded page, reached by its one-step link',
     async () => {
       const rows = real.sessions.filter(routable);
       const compared = [];
       for (const row of rows) {
         const fragment = sessionFragment(row);
-        const old = await golden.observe(`real board: page ${row.harness}/${row.sid}`, async () => {
-          await load(legacy, board.legacy.origin, 'legacy', fragment);
-          return legacy.page.evaluate(summarizeDetail);
-        });
-        await load(react, board.react.origin, 'react', fragment);
+        const old = golden.observe(`real board: page ${row.harness}/${row.sid}`);
+        await load(react, board.react.origin, fragment);
         const mine = await react.page.evaluate(summarizeDetail);
         const found = firstDifference(old, mine);
         assert.equal(found, null, `${row.harness}/${row.sid}: ${found}`);
@@ -308,10 +292,10 @@ try {
   );
 
   await step(
-    'differential: a row’s link opens its exact session, with the origin stamped, on both pages',
+    'differential: a row’s link opens its exact session, with the origin stamped, as recorded',
     async () => {
-      const open = async (origin, kind, opened_) => {
-        await load(opened_, origin, kind, '#n=sessions');
+      const open = async (origin, opened_) => {
+        await load(opened_, origin, '#n=sessions');
         const link = opened_.page.locator(
           'article.next-operation-row[data-next-harness="codex"][data-next-session="colon:sid"] a.next-operation-route',
         );
@@ -320,12 +304,10 @@ try {
         return opened_.page.evaluate(() => globalThis.location.hash);
       };
       const hashes = {
-        legacy: await golden.observe('row link hash', () =>
-          open(board.legacy.origin, 'legacy', legacy),
-        ),
-        react: await open(board.react.origin, 'react', react),
+        recorded: golden.observe('row link hash'),
+        react: await open(board.react.origin, react),
       };
-      assert.equal(hashes.react, hashes.legacy);
+      assert.equal(hashes.react, hashes.recorded);
       assert.equal(
         hashes.react,
         `#n=session:${E('beta/api')}:codex:${E('colon:sid')}&from=sessions`,
@@ -336,18 +318,15 @@ try {
 
   /* ===================== DIFFERENTIAL: generated payloads ===================== */
   await step(
-    `differential: ${SEEDS} generated payloads read the same, lists and pages`,
+    `differential: ${SEEDS} generated payloads read as recorded, lists and pages`,
     async () => {
       let lists = 0;
       let pages = 0;
       for (let seed = 1; seed <= SEEDS; seed += 1) {
         holder.body = genPayload(seed, { wellFormed: true });
         const input = digest(holder.body);
-        const old = await golden.observe(`generated seed ${seed} ${input}: list`, async () => {
-          await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
-          return legacy.page.evaluate(summarizeList);
-        });
-        await load(react, board.react.origin, 'react', '#n=sessions');
+        const old = golden.observe(`generated seed ${seed} ${input}: list`);
+        await load(react, board.react.origin, '#n=sessions');
         const mine = await react.page.evaluate(summarizeList);
         const found = firstDifference(old, mine);
         if (found && !DEVIATIONS.some((d) => d.seed === seed && d.scope === 'list'))
@@ -358,14 +337,10 @@ try {
           .slice(0, 2);
         for (const [index, row] of rows.entries()) {
           const fragment = sessionFragment(row);
-          const oldPage = await golden.observe(
+          const oldPage = golden.observe(
             `generated seed ${seed} ${input}: page ${index} ${row.harness}/${row.sid}`,
-            async () => {
-              await load(legacy, board.legacy.origin, 'legacy', fragment);
-              return legacy.page.evaluate(summarizeDetail);
-            },
           );
-          await load(react, board.react.origin, 'react', fragment);
+          await load(react, board.react.origin, fragment);
           const minePage = await react.page.evaluate(summarizeDetail);
           const detail = firstDifference(oldPage, minePage);
           if (detail && !DEVIATIONS.some((d) => d.seed === seed && d.scope === 'detail'))
@@ -379,9 +354,9 @@ try {
   );
 
   await step(
-    'differential: hostile text is text on both pages, and draws no element, selector or script',
+    'differential: hostile text is text, as recorded, and draws no element, selector or script',
     async () => {
-      // A NUL is left out of the comparison on purpose: the legacy page builds HTML text, whose parser turns it into
+      // A NUL is left out of the comparison on purpose: the previous interface built HTML text, whose parser turns it into
       // U+FFFD, where this page sets the attribute and keeps the exact identity. Checked on its own below.
       const hostile = [
         '"]\'><img src=x onerror=globalThis.__hit=1>',
@@ -403,11 +378,8 @@ try {
         })),
       };
       holder.body = body;
-      const old = await golden.observe('hostile text: list', async () => {
-        await load(legacy, board.legacy.origin, 'legacy', '#n=sessions');
-        return legacy.page.evaluate(summarizeList);
-      });
-      await load(react, board.react.origin, 'react', '#n=sessions');
+      const old = golden.observe('hostile text: list');
+      await load(react, board.react.origin, '#n=sessions');
       const mine = await react.page.evaluate(summarizeList);
       assert.equal(firstDifference(old, mine), null);
       assert.equal(await react.page.evaluate(() => globalThis.__hit), undefined, 'no handler ran');
@@ -417,7 +389,7 @@ try {
         'no element was injected',
       );
       const first = body.sessions[0];
-      await load(react, board.react.origin, 'react', sessionFragment(first));
+      await load(react, board.react.origin, sessionFragment(first));
       assert.ok(
         await react.page.locator('article.next-session-detail').count(),
         'a session with hostile characters in its id still opens',
@@ -428,7 +400,7 @@ try {
           { harness: 'claude', sid: 'a\u0000b', project: 'p', title: 'NUL', state: 'idle' },
         ],
       };
-      await load(react, board.react.origin, 'react', '#n=sessions');
+      await load(react, board.react.origin, '#n=sessions');
       assert.equal(
         await react.page
           .locator('article.next-operation-row')
@@ -445,7 +417,7 @@ try {
   await step(
     'resources: a page load opens one stream and reads once, under StrictMode, and navigation adds nothing',
     async () => {
-      const live = await newPage('react');
+      const live = await newPage();
       try {
         await live.page.goto(board.react.origin + '/#n=sessions');
         await reactReady(live.page);
@@ -504,7 +476,7 @@ try {
   await step(
     'answer: one numeric index goes to the real route by keyboard, the request leaves the board, and no model is called',
     async () => {
-      const live = await newPage('react');
+      const live = await newPage();
       try {
         const gate = real.sessions.find((row) => row.sid === 'gate-open');
         await live.page.goto(board.react.origin + '/' + sessionFragment(gate));
@@ -547,7 +519,7 @@ try {
   await step(
     'answer: a card another tab already answered says no confirmation came back, and keeps the question',
     async () => {
-      const live = await newPage('react');
+      const live = await newPage();
       try {
         const asked = real.sessions.find((row) => row.sid === 'spacedock-asked');
         const ask = real.asks.find((item) => item.session_id === 'spacedock-asked');
@@ -586,7 +558,7 @@ try {
 
   /* ===================== BEHAVIOUR: a redraw leaves the reader's place alone ===================== */
   async function clocked(fragment) {
-    const o = await newPage('react');
+    const o = await newPage();
     const state = { body: real };
     await o.page.clock.install({ time: Date.now() });
     await o.page.route('**/api/data*', (route) =>
@@ -732,10 +704,10 @@ try {
 
   /* ===================== BEHAVIOUR: keyboard ===================== */
   await step(
-    'keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, on both pages',
+    'keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, as recorded',
     async () => {
-      const walk = async (name, origin, kind, opened_) => {
-        await load(opened_, origin, kind, '#n=sessions');
+      const walk = async (name, origin, opened_) => {
+        await load(opened_, origin, '#n=sessions');
         await opened_.page.evaluate(() => {
           globalThis.document.activeElement?.blur();
         });
@@ -759,12 +731,10 @@ try {
         };
       };
       const results = {
-        legacy: await golden.observe('keyboard: open and return', () =>
-          walk('legacy', board.legacy.origin, 'legacy', legacy),
-        ),
-        react: await walk('react', board.react.origin, 'react', react),
+        recorded: golden.observe('keyboard: open and return'),
+        react: await walk('react', board.react.origin, react),
       };
-      assert.deepEqual(results.react, results.legacy);
+      assert.deepEqual(results.react, results.recorded);
       return results.react;
     },
   );
@@ -772,7 +742,7 @@ try {
   await step(
     'keyboard: a caveat opens and closes with Enter and Space, and the page reports its state',
     async () => {
-      await load(react, board.react.origin, 'react', '#n=sessions');
+      await load(react, board.react.origin, '#n=sessions');
       const summary = react.page.getByText('How rows are split');
       await summary.focus();
       await react.page.keyboard.press('Enter');
@@ -822,61 +792,36 @@ try {
         delegated: sessionFragment(real.sessions.find((row) => row.sid === 'delegated')),
       };
       const wide = [];
-      // Nothing is asserted of the legacy page here, so replay measures the React page alone.
-      const kinds = golden.live ? ['legacy', 'react'] : ['react'];
       for (const shape of SHAPES) {
         const context = { viewport: { width: shape.width, height: shape.height } };
-        const pair = {};
-        for (const kind of kinds) {
-          const o = await newPage(kind, context);
-          pair[kind] = o;
-          await freeze(o, holder);
-        }
+        const o = await newPage(context);
+        await freeze(o, holder);
         try {
           for (const [label, fragment] of Object.entries(fragments)) {
-            for (const kind of kinds) {
-              await load(
-                pair[kind],
-                kind === 'legacy' ? board.legacy.origin : board.react.origin,
-                kind,
-                fragment,
-              );
-              const measured = await overflow(pair[kind].page);
-              const height = await pair[kind].page.evaluate(
-                () => globalThis.document.documentElement.scrollHeight,
-              );
-              report[`${shape.name} ${label} ${kind}`] = { ...measured, height };
-              if (kind === 'react' && measured.scroll > measured.client)
-                wide.push(`${shape.name} ${label}: ${JSON.stringify(measured)}`);
-            }
-          }
-          for (const kind of kinds) {
-            await load(
-              pair[kind],
-              kind === 'legacy' ? board.legacy.origin : board.react.origin,
-              kind,
-              '#n=sessions',
+            await load(o, board.react.origin, fragment);
+            const measured = await overflow(o.page);
+            const height = await o.page.evaluate(
+              () => globalThis.document.documentElement.scrollHeight,
             );
-            const name = `sessions-${kind}-${shape.name}.png`;
-            await pair[kind].page.screenshot({ path: SHOTS + name, fullPage: false });
-            shots.push(name);
-            if (shape.name === '375' || shape.name === '1280') {
-              await load(
-                pair[kind],
-                kind === 'legacy' ? board.legacy.origin : board.react.origin,
-                kind,
-                fragments['held request'],
-              );
-              const detail = `session-detail-${kind}-${shape.name}.png`;
-              await pair[kind].page.screenshot({
-                path: SHOTS + detail,
-                fullPage: shape.name === '375',
-              });
-              shots.push(detail);
-            }
+            report[`${shape.name} ${label} react`] = { ...measured, height };
+            if (measured.scroll > measured.client)
+              wide.push(`${shape.name} ${label}: ${JSON.stringify(measured)}`);
+          }
+          await load(o, board.react.origin, '#n=sessions');
+          const name = `sessions-react-${shape.name}.png`;
+          await o.page.screenshot({ path: SHOTS + name, fullPage: false });
+          shots.push(name);
+          if (shape.name === '375' || shape.name === '1280') {
+            await load(o, board.react.origin, fragments['held request']);
+            const detail = `session-detail-react-${shape.name}.png`;
+            await o.page.screenshot({
+              path: SHOTS + detail,
+              fullPage: shape.name === '375',
+            });
+            shots.push(detail);
           }
         } finally {
-          for (const kind of kinds) await pair[kind].close();
+          await o.close();
         }
       }
       assert.deepEqual(wide, [], 'horizontal page overflow on the React page: ' + wide.join(' | '));
@@ -885,23 +830,21 @@ try {
   );
 
   await step(
-    'layout: the React screen is not taller than the legacy one by more than a wrapped line per row',
+    'layout: the React screen is not taller than the recorded one by more than a wrapped line per row',
     async () => {
-      const height = async (kind, opened_, origin) => {
-        await load(opened_, origin, kind, '#n=sessions');
+      const height = async (opened_, origin) => {
+        await load(opened_, origin, '#n=sessions');
         return opened_.page.evaluate(() => globalThis.document.documentElement.scrollHeight);
       };
       const heights = {
-        legacy: await golden.observe('layout: list height', () =>
-          height('legacy', legacy, board.legacy.origin),
-        ),
-        react: await height('react', react, board.react.origin),
+        recorded: golden.observe('layout: list height'),
+        react: await height(react, board.react.origin),
       };
-      // The legacy height is a recording from macOS; the page is as tall as its wrapped text, so the typeface moves it.
-      // Measured: legacy 3227 against React 3262 on macOS (+1.1%) and 3297 on Linux with Liberation fonts (+2.2%), so the
+      // The recorded height is from macOS; the page is as tall as its wrapped text, so the typeface moves it.
+      // Measured: recorded 3227 against React 3262 on macOS (+1.1%) and 3297 on Linux with Liberation fonts (+2.2%), so the
       // operating system moves the ratio by about one point of the twelve allowed.
       assert.ok(
-        Math.abs(heights.react - heights.legacy) <= 0.12 * heights.legacy,
+        Math.abs(heights.react - heights.recorded) <= 0.12 * heights.recorded,
         JSON.stringify(heights),
       );
       return heights;
@@ -910,7 +853,7 @@ try {
 
   await step('motion: a running worker’s dot pulses, and stops under reduced motion', async () => {
     const animation = async (reducedMotion) => {
-      const o = await newPage('react', { reducedMotion });
+      const o = await newPage({ reducedMotion });
       try {
         await o.page.goto(
           board.react.origin +

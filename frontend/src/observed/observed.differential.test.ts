@@ -7,7 +7,6 @@ import {
 } from './legacy.test.helper';
 import { genPayload } from './generate.test.helper';
 import { delegatedWork, observe, readHint, sessionDot, sessionStop } from './index';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The observed model is held to the legacy file that computes it. 600 generated payloads run through the
    real `nextObserved` and through `observe`, and the two answers must agree on every field a reader or a
@@ -17,7 +16,7 @@ import { caseCount } from '../../test/legacy_goldens';
    differs. */
 const legacy = loadLegacySessions();
 const CASES = 80;
-const SEEDS = caseCount(CASES);
+const SEEDS = CASES;
 
 function withoutHistory(model: Record<string, unknown>): Record<string, unknown> {
   const projects = (model['projects'] as Record<string, unknown>[]).map((project) => {

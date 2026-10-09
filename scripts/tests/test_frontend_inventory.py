@@ -1,4 +1,4 @@
-"""The migration cannot silently leave a shipped part or reader state unowned."""
+"""The migration inventory cannot silently lose an owner, a contract or an oracle."""
 
 from __future__ import annotations
 
@@ -19,14 +19,15 @@ class AMigrationMaintainerSeesAnUnownedContractTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        web = self.root / "cargento/skills/cargento/cargento_runtime/web"
-        web.mkdir(parents=True)
-        (web / "page.py").write_text('APP_PARTS: tuple[str, ...] = ("one.js",)\n')
-        (web / "one.js").write_text('const KEY = "cargento.fixture.preference";\n')
+        storage = self.root / "frontend/src/storage"
+        storage.mkdir(parents=True)
+        (storage / "keys.ts").write_text("const KEY = 'cargento.fixture.preference';\n")
         (self.root / "docs").mkdir()
+        (self.root / "frontend/src").mkdir(exist_ok=True)
+        (self.root / "frontend/src/one.ts").write_text("export function holdDraft() {}\n")
         (self.root / "docs/design-reader-state.md").write_text(
             "## The inventory\n\n| Reader state | Across a redraw | Where |\n"
-            "|---|---|---|\n| Reader draft | Kept | one.js |\n\n## Next\n"
+            "|---|---|---|\n| Reader draft | Kept | `frontend/src/one.ts`: `holdDraft` |\n\n## Next\n"
         )
         (self.root / "tests").mkdir()
         (self.root / "tests/oracle.py").write_text("# fixture oracle\n")
@@ -63,35 +64,70 @@ class AMigrationMaintainerSeesAnUnownedContractTest(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
 
-    def test_a_new_script_part_requires_a_migration_owner(self) -> None:
-        web = self.root / "cargento/skills/cargento/cargento_runtime/web"
-        (web / "page.py").write_text('APP_PARTS = ("one.js", "two.js")\n')
-        (web / "two.js").write_text("")
+    def test_a_part_row_still_needs_an_owner_a_contract_and_an_oracle(self) -> None:
+        del self.inventory["parts"][0]["owner"]
         result = self.run_check()
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("two.js", result.stderr)
+        self.assertIn("one.js", result.stderr)
 
     def test_a_new_reader_state_cannot_be_silently_forgotten(self) -> None:
         doc = self.root / "docs/design-reader-state.md"
         doc.write_text(
-            doc.read_text().replace("\n\n## Next", "\n| Caret | Kept | one.js |\n\n## Next")
+            doc.read_text().replace("\n\n## Next", "\n| Caret | Kept | one.ts |\n\n## Next")
         )
         result = self.run_check()
         self.assertNotEqual(0, result.returncode)
         self.assertIn("Caret", result.stderr)
 
+    def cite(self, where: str) -> subprocess.CompletedProcess[str]:
+        doc = self.root / "docs/design-reader-state.md"
+        original = doc.read_text()
+        doc.write_text(original.replace("`frontend/src/one.ts`: `holdDraft`", where))
+        try:
+            return self.run_check()
+        finally:
+            doc.write_text(original)
+
+    def test_a_cited_owner_file_that_is_gone_refuses_the_map(self) -> None:
+        result = self.cite("`frontend/src/gone.ts`: `holdDraft`")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("owner frontend/src/gone.ts", result.stderr)
+
+    def test_a_cited_owner_symbol_the_file_no_longer_names_refuses_the_map(self) -> None:
+        result = self.cite("`frontend/src/one.ts`: `holdDraft`, `renamedAway`")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("renamedAway is not in the file", result.stderr)
+        self.assertNotIn("holdDraft is not", result.stderr)
+
+    def test_a_dotted_owner_symbol_needs_every_part_and_a_key_is_not_a_symbol(self) -> None:
+        self.assertNotEqual(0, self.cite("`frontend/src/one.ts`: `holdDraft.nowhere`").returncode)
+        self.assertEqual(
+            0,
+            self.cite("`frontend/src/one.ts`: `holdDraft`, `cargento.next.some-key`").returncode,
+        )
+
     def test_a_new_persisted_preference_requires_a_format_contract(self) -> None:
-        source = self.root / "cargento/skills/cargento/cargento_runtime/web/one.js"
-        source.write_text(source.read_text() + 'const EXTRA = "cargento.fixture.new";\n')
+        keys = self.root / "frontend/src/storage/keys.ts"
+        keys.write_text(keys.read_text() + "const EXTRA = 'cargento.fixture.new';\n")
         result = self.run_check()
         self.assertNotEqual(0, result.returncode)
         self.assertIn("cargento.fixture.new", result.stderr)
 
-    def test_a_missing_behavioral_oracle_refuses_the_map(self) -> None:
+    def test_a_row_that_names_a_file_that_is_gone_refuses_the_map(self) -> None:
         (self.root / "tests/oracle.py").unlink()
         result = self.run_check()
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("oracle", result.stderr)
+        self.assertIn("missing or outside oracle tests/oracle.py", result.stderr)
+
+    def test_the_committed_inventory_names_no_file_that_does_not_exist(self) -> None:
+        inventory = json.loads((ROOT / "scripts/frontend-migration.json").read_text())
+        named = {
+            oracle
+            for group in ("parts", "surfaces", "routes", "reader_state", "storage")
+            for row in inventory[group]
+            for oracle in row["oracles"]
+        }
+        self.assertEqual([], sorted(name for name in named if not (ROOT / name).is_file()))
 
     def test_a_duplicate_owner_row_does_not_hide_a_missing_contract(self) -> None:
         self.inventory["parts"].append(self.row("one.js"))

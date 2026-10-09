@@ -7,7 +7,6 @@ import { genCapacity } from './generate.test.helper';
 import { heldFor } from './held';
 import { loadLegacyCapacity, type LegacyConsent } from './legacy.test.helper';
 import { RailUsage } from './UsageConsent';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The strip is held to the legacy page by what a reader can read and press. The page's own `nextCapacityView`
    runs over a generated board, in each consent state and with a selection that is published, buried below
@@ -20,7 +19,7 @@ import { caseCount } from '../../test/legacy_goldens';
    clause out. */
 const legacy = loadLegacyCapacity();
 const CASES = 80;
-const SEEDS = caseCount(CASES);
+const SEEDS = CASES;
 const CONSENT = 'cargento.next.usage.consent';
 
 const parse = (html: string): Element[] => {

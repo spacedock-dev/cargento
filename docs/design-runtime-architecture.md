@@ -100,7 +100,7 @@ quoting before anything is matched or masked, and the bounded `spacedock status 
 | `lifecycle.py` | State file, port probes, status, stop, and daemon detach. The Windows respawn argv forwards every `--no-*` switch the parser put in the namespace, derived rather than listed ([D-2](design-daemon.md#d-2-windows-re-spawns-instead-of-forking-and-waits-to-be-sure)). `serve` also records what a stopped dashboard left spent (`reading_jobs.recover`) before serving, and kills every supervised group (`supervise.kill_all`) first on the way out. |
 | `cli.py` | Argument parsing, runtime assembly, and the three serve branches. |
 | `frontend_dev.py` | Contributor-only immutable development manifest, owned Vite challenge verification, fixture-root containment and development document assembly. A standard-library leaf used by configuration and CLI assembly; it imports no application or request-dispatch module. Production pages never use its module URLs. |
-| `web/page.py` | Package-relative asset loading, ordered `APP_PARTS`, embedded-font validation, byte-preserving legacy assembly, selected React artifact/integrity/license verification, and renderer-specific content identity. Startup passes verified pre-capability bytes into `Application`, which publishes their digest as the board's `build`. |
+| `web/page.py` | Package-relative asset loading, the font table the build reads, strict React artifact/integrity/license verification and content identity. It also keeps the frozen `APP_PARTS` and `load_script()` of the retired page, for the paused study's source binding only: nothing the server serves reads them. Startup passes verified pre-capability bytes into `Application`, which publishes their digest as the board's `build` (prefixed `react-`). |
 
 `aggregate` also imports `observer` for its bounded, read-only cached-goal projection. One
 `read_sidecar` call per published board row admits scrubbed `deterministic_goal`, or `goal` with
@@ -112,53 +112,36 @@ a workflow with no title. See [Intent log freshness](design-reader-state.md#inte
 
 The prototype also gives `observer.CodexGoalModel` an optional goal-summary path through the
 installed Codex CLI. It is disabled by default and requires scoped disclosure consent for an
-explicit focused project-context refresh. `web/next-render.js` owns the Console disclosure,
-separate consent state and explicit summary request; passive reads do not request the model. The
+explicit focused project-context refresh. `frontend/src/capacity/ObserverControls.tsx` owns the Console
+disclosure, separate consent state and explicit summary request; passive reads do not request the model. The
 redaction, prompt byte cap, executable resolution and concurrency limits are owned by
 [SECURITY.md](../SECURITY.md#observer-model-calls), alongside the dispatch and terminal boundaries.
 
-The dashboard script is split by responsibility and concatenated, not loaded as modules.
-`page.py` joins the files in `APP_PARTS` order into one script slot, so they share a scope and order
-carries meaning. The `next-*` prefixes are retained from the interface's preview period to avoid a
-mass rename; they do not indicate a second bundle.
+The dashboard page is built, not assembled at startup. The React sources under `frontend/src` (repository
+only, never shipped; Node and pnpm are build tools) are packaged by `frontend/build/package.mjs` into one
+self-contained page, and the server verifies and serves those fixed bytes. The `next-*` prefixes that remain
+in class names, `data-next-*` attributes and the `cargento.next.*` browser keys are retained from the
+retired interface's preview period to avoid a mass rename; they do not indicate a second bundle.
 
 | Frontend file | Owns |
 |---|---|
-| `web/page.py` | Package-relative loading, ordered legacy `APP_PARTS`, embedded-font validation, unchanged legacy assembly and strict selected React artifact verification. Renderer-specific identity lets an open tab recognize another build. |
-| `web/index.html` | The two-slot shell for canonical styles and script. |
-| `web/react.html`, `web/react.integrity.json`, `web/react-licenses.txt` | Tracked self-contained candidate page, its deterministic integrity/provenance bindings and full bundled-code/font notices. Repository-only `frontend/build/package.mjs` builds these with pinned Vite; installed Python verifies and serves fixed bytes. |
-| `web/styles.css` | The single dark palette, responsive layout, live-dot pulse, and reduced-motion override, in nine owned regions; [the stylesheet contract](design-next-ui.md#nui-2-one-stylesheet-owns-the-interface) names all nine boundaries, including `COCKPIT` and `SUBSTRATE` after `SESSION`. |
-| `web/next-boot.js` | Query reads, escaping, shared payload and time helpers, session metrics, project groups, the fragment route grammar, the three row controls (copy the session id, copy the re-entry command, raise the terminal), and the expiring map that lets a control's state outlive the render that replaces it. It is first in `APP_PARTS`. |
-| `web/next-observed.js` | The v2 session collection, lanes, counts, project groups, coverage and presentation reasons; wraps the shipped workstream and delegation measurements. |
-| `web/next-attention.js` | Attention evidence, stable ordering, coverage gaps, risk groups, and answerable questions. |
-| `web/next-notify.js` | Browser notification permission, the one-layer check that stands the page down where the server has a native backend (`native_notify` in the payload), the per-session and per-ask dedupe that stops a standing gate re-notifying on every revision, and the permission control. |
-| `web/next-chrome.js` | Primary navigation, breadcrumbs, header counts, the stalled-refresh, history-reset and reload notices (the last when the board's `build` is no longer the one this tab first saw), delegated controls and the sweep that writes each answer onto the controls now in the document rather than only the node the click found, the per-tab sets that let an expanded section and an opened disclosure survive the render that replaces them, document title, and keyboard shortcuts. |
-| `web/next-capacity.js` | The quota-fetch disclosure and its stored answer, and the capacity strip: each window's budget against its own clock, the pace that implies, what the remaining budget buys, and a project's observed session spread. |
-| `web/next-sessions.js` | Active and recent session-operation tables with exact detail routes. |
-| `web/next-projects.js` | Project overview, measured task progress, current state, and explicit withholding. |
-| `web/next-project.js` | Cockpit project composition, workflow-plan merge, entity rows and empty states; retained v2 identity, goal and state-change renderers. |
-| `web/next-activity.js` | Project activity cards, observed session endings, and the completed-task list. |
-| `web/next-session.js` | Exact session detail, request attribution, measured metadata, subagents, token footer, and answer POST. It places the drift block `next-cockpit.js` builds and decides which control holds the page's one primary, and it owns the unasked departure rows and the resume and raise controls drawn beside each departure. |
-| `web/next-workstream.js` | The bounded observation ledger, seeded from the published `history` field and extended by each advancing payload, and the window and collapse helpers used by the project state-change timeline. |
-| `web/next-delegation.js` | Windowed delegation percentage, token-rate aggregate, human-turn count, evidence floor, and trend gate. |
-| `web/next-controls.js` | Browser-local steer receipts and inert tripwire notes, plus the separate server-backed workflow stage-condition editor. Draft choices and failure cues survive redraw; mutation completion restores focus only if the reader has not moved it. |
-| `web/next-cockpit-compat.js` | Compatibility helpers for the prototype substrate. |
-| `web/project.js` | Semantic timeline, project-context reads and exact-session terminal substrate; lazily loads vendored xterm from loopback. Owns the timeline's activity mode: one resolver every caller of the timeline shares, and the browser-storage mirror that carries the reader's choice across a reload. |
-| `web/next-cockpit.js` | Scope tree and switcher, the tab strip with its per-tab lede and its derived per-tab cue, recovery briefing, Now / Course / Decisions / Console panels, and browser-local context. Also the session page's drift block (`nextCockpitDriftBlock`, once the `Held to` tab), in the order it renders: a lede, the two typed fields and their store round trip, the caller's CURRENT ACTIVITY card, the check control and its send disclosure, the reading block and its shape contract, the baseline question a later direction raises and the caveats on the typed words, and the departures on record; then, below the session's facts, the two landing axes and the observed record. |
-| `web/next-intent.js` | The Intent log joins every published board identity with retained annotation/discard records. Typed or adopted goals, typed output, cached deterministic evidence and each published workflow title keep distinct source labels. Adopted readings retain their own provenance. `GET /api/annotations` supplies retained words with revision invalidation; dashboard payloads supply board membership and independent sources. Session history never restores withdrawn words. |
-| `web/next-render.js` | View dispatch, payload fetch, refresh serialization, failure state, and the separately consented explicit observer-model request in Console. |
-| `web/next-live.js` | Namespaced cross-tab leader election, SSE revision delivery, and fallback polling. It is last in `APP_PARTS` and starts refresh. |
-| `web/fonts/` | Embedded Space Grotesk and IBM Plex Mono subsets, licenses, and source hashes. |
-| `web/vendor/` | The vendored xterm build, its stylesheet, its license and its source record. Not in `APP_PARTS` and not embedded in the page: `project.js` loads it lazily from `/assets/xterm.js` and `/assets/xterm.css`, which `http_api` reads out of this directory and serves only while the interaction prototype is running. |
+| `web/react.html`, `web/react.integrity.json`, `web/react-licenses.txt` | The tracked self-contained page, its deterministic integrity/provenance bindings and full bundled-code/font notices. `pnpm build` writes them and `pnpm build:check` fails when they differ from a clean build. Installed Python verifies and serves fixed bytes. |
+| `web/page.py`, `web/styles.css`, `web/fonts/` | The font table, the `@font-face` rows and the embedded Space Grotesk and IBM Plex Mono subsets with their licenses and source hashes, which the build reads and embeds in the page. |
+| `web/vendor/` | The vendored xterm build, its stylesheet, its license and its source record. Not embedded in the page: the terminal loads it lazily from `/assets/xterm.js` and `/assets/xterm.css`, which `http_api` reads out of this directory and serves only while the interaction prototype is running. |
+| `web/next-*.js`, `web/project.js` | The twenty script parts of the retired page, frozen byte for byte for the paused Intent and drift study, which evaluates their text and binds the digest of `load_script()`. Not served, not rendered, not read by the runtime or the frontend; removing them needs the study rebound first. |
+| `frontend/src/{api,store,transport,storage}` | The typed client, the one external immutable store, the runtime owner of requests, timers, the event stream and leader election, and the one browser-storage layer. Components never fetch, poll or touch `localStorage` themselves. |
+| `frontend/src/{router,shell,controls,styles}` | The fragment grammar, the shell (primary navigation, header counts, notices, live regions), the shared controls and the reader-state lanes behind them (focus, field memory, disclosures, the display gate), and the page's CSS tokens. |
+| `frontend/src/{observed,workstream,delegation,attention,notify,capacity}` | The observed model and its Attention, notification, quota and delegation readings. Pure functions over one accepted payload, plus the views that draw them. |
+| `frontend/src/{sessions,project,timeline,terminal,steering}` | The Sessions screen and session page, the Projects list and project page with its Now, Course, Decisions and Console tabs, the timeline and its filter, the output-only terminal, and the project's steering controls. |
+| `frontend/src/{intent,drift}` | The Intent log and panel, and the Drift section with Analyze, its consent, the result, Steer back and the departures. |
 
-The HTTP server serves this assembled byte string at `/`, including the supported `all=1` view.
+The HTTP server serves the verified page bytes at `/`, including the supported `all=1` view.
 It rejects the retired `next` query with 404 instead of preserving a second page URL. The promotion
 decision, retained browser namespace, and route grammar live in
 [design-next-ui.md](design-next-ui.md).
 
-The [frontend migration contract](design-frontend-migration.md) owns replacement boundaries,
-the preserved behavior inventory and browser measurements. It describes the migration constraints;
-the table above remains the shipped module map until each replacement lands.
+The [React frontend record](design-frontend-migration.md) owns the frontend's boundaries, the
+behavior inventory it preserved and the browser measurements.
 
 ## R-2: Dependencies run inward, and the test enforces it
 
@@ -215,7 +198,7 @@ appears in `sys.modules`.
 Frontend assets load relative to `web/page.py`, so an installed copy needs no repository and no
 working directory. A contract test walks the package with `pkgutil` from an unrelated directory, with
 `PYTHONPATH` removed and `PYTHONNOUSERSITE=1`, and proves every module's `__file__` and every declared
-asset path, including the canonical page's font subsets, resolve inside the skill directory. It
+asset path, including the page's font subsets, resolve inside the skill directory. It
 inspects every module it finds rather than a maintained list.
 
 ## R-4: Configuration is frozen, state is mutable, services are injected
@@ -439,34 +422,33 @@ Three layers, described in `CONTRIBUTING.md`. Two habits specific to this archit
   the clearing of `store_errors` before a diagnosis, and whether the registry's Claude row notified
   through the notifier it was handed. Each had passed a full green suite.
 
-## The v2 browser derivation seam
+## The browser derivation seam
 
-`next-observed.js` is second in `APP_PARTS`, after `next-boot.js`, and is explicitly listed in
-`CARGENTO_RUNTIME_FILES` for installed-copy validation. `renderNext` builds one `nextObserved`
-model and shares it through `nextCurrentObserved` for that render. The header, counters, session lanes, projects and Attention coverage all count this
-model's session collection. Working means collector state without an observed end; running also
-requires the event-published `active` flag. Subagents in the header are observed, including quiet
-ones. A session has one primary Attention category: waiting on the reader, then risk, then closure.
+`frontend/src/observed` builds one `Observed` model per accepted payload and shares it: `observedFor`
+caches by body, so a poll that changed nothing costs nothing and a subscriber that selects it gets the
+same object back until the data is replaced. The header, counters, session lanes, projects and Attention
+coverage all count this model's session collection. Working means collector state without an observed end;
+running also requires the event-published `active` flag. Subagents in the header are observed, including
+quiet ones. A session has one primary Attention category: waiting on the reader, then risk, then closure.
 Its secondary evidence stays on the session even when waiting takes precedence. An exact request
 keeps its project active and in the waiting rail even if collector state has gone idle; the count
 line still describes the published state, so its state buckets do not count that session twice.
 
-The live call is `nextObserved(payload, nextWorkstreamSnapshot())`. The optional second argument
-is explicit evidence from the bounded tab ledger. Without it, `nextObserved(payload)` replays the
-payload history through `nextWorkstreamReplay` into a private buffer. Both paths call
-`nextWorkstreamProjectWindow`, `nextDelegationMetric` and `nextDelegationTrend`; the model wraps
-those measurements in text and evidence flags. A payload cannot contain the observations this tab
-retained between revisions, so demanding payload-only input for the live board would discard a
-shipped measurement. The payload-only path is deterministic and neither path mutates the ledger.
-The delegation percentage describes the observed working-or-gated intervals, without claiming that
+The delegation figure measures evidence the tab holds. `frontend/src/workstream` keeps a bounded
+observation ledger (`createWorkstream`), seeded from the published `history` field and extended by each
+accepted payload, and `frontend/src/delegation` reads it through `projectWindow`, `metricOf` and `trendOf`,
+wrapping the measurements in text and evidence flags. A payload cannot contain the observations this tab
+retained between revisions, so demanding payload-only input for the live board would discard a shipped
+measurement. The payload-only path (`payloadEvidence`) is deterministic and neither path mutates the
+ledger. The delegation percentage describes the observed working-or-gated intervals, without claiming that
 missing intervals were delegated. Only a partly measured token rate receives the lower-bound sign.
 
-`nextAttentionModel` remains a second pass on each accepted payload. It owns the legacy subject
-identities, exact-request options and replies, secondary tool and termination details, upcoming
+`attentionModel` in `frontend/src/attention/model.ts` is a second pass on each accepted payload. It owns the
+subject identities, exact-request options and replies, secondary tool and termination details, upcoming
 project actions, quota sub-limit subjects, coverage disclosure details, accessibility announcements,
-and focus fallback targets. The v2 Attention renderer uses those subjects for controls and details
-and omits subjects already represented by its v2 risk rows. Session detail and project plan helpers
-also still read published source records for surfaces the v2 interface does not carry, including
+and focus fallback targets. The Attention renderer uses those subjects for controls and details
+and omits subjects already represented by its risk rows. Session detail and project plan helpers
+also read published source records for surfaces the observed model does not carry, including
 Spacedock, instruction provenance, source coverage, task totals and controls. This is a retained
 adapter boundary, not a completed migration. Removing the pass requires moving those capabilities
 and their behavioral checks together; deleting it now would remove supported interactions.

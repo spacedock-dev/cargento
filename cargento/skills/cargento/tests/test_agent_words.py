@@ -46,10 +46,8 @@ from cargento_runtime import annotations as annotation_store
 
 from . import test_copied_corrections as copied_tests
 from . import test_correction as correction_tests
-from . import test_next_cockpit as cockpit_tests
 from . import test_reader_words as words_tests
 from . import test_reading as reading_tests
-from .next_harness import NextPageJsHarness, storage_prelude
 from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START
 from .test_direction_adoption import _row
@@ -566,187 +564,6 @@ class TheAgentsWordsAreNeitherStoredNorPublishedTest(_Collected):
         self.assertEqual({"a": [{"keep": 1}]}, project_context.for_page(nested))
 
 
-class ThePageShowsWhatTheAgentSaidTest(NextPageJsHarness):
-    def run_fixture(self, script: str) -> Any:
-        return self._run_page_js(
-            "await __settle();\nawait __settle();\n" + script,
-            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
-        )
-
-    def test_an_agent_message_reads_agent_said_and_is_not_counted_as_work(self) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1", state:"working"};
-const fact = (fact_id, at, type, summary) => ({fact_id, at, type, summary,
-  source_session:{harness:"claude", sid:"s1"}, evidence:{source:"transcript", confidence:"exact"}});
-const entries = nextCockpitWorkEntries(session, {facts:[
-  fact("m1", 50, "user_message", "please add retry"),
-  fact("a1", 60, "agent_message", "I added the retry.")]});
-const html = nextCockpitWorkEvidence(session, {state:"read", entries});
-console.log(JSON.stringify({html, mix: nextCockpitWorkMix(entries),
-  work: entries.map(e => e.work)}));
-""")
-        self.assertIn("Agent said", out["html"])
-        self.assertIn("I added the retry.", out["html"])
-        self.assertIn("1 message the agent wrote", out["mix"])
-        self.assertIn("0 observed of what it did", out["mix"])
-        self.assertEqual([False, False], out["work"])
-
-    def test_the_agent_never_pushes_the_readers_messages_off_the_list(self) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1", state:"working"};
-const fact = (fact_id, at, type, summary) => ({fact_id, at, type, summary,
-  source_session:{harness:"claude", sid:"s1"}, evidence:{source:"transcript", confidence:"exact"}});
-const facts = [];
-for(let n = 0; n < 20; n += 1) facts.push(fact(`m${n}`, 10 + n, "user_message", `MINE-${n}`));
-for(let n = 0; n < 60; n += 1) facts.push(fact(`a${n}`, 100 + n, "agent_message", `SAID-${n}`));
-const entries = nextCockpitWorkEntries(session, {facts});
-const html = nextCockpitWorkEvidence(session, {state:"read", entries});
-const rows = html.split('<div class="next-cockpit-work-row"').slice(1);
-console.log(JSON.stringify({
-  mine: rows.filter(row => row.includes("MINE-")).length,
-  said: rows.filter(row => row.includes("SAID-")).length,
-  html,
-}));
-""")
-        self.assertEqual(20, out["mine"])
-        self.assertEqual(10, out["said"])
-        self.assertIn("the 10 most recent messages the agent wrote", out["html"])
-
-    def test_a_line_consistent_on_the_agent_alone_says_it_is_not_a_check(self) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1"};
-const entries = nextCockpitWorkEntries(session, {facts:[
-  {fact_id:"a1", at:95, type:"agent_message", summary:"I added the retry.",
-   source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"timestamped top-level assistant text record", confidence:"exact"}}]});
-const shape = nextCockpitReadingShape({revision_read_at:50, criteria:{
-  line_1:{result:"consistent with the evidence read", cites:["a1"]},
-  line_2:{result:"departure", cites:["a1"], detail:"it said it skipped the test"}}},
-  {goal:"add retry", line_1:"the retry backs off", line_2:"a test covers it"}, entries, "");
-const numbers = new Map([["a1", 3]]);
-const byId = new Map(entries.map(e => [e.id, e]));
-console.log(JSON.stringify(shape.criteria.map(row =>
-  [row.key, row.result, nextCockpitResultStatus(row, numbers, byId)])));
-""")
-        rows = {key: (result, status) for key, result, status in out}
-        self.assertEqual(
-            (reading.RESULT_CONSISTENT, "Consistent with what the agent said at #3; not a check"),
-            rows["line_1"],
-        )
-        self.assertEqual((reading.RESULT_DEPARTURE, "Departs; evidence #3"), rows["line_2"])
-
-    def test_the_agent_beside_a_check_its_result_contradicts_is_withdrawn_on_the_page(
-        self,
-    ) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1"};
-const entries = nextCockpitWorkEntries(session, {facts:[
-  {fact_id:"c1", at:90, type:"tool_report", subject:"check", result:"failed",
-   result_source:"flag", summary:"pytest", source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"Claude Bash call and paired result", confidence:"exact"}},
-  {fact_id:"a1", at:95, type:"agent_message", summary:"All tests pass.",
-   source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"timestamped top-level assistant text record", confidence:"exact"}}]});
-const shape = nextCockpitReadingShape({revision_read_at:50, criteria:{
-  line_1:{result:"consistent with the evidence read", cites:["c1", "a1"]}}},
-  {goal:"add retry", line_1:"the tests pass"}, entries, "");
-console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result, row.why])));
-""")
-        (row,) = [row for row in out if row[0] == "line_1"]
-        self.assertEqual(reading.RESULT_UNVERIFIABLE, row[1])
-        self.assertIn("The check it cited does not show this", row[2])
-
-    def test_a_write_cited_beside_the_agent_does_not_withdraw_it_on_the_page(self) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1"};
-const entries = nextCockpitWorkEntries(session, {facts:[
-  {fact_id:"w1", at:90, type:"tool_report", subject:"write", result:"", summary:"src/retry.py",
-   source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"Claude Write call", confidence:"exact"}},
-  {fact_id:"a1", at:95, type:"agent_message", summary:"I wrote the retry.",
-   source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"timestamped top-level assistant text record", confidence:"exact"}}]});
-const shape = nextCockpitReadingShape({revision_read_at:50, criteria:{
-  line_1:{result:"consistent with the evidence read", cites:["w1", "a1"]}}},
-  {goal:"add retry", line_1:"the retry is written"}, entries, "");
-console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result, row.restsOn])));
-""")
-        (row,) = [row for row in out if row[0] == "line_1"]
-        self.assertEqual([reading.RESULT_CONSISTENT, "message"], row[1:])
-
-    def test_a_stored_reading_with_either_withdrawn_reason_still_reads_back(self) -> None:
-        out = self.run_fixture("""
-const shape = nextCockpitReadingShape({revision_read_at:50, criteria:{
-  line_1:{result:"not verifiable from available evidence", cites:[], why:"no-work-shown"},
-  line_2:{result:"not verifiable from available evidence", cites:[], why:"tells-the-person"}}},
-  {goal:"add retry", line_1:"the retry backs off", line_2:"its counts are reported"}, [], "");
-console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result, row.why])));
-""")
-        rows = {key: (result, why) for key, result, why in out}
-        for key in ("line_1", "line_2"):
-            with self.subTest(line=key):
-                self.assertEqual(reading.RESULT_UNVERIFIABLE, rows[key][0])
-                self.assertTrue(rows[key][1])
-                self.assertNotIn("could not be read", rows[key][1])
-        self.assertIn("what the agent told you", rows["line_2"][1])
-
-    def test_a_goal_on_another_agent_entry_still_says_what_the_session_said(self) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1"};
-const entries = nextCockpitWorkEntries(session, {facts:[
-  {fact_id:"d1", at:95, type:"prepared_dispatch", summary:"Dispatch the retry work",
-   source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"dispatch artifact", confidence:"exact"}}]});
-const shape = nextCockpitReadingShape({revision_read_at:50, criteria:{
-  goal:{result:"consistent with the evidence read", cites:["d1"]}}},
-  {goal:"add retry"}, entries, "");
-const byId = new Map(entries.map(e => [e.id, e]));
-console.log(JSON.stringify(shape.criteria.map(row =>
-  [row.key, nextCockpitResultStatus(row, new Map([["d1", 2]]), byId)])));
-""")
-        self.assertIn(["goal", "Consistent with what the session said at #2; not a check"], out)
-
-    def test_a_line_on_the_agent_beside_an_uncited_failed_check_is_withdrawn(self) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1"};
-const entries = nextCockpitWorkEntries(session, {facts:[
-  {fact_id:"c1", at:90, type:"tool_report", subject:"check", result:"failed",
-   result_source:"flag", summary:"pytest", source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"Claude Bash call and paired result", confidence:"exact"}},
-  {fact_id:"a1", at:95, type:"agent_message", summary:"All tests pass.",
-   source_session:{harness:"claude", sid:"s1"},
-   evidence:{source:"timestamped top-level assistant text record", confidence:"exact"}}]});
-const shape = nextCockpitReadingShape({revision_read_at:50, criteria:{
-  goal:{result:"consistent with the evidence read", cites:["a1"]},
-  line_1:{result:"consistent with the evidence read", cites:["a1"]}}},
-  {goal:"add retry", line_1:"the tests pass"}, entries, "");
-console.log(JSON.stringify(shape.criteria.map(row => [row.key, row.result, row.why])));
-""")
-        rows = {key: (result, why) for key, result, why in out}
-        self.assertEqual(reading.RESULT_UNVERIFIABLE, rows["line_1"][0])
-        self.assertIn("A check this session ran failed", rows["line_1"][1])
-        # Only an outcome line: the Goal may still rest on what the agent said.
-        self.assertEqual(reading.RESULT_CONSISTENT, rows["goal"][0])
-
-    def test_other_agent_entries_carry_no_line_on_the_page(self) -> None:
-        out = self.run_fixture("""
-const session = {harness:"claude", sid:"s1"};
-const kinds = ["decision", "work_birth", "stage_transition", "prepared_dispatch", "tool_use"];
-const results = kinds.map(type => {
-  const entries = nextCockpitWorkEntries(session, {facts:[
-    {fact_id:"x1", at:95, type, summary:"something the tooling published",
-     source_session:{harness:"claude", sid:"s1"},
-     evidence:{source:"transcript", confidence:"exact"}}]});
-  return nextCockpitReadingShape({revision_read_at:50, criteria:{
-    line_1:{result:"consistent with the evidence read", cites:["x1"]}}},
-    {goal:"add retry", line_1:"the retry backs off"}, entries, "")
-    .criteria.find(row => row.key === "line_1").result;
-});
-console.log(JSON.stringify(results));
-""")
-        self.assertEqual([reading.RESULT_UNVERIFIABLE] * 5, out)
-
-
 def _tooling(kind: str, fact_id: str, at: float) -> dict[str, Any]:
     return {
         "fact_id": fact_id,
@@ -882,22 +699,6 @@ class ATellingLineNeedsAMessageAfterTheRunTest(unittest.TestCase):
             with self.subTest(cites=cites):
                 row = self.read(1_700_000_900.0, cites)
                 self.assertEqual(reading.RESULT_CONSISTENT, row["result"])
-
-
-class ThePageAsksAgainOnlyWhereAPressCarriesAgentWordsTest(NextPageJsHarness):
-    def test_a_words_only_allow_covers_another_harness_and_not_claude_code(self) -> None:
-        out = self._run_page_js(
-            "await __settle();\n"
-            "nextData.reading = {providers:{codex:false}, words:{codex:true}, rebind:{}};\n"
-            "console.log(JSON.stringify({claude: nextReadingConsent('codex', 'claude'),\n"
-            "  codex: nextReadingConsent('codex', 'codex'), pi: nextReadingConsent('codex', 'pi'),\n"
-            "  harnesses: NEXT_READING_AGENT_WORDS_HARNESSES}));",
-            storage_prelude({}) + cockpit_tests.NextCockpitCompositionTest.FIXTURE,
-        )
-        self.assertEqual(False, out["claude"])
-        self.assertEqual(True, out["codex"])
-        self.assertEqual(True, out["pi"])
-        self.assertEqual(list(reading_route.AGENT_MESSAGE_HARNESSES), out["harnesses"])
 
 
 class TheAgentsMessagesRankBelowAWriteTest(unittest.TestCase):

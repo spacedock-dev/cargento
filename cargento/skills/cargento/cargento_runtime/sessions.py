@@ -543,8 +543,8 @@ def base_session(harness: str, sid: Any, project: str) -> Session:
         #
         # A key of its own rather than a wider `last_prompt`, and the reason is
         # not tidiness: `last_prompt` is read at ten render sites, two of which
-        # are not the session card — `next-projects.js` puts it FIRST in its own
-        # chain and `calm.js` renders it as a standalone line — so a labelled
+        # are not the session card — the Projects page puts it FIRST in its own
+        # chain and another surface renders it as a standalone line — so a labelled
         # "earlier, 40m: …" packed into it would leak onto both surfaces with no
         # label to explain it. `records.safe_text` also collapses newlines, so
         # two lines cannot share one string field at all.

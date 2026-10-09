@@ -3,9 +3,10 @@
 // Dependencies: Node >=26, Python, an owned headless Chrome. Compare complete runs with
 // `python3 scripts/frontend_cutover.py fluidity`; one run alone proves nothing.
 //
-// This driver is `frontend_baseline.mjs` with the declared differences below, and a test holds the
-// shared instrumentation to the baseline's own text: (1) it serves the assembled React page through
-// `frontend_fluidity_fixture.py`; (2) the update trigger is the page's own fallback-poll callback,
+// This driver began as the pre-React baseline probe (`frontend_baseline.mjs`, removed with the previous
+// interface, so the baseline can no longer be re-measured) with the declared differences below, and a test
+// holds the shared instrumentation to the text it had when the baseline's was compared line by line:
+// (1) it serves the React page through `frontend_fluidity_fixture.py`; (2) the update trigger is the page's own fallback-poll callback,
 // captured from `setInterval` (the React page has no global poll function, and a manual refresh
 // would bypass the poll path); (3) it also counts open EventSource connections and removed nodes
 // per update; (4) it measures whether an edited textarea, an opened disclosure and a focused
@@ -241,7 +242,6 @@ async function run(o) {
   try {
     report.sources = Object.fromEntries(await Promise.all([
       ['driver', fileURLToPath(import.meta.url)], ['fixture', join(here, 'frontend_fluidity_fixture.py')],
-      ['baselineFixture', join(here, 'frontend_baseline_fixture.py')],
     ].map(async ([name, path]) => {
       const content = await readFile(path);
       return [name, {sha256: createHash('sha256').update(content).digest('hex'), bytes: content.length}];
@@ -255,7 +255,6 @@ async function run(o) {
     control = lineQueue(backend.stdout);
     const ready = JSON.parse(await control.next(o.timeoutMs));
     if (!ready.ready) throw Error('fixture did not become ready: ' + backendErrors);
-    if (ready.frontend !== 'react') throw Error('fixture is not serving the React page: ' + ready.frontend);
     report.fixture = ready;
     const configure = async (cohort, state) => {
       backend.stdin.write(JSON.stringify({cohort, state, sequence: ++sequence}) + '\n');

@@ -487,7 +487,6 @@ CARGENTO_RUNTIME_FILES = (
     "skills/cargento/cargento_runtime/collectors/goose.py",
     "skills/cargento/cargento_runtime/collectors/droid.py",
     "skills/cargento/cargento_runtime/web/__init__.py",
-    "skills/cargento/cargento_runtime/web/index.html",
     "skills/cargento/cargento_runtime/web/react.html",
     "skills/cargento/cargento_runtime/web/react.integrity.json",
     "skills/cargento/cargento_runtime/web/react-licenses.txt",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import hashlib
 import io
 import json
 import os
@@ -13,8 +14,10 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -200,11 +203,28 @@ class FluidityReceiptTest(unittest.TestCase):
         receipt["summary"][0]["poll_samples_ms"][0] = 1.0
         self.assertTrue(any("summary is not what" in p for p in self.check(receipt)))
 
-    def test_a_changed_script_breaks_its_binding(self) -> None:
+    def test_a_script_that_changed_since_the_receipt_recorded_it_breaks_its_binding(self) -> None:
         receipt = self.mutated()
+        receipt["current_sources"]["driver"]["sha256"] = "0" * 64
+        problems = self.check(receipt)
+        self.assertTrue(
+            any("frontend_fluidity.mjs changed since this receipt" in p for p in problems)
+        )
+
+    def test_the_sources_the_runs_were_taken_with_cannot_be_rewritten(self) -> None:
+        # What was measured is bound by what every run recorded of itself, not by the tree: the
+        # driver and fixture of the committed runs no longer exist as they were.
+        receipt = self.mutated()
+        self.assertNotEqual(receipt["source_bindings"], receipt["current_sources"])
         receipt["source_bindings"]["driver"]["sha256"] = "0" * 64
         problems = self.check(receipt)
-        self.assertTrue(any("frontend_fluidity.mjs changed since the runs" in p for p in problems))
+        self.assertTrue(any("different driver than the receipt binds" in p for p in problems))
+
+    def test_the_receipt_says_the_baseline_is_historical_and_cannot_be_remeasured(self) -> None:
+        self.assertEqual(cutover.BASELINE_STATUS, self.receipt["baseline_status"])
+        self.assertIn("cannot be re-measured", self.receipt["baseline_status"])
+        for name in ("frontend_baseline.mjs", "frontend_baseline_fixture.py"):
+            self.assertFalse((SCRIPTS / name).exists(), name)
 
     def test_a_changed_baseline_breaks_its_binding(self) -> None:
         receipt = self.mutated()
@@ -219,10 +239,7 @@ class FluidityReceiptTest(unittest.TestCase):
         receipt["runs"].pop()
         self.assertTrue(any("must embed 3 complete runs" in p for p in self.check(receipt)))
 
-    def test_a_run_of_another_page_or_without_the_stream_is_refused(self) -> None:
-        receipt = self.mutated()
-        receipt["runs"][1]["fixture"]["frontend"] = "legacy"
-        self.assertTrue(any("did not serve the React page" in p for p in self.check(receipt)))
+    def test_a_run_without_the_stream_is_refused(self) -> None:
         receipt = self.mutated()
         receipt["runs"][2]["leadership"]["leaderAcquired"] = False
         self.assertTrue(any("never took the live stream" in p for p in self.check(receipt)))
@@ -873,8 +890,7 @@ class FluidityFixtureTest(unittest.TestCase):
     def test_it_serves_the_react_document_with_the_baselines_rows(self) -> None:
         with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
             fixture = fixture_module.build_fixture(Path(scratch))
-            self.assertEqual("react", fixture.application.config.frontend)
-            self.assertEqual(load_frontend_page("react"), fixture.page)
+            self.assertEqual(load_frontend_page(), fixture.page)
             shipped = load(cutover.REACT_DOCUMENT)["document"]["sha256"]
             self.assertEqual(shipped, fixture.describe()["page_sha256"])
             for sequence, (cohort, size) in enumerate(
@@ -882,8 +898,11 @@ class FluidityFixtureTest(unittest.TestCase):
             ):
                 fixture.configure(cohort=cohort, state="healthy", sequence=sequence)
                 data = fixture.application.collect(show_all=True)
-                self.assertEqual("react", data["frontend"])
+                self.assertTrue(data["build"].startswith("react-"))
                 self.assertEqual(size, len(data["sessions"]))
+                self.assertEqual(size, data["baseline_fixture"]["session_count"])
+                self.assertEqual("b0000000", data["baseline_fixture"]["current_session"]["sid"])
+                self.assertTrue(all("tasks" in r and "subagents" in r for r in data["sessions"]))
                 self.assertTrue(
                     all(
                         r["title"].startswith(f"Baseline {sequence} session")
@@ -894,6 +913,67 @@ class FluidityFixtureTest(unittest.TestCase):
             self.assertTrue(config.model_calls_disabled)
             self.assertFalse(config.usage_fetch_enabled)
             self.assertFalse(config.focus_enabled)
+            self.assertFalse(config.history_enabled)
+            self.assertTrue(config.state_dir.resolve().is_relative_to(Path(scratch).resolve()))
+
+    def test_empty_and_unavailable_are_different_production_states(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
+            fixture = fixture_module.build_fixture(Path(scratch))
+            fixture.configure(cohort="small", state="empty", sequence=2)
+            empty = fixture.application.collect(show_all=True)
+            fixture.configure(cohort="small", state="unavailable", sequence=3)
+            unavailable = fixture.application.collect(show_all=True)
+            self.assertEqual([], empty["sessions"])
+            self.assertEqual([], unavailable["sessions"])
+            self.assertIsNone(empty["harnesses"][0]["error"])
+            self.assertIsNotNone(unavailable["harnesses"][0]["error"])
+
+    def test_controls_are_strict_and_sequence_monotonic(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
+            fixture = fixture_module.build_fixture(Path(scratch))
+            for command in (
+                {"cohort": "real", "state": "healthy", "sequence": 1},
+                {"cohort": "small", "state": "online", "sequence": 1},
+                {"cohort": "small", "state": "healthy", "sequence": True},
+                {"cohort": "small", "state": "healthy", "sequence": 0},
+            ):
+                with self.subTest(command=command), self.assertRaises(ValueError):
+                    fixture.control(command)
+            fixture.configure(cohort="small", state="healthy", sequence=1)
+            with self.assertRaises(ValueError):
+                fixture.configure(cohort="small", state="healthy", sequence=1)
+
+    def test_it_serves_its_page_and_each_board_over_http_and_refuses_a_busy_port(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
+            fixture = fixture_module.build_fixture(Path(scratch))
+            # This listener is ours, and proves the fixture never steals a busy port.
+            with socket.socket() as occupied:
+                for port in fixture_module.ALLOWED_PORTS:
+                    try:
+                        occupied.bind(("127.0.0.1", port))
+                        occupied.listen()
+                        break
+                    except OSError:
+                        continue
+                else:
+                    self.skipTest("no owned port is free")
+                with self.assertRaises(OSError):
+                    fixture.server(port)
+            server = fixture.server(port)
+            self.addCleanup(server.server_close)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            self.addCleanup(thread.join, 2)
+            self.addCleanup(server.shutdown)
+            for sequence, cohort, size in ((1, "small", 5), (2, "median", 50)):
+                fixture.configure(cohort=cohort, state="healthy", sequence=sequence)
+                url = f"http://127.0.0.1:{port}/api/data"
+                with urllib.request.urlopen(url, timeout=2) as response:
+                    data = json.load(response)
+                self.assertEqual(sequence, data["baseline_fixture"]["sequence"])
+                self.assertEqual(size, len(data["sessions"]))
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=2) as response:
+                self.assertEqual(fixture.page, response.read())
 
     def test_the_command_refuses_a_foreign_port_before_binding(self) -> None:
         result = subprocess.run(
@@ -950,43 +1030,31 @@ server.listen(0, '127.0.0.1', () => {
 
 
 class FluidityDriverTest(unittest.TestCase):
-    """The driver measures like the baseline and refuses what it must not touch."""
+    """The driver measures as the baseline did and refuses what it must not touch."""
+
+    # The text the page is instrumented with. When the baseline probe still existed it was compared
+    # with this line by line: three baseline lines are rewritten to keep each interval callback and
+    # to hold the two new collections, and one block wrapping EventSource is added; nothing else
+    # differed. The probe is gone, so the digest below stands in for that comparison, and a change
+    # to the instrumentation moves every later measurement away from the baseline's.
+    INSTRUMENTATION_SHA256 = "51137df81c5f6c10ed595302a743fb7ace9c41afce50e56332591a3fe80b0bd4"
 
     @staticmethod
-    def instrumentation(name: str) -> list[str]:
-        text = (SCRIPTS / name).read_text(encoding="utf-8")
+    def instrumentation() -> list[str]:
+        text = (SCRIPTS / "frontend_fluidity.mjs").read_text(encoding="utf-8")
         match = re.search(r"const instrumentation = `(.*?)\n\}\)\(\)`;", text, re.DOTALL)
         assert match is not None
         return match.group(1).splitlines()
 
-    def test_the_shared_instrumentation_is_the_baselines_apart_from_two_declared_additions(
-        self,
-    ) -> None:
-        base = self.instrumentation("frontend_baseline.mjs")
-        mine = self.instrumentation("frontend_fluidity.mjs")
-        added = [line for line in mine if line not in base]
-        removed = [line for line in base if line not in mine]
-        # Two baseline lines are rewritten to keep each interval callback, one is widened to hold
-        # the two new collections, and one block wraps EventSource; nothing else may differ.
-        self.assertEqual(3, len(removed), removed)
-        self.assertEqual(9, len(added), added)
-        joined = "\n".join(added)
+    def test_the_shared_instrumentation_is_the_one_the_baseline_comparison_held(self) -> None:
+        lines = self.instrumentation()
+        digest = hashlib.sha256("\n".join(lines).encode()).hexdigest()
+        self.assertEqual(self.INSTRUMENTATION_SHA256, digest)
+        joined = "\n".join(lines)
         self.assertIn("intervalCalls.set(id, {fn, ms})", joined)
         self.assertIn("intervalCalls.delete(id)", joined)
         self.assertIn("intervalCalls: new Map(), eventSources: new Set()", joined)
         self.assertIn("class extends NativeEventSource", joined)
-        for line in removed:
-            self.assertTrue(
-                any(
-                    piece in line
-                    for piece in (
-                        "activeIntervals.add(id)",
-                        "clearInterval(id)",
-                        "sockets: new Set()",
-                    )
-                ),
-                line,
-            )
 
     def test_it_polls_the_pages_own_callback_not_a_manual_refresh(self) -> None:
         text = (SCRIPTS / "frontend_fluidity.mjs").read_text(encoding="utf-8")
@@ -1000,7 +1068,7 @@ class FluidityDriverTest(unittest.TestCase):
         self.assertNotIn("4553", text)
         self.assertIn("requireFreePort", text)
         fixture = (SCRIPTS / "frontend_fluidity_fixture.py").read_text(encoding="utf-8")
-        self.assertIn("frontend_baseline_fixture", fixture)
+        self.assertNotIn("import frontend_baseline_fixture", fixture)
 
     @unittest.skipIf(node_major() < 26, "Node 26 or later unavailable")
     def test_help_and_a_foreign_port_are_refused_before_anything_launches(self) -> None:

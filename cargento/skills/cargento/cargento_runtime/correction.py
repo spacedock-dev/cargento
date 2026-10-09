@@ -15,8 +15,13 @@ words a reading read.
 `compose` is pure. The route hands it the session's published row, its observed record and the
 later-direction floor (`annotations.direction_floor`), and it answers the parts or why there are
 none. A line's state is re-derived from the stored reading against the record as it stands now,
-with the page's rules for whether a verdict survives (`nextCockpitReadingCriterion`), so the text
-never claims a departure the panel beside it has demoted.
+with the previous page's rules for whether a verdict survives
+(`nextCockpitReadingCriterion`), so the text never claims a departure the panel beside it
+has demoted.
+
+The `next*` functions this module names are the previous page's. They survive only as the frozen,
+study-bound parts under `web/` (`tests/test_frozen_study_parts.py` pins them); the React page ports
+the same rules under `frontend/src/drift/`.
 """
 
 from __future__ import annotations
@@ -54,7 +59,7 @@ Part = str | dict[str, str]
 
 
 def clock_text(at: float) -> str:
-    """Hours and minutes on this machine's clock, the page's `nextSessionClock`."""
+    """Hours and minutes on this machine's clock, the previous page's `nextSessionClock`."""
     then, today = time.localtime(at), time.localtime()
     pattern = "%H:%M" if then[:3] == today[:3] else "%Y-%m-%d %H:%M"
     return time.strftime(pattern, then)
@@ -88,7 +93,7 @@ def _as_evidence(fact: Mapping[str, Any], harness: str) -> dict[str, Any]:
 
 
 def _later_directions(facts: list[dict[str, Any]], floor: float | None) -> list[dict[str, Any]]:
-    """The reader's own messages after the words, the page's `nextCockpitLaterDirections`."""
+    """The reader's own messages after the words, as `nextCockpitLaterDirections` took them."""
     if floor is None:
         return []
     return [
@@ -136,7 +141,7 @@ def _failed_checks(
 
 
 def _reading_window(assessment: Mapping[str, Any]) -> float:
-    """Where the reading's window opened, as the page derives it (`nextCockpitReadingShape`)."""
+    """Where the reading's window opened, as `nextCockpitReadingShape` derived it."""
     stored = reading.valid_prompt_time(assessment.get("window_start"))
     if stored is not None:
         return stored
@@ -179,7 +184,7 @@ class _Rows:
         row = self.criteria.get(name)
         # A stored `why` the page knows explains only a row its own rules already left
         # unverifiable, so it never demotes one here; one it does not know reads as unreadable
-        # and demotes the row, as `nextCockpitReadingCriterion` does (injection F4).
+        # and demotes the row, as `nextCockpitReadingCriterion` did (injection F4).
         why = row.get("why") if isinstance(row, dict) else None
         if (
             self.unsettled
@@ -436,7 +441,7 @@ def _claim_line(
 
 
 def _latest_result(failed: list[dict[str, Any]]) -> dict[str, Any]:
-    """The failed check whose result arrived last, as the page's `nextDriftAnswer` picks it.
+    """The failed check whose result arrived last, as `nextDriftAnswer` picked it.
 
     By `reading.evidence_at`, so a check called first and returned last wins. `failed` is in the
     page's order (call time, then id) and a tie keeps the later entry, which the page's `>=` does.

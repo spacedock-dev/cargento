@@ -1,11 +1,11 @@
 RELEASES ARE ON HOLD
 
-Why: the React dashboard is now the default, and the legacy page is kept only as a temporary
-rollback (`--frontend legacy`). A release cut now would publish both renderers, and the final
-checks on the build that will actually ship have not passed.
+Why: the React dashboard is the only dashboard, and the final checks on the build that will
+actually ship have not passed.
 
 What lifts it, all on one commit of main:
-  1. The legacy frontend, its assets, byte pins and tests are removed.
+  1. Done: the legacy frontend, its rollback, byte pins and tests are removed. What remains are
+     the legacy script parts frozen for the recorded Intent and drift replay, which still ship.
   2. The final browser checks pass on that build.
   3. The Python-only installed copy and the backend-connected development checks pass on that
      same build.

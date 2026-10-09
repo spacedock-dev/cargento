@@ -29,7 +29,7 @@ from cargento_runtime import sessions as runtime_sessions
 from cargento_runtime.config import RuntimeConfig, build_runtime_config
 from cargento_runtime.state import build_runtime_state
 
-from .next_harness import named_machine
+from .reading_pins import named_machine
 from .support import make_config, make_runtime, make_server, serve_until_closed
 from .support import os_name as support_os_name
 
@@ -851,20 +851,6 @@ class AStoreThatCannotBeReadIsNeverOverwrittenTest(_StoreCase):
 
         self.assertEqual(annotation_store.OUTCOME_STORED, outcome)
 
-    def test_the_page_has_a_sentence_for_the_refusal(self) -> None:
-        source = (
-            REPO
-            / "cargento"
-            / "skills"
-            / "cargento"
-            / "cargento_runtime"
-            / "web"
-            / "next-cockpit.js"
-        ).read_text(encoding="utf-8")
-        self.assertIn('untrusted: "untrusted"', source)
-        self.assertIn(annotation_store.OUTCOME_UNTRUSTED, annotation_store.OUTCOMES)
-        self.assertIn("untrusted", annotation_store.DISCARD_SENTENCES)
-
     def test_the_ruling_discloses_the_downgrade_over_a_large_store(self) -> None:
         text = (REPO / "docs" / "design-reading-a-session.md").read_text(encoding="utf-8")
         flat = re.sub(r"\s+", " ", text)
@@ -1012,19 +998,6 @@ class ASessionHeldRawIsNeverWrittenOverTest(_StoreCase):
                 self.assertEqual(annotation_store.OUTCOME_UNREADABLE, outcome)
                 with open(annotation_store.store_path(self.config), "rb") as handle:
                     self.assertEqual(before, handle.read())
-
-    def test_the_refusal_has_a_sentence_naming_what_the_reader_can_do(self) -> None:
-        source = (
-            REPO
-            / "cargento"
-            / "skills"
-            / "cargento"
-            / "cargento_runtime"
-            / "web"
-            / "next-cockpit.js"
-        ).read_text(encoding="utf-8")
-        self.assertIn('unreadable: "unreadable"', source)
-        self.assertIn(annotation_store.OUTCOME_UNREADABLE, annotation_store.OUTCOMES)
 
 
 class AnUnreadableStoreNamesTheFileAndTheStepTest(_StoreCase):

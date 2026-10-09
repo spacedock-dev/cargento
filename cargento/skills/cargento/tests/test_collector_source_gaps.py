@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -16,12 +17,11 @@ from cargento_runtime import io as runtime_io
 
 from . import test_sqlite_collectors as sqlite_fixtures
 from .fixtures import protobuf_bytes_field, write_antigravity_metadata
-from .next_harness import NextPageJsHarness
 from .support import SERVER_PATH, runtime, store_patch
 from .test_gemini_antigravity import _generation_blob, _write_antigravity_generations
 
 
-class CollectorSourceGapsTest(NextPageJsHarness):
+class CollectorSourceGapsTest(unittest.TestCase):
     NOW = 1_700_000_000.0
     SID = "11111111-1111-1111-1111-111111111111"
 
@@ -40,15 +40,6 @@ class CollectorSourceGapsTest(NextPageJsHarness):
         self.assertTrue(badge["discovered"])
         self.assertIsNone(badge["error"])
         return dict(rows[0])
-
-    def _notice(self, payload: dict[str, Any], expected: str | None) -> None:
-        html = self._run_page_js(
-            f"nextData = {json.dumps(payload)};\nconsole.log(JSON.stringify(nextSessionsView()));"
-        )
-        if expected is None:
-            self.assertNotIn("Source not fully read", html)
-        else:
-            self.assertIn(f"Source not fully read: {expected}", html)
 
     def _antigravity_store(self, root: Path, *, parent: str | None = None) -> Path:
         directory = root / "conversations"
@@ -103,7 +94,6 @@ class CollectorSourceGapsTest(NextPageJsHarness):
                 )
                 healthy = arm in ("empty_table", "valid")
                 self.assertEqual([] if healthy else ["model"], row["source_gaps"])
-                self._notice(payload, None if healthy else "model")
 
     def test_antigravity_blob_io_failures_keep_the_model_gap(self) -> None:
         real_connect = runtime_io.sqlite_module.connect
@@ -150,7 +140,6 @@ class CollectorSourceGapsTest(NextPageJsHarness):
             self.assertEqual([], row["source_gaps"])
             self.assertEqual(1, len(row["subagents"]))
             self.assertIsNone(row["subagents"][0]["model"])
-            self._notice(payload, None)
 
     def test_opencode_unread_roles_disclose_with_or_without_an_older_prompt(self) -> None:
         for raw in ("{", "[]", "{}", '{"role":"future"}', '{"role":[]}'):
@@ -178,7 +167,6 @@ class CollectorSourceGapsTest(NextPageJsHarness):
                     self.assertEqual("old prompt" if older else "", row["last_prompt"])
                     self.assertEqual(older, row["turn"] is not None)
                     self.assertEqual(["message history", "block state"], row["source_gaps"])
-                    self._notice(payload, "message history")
 
     def test_opencode_recognized_messages_remain_gap_free(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -198,7 +186,6 @@ class CollectorSourceGapsTest(NextPageJsHarness):
             self.assertEqual("new prompt", row["last_prompt"])
             self.assertEqual("gpt-5.6", row["model"])
             self.assertEqual(["block state"], row["source_gaps"])
-            self._notice(payload, "block state")
 
     def test_an_unknown_role_does_not_extend_a_measured_opencode_turn(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -301,6 +288,3 @@ print(json.dumps({"payload": payload, "sqlite": report["sqlite"],
                     self.assertEqual(expected, active["source_gaps"])
                     self.assertFalse(rows["historical"]["active"])
                     self.assertEqual(["model"] if absent else [], rows["historical"]["source_gaps"])
-                    self._notice(
-                        payload, "message history, model, token accounting" if absent else None
-                    )

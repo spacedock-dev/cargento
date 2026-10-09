@@ -1,8 +1,8 @@
 /*
  * The Projects list and a project's page in a real browser, against the real backend (DRC-4826).
  *
- * Two kinds of proof. The DIFFERENTIAL half drives the legacy page and the React page in the same Chromium over
- * the same board and compares what a reader can read: the Projects list group by group and row by row, then each
+ * Two kinds of proof. The DIFFERENTIAL half drives the React page over a board and compares what a reader can read
+ * with what the previous interface showed for it: the Projects list group by group and row by row, then each
  * project's header, scope tree, recovery strip, tab strip and its Now and Course panels, for the proof board
  * (several projects, a plan, the same sid under two harnesses, a session that ended without an end stamp, a
  * source gap, a project with no plan or context, a unicode label, a label that differs by a space), for the
@@ -13,16 +13,15 @@
  * through the board's own revisions and through tab changes; a scope survives leaving the project and coming
  * back; an open plan survives a poll; and 320, 375 and 640 CSS px layouts do not scroll sideways.
  *
- * The legacy side of the DIFFERENTIAL half is a RECORDING (`support/golden.mjs`, `CARGENTO_LEGACY=replay|live|record`,
- * default replay): in replay no legacy backend or page is started and the React page is held to what the legacy
- * page said, for the same board, when it was recorded. A recorded reading is keyed by the step, the fragment and
+ * What the previous interface said is a RECORDING (`support/golden.mjs`, `frontend/test/golden/e2e/project-parity.json`)
+ * that cannot be remade because that interface is gone. A recorded reading is keyed by the step, the fragment and
  * a digest of the board and contexts served, so a changed generator or fixture fails as "no golden" instead of
  * comparing nothing. Every browser here runs in UTC, because the pages print clock times in the local zone and a
- * recording must read the same on any machine. Dropped from replay, because nothing asserted against them: the
- * legacy page's screenshots.
+ * recording must read the same on any machine. Dropped with the interface, because nothing asserted against them:
+ * its screenshots.
  *
  * Models, usage, notifications and the terminal are off or replaced: the page's clipboard is a recorder, the
- * backend serving both pages answers only the document and its health, and every board and project-context read
+ * backend serving the page answers only the document and its health, and every board and project-context read
  * is the one this script serves. The Decisions and Console tabs and the steering bar belong to the steering step
  * and are outside the comparison. Run with `pnpm test:project:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only
  * the steps whose name matches, `PROJECT_E2E_SEEDS` sets how many generated boards the differential compares.
@@ -46,7 +45,6 @@ import {
 
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const golden = goldenFor('project-parity');
-const LIVE = golden.live;
 /* The React reading in the stable form a recorded observation has, so the two compare as plain data. */
 const norm = (value) => jsonSafe(normalise(value));
 // The key that undoes in a text box: Command on macOS, Control elsewhere.
@@ -167,8 +165,6 @@ const summarizeProject = (tab) => {
 };
 
 /* ---- pages ---- */
-const legacyReady = (page) =>
-  page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
 const reactReady = (page) =>
   page.waitForFunction(
     () =>
@@ -178,10 +174,10 @@ const reactReady = (page) =>
       ),
   );
 
-async function load(opened, origin, kind, fragment = '') {
+async function load(opened, origin, fragment = '') {
   await opened.page.goto('about:blank');
   await opened.page.goto(origin + '/' + fragment);
-  await (kind === 'legacy' ? legacyReady : reactReady)(opened.page);
+  await reactReady(opened.page);
   await opened.page.waitForTimeout(patience(120));
 }
 
@@ -198,7 +194,7 @@ async function settled(page, read, ...args) {
   throw new Error('The page kept changing.');
 }
 
-/* One board for both pages, so they share one clock: every read of /api/data answers it, every project-context
+/* One board for the page, so it has one clock: every read of /api/data answers it, every project-context
    read answers `holder.contexts` by `project\nsession` (the project's own where the session has none), and the
    stream is refused so nothing else moves. A context of `null` is a read that fails. */
 async function freeze(opened, holder) {
@@ -243,41 +239,6 @@ function firstDifferenceIn(left, right, path) {
   return `${path}: ${JSON.stringify(left)?.slice(0, 260)} != ${JSON.stringify(right)?.slice(0, 260)}`;
 }
 
-/* The legacy page is the oracle, not the subject. On a hosted macOS runner it can stop drawing after leaving
-   and returning, so a legacy page that does not draw is recorded and the React page is still held to every
-   assertion; a comparison with legacy only runs while legacy draws. */
-const legacyDraw = { stale: false };
-
-class LegacyDidNotDraw extends Error {}
-
-/* The legacy page's reading under `key`. Replay reads the recording. Live and record read the page, and a page that
-   stops drawing is soft in live (React is then held to the recording, when there is one) and a refusal in record,
-   because a recording must come from a legacy page that drew every time. A golden mismatch is never soft. */
-async function legacySays(key, read) {
-  if (golden.mode === 'replay') return golden.observe(key, read);
-  const fallback = () => {
-    if (golden.mode === 'record')
-      throw new Error(
-        `The legacy page did not draw while recording "${key}"; record again on an idle machine.`,
-      );
-    return golden.recorded(key) ?? null;
-  };
-  if (legacyDraw.stale) return fallback();
-  try {
-    return await golden.observe(key, async () => {
-      try {
-        return await read();
-      } catch (error) {
-        throw new LegacyDidNotDraw(error.message, { cause: error });
-      }
-    });
-  } catch (error) {
-    if (!(error instanceof LegacyDidNotDraw)) throw error;
-    legacyDraw.stale = true;
-    return fallback();
-  }
-}
-
 /* What was served, as a short digest: part of a recorded key, so a board that changed is a key that is absent. */
 const digestOf = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 10);
@@ -302,15 +263,11 @@ const fragmentFor = (label, { focus, tab } = {}) =>
   `#n=project:${E(label)}${focus ? `:${E(focus)}` : ''}${tab && tab !== 'now' ? `:${tab}` : ''}`;
 
 const browser = await chromium.launch({ env: { ...process.env, TZ: 'UTC' } });
-const board = await startSessionsBoard({ legacy: LIVE });
+const board = await startSessionsBoard();
 const reactOrigins = [board.react.origin, board.react.viteOrigin];
 const opened = [];
-async function newPage(kind, options = {}) {
-  const page = await openPage(
-    browser,
-    kind === 'legacy' ? board.legacy.origin : reactOrigins,
-    options,
-  );
+async function newPage(options = {}) {
+  const page = await openPage(browser, reactOrigins, options);
   await recordClipboard(page.context);
   await instrumentResources(page.context);
   opened.push(page);
@@ -319,30 +276,22 @@ async function newPage(kind, options = {}) {
 
 try {
   await mkdir(SHOTS, { recursive: true });
-  const legacy = LIVE ? await newPage('legacy') : null;
-  const react = await newPage('react');
+  const react = await newPage();
   const holder = { body: proof.board, contexts: contextsFor(proof.contexts) };
-  if (legacy) await freeze(legacy, holder);
   await freeze(react, holder);
-  /* The pages that exist: the legacy page is started only to be read or recorded. */
-  const pages = LIVE ? [legacy, react] : [react];
 
   /* `name` says what is being compared, and the key adds the fragment and what the board and contexts held at the
      moment, so two reads of one fragment over different boards are different keys. */
   async function both(name, fragment, read, ...args) {
-    await load(react, board.react.origin, 'react', fragment);
+    await load(react, board.react.origin, fragment);
     const mine = await settled(react.page, read, ...args);
     const key = `${name} | ${fragment} | ${digestOf([holder.body, holder.contexts, args])}`;
-    const old = await legacySays(key, async () => {
-      await load(legacy, board.legacy.origin, 'legacy', fragment);
-      return settled(legacy.page, read, ...args);
-    });
-    return { mine, old };
+    return { mine, old: golden.observe(key) };
   }
 
   /* ===================== DIFFERENTIAL: the proof board ===================== */
   await step(
-    'differential: the Projects list reads the same, group by group and row by row',
+    'differential: the Projects list reads as recorded, group by group and row by row',
     async () => {
       const { mine, old } = await both('the list', '#n=projects', summarizeList);
       assert.ok(mine.groups?.length === 2, 'the React list draws both groups');
@@ -473,7 +422,7 @@ try {
 
   /* ===================== DIFFERENTIAL: generated boards ===================== */
   await step(
-    `differential: ${SEEDS} generated boards read the same, list and project pages`,
+    `differential: ${SEEDS} generated boards read as recorded, list and project pages`,
     async () => {
       let lists = 0;
       let pages = 0;
@@ -516,7 +465,7 @@ try {
   );
 
   await step(
-    'differential: hostile text is text on both pages, and draws no element, selector or script',
+    'differential: hostile text is text, as recorded, and draws no element, selector or script',
     async () => {
       const hostile = [
         '"]\'><img src=x onerror=globalThis.__hit=1>',
@@ -556,7 +505,7 @@ try {
 
   /* ===================== BEHAVIOUR: resources, and nothing the reader did not press for ===================== */
   async function clocked(fragment, { storage, initScripts = [] } = {}) {
-    const o = await newPage('react');
+    const o = await newPage();
     const state = { body: proof.board, contexts: contextsFor(proof.contexts), polls: 0 };
     await o.page.clock.install({ time: Date.now() });
     if (storage)
@@ -613,7 +562,7 @@ try {
   await step(
     'resources: a project page opens one stream and reads once, under StrictMode, and navigation adds nothing',
     async () => {
-      const live = await newPage('react');
+      const live = await newPage();
       try {
         await live.page.goto(board.react.origin + '/' + fragmentFor('alpha/app'));
         await reactReady(live.page);
@@ -801,7 +750,7 @@ try {
       } finally {
         await blocked.close();
       }
-      // The legacy page's unnamespaced key is not adopted.
+      // The previous interface's unnamespaced key is not adopted.
       const stray = await clocked(fragmentFor('alpha/app', { tab: 'course' }), {
         storage: { 'cargento.workstream.collapsed': '1' },
       });
@@ -824,7 +773,7 @@ try {
   );
 
   await step(
-    'workstream: a change this tab saw is listed, and the legacy page lists the same change from the same boards',
+    'workstream: a change this tab saw is listed, and the previous interface listed the same change from the same boards',
     async () => {
       const changed = (state, generated) => ({
         generated,
@@ -835,10 +784,10 @@ try {
       const results = {};
       /* The changes a page listed after two further boards reached it. Each row begins with the clock time the page
          saw it, which is the moment of the run, so a reading is the last two rows without it. */
-      const listed = async (o, origin, kind) => {
+      const listed = async (o, origin) => {
         holder.body = proof.board;
-        await load(o, origin, kind, fragmentFor('alpha/app', { tab: 'course' }));
-        // Two further boards reach the page the way a poll would: the legacy page and this one both observe them.
+        await load(o, origin, fragmentFor('alpha/app', { tab: 'course' }));
+        // Two further boards reach the page the way a poll would.
         for (const [index, state] of ['idle', 'working'].entries()) {
           holder.body = {
             ...proof.board,
@@ -864,15 +813,12 @@ try {
       };
       const lastTwo = (reading) =>
         reading.rows.slice(-2).map((row) => row.replace(/^\d\d:\d\d/, ''));
-      results.react = await listed(react, board.react.origin, 'react');
-      const legacyRows = await golden.observe(
-        'workstream: the changes the legacy page listed',
-        async () => lastTwo(await listed(legacy, board.legacy.origin, 'legacy')),
-      );
+      results.react = await listed(react, board.react.origin);
+      const recordedRows = golden.observe('workstream: the changes the legacy page listed');
       holder.body = proof.board;
       assert.ok(results.react.rows.length >= 1, 'this tab observed a change');
-      // The reload of both pages above read the board once each, so each saw the same two changes.
-      assert.deepEqual(lastTwo(results.react), legacyRows);
+      // The reload above read the board once, so the page saw the same two changes the recording did.
+      assert.deepEqual(lastTwo(results.react), recordedRows);
       return results.react;
     },
   );
@@ -1159,8 +1105,8 @@ try {
     'keyboard: a project row opens with Enter, the tab strip wraps with the arrows, and a scope is reached by Tab',
     async () => {
       const results = {};
-      const openRow = async (name, opened_, origin, kind) => {
-        await load(opened_, origin, kind, '#n=projects');
+      const openRow = async (name, opened_, origin) => {
+        await load(opened_, origin, '#n=projects');
         await opened_.page.evaluate(() => globalThis.document.activeElement?.blur());
         let stops = 0;
         for (; stops < 60; stops += 1) {
@@ -1175,11 +1121,9 @@ try {
         await opened_.page.waitForFunction(() => globalThis.location.hash.includes('project:'));
         return { opens: await opened_.page.evaluate(() => globalThis.location.hash) };
       };
-      results.legacy = await legacySays('keyboard: a project row opens with Enter', () =>
-        openRow('legacy', legacy, board.legacy.origin, 'legacy'),
-      );
-      results.react = await openRow('react', react, board.react.origin, 'react');
-      if (results.legacy) assert.deepEqual(results.react, results.legacy);
+      results.recorded = golden.observe('keyboard: a project row opens with Enter');
+      results.react = await openRow('react', react, board.react.origin);
+      assert.deepEqual(results.react, results.recorded);
       const o = react;
       await o.page.waitForSelector('article.next-project-detail');
       const tab = (name) => o.page.getByRole('tab', { name: new RegExp(`^${name}`) });
@@ -1214,7 +1158,7 @@ try {
       const widths = [320, 375, 640, 1280];
       const overflow = [];
       for (const width of widths) {
-        const o = await newPage('react', { viewport: { width, height: 900 } });
+        const o = await newPage({ viewport: { width, height: 900 } });
         try {
           await o.page.route('**/api/data*', (route) =>
             route.fulfill({
@@ -1269,11 +1213,11 @@ try {
     },
   );
 
-  /* ===================== computed style against the legacy page ===================== */
+  /* ===================== computed style against the recording ===================== */
   /* A rule that stopped reaching its target shows as a different computed value, not as different text, so the
      parity of three layout facts is read from the browser: the side inset of a tab's panel (and where its
      content starts), the tab strip's own margin, and how the workstream toggle is drawn. Each is compared to
-     the legacy page's value at a phone width and a desktop width. */
+     the recorded value at a phone width and a desktop width. */
   const computedLayout = () => {
     const { document, getComputedStyle } = globalThis;
     const pick = (node, names) => {
@@ -1317,18 +1261,18 @@ try {
     };
   };
   await step(
-    'computed style: a tab panel’s inset, the tab strip’s margin and the workstream toggle match the legacy page at 375 and 1280',
+    'computed style: a tab panel’s inset, the tab strip’s margin and the workstream toggle match the recording at 375 and 1280',
     async () => {
       const results = {};
       for (const width of [375, 1280]) {
-        for (const o of pages) await o.page.setViewportSize({ width, height: 900 });
+        await react.page.setViewportSize({ width, height: 900 });
         for (const tab of ['now', 'course']) {
           const { mine, old } = await both(
             `computed style at ${width}`,
             fragmentFor('alpha/app', { tab }),
             computedLayout,
           );
-          // Held to fixed values as well as to legacy's, so a legacy page that did not draw cannot excuse a regression.
+          // Held to fixed values as well as to the recording's, so a recording cannot excuse a regression.
           assert.equal(
             mine.panel['padding-left'],
             '12px',
@@ -1349,7 +1293,7 @@ try {
             assert.equal(mine.toggle['padding-left'], '0px');
             assert.match(mine.toggle['font-family'], /mono/i);
           }
-          if (old) assert.equal(firstDifference(old, mine), null, `${width}px ${tab}`);
+          assert.equal(firstDifference(old, mine), null, `${width}px ${tab}`);
           results[`${width}:${tab}`] = {
             inset: mine.panel['padding-left'],
             tabsMargin: mine.tabs['margin-top'],
@@ -1357,38 +1301,29 @@ try {
           };
         }
       }
-      for (const o of pages) await o.page.setViewportSize({ width: 1280, height: 720 });
+      await react.page.setViewportSize({ width: 1280, height: 720 });
       return results;
     },
   );
 
   /* ===================== screenshots ===================== */
-  await step(
-    'screenshots: the list and a project page, on both pages, wide and narrow',
-    async () => {
-      for (const [name, o, origin, kind] of [
-        ['legacy', legacy, board.legacy?.origin, 'legacy'],
-        ['react', react, board.react.origin, 'react'],
-      ]) {
-        if (name === 'legacy' && (!LIVE || legacyDraw.stale)) continue;
-        for (const [label, fragment] of [
-          ['projects-list', '#n=projects'],
-          ['project-alpha-now', fragmentFor('alpha/app')],
-          ['project-alpha-course', fragmentFor('alpha/app', { tab: 'course' })],
-        ]) {
-          for (const width of [1280, 375]) {
-            await o.page.setViewportSize({ width, height: 1100 });
-            await load(o, origin, kind, fragment);
-            await o.page.waitForTimeout(patience(300));
-            const file = `${SHOTS}project-views-${label}-${name}-${width}.png`;
-            await o.page.screenshot({ path: file, fullPage: true });
-            shots.push(file);
-          }
-        }
+  await step('screenshots: the list and a project page, wide and narrow', async () => {
+    for (const [label, fragment] of [
+      ['projects-list', '#n=projects'],
+      ['project-alpha-now', fragmentFor('alpha/app')],
+      ['project-alpha-course', fragmentFor('alpha/app', { tab: 'course' })],
+    ]) {
+      for (const width of [1280, 375]) {
+        await react.page.setViewportSize({ width, height: 1100 });
+        await load(react, board.react.origin, fragment);
+        await react.page.waitForTimeout(patience(300));
+        const file = `${SHOTS}project-views-${label}-react-${width}.png`;
+        await react.page.screenshot({ path: file, fullPage: true });
+        shots.push(file);
       }
-      return { shots: shots.length };
-    },
-  );
+    }
+    return { shots: shots.length };
+  });
 
   for (const page of opened) {
     // Every page this run opened stayed inside the board's own origins.
@@ -1412,7 +1347,6 @@ console.log(
     {
       project: receipts,
       deviations: DEVIATIONS,
-      legacyDrew: LIVE ? !legacyDraw.stale : 'replayed from the recording',
       screenshots: shots,
     },
     null,

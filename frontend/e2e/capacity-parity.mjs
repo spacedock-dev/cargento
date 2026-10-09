@@ -5,19 +5,17 @@
  * The React page runs in Chromium over a synthetic board (`frontend/test/capacity_backend.py`) whose backend
  * counts what matters to a person who was promised a disclosure: the requests that carried `usage=1` to the
  * application and the project-context requests that carried the observer-model consent. A differential then
- * compares what a reader can observe (the strip's rows, the consent controls) with what the legacy page said
- * of the same board, read live beside it or from `frontend/test/golden/e2e/capacity-parity.json`
- * (`support/golden.mjs` owns the three `CARGENTO_LEGACY` modes: replay, the default, starts no legacy backend
- * and opens no legacy page). The legacy page is the oracle, and a check on it that depends on timing is
- * recorded instead of failing the run on a loaded runner; the React page is always held to every assertion.
+ * compares what a reader can observe (the strip's rows, the consent controls) with what the previous interface
+ * said of the same board, from `frontend/test/golden/e2e/capacity-parity.json` (`support/golden.mjs`), a
+ * recording that cannot be remade because that interface is gone. The React page is held to every assertion.
  *
- * Where a loop ran the same absolute assertions on both pages (a consent that sends no parameter, a selected
- * window that survives a reorder, a layout that fits), it runs on the React page alone in replay: each such
- * assertion states what must hold rather than comparing the two pages, so the React iteration carries it
- * whole. What is compared with the legacy page stays: the disclosure sentence, the strip's keys, ticks, sub-limits
- * and wording. Dropped from replay: the legacy page's overflow measures and keyboard traces, which were only
- * recorded as notes, its screenshots, and, in the development run, the legacy origin standing in as the second
- * origin of "the answer is per origin" (the production run opens the React page at a second origin instead).
+ * Where a loop once ran the same absolute assertions on both pages (a consent that sends no parameter, a selected
+ * window that survives a reorder, a layout that fits), the React page now carries each such assertion whole: they
+ * state what must hold rather than compare two pages. What is compared with the recording stays: the disclosure
+ * sentence, the strip's keys, ticks, sub-limits and wording. Dropped with the previous interface: its overflow
+ * measures and keyboard traces, which were only recorded as notes, its screenshots, and, in the development run,
+ * its origin standing in as the second origin of "the answer is per origin" (the production run opens the React
+ * page at a second origin instead).
  *
  * What a unit test cannot see is proved here: that an unanswered or declined consent sends no usage parameter
  * through a mount, StrictMode, a route change, a reload and a reconnect; that the parameter rides the very next
@@ -33,12 +31,10 @@
  * deliberate break (see MUTATIONS), which must make the run FAIL.
  */
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
-import { isolatedEnvironment } from '../dev/protocol.mjs';
 import { goldenFor } from './support/golden.mjs';
 import { PRODUCTION, startReactWorld } from './support/world.mjs';
 import { focusedLabel, freePorts, openPage, REPOSITORY, tabTo } from './support/browser.mjs';
@@ -163,17 +159,6 @@ async function step(name, run) {
   }
 }
 
-/* A check on the legacy page that depends on its timing. The legacy page is the oracle, so on a loaded runner a
-   check it fails is recorded under the run's notes instead of failing it. */
-const legacyNotes = [];
-function legacySoft(label, check) {
-  try {
-    check();
-  } catch (error) {
-    legacyNotes.push(`${label}: ${String(error.message || error).split('\n')[0]}`);
-  }
-}
-
 /* Waits for a condition read from the page or the server, and says what it was waiting for. */
 async function until(read, what, timeout = patience(12000)) {
   const deadline = Date.now() + timeout;
@@ -193,38 +178,7 @@ async function until(read, what, timeout = patience(12000)) {
   }
 }
 
-/* ---- the world: one backend serving each page, over a scratch copy of the tree ---- */
-function resolvePython() {
-  const name =
-    process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-  return execFileSync(name, ['-I', '-c', 'import sys; print(sys.executable)'], {
-    encoding: 'utf8',
-    timeout: 5000,
-  }).trim();
-}
-
-async function waitForHealth(origin, child) {
-  const deadline = Date.now() + 25000;
-  for (;;) {
-    if (child.exitCode !== null)
-      throw new Error('Legacy capacity backend exited: ' + (child.diagnostic || ''));
-    try {
-      const health = await (
-        await fetch(origin + '/api/health', { signal: AbortSignal.timeout(1000) })
-      ).json();
-      if (health.ok === true && health.pid === child.pid) return;
-      throw new Error('Port belongs to another process.');
-    } catch (error) {
-      if (Date.now() > deadline)
-        throw new Error(
-          'Legacy capacity backend never became ready: ' + (child.diagnostic || error.message),
-          { cause: error },
-        );
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-}
-
+/* ---- the world: one backend serving the page, over a scratch copy of the tree ---- */
 async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {}) {
   /* Development mounts the capacity harness (`capacity-harness.tsx`) in a scratch copy, so the strip, the usage consent
      and the observer controls are driven apart from the page that hosts them. The production run serves the page
@@ -237,25 +191,9 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
     ? REPOSITORY
     : await mkdtemp(join(tmpdir(), 'cargento-capacity-browser-'));
   let dev = null;
-  let child = null;
-  let legacyScratch = null;
   const world = { copy, mutation, close };
   async function close() {
-    if (child && child.exitCode === null) {
-      child.kill('SIGTERM');
-      await new Promise((resolve) => {
-        const timer = setTimeout(() => {
-          child.kill('SIGKILL');
-          resolve();
-        }, 3000);
-        child.once('close', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-    }
     if (dev) await dev.close();
-    if (legacyScratch) await rm(legacyScratch, { recursive: true, force: true });
     if (!ownsRepository) await rm(copy, { recursive: true, force: true });
   }
   try {
@@ -294,7 +232,7 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
     const refused = [];
     let ports;
     for (let attempt = 0; ; attempt += 1) {
-      ports = await freePorts(golden.live ? 3 : 2, refused);
+      ports = await freePorts(2, refused);
       try {
         dev = await startReactWorld({
           root: copy,
@@ -321,38 +259,6 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
       state: join(dev.scratch, 'state'),
     };
 
-    if (golden.live) {
-      legacyScratch = await mkdtemp(join(tmpdir(), 'cargento-capacity-legacy-'));
-      await mkdir(join(legacyScratch, 'no-executables'));
-      child = spawn(
-        resolvePython(),
-        [
-          helper,
-          '--frontend',
-          'legacy',
-          '--host',
-          '127.0.0.1',
-          '--port',
-          String(ports[2]),
-          '--no-observer-model',
-          '--no-usage',
-          '--no-git',
-          '--no-reach',
-        ],
-        {
-          cwd: copy,
-          env: isolatedEnvironment(legacyScratch, process.env),
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-      );
-      child.stderr.on('data', (chunk) => {
-        child.diagnostic = ((child.diagnostic || '') + chunk).slice(-3000);
-      });
-      child.stdout.resume();
-      const legacyOrigin = `http://127.0.0.1:${ports[2]}`;
-      await waitForHealth(legacyOrigin, child);
-      world.legacy = { name: 'legacy', origin: legacyOrigin, state: join(legacyScratch, 'state') };
-    }
     return world;
   } catch (error) {
     await close();
@@ -423,8 +329,6 @@ async function go(view, fragment) {
   const { page, side } = view;
   await page.goto('about:blank');
   await page.goto(`${side.origin}/${fragment}`);
-  if (side.name === 'legacy')
-    await page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
   try {
     await page.waitForSelector('nav[aria-label="Primary"]', { timeout: patience(15000) });
   } catch (error) {
@@ -438,14 +342,14 @@ async function go(view, fragment) {
   }
 }
 
-/* The route change a link makes, which is a hash change for both pages and a real unmount for the React one. */
+/* The route change a link makes, which is a hash change and a real unmount. */
 async function navigate(view, fragment) {
   await view.page.evaluate((hash) => {
     globalThis.location.hash = hash;
   }, fragment);
 }
 
-/* ---- what a reader can observe, read the same way from either page ---- */
+/* ---- what a reader can observe ---- */
 const stripOf = (page) =>
   page.evaluate(() => {
     const text = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : null);
@@ -507,18 +411,12 @@ let browser;
 try {
   world = await startWorld();
   browser = await chromium.launch();
-  const SIDES = [world.legacy, world.react].filter(Boolean);
+  const side = world.react;
 
-  /* One tracked page per side for the strip and the usage consent, and one fresh profile per consent path, so
+  /* One tracked page for the strip and the usage consent, and one fresh profile per consent path, so
      an answer given in one step cannot stand in for the question in the next. */
-  const strip = {};
-  for (const side of SIDES) {
-    strip[side.name] = await open(browser, side);
-    await go(strip[side.name], SESSIONS);
-  }
-  const both = async (run) => {
-    for (const side of SIDES) await run(strip[side.name], side);
-  };
+  const view = await open(browser, side);
+  await go(view, SESSIONS);
 
   /* The production run is only worth its name if the surfaces it drives are the ones the shipped page mounts. This
      reads each one inside the view that hosts it: the strip in the Sessions view and the consent in the project
@@ -527,7 +425,6 @@ try {
     await step(
       'shipped page: the strip is mounted by the Sessions view and the consent by the Console tab',
       async () => {
-        const view = strip.react;
         await until(
           () => view.page.locator('[data-next-view-body="sessions"] [data-next-capacity]').count(),
           'the strip inside the Sessions view',
@@ -551,30 +448,23 @@ try {
   await step(
     'the unanswered disclosure is drawn and no request carries a usage parameter',
     async () => {
-      await both(async (view) => {
-        await until(async () => (await consentOf(view.page)).disclosure, 'the disclosure');
-        await until(async () => (await stripOf(view.page))?.rows.length, 'the strip');
-      });
+      await until(async () => (await consentOf(view.page)).disclosure, 'the disclosure');
+      await until(async () => (await stripOf(view.page))?.rows.length, 'the strip');
       await pause(2500);
-      for (const side of SIDES) {
-        const view = strip[side.name];
-        assert.ok(dataRequests(view).length > 0, `${side.name}: the page read the board`);
-        assert.deepEqual(
-          usageRequests(view),
-          [],
-          `${side.name}: a usage parameter without an answer`,
-        );
-        assert.equal(
-          (await eventsOf(side, 'usage_fetch')).length,
-          0,
-          `${side.name}: the server saw one`,
-        );
-      }
-      const react = await consentOf(strip.react.page);
-      await golden.observe(
-        'the unanswered disclosure: the legacy sentence',
-        async () => (await consentOf(strip.legacy.page)).disclosure,
+      assert.ok(dataRequests(view).length > 0, `${side.name}: the page read the board`);
+      assert.deepEqual(
+        usageRequests(view),
+        [],
+        `${side.name}: a usage parameter without an answer`,
       );
+      assert.equal(
+        (await eventsOf(side, 'usage_fetch')).length,
+        0,
+        `${side.name}: the server saw one`,
+      );
+
+      const react = await consentOf(view.page);
+      golden.observe('the unanswered disclosure: the legacy sentence');
       golden.verify('the unanswered disclosure: the legacy sentence', react.disclosure);
       assert.match(react.disclosure, /reading the credential that harness already stored/);
       assert.equal(react.switch, null);
@@ -582,81 +472,64 @@ try {
   );
 
   await step('a route change, a reload and a reconnect without an answer send none', async () => {
-    for (const side of SIDES) {
-      const view = strip[side.name];
-      await navigate(view, ELSEWHERE);
-      await pause(300);
-      await navigate(view, SESSIONS);
-      await until(async () => (await stripOf(view.page))?.rows.length, 'the strip after a return');
-      await view.page.reload();
-      await until(
-        async () => (await consentOf(view.page)).disclosure,
-        'the disclosure after a reload',
-      );
-      // A reconnect: the page loses the network, then regains it, and reads the board again.
-      const before = dataRequests(view).length;
-      await view.context.setOffline(true);
-      await pause(1200);
-      await view.context.setOffline(false);
-      view.page
-        .evaluate(() => globalThis.dispatchEvent(new Event('online')))
-        .catch(() => undefined);
-      await until(
-        () => dataRequests(view).length > before,
-        `${side.name} reading the board again after reconnecting`,
-        patience(20000),
-      );
-      assert.deepEqual(
-        usageRequests(view),
-        [],
-        `${side.name}: a usage parameter without an answer`,
-      );
-      assert.equal((await eventsOf(side, 'usage_fetch')).length, 0);
-    }
+    await navigate(view, ELSEWHERE);
+    await pause(300);
+    await navigate(view, SESSIONS);
+    await until(async () => (await stripOf(view.page))?.rows.length, 'the strip after a return');
+    await view.page.reload();
+    await until(
+      async () => (await consentOf(view.page)).disclosure,
+      'the disclosure after a reload',
+    );
+    // A reconnect: the page loses the network, then regains it, and reads the board again.
+    const before = dataRequests(view).length;
+    await view.context.setOffline(true);
+    await pause(1200);
+    await view.context.setOffline(false);
+    view.page.evaluate(() => globalThis.dispatchEvent(new Event('online'))).catch(() => undefined);
+    await until(
+      () => dataRequests(view).length > before,
+      `${side.name} reading the board again after reconnecting`,
+      patience(20000),
+    );
+    assert.deepEqual(usageRequests(view), [], `${side.name}: a usage parameter without an answer`);
+    assert.equal((await eventsOf(side, 'usage_fetch')).length, 0);
   });
 
   await step(
     'No thanks sends no parameter, says the windows will lapse, and is kept across a reload',
     async () => {
-      for (const side of SIDES) {
-        const view = strip[side.name];
-        view.reset();
-        await pressUsage(view, 'declined');
-        await until(async () => (await consentOf(view.page)).switch, `${side.name} the switch`);
-        // The answer asks for the board again, and that read says nothing about usage.
-        await until(
-          () => dataRequests(view).length > 0,
-          `${side.name} reading the board after the answer`,
-        );
-        const state = await consentOf(view.page);
-        assert.equal(state.disclosure, null, `${side.name}: the question is gone once answered`);
-        assert.match(state.switch, /Vendor quota fetch: off/);
-        assert.match(state.switch, /Windows above are the last cached read and will lapse\./);
-        await pause(2000);
-        assert.deepEqual(usageRequests(view), [], `${side.name}: declined sent a usage parameter`);
-        await view.page.reload();
-        await until(async () => (await consentOf(view.page)).switch, 'the switch after a reload');
-        assert.equal((await consentOf(view.page)).disclosure, null);
-        assert.deepEqual(usageRequests(view), []);
-        assert.equal((await eventsOf(side, 'usage_fetch')).length, 0);
-      }
+      view.reset();
+      await pressUsage(view, 'declined');
+      await until(async () => (await consentOf(view.page)).switch, `${side.name} the switch`);
+      // The answer asks for the board again, and that read says nothing about usage.
+      await until(
+        () => dataRequests(view).length > 0,
+        `${side.name} reading the board after the answer`,
+      );
+      const state = await consentOf(view.page);
+      assert.equal(state.disclosure, null, `${side.name}: the question is gone once answered`);
+      assert.match(state.switch, /Vendor quota fetch: off/);
+      assert.match(state.switch, /Windows above are the last cached read and will lapse\./);
+      await pause(2000);
+      assert.deepEqual(usageRequests(view), [], `${side.name}: declined sent a usage parameter`);
+      await view.page.reload();
+      await until(async () => (await consentOf(view.page)).switch, 'the switch after a reload');
+      assert.equal((await consentOf(view.page)).disclosure, null);
+      assert.deepEqual(usageRequests(view), []);
+      assert.equal((await eventsOf(side, 'usage_fetch')).length, 0);
     },
   );
 
   await step(
     'the answer is per origin: another origin in the same profile is asked again',
     async () => {
-      /* The second origin. The legacy page's own origin is one while it runs. The shipped page serves everything
-         from one origin, so the same React server under another loopback name (`localhost`, which this server
-         admits) is a second origin to the browser. The development page loads its modules from a Vite server that
-         answers only the first origin, so there the React page cannot be opened at another one and only the legacy
-         origin is a second origin: the production run holds that half of the proof for the React page. */
+      /* The second origin. The shipped page serves everything from one origin, so the same React server under
+         another loopback name (`localhost`, which this server admits) is a second origin to the browser. The
+         development page loads its modules from a Vite server that answers only the first origin, so there the
+         React page cannot be opened at another one: the production run holds this half of the proof. */
       const elsewhere = PRODUCTION ? `http://localhost:${new URL(world.react.origin).port}` : null;
-      const wide = await open(
-        browser,
-        world.react,
-        [elsewhere, world.legacy?.origin].filter(Boolean),
-      );
+      const wide = await open(browser, world.react, [elsewhere].filter(Boolean));
       try {
         await go(wide, SESSIONS);
         await until(async () => (await consentOf(wide.page)).disclosure, 'the question');
@@ -671,15 +544,6 @@ try {
           );
           assert.equal((await consentOf(wide.page)).switch, null);
         }
-        if (world.legacy) {
-          await wide.page.goto(`${world.legacy.origin}/${SESSIONS}`);
-          await wide.page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
-          await until(
-            async () => (await consentOf(wide.page)).disclosure,
-            'the question on the legacy origin',
-          );
-          assert.equal((await consentOf(wide.page)).switch, null);
-        }
       } finally {
         await wide.close();
       }
@@ -689,49 +553,46 @@ try {
   await step(
     'Turn on carries usage=1 on the very next request, the server sees it, and Turn off stops it',
     async () => {
-      for (const side of SIDES) {
-        const view = strip[side.name];
-        view.reset();
-        const before = (await eventsOf(side, 'usage_fetch')).length;
-        await pressUsage(view, 'granted');
-        await until(
-          () => usageRequests(view).length > 0,
-          `${side.name} a request with the parameter`,
-        );
-        assert.match(usageRequests(view)[0].path, /usage=1/);
-        await until(
-          async () => (await eventsOf(side, 'usage_fetch')).length > before,
-          `${side.name} the server counting it`,
-        );
-        assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: on/);
-        assert.doesNotMatch((await consentOf(view.page)).switch, /lapse/);
-        // An answer given on an earlier visit rides the very first read of a fresh page.
-        view.reset();
-        await view.page.reload();
-        await until(() => dataRequests(view).length > 0, `${side.name} the first read`);
-        assert.match(
-          dataRequests(view)[0].path,
-          /usage=1/,
-          `${side.name}: an answered yes rides the first read`,
-        );
-        // Off again: the read the press asks for carries none, and the server's count stops.
-        view.reset();
-        await until(async () => (await consentOf(view.page)).switch, 'the switch');
-        await pressUsage(view, 'declined');
-        await until(
-          () => dataRequests(view).length > 0,
-          `${side.name} the read after turning it off`,
-        );
-        assert.deepEqual(usageRequests(view), [], `${side.name}: still sending the parameter`);
-        const frozen = (await eventsOf(side, 'usage_fetch')).length;
-        await pause(2500);
-        assert.equal(
-          (await eventsOf(side, 'usage_fetch')).length,
-          frozen,
-          `${side.name}: still fetching`,
-        );
-        assert.deepEqual(usageRequests(view), [], `${side.name}: still sending the parameter`);
-      }
+      view.reset();
+      const before = (await eventsOf(side, 'usage_fetch')).length;
+      await pressUsage(view, 'granted');
+      await until(
+        () => usageRequests(view).length > 0,
+        `${side.name} a request with the parameter`,
+      );
+      assert.match(usageRequests(view)[0].path, /usage=1/);
+      await until(
+        async () => (await eventsOf(side, 'usage_fetch')).length > before,
+        `${side.name} the server counting it`,
+      );
+      assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: on/);
+      assert.doesNotMatch((await consentOf(view.page)).switch, /lapse/);
+      // An answer given on an earlier visit rides the very first read of a fresh page.
+      view.reset();
+      await view.page.reload();
+      await until(() => dataRequests(view).length > 0, `${side.name} the first read`);
+      assert.match(
+        dataRequests(view)[0].path,
+        /usage=1/,
+        `${side.name}: an answered yes rides the first read`,
+      );
+      // Off again: the read the press asks for carries none, and the server's count stops.
+      view.reset();
+      await until(async () => (await consentOf(view.page)).switch, 'the switch');
+      await pressUsage(view, 'declined');
+      await until(
+        () => dataRequests(view).length > 0,
+        `${side.name} the read after turning it off`,
+      );
+      assert.deepEqual(usageRequests(view), [], `${side.name}: still sending the parameter`);
+      const frozen = (await eventsOf(side, 'usage_fetch')).length;
+      await pause(2500);
+      assert.equal(
+        (await eventsOf(side, 'usage_fetch')).length,
+        frozen,
+        `${side.name}: still fetching`,
+      );
+      assert.deepEqual(usageRequests(view), [], `${side.name}: still sending the parameter`);
     },
   );
 
@@ -768,125 +629,111 @@ try {
   await step(
     'the selected window keeps its identity across a redraw that reorders it and a route change',
     async () => {
-      for (const side of SIDES) {
-        const view = strip[side.name];
-        await steer(side, { windows: 'full' });
-        await go(view, SESSIONS);
-        const first = await until(
-          async () => {
-            const state = await stripOf(view.page);
-            return state &&
-              state.rows.length === 3 &&
-              state.rows.some((r) => r.key === 'codex:fiveH')
-              ? state
-              : null;
-          },
-          `${side.name} the full board`,
-          patience(15000),
-        );
-        assert.equal(first.rows[0].key, 'cursor:fiveH');
-        assert.match(first.more, /^3 more windows/);
-        assert.equal(first.rows.filter((r) => r.pressed).length, 1);
-        assert.equal(
-          await pressedKey(view),
-          'cursor:fiveH',
-          'the first window is selected until the reader chooses',
-        );
-        await pressWindow(view, 'codex:fiveH');
-        assert.equal(await pressedKey(view), 'codex:fiveH');
-        await steer(side, { windows: 'reordered' });
-        const after = await until(
-          async () => {
-            const state = await stripOf(view.page);
-            const claude = state?.rows.find((r) => r.key === 'claude:fiveH');
-            return claude && /95%/.test(claude.text) ? state : null;
-          },
-          `${side.name} the reordered board`,
-          patience(20000),
-        );
-        // The chosen window is now ranked below the first three, and still drawn, selected.
-        assert.equal(after.rows.length, 3);
-        assert.ok(
-          after.rows.some((r) => r.key === 'codex:fiveH'),
-          `${side.name}: the chosen window left the strip`,
-        );
-        assert.equal(
-          await pressedKey(view),
-          'codex:fiveH',
-          `${side.name}: the selection moved with the rank`,
-        );
-        assert.match(after.prospect, /Codex · 5-hour/);
-        await navigate(view, ELSEWHERE);
-        await pause(300);
-        await navigate(view, SESSIONS);
-        await until(
-          async () => (await stripOf(view.page))?.rows.length,
-          'the strip after a return',
-        );
-        assert.equal(
-          await pressedKey(view),
-          'codex:fiveH',
-          `${side.name}: lost across a route change`,
-        );
-        // A page is a tab's life: a reload starts again at the first window.
-        await view.page.reload();
-        await until(
-          async () => (await stripOf(view.page))?.rows.length,
-          'the strip after a reload',
-        );
-        assert.notEqual(await pressedKey(view), 'codex:fiveH');
-      }
+      await steer(side, { windows: 'full' });
+      await go(view, SESSIONS);
+      const first = await until(
+        async () => {
+          const state = await stripOf(view.page);
+          return state && state.rows.length === 3 && state.rows.some((r) => r.key === 'codex:fiveH')
+            ? state
+            : null;
+        },
+        `${side.name} the full board`,
+        patience(15000),
+      );
+      assert.equal(first.rows[0].key, 'cursor:fiveH');
+      assert.match(first.more, /^3 more windows/);
+      assert.equal(first.rows.filter((r) => r.pressed).length, 1);
+      assert.equal(
+        await pressedKey(view),
+        'cursor:fiveH',
+        'the first window is selected until the reader chooses',
+      );
+      await pressWindow(view, 'codex:fiveH');
+      assert.equal(await pressedKey(view), 'codex:fiveH');
+      await steer(side, { windows: 'reordered' });
+      const after = await until(
+        async () => {
+          const state = await stripOf(view.page);
+          const claude = state?.rows.find((r) => r.key === 'claude:fiveH');
+          return claude && /95%/.test(claude.text) ? state : null;
+        },
+        `${side.name} the reordered board`,
+        patience(20000),
+      );
+      // The chosen window is now ranked below the first three, and still drawn, selected.
+      assert.equal(after.rows.length, 3);
+      assert.ok(
+        after.rows.some((r) => r.key === 'codex:fiveH'),
+        `${side.name}: the chosen window left the strip`,
+      );
+      assert.equal(
+        await pressedKey(view),
+        'codex:fiveH',
+        `${side.name}: the selection moved with the rank`,
+      );
+      assert.match(after.prospect, /Codex · 5-hour/);
+      await navigate(view, ELSEWHERE);
+      await pause(300);
+      await navigate(view, SESSIONS);
+      await until(async () => (await stripOf(view.page))?.rows.length, 'the strip after a return');
+      assert.equal(
+        await pressedKey(view),
+        'codex:fiveH',
+        `${side.name}: lost across a route change`,
+      );
+      // A page is a tab's life: a reload starts again at the first window.
+      await view.page.reload();
+      await until(async () => (await stripOf(view.page))?.rows.length, 'the strip after a reload');
+      assert.notEqual(await pressedKey(view), 'codex:fiveH');
     },
   );
 
   await step(
     'the selection falls back only when its window is gone, holds the fallback, and clears with the last window',
     async () => {
-      for (const side of SIDES) {
-        const view = strip[side.name];
-        await steer(side, { windows: 'full' });
-        await go(view, SESSIONS);
-        await until(
-          async () => (await stripOf(view.page))?.rows.some((r) => r.key === 'codex:fiveH'),
-          'the board',
-        );
-        await pressWindow(view, 'codex:fiveH');
-        await steer(side, { windows: 'fewer' });
-        await until(
-          async () => {
-            const state = await stripOf(view.page);
-            return state && state.rows.every((r) => r.key.startsWith('claude:')) ? state : null;
-          },
-          `${side.name} the smaller board`,
-          patience(20000),
-        );
-        const fell = await pressedKey(view);
-        assert.ok(fell?.startsWith('claude:'), `${side.name}: no fallback to an existing window`);
-        await steer(side, { windows: 'full' });
-        await until(
-          async () => (await stripOf(view.page))?.rows.some((r) => r.key === 'codex:fiveH'),
-          'the board back',
-        );
-        assert.equal(await pressedKey(view), fell, `${side.name}: the fallback was not held`);
-        await steer(side, { windows: 'none' });
-        await until(
-          async () => (await stripOf(view.page)) === null,
-          `${side.name} no strip`,
-          patience(20000),
-        );
-        assert.equal(await view.page.locator('[data-next-capacity]').count(), 0);
-        await steer(side, { windows: 'full' });
-        await until(async () => (await stripOf(view.page))?.rows.length, 'the strip returning');
-        assert.equal(
-          await pressedKey(view),
-          'cursor:fiveH',
-          `${side.name}: not cleared when none remained`,
-        );
-      }
+      await steer(side, { windows: 'full' });
+      await go(view, SESSIONS);
+      await until(
+        async () => (await stripOf(view.page))?.rows.some((r) => r.key === 'codex:fiveH'),
+        'the board',
+      );
+      await pressWindow(view, 'codex:fiveH');
+      await steer(side, { windows: 'fewer' });
+      await until(
+        async () => {
+          const state = await stripOf(view.page);
+          return state && state.rows.every((r) => r.key.startsWith('claude:')) ? state : null;
+        },
+        `${side.name} the smaller board`,
+        patience(20000),
+      );
+      const fell = await pressedKey(view);
+      assert.ok(fell?.startsWith('claude:'), `${side.name}: no fallback to an existing window`);
+      await steer(side, { windows: 'full' });
+      await until(
+        async () => (await stripOf(view.page))?.rows.some((r) => r.key === 'codex:fiveH'),
+        'the board back',
+      );
+      assert.equal(await pressedKey(view), fell, `${side.name}: the fallback was not held`);
+      await steer(side, { windows: 'none' });
+      await until(
+        async () => (await stripOf(view.page)) === null,
+        `${side.name} no strip`,
+        patience(20000),
+      );
+      assert.equal(await view.page.locator('[data-next-capacity]').count(), 0);
+      await steer(side, { windows: 'full' });
+      await until(async () => (await stripOf(view.page))?.rows.length, 'the strip returning');
+      assert.equal(
+        await pressedKey(view),
+        'cursor:fiveH',
+        `${side.name}: not cleared when none remained`,
+      );
     },
   );
 
-  await step('the strip draws the same facts on both pages and invents no tick', async () => {
+  await step('the strip draws the recorded facts and invents no tick', async () => {
     const facts = (state) => ({
       keys: state.rows.map((r) => r.key),
       ticks: state.rows.map((r) => r.tick),
@@ -894,10 +741,10 @@ try {
       more: state.more,
       models: state.models,
     });
-    const read = (side, count) =>
+    const read = (count) =>
       until(
         async () => {
-          const state = await stripOf(strip[side.name].page);
+          const state = await stripOf(view.page);
           return state && state.rows.length === count ? state : null;
         },
         `${side.name} ${count} windows`,
@@ -907,13 +754,11 @@ try {
       ['full', 3],
       ['fewer', 3],
     ]) {
-      for (const side of SIDES) {
-        await steer(side, { windows });
-        await go(strip[side.name], SESSIONS);
-      }
-      const mine = await read(world.react, count);
+      await steer(side, { windows });
+      await go(view, SESSIONS);
+      const mine = await read(count);
       const factsKey = `the strip's windows, ticks and sub-limits with the ${windows} board`;
-      await golden.observe(factsKey, async () => facts(await read(world.legacy, count)));
+      golden.observe(factsKey);
       golden.verify(factsKey, facts(mine));
       if (windows === 'full') {
         // A spent budget says so, and the window with no clock is ranked last, behind the fold, untimed.
@@ -930,22 +775,20 @@ try {
       assert.match(month.text, /Window length not published/);
       assert.match(month.text, /Pace not measured/);
       assert.match(month.text, /not projected/);
-      await pressWindow(strip.react, 'claude:week');
-      if (world.legacy) await pressWindow(strip.legacy, 'claude:week');
-      const week = await stripOf(strip.react.page);
+      await pressWindow(view, 'claude:week');
+      const week = await stripOf(view.page);
       assert.ok(week.rows.find((r) => r.key === 'claude:week')?.pressed);
       // The sub-limits hang under the weekly row only, and keep a measured zero.
       assert.deepEqual(
         week.models.map((m) => /Opus 71%.*Sonnet 0%/.test(m)),
         [true],
       );
-      /* Each page samples the pace on its own clock, so the span and the number of readings it quotes ("across 8s and 3
-         readings") and the wall-clock minute a budget ends at can differ between two pages that read the same board
-         a moment apart. Those figures are the only part held soft, and only while the legacy page runs beside this
-         one: a recording keeps the sentences with the figures masked, because a clock minute and the weekday or
-         date a budget ends on (the browser's time zone, and today's date: the column draws "21:04", "Sat 21:04"
-         or "Oct 12" by how far off the end is) are not facts about the legacy code. Everything else is the same sentence on both pages and a difference in it fails, and React's
-         own text is asserted below, strictly, whatever legacy drew. */
+      /* The page samples the pace on its own clock, so the span and the number of readings it quotes ("across 8s and
+         3 readings") and the wall-clock minute a budget ends at differ from the recording's: a recording keeps the
+         sentences with the figures masked, because a clock minute and the weekday or date a budget ends on (the
+         browser's time zone, and today's date: the column draws "21:04", "Sat 21:04" or "Oct 12" by how far off the
+         end is) are not facts about the previous interface's code. Everything else is the same sentence and a
+         difference in it fails, and React's own text is asserted below, strictly. */
       const unclocked = (text) =>
         text
           .replace(/across \S+ and \d+ readings/g, 'across <span> and <n> readings')
@@ -956,28 +799,12 @@ try {
             'BUDGET ENDS<instant>',
           );
       const weekKey = "the weekly window's prospect and rows, clocks aside";
-      let theirs = null;
-      const said = await golden.observe(weekKey, async () => {
-        theirs = await stripOf(strip.legacy.page);
-        return {
-          prospect: unclocked(theirs.prospect),
-          rows: theirs.rows.map((r) => unclocked(r.text)),
-        };
-      });
+      const said = golden.observe(weekKey);
       golden.verify(weekKey, {
         prospect: unclocked(week.prospect),
         rows: week.rows.map((r) => unclocked(r.text)),
       });
       assert.ok(said.rows.length > 0, 'the recording holds the weekly rows');
-      if (theirs) {
-        legacySoft('prospect clocks', () => assert.equal(week.prospect, theirs.prospect));
-        legacySoft('rows clocks', () =>
-          assert.deepEqual(
-            week.rows.map((r) => r.text),
-            theirs.rows.map((r) => r.text),
-          ),
-        );
-      }
       // The weekly row's recent pace is a measured zero, which is evidence and is not "not measured".
       assert.match(
         week.prospect,
@@ -1010,259 +837,228 @@ try {
   await step(
     'an offer nothing read, one that is off, and one withheld are three different sentences',
     async () => {
-      for (const side of SIDES) {
-        const said = {};
-        for (const [mode, expected] of [
-          ['absent', /Observer model availability has not been read\./],
-          ['disabled', /Observer model is disabled for this run\./],
-          ['no-disclosure', /Observer disclosure is unavailable; model requests are withheld\./],
-        ]) {
-          await steer(side, { windows: 'full', observer: mode }, { board: false });
-          await observer(side, async (view) => {
-            await until(
-              async () => expected.test((await observerText(view.page)) ?? ''),
-              `${side.name} ${mode}`,
-            );
-            said[mode] = await observerText(view.page);
-            assert.deepEqual(
-              await observerButtons(view.page),
-              [],
-              `${side.name} ${mode}: controls offered`,
-            );
-            assert.equal(modelRequests(view).length, 0);
-          });
-        }
-        assert.equal(new Set(Object.values(said)).size, 3);
-        assert.equal((await eventsOf(side, 'model_call')).length, 0);
+      const said = {};
+      for (const [mode, expected] of [
+        ['absent', /Observer model availability has not been read\./],
+        ['disabled', /Observer model is disabled for this run\./],
+        ['no-disclosure', /Observer disclosure is unavailable; model requests are withheld\./],
+      ]) {
+        await steer(side, { windows: 'full', observer: mode }, { board: false });
+        await observer(side, async (view) => {
+          await until(
+            async () => expected.test((await observerText(view.page)) ?? ''),
+            `${side.name} ${mode}`,
+          );
+          said[mode] = await observerText(view.page);
+          assert.deepEqual(
+            await observerButtons(view.page),
+            [],
+            `${side.name} ${mode}: controls offered`,
+          );
+          assert.equal(modelRequests(view).length, 0);
+        });
       }
+      assert.equal(new Set(Object.values(said)).size, 3);
+      assert.equal((await eventsOf(side, 'model_call')).length, 0);
     },
   );
 
   await step(
     'allowing sends nothing; one press of Summarize sends one request for the exact session',
     async () => {
-      for (const side of SIDES) {
-        await steer(side, { windows: 'full', observer: 'enabled' }, { board: false });
-        const before = (await eventsOf(side, 'model_call')).length;
-        await observer(side, async (view) => {
-          const first = await until(async () => {
-            const buttons = await observerButtons(view.page);
-            return buttons.some((b) => b.action === 'allow') ? buttons : null;
-          }, `${side.name} the question`);
-          assert.deepEqual(
-            first.map((b) => b.label),
-            ['Allow model summaries', 'No thanks'],
-          );
-          const asked = await observerText(view.page);
-          assert.match(asked, /Quota consent does not authorize this request\./);
-          assert.match(asked, /Allowing summaries does not send a request\./);
-          // Mounting, StrictMode, a poll and a route change asked nothing.
-          await pause(2000);
-          await navigate(view, ELSEWHERE);
-          await pause(300);
-          await navigate(view, CONSOLE);
-          await until(
-            async () => (await observerButtons(view.page)).length,
-            'the controls after a return',
-          );
-          assert.equal(modelRequests(view).length, 0, `${side.name}: a request before a press`);
-          await view.page.locator('[data-next-observer-action="allow"]').click();
-          const allowed = await until(async () => {
-            const buttons = await observerButtons(view.page);
-            return buttons.some((b) => b.action === 'request') ? buttons : null;
-          }, `${side.name} the allowed state`);
-          assert.deepEqual(
-            allowed.map((b) => b.label),
-            ['Summarize this session', 'Turn off model summaries'],
-          );
-          await pause(1500);
-          assert.equal(modelRequests(view).length, 0, `${side.name}: allowing sent a request`);
-          assert.equal(
-            (await eventsOf(side, 'model_call')).length,
-            before,
-            `${side.name}: the server saw one`,
-          );
-          // Consent is kept, and a reload asks nothing either.
-          await view.page.reload();
-          await until(
-            async () => (await observerButtons(view.page)).some((b) => b.action === 'request'),
-            'the allowed state after a reload',
-          );
-          await pause(1500);
-          assert.equal(modelRequests(view).length, 0, `${side.name}: a reload sent a request`);
-          // The press: a double click is one request for exactly this session.
-          await view.page.locator('[data-next-observer-action="request"]').dblclick();
-          // The answer comes from the fixture's own refresh on a shared runner, so the wait is generous, and the
-          // page's text is what a failure reports: "false" said nothing about what the page drew instead.
-          await until(
-            async () => {
-              const drawn = (await observerText(view.page)) ?? '';
-              if (/Observed goal: Retry the queue until it drains/.test(drawn)) return drawn;
-              throw new Error(`the page drew: ${drawn.slice(0, 400)}`);
-            },
-            `${side.name} the goal`,
-            patience(30000),
-          );
-          const text = await observerText(view.page);
-          assert.match(text, /The refresh returned\./);
-          assert.match(text, /Model status: fixture/);
-          assert.equal(modelRequests(view).length, 1, `${side.name}: not one request`);
-          assert.match(modelRequests(view)[0].path, /session=claude%3Alive-work/);
-          const calls = (await eventsOf(side, 'model_call')).slice(before);
-          assert.deepEqual(
-            calls.map((c) => [c.harness, c.sid]),
-            [['claude', 'live-work']],
-          );
-          // Turning it off offers only the way back; what the last refresh returned stays as it was said.
-          await view.page.locator('[data-next-observer-action="decline"]').click();
-          await until(async () => {
-            const actions = (await observerButtons(view.page)).map((b) => b.action);
-            return actions.length === 1 && actions[0] === 'allow';
-          }, `${side.name} the way back`);
-          assert.equal((await eventsOf(side, 'model_call')).length, before + 1);
-        });
-      }
+      await steer(side, { windows: 'full', observer: 'enabled' }, { board: false });
+      const before = (await eventsOf(side, 'model_call')).length;
+      await observer(side, async (view) => {
+        const first = await until(async () => {
+          const buttons = await observerButtons(view.page);
+          return buttons.some((b) => b.action === 'allow') ? buttons : null;
+        }, `${side.name} the question`);
+        assert.deepEqual(
+          first.map((b) => b.label),
+          ['Allow model summaries', 'No thanks'],
+        );
+        const asked = await observerText(view.page);
+        assert.match(asked, /Quota consent does not authorize this request\./);
+        assert.match(asked, /Allowing summaries does not send a request\./);
+        // Mounting, StrictMode, a poll and a route change asked nothing.
+        await pause(2000);
+        await navigate(view, ELSEWHERE);
+        await pause(300);
+        await navigate(view, CONSOLE);
+        await until(
+          async () => (await observerButtons(view.page)).length,
+          'the controls after a return',
+        );
+        assert.equal(modelRequests(view).length, 0, `${side.name}: a request before a press`);
+        await view.page.locator('[data-next-observer-action="allow"]').click();
+        const allowed = await until(async () => {
+          const buttons = await observerButtons(view.page);
+          return buttons.some((b) => b.action === 'request') ? buttons : null;
+        }, `${side.name} the allowed state`);
+        assert.deepEqual(
+          allowed.map((b) => b.label),
+          ['Summarize this session', 'Turn off model summaries'],
+        );
+        await pause(1500);
+        assert.equal(modelRequests(view).length, 0, `${side.name}: allowing sent a request`);
+        assert.equal(
+          (await eventsOf(side, 'model_call')).length,
+          before,
+          `${side.name}: the server saw one`,
+        );
+        // Consent is kept, and a reload asks nothing either.
+        await view.page.reload();
+        await until(
+          async () => (await observerButtons(view.page)).some((b) => b.action === 'request'),
+          'the allowed state after a reload',
+        );
+        await pause(1500);
+        assert.equal(modelRequests(view).length, 0, `${side.name}: a reload sent a request`);
+        // The press: a double click is one request for exactly this session.
+        await view.page.locator('[data-next-observer-action="request"]').dblclick();
+        // The answer comes from the fixture's own refresh on a shared runner, so the wait is generous, and the
+        // page's text is what a failure reports: "false" said nothing about what the page drew instead.
+        await until(
+          async () => {
+            const drawn = (await observerText(view.page)) ?? '';
+            if (/Observed goal: Retry the queue until it drains/.test(drawn)) return drawn;
+            throw new Error(`the page drew: ${drawn.slice(0, 400)}`);
+          },
+          `${side.name} the goal`,
+          patience(30000),
+        );
+        const text = await observerText(view.page);
+        assert.match(text, /The refresh returned\./);
+        assert.match(text, /Model status: fixture/);
+        assert.equal(modelRequests(view).length, 1, `${side.name}: not one request`);
+        assert.match(modelRequests(view)[0].path, /session=claude%3Alive-work/);
+        const calls = (await eventsOf(side, 'model_call')).slice(before);
+        assert.deepEqual(
+          calls.map((c) => [c.harness, c.sid]),
+          [['claude', 'live-work']],
+        );
+        // Turning it off offers only the way back; what the last refresh returned stays as it was said.
+        await view.page.locator('[data-next-observer-action="decline"]').click();
+        await until(async () => {
+          const actions = (await observerButtons(view.page)).map((b) => b.action);
+          return actions.length === 1 && actions[0] === 'allow';
+        }, `${side.name} the way back`);
+        assert.equal((await eventsOf(side, 'model_call')).length, before + 1);
+      });
     },
   );
 
   await step('quota consent does not authorize the observer model', async () => {
-    for (const side of SIDES) {
-      await steer(side, { windows: 'full', observer: 'enabled' }, { board: false });
-      const view = await open(browser, side);
-      try {
-        await view.page.goto(`${side.origin}/${SESSIONS}`);
-        await view.page.evaluate(() =>
-          globalThis.localStorage.setItem('cargento.next.usage.consent', 'granted'),
-        );
-        const before = (await eventsOf(side, 'model_call')).length;
-        await go(view, CONSOLE);
-        await until(
-          async () => (await observerButtons(view.page)).some((b) => b.action === 'allow'),
-          `${side.name} the question`,
-        );
-        assert.deepEqual(
-          (await observerButtons(view.page)).map((b) => b.action),
-          ['allow', 'decline'],
-        );
-        await pause(1500);
-        assert.equal(modelRequests(view).length, 0);
-        assert.equal((await eventsOf(side, 'model_call')).length, before);
-        // Declining says so in words, and offers only the way back.
-        await view.page.locator('[data-next-observer-action="decline"]').click();
-        await until(
-          async () =>
-            /Model summaries are off in this browser\./.test((await observerText(view.page)) ?? ''),
-          `${side.name} the declined sentence`,
-        );
-        assert.deepEqual(
-          (await observerButtons(view.page)).map((b) => b.action),
-          ['allow'],
-        );
-        assert.equal(modelRequests(view).length, 0);
-      } finally {
-        await view.close();
-      }
+    await steer(side, { windows: 'full', observer: 'enabled' }, { board: false });
+    const view = await open(browser, side);
+    try {
+      await view.page.goto(`${side.origin}/${SESSIONS}`);
+      await view.page.evaluate(() =>
+        globalThis.localStorage.setItem('cargento.next.usage.consent', 'granted'),
+      );
+      const before = (await eventsOf(side, 'model_call')).length;
+      await go(view, CONSOLE);
+      await until(
+        async () => (await observerButtons(view.page)).some((b) => b.action === 'allow'),
+        `${side.name} the question`,
+      );
+      assert.deepEqual(
+        (await observerButtons(view.page)).map((b) => b.action),
+        ['allow', 'decline'],
+      );
+      await pause(1500);
+      assert.equal(modelRequests(view).length, 0);
+      assert.equal((await eventsOf(side, 'model_call')).length, before);
+      // Declining says so in words, and offers only the way back.
+      await view.page.locator('[data-next-observer-action="decline"]').click();
+      await until(
+        async () =>
+          /Model summaries are off in this browser\./.test((await observerText(view.page)) ?? ''),
+        `${side.name} the declined sentence`,
+      );
+      assert.deepEqual(
+        (await observerButtons(view.page)).map((b) => b.action),
+        ['allow'],
+      );
+      assert.equal(modelRequests(view).length, 0);
+    } finally {
+      await view.close();
     }
   });
 
   await step('nothing posted, raised a terminal or notified on either page', async () => {
-    for (const side of SIDES) {
-      const view = strip[side.name];
-      assert.deepEqual(
-        view.everything.filter((r) => r.method !== 'GET'),
-        [],
-        `${side.name}: a request that was not a GET`,
-      );
-      assert.deepEqual(
-        view.everything.filter((r) => r.path.startsWith('/api/focus')),
-        [],
-        `${side.name}: a focus request`,
-      );
-      assert.deepEqual(
-        await view.page.evaluate(() => globalThis.__notified),
-        [],
-        `${side.name}: a notification call`,
-      );
-    }
+    assert.deepEqual(
+      view.everything.filter((r) => r.method !== 'GET'),
+      [],
+      `${side.name}: a request that was not a GET`,
+    );
+    assert.deepEqual(
+      view.everything.filter((r) => r.path.startsWith('/api/focus')),
+      [],
+      `${side.name}: a focus request`,
+    );
+    assert.deepEqual(
+      await view.page.evaluate(() => globalThis.__notified),
+      [],
+      `${side.name}: a notification call`,
+    );
   });
 
   await step('the layout holds at 320 and 375 px and every control is a touch target', async () => {
     const report = {};
-    for (const side of SIDES) await steer(side, { windows: 'full', observer: 'enabled' });
+    await steer(side, { windows: 'full', observer: 'enabled' });
     for (const width of [375, 320]) {
-      for (const side of SIDES) {
-        const view = strip[side.name];
-        await view.page.setViewportSize({ width, height: 900 });
-        await go(view, SESSIONS);
-        await until(async () => (await stripOf(view.page))?.rows.length, 'the strip');
-        const measured = await view.page.evaluate(() => {
-          const { document } = globalThis;
-          const root = document.scrollingElement;
-          const boxes = (selector) =>
-            [...document.querySelectorAll(selector)].map((node) => {
-              const box = node.getBoundingClientRect();
-              return { width: box.width, height: box.height, right: box.right };
-            });
-          return {
-            overflow: root.scrollWidth - root.clientWidth,
-            client: root.clientWidth,
-            rows: boxes('.next-capacity-row'),
-            actions: boxes('.next-usage-consent-actions button, .next-usage-switch button'),
-          };
-        });
-        if (side.name === 'react') {
-          assert.ok(
-            measured.overflow <= 0,
-            `react: horizontal page scroll at ${width}px: ${measured.overflow}`,
-          );
-          for (const row of measured.rows)
-            assert.ok(
-              row.right <= measured.client + 1,
-              `react: a window row leaves the page at ${width}px`,
-            );
-          const small = measured.rows.filter((r) => r.height < 44).length;
-          assert.equal(small, 0, `react: a window row under 44 px at ${width}px`);
-          for (const action of measured.actions)
-            assert.ok(
-              action.height >= 44 && action.width >= 44,
-              `react: a consent control under 44 px at ${width}px`,
-            );
-        } else {
-          legacySoft(`overflow ${width}`, () =>
-            assert.ok(measured.overflow <= 0, `legacy overflow ${measured.overflow}`),
-          );
-        }
-        report[`${side.name}@${width}`] = { overflow: measured.overflow };
-        if (shots) {
-          await mkdir(SHOTS, { recursive: true });
-          await view.page.screenshot({
-            path: join(SHOTS, `drc-4827-capacity-${side.name}-${width}px.png`),
-            fullPage: true,
+      await view.page.setViewportSize({ width, height: 900 });
+      await go(view, SESSIONS);
+      await until(async () => (await stripOf(view.page))?.rows.length, 'the strip');
+      const measured = await view.page.evaluate(() => {
+        const { document } = globalThis;
+        const root = document.scrollingElement;
+        const boxes = (selector) =>
+          [...document.querySelectorAll(selector)].map((node) => {
+            const box = node.getBoundingClientRect();
+            return { width: box.width, height: box.height, right: box.right };
           });
-        }
+        return {
+          overflow: root.scrollWidth - root.clientWidth,
+          client: root.clientWidth,
+          rows: boxes('.next-capacity-row'),
+          actions: boxes('.next-usage-consent-actions button, .next-usage-switch button'),
+        };
+      });
+      assert.ok(
+        measured.overflow <= 0,
+        `react: horizontal page scroll at ${width}px: ${measured.overflow}`,
+      );
+      for (const row of measured.rows)
+        assert.ok(
+          row.right <= measured.client + 1,
+          `react: a window row leaves the page at ${width}px`,
+        );
+      const small = measured.rows.filter((r) => r.height < 44).length;
+      assert.equal(small, 0, `react: a window row under 44 px at ${width}px`);
+      for (const action of measured.actions)
+        assert.ok(
+          action.height >= 44 && action.width >= 44,
+          `react: a consent control under 44 px at ${width}px`,
+        );
+      report[`${side.name}@${width}`] = { overflow: measured.overflow };
+      if (shots) {
+        await mkdir(SHOTS, { recursive: true });
+        await view.page.screenshot({
+          path: join(SHOTS, `drc-4827-capacity-${side.name}-${width}px.png`),
+          fullPage: true,
+        });
       }
     }
-    for (const side of SIDES)
-      await strip[side.name].page.setViewportSize({ width: 1100, height: 900 });
+    await view.page.setViewportSize({ width: 1100, height: 900 });
     if (shots) {
-      const view = strip.react;
       await go(view, SESSIONS);
       await until(async () => (await stripOf(view.page))?.rows.length, 'the strip');
       await view.page.screenshot({
         path: join(SHOTS, 'drc-4827-capacity-react-1100px.png'),
         fullPage: true,
       });
-      if (strip.legacy) {
-        await go(strip.legacy, SESSIONS);
-        await until(
-          async () => (await stripOf(strip.legacy.page))?.rows.length,
-          'the legacy strip',
-        );
-        await strip.legacy.page.screenshot({
-          path: join(SHOTS, 'drc-4827-capacity-legacy-1100px.png'),
-          fullPage: true,
-        });
-      }
       await steer(world.react, { windows: 'full', observer: 'enabled' });
       const consoleView = await open(browser, world.react);
       try {
@@ -1286,7 +1082,7 @@ try {
      window) and the reader's text at twice the size, on the Sessions view (the strip and the usage question) and the
      Console tab (the usage switch and the observer controls). A fresh profile draws the unanswered question; the
      answered switch is drawn by the tracked strip page, which answered earlier in this run. React is held to every
-     measure; the legacy page's overflow is the oracle's and is recorded, not enforced. */
+     measure. */
   /* The harness draws the strip with no page padding, so a disclosure chevron (a rotated pseudo-element, which counts
      toward scrollable overflow) pokes 3 px past the window at 320 px and 200% text. The shipped page's view padding
      holds it, so the production run allows nothing; the harness run allows the chevron's width and no more. */
@@ -1295,7 +1091,7 @@ try {
     'zoom: the strip, the consent and the observer controls fit at 320, 375 and 640 px and at 200% text, on the Sessions view and the Console tab',
     async () => {
       const report = {};
-      for (const side of SIDES) await steer(side, { windows: 'full', observer: 'enabled' });
+      await steer(side, { windows: 'full', observer: 'enabled' });
       const measure = (page) =>
         page.evaluate(() => {
           const { document } = globalThis;
@@ -1314,62 +1110,55 @@ try {
             ),
           };
         });
-      for (const side of SIDES) {
-        for (const [label, route, wait] of [
-          ['sessions', SESSIONS, async (view) => (await stripOf(view.page))?.rows.length],
-          [
-            'console',
-            CONSOLE,
-            async (view) =>
-              (await observerButtons(view.page)).length || (await consentOf(view.page)).switch,
-          ],
-        ]) {
-          for (const width of [320, 375, 640]) {
-            const view = await open(browser, side);
-            try {
-              await view.page.setViewportSize({ width, height: 900 });
-              await go(view, route);
-              await until(() => wait(view), `${side.name} the ${label} view at ${width}`);
-              for (const scale of ['100%', '200%']) {
-                await view.page.evaluate((fontSize) => {
-                  globalThis.document.documentElement.style.fontSize = fontSize;
-                }, scale);
-                await pause(150);
-                const measured = await measure(view.page);
-                const where = `${side.name} ${label} at ${width}px, text ${scale}`;
-                report[where] = { overflow: measured.overflow };
-                if (side.name === 'react') {
-                  assert.ok(
-                    measured.overflow <= CHEVRON_PX,
-                    `${where}: horizontal page scroll ${measured.overflow}`,
-                  );
-                  for (const row of measured.rows)
-                    assert.ok(
-                      row.right <= measured.client + 1,
-                      `${where}: a window row leaves the page`,
-                    );
-                  for (const action of measured.actions) {
-                    assert.ok(
-                      action.right <= measured.client + 1,
-                      `${where}: a control leaves the page`,
-                    );
-                    assert.ok(
-                      action.height >= 44 && action.width >= 44,
-                      `${where}: a control under 44 px (${Math.round(action.width)}x${Math.round(action.height)})`,
-                    );
-                  }
-                } else {
-                  legacySoft(where, () =>
-                    assert.ok(measured.overflow <= 0, `legacy overflow ${measured.overflow}`),
-                  );
-                }
+      for (const [label, route, wait] of [
+        ['sessions', SESSIONS, async (view) => (await stripOf(view.page))?.rows.length],
+        [
+          'console',
+          CONSOLE,
+          async (view) =>
+            (await observerButtons(view.page)).length || (await consentOf(view.page)).switch,
+        ],
+      ]) {
+        for (const width of [320, 375, 640]) {
+          const view = await open(browser, side);
+          try {
+            await view.page.setViewportSize({ width, height: 900 });
+            await go(view, route);
+            await until(() => wait(view), `${side.name} the ${label} view at ${width}`);
+            for (const scale of ['100%', '200%']) {
+              await view.page.evaluate((fontSize) => {
+                globalThis.document.documentElement.style.fontSize = fontSize;
+              }, scale);
+              await pause(150);
+              const measured = await measure(view.page);
+              const where = `${side.name} ${label} at ${width}px, text ${scale}`;
+              report[where] = { overflow: measured.overflow };
+              assert.ok(
+                measured.overflow <= CHEVRON_PX,
+                `${where}: horizontal page scroll ${measured.overflow}`,
+              );
+              for (const row of measured.rows)
+                assert.ok(
+                  row.right <= measured.client + 1,
+                  `${where}: a window row leaves the page`,
+                );
+              for (const action of measured.actions) {
+                assert.ok(
+                  action.right <= measured.client + 1,
+                  `${where}: a control leaves the page`,
+                );
+                assert.ok(
+                  action.height >= 44 && action.width >= 44,
+                  `${where}: a control under 44 px (${Math.round(action.width)}x${Math.round(action.height)})`,
+                );
               }
-            } finally {
-              await view.close();
             }
+          } finally {
+            await view.close();
           }
         }
       }
+
       // The answered switch, in a fresh profile that answers on the page, at the narrowest width and the largest text.
       const answered = await open(browser, world.react);
       try {
@@ -1400,17 +1189,7 @@ try {
   await step(
     'keyboard: the window rows and the consent buttons are reached by Tab, operated by Enter and Space, and keep their focus',
     async () => {
-      const trace = { legacy: {}, react: {} };
-      /* The legacy page is the oracle: a keyboard leg it fails on a loaded runner is recorded, not failed. React is
-         held to every assertion. */
-      async function leg(side, label, run) {
-        try {
-          await run();
-        } catch (error) {
-          if (side.name !== 'legacy') throw error;
-          legacyNotes.push(`keyboard ${label}: ${String(error.message || error).split('\n')[0]}`);
-        }
-      }
+      const trace = { react: {} };
       const nameOf = (page, selector) =>
         page.evaluate((query) => {
           const node = globalThis.document.querySelector(query);
@@ -1426,132 +1205,121 @@ try {
           selector,
         );
 
-      for (const side of SIDES) {
-        await steer(side, { windows: 'full' });
-        const seen = trace[side.name];
+      await steer(side, { windows: 'full' });
+      const seen = trace.react;
 
-        // The window rows: Space selects the third, Shift+Tab and Enter select the one before it.
-        const rows = await open(browser, side);
-        try {
-          await go(rows, SESSIONS);
-          await until(
-            async () => (await stripOf(rows.page))?.rows.some((r) => r.key === 'codex:fiveH'),
-            `${side.name} the full board`,
-            patience(15000),
+      // The window rows: Space selects the third, Shift+Tab and Enter select the one before it.
+      const rows = await open(browser, side);
+      try {
+        await go(rows, SESSIONS);
+        await until(
+          async () => (await stripOf(rows.page))?.rows.some((r) => r.key === 'codex:fiveH'),
+          `${side.name} the full board`,
+          patience(15000),
+        );
+        {
+          const keys = (await stripOf(rows.page)).rows.map((r) => r.key);
+          const target = keys.at(-1);
+          const before = keys.at(-2);
+          const buttonOf = (key) => `[data-next-capacity-row="${key}"] button`;
+          const name = await nameOf(rows.page, buttonOf(target));
+          assert.ok(name, 'the last window row has no button');
+          seen.rowTabs = await tabTo(rows.page, name);
+          await rows.page.keyboard.press('Space');
+          assert.equal(await pressedKey(rows), target, 'Space did not select the window');
+          assert.equal(await holdsFocus(rows.page, buttonOf(target)), true, 'focus left the row');
+          await rows.page.keyboard.press('Shift+Tab');
+          assert.equal(
+            await holdsFocus(rows.page, buttonOf(before)),
+            true,
+            'Shift+Tab did not reach the row before',
           );
-          await leg(side, 'window rows', async () => {
-            const keys = (await stripOf(rows.page)).rows.map((r) => r.key);
-            const target = keys.at(-1);
-            const before = keys.at(-2);
-            const buttonOf = (key) => `[data-next-capacity-row="${key}"] button`;
-            const name = await nameOf(rows.page, buttonOf(target));
-            assert.ok(name, 'the last window row has no button');
-            seen.rowTabs = await tabTo(rows.page, name);
-            await rows.page.keyboard.press('Space');
-            assert.equal(await pressedKey(rows), target, 'Space did not select the window');
-            assert.equal(await holdsFocus(rows.page, buttonOf(target)), true, 'focus left the row');
-            await rows.page.keyboard.press('Shift+Tab');
-            assert.equal(
-              await holdsFocus(rows.page, buttonOf(before)),
-              true,
-              'Shift+Tab did not reach the row before',
-            );
-            await rows.page.keyboard.press('Enter');
-            assert.equal(await pressedKey(rows), before, 'Enter did not select the window');
-            assert.equal(await holdsFocus(rows.page, buttonOf(before)), true, 'focus left the row');
-            seen.rows = [target, before];
-          });
-          assert.deepEqual(
-            usageRequests(rows),
-            [],
-            `${side.name}: choosing a window sent a usage parameter`,
-          );
-        } finally {
-          await rows.close();
+          await rows.page.keyboard.press('Enter');
+          assert.equal(await pressedKey(rows), before, 'Enter did not select the window');
+          assert.equal(await holdsFocus(rows.page, buttonOf(before)), true, 'focus left the row');
+          seen.rows = [target, before];
         }
+        assert.deepEqual(
+          usageRequests(rows),
+          [],
+          `${side.name}: choosing a window sent a usage parameter`,
+        );
+      } finally {
+        await rows.close();
+      }
 
-        // The consent: each answer is a button a keyboard reader reaches and presses, on a profile never asked.
-        for (const [answer, key, expectFetch] of [
-          ['declined', 'Enter', false],
-          ['granted', 'Space', true],
-        ]) {
-          const view = await open(browser, side);
-          try {
-            await go(view, SESSIONS);
+      // The consent: each answer is a button a keyboard reader reaches and presses, on a profile never asked.
+      for (const [answer, key, expectFetch] of [
+        ['declined', 'Enter', false],
+        ['granted', 'Space', true],
+      ]) {
+        const view = await open(browser, side);
+        try {
+          await go(view, SESSIONS);
+          await until(
+            async () => (await consentOf(view.page)).disclosure,
+            `${side.name} the question`,
+          );
+          await pause(800);
+          assert.deepEqual(usageRequests(view), [], `${side.name}: a request before the press`);
+          {
+            const selector = `[data-next-usage-answer="${answer}"]`;
+            const name = await nameOf(view.page, selector);
+            assert.ok(name, `no ${answer} button`);
+            seen[`${answer}Tabs`] = await tabTo(view.page, name);
+            const seenBefore = (await eventsOf(side, 'usage_fetch')).length;
+            view.reset();
+            await view.page.keyboard.press(key);
+            await until(async () => (await consentOf(view.page)).switch, `${side.name} the switch`);
             await until(
-              async () => (await consentOf(view.page)).disclosure,
-              `${side.name} the question`,
+              () => dataRequests(view).length > 0,
+              `${side.name} the read after the answer`,
             );
-            await pause(800);
-            assert.deepEqual(usageRequests(view), [], `${side.name}: a request before the press`);
-            await leg(side, `consent ${answer}`, async () => {
-              const selector = `[data-next-usage-answer="${answer}"]`;
-              const name = await nameOf(view.page, selector);
-              assert.ok(name, `no ${answer} button`);
-              seen[`${answer}Tabs`] = await tabTo(view.page, name);
-              const seenBefore = (await eventsOf(side, 'usage_fetch')).length;
-              view.reset();
-              await view.page.keyboard.press(key);
+            if (expectFetch) {
+              await until(() => usageRequests(view).length > 0, `${side.name} the parameter`);
+              assert.match(usageRequests(view)[0].path, /usage=1/);
               await until(
-                async () => (await consentOf(view.page)).switch,
-                `${side.name} the switch`,
+                async () => (await eventsOf(side, 'usage_fetch')).length > seenBefore,
+                `${side.name} the server counting the press`,
               );
-              await until(
-                () => dataRequests(view).length > 0,
-                `${side.name} the read after the answer`,
-              );
-              if (expectFetch) {
-                await until(() => usageRequests(view).length > 0, `${side.name} the parameter`);
-                assert.match(usageRequests(view)[0].path, /usage=1/);
-                await until(
-                  async () => (await eventsOf(side, 'usage_fetch')).length > seenBefore,
-                  `${side.name} the server counting the press`,
-                );
-                assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: on/);
-              } else {
-                await pause(1500);
-                assert.deepEqual(
-                  usageRequests(view),
-                  [],
-                  `${side.name}: No thanks sent a parameter`,
-                );
-                assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: off/);
-              }
-              // The question is gone with its buttons, so focus is handed to the switch that replaced it.
-              seen[`${answer}Focus`] = await focusedLabel(view.page);
-              assert.equal(
-                await view.page.evaluate(
-                  () => globalThis.document.activeElement?.closest('.next-usage-switch') !== null,
-                ),
-                true,
-                `focus did not land on the switch after ${key} on ${answer}`,
-              );
-            });
-          } finally {
-            await view.close();
+              assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: on/);
+            } else {
+              await pause(1500);
+              assert.deepEqual(usageRequests(view), [], `${side.name}: No thanks sent a parameter`);
+              assert.match((await consentOf(view.page)).switch, /Vendor quota fetch: off/);
+            }
+            // The question is gone with its buttons, so focus is handed to the switch that replaced it.
+            seen[`${answer}Focus`] = await focusedLabel(view.page);
+            assert.equal(
+              await view.page.evaluate(
+                () => globalThis.document.activeElement?.closest('.next-usage-switch') !== null,
+              ),
+              true,
+              `focus did not land on the switch after ${key} on ${answer}`,
+            );
           }
+        } finally {
+          await view.close();
         }
       }
+
       return trace;
     },
   );
 
-  await step('no external request, page error or console error in either page', async () => {
-    for (const side of SIDES) {
-      const view = strip[side.name];
-      assert.deepEqual(view.log.externalRequests, [], `${side.name}: an external request`);
-      assert.deepEqual(view.log.pageErrors, [], `${side.name}: a page error`);
-      assert.deepEqual(
-        view.log.consoleErrors.filter(
-          (text) =>
-            !/net::ERR_FAILED|ERR_INTERNET_DISCONNECTED|Failed to load resource: the server responded with a status of (404|500)/.test(
-              text,
-            ),
-        ),
-        [],
-        `${side.name}: a console error`,
-      );
-    }
+  await step('no external request, page error or console error', async () => {
+    assert.deepEqual(view.log.externalRequests, [], `${side.name}: an external request`);
+    assert.deepEqual(view.log.pageErrors, [], `${side.name}: a page error`);
+    assert.deepEqual(
+      view.log.consoleErrors.filter(
+        (text) =>
+          !/net::ERR_FAILED|ERR_INTERNET_DISCONNECTED|Failed to load resource: the server responded with a status of (404|500)/.test(
+            text,
+          ),
+      ),
+      [],
+      `${side.name}: a console error`,
+    );
   });
 
   console.log(
@@ -1562,8 +1330,6 @@ try {
           strictMode: true,
           realBackend: true,
           failures: failures.length,
-          legacyNotes,
-          legacy: golden.mode,
           steps: results,
         },
       },

@@ -28,7 +28,6 @@ from cargento_runtime import cli, http_api, lifecycle
 from cargento_runtime import io as runtime_io
 
 from . import support
-from .page_harness import PageJsHarness
 from .support import (
     SERVE_POLL_INTERVAL,
     SERVER_PATH,
@@ -259,10 +258,10 @@ class InstalledContractCharacterizationTest(unittest.TestCase):
             copied_skill = launcher.parent.resolve()
             copied_web = copied_skill / "cargento_runtime" / "web"
             for name in (
-                "index.html",
-                "styles.css",
+                "react.html",
+                "react.integrity.json",
+                "react-licenses.txt",
                 "page.py",
-                *frontend_page.APP_PARTS,
                 *(name for name, _slot in frontend_page.FONT_ASSETS),
             ):
                 with self.subTest(shipped_file=name):
@@ -303,14 +302,14 @@ for module in modules:
 assets = {{
     name: str(page.asset_path(name).resolve())
     for name in (
-        "index.html", "styles.css", *page.APP_PARTS,
+        "react.html", "react.integrity.json", "react-licenses.txt",
         *(name for name, _slot in page.FONT_ASSETS),
     )
 }}
 print(json.dumps({{
     "origins": origins,
     "assets": assets,
-    "page_size": len(page.load_page()),
+    "page_size": len(page.load_frontend_page()),
 }}))
 """
             origin_probe = subprocess.run(
@@ -328,16 +327,11 @@ print(json.dumps({{
             for origin in [*discovered["origins"].values(), *discovered["assets"].values()]:
                 self.assertTrue(Path(origin).is_relative_to(copied_skill), origin)
             # The repository's own page, not a pinned figure. This subject is whether the
-            # copy assembles from its own files; the exact byte count is test_next_page.py's
-            # oracle. A second pin here reds this module on any frontend edit, which
-            # reads as a lifecycle break and sends the reader to the wrong file.
-            self.assertEqual(len(frontend_page.load_page()), discovered["page_size"])
+            # copy loads its own verified files; `react.integrity.json` owns the digest.
+            self.assertEqual(len(frontend_page.load_frontend_page()), discovered["page_size"])
             state_path = cargento_home / f"cargento-{port}.json"
-            # The rollback page, named on purpose: React is the default now, and the legacy
-            # assembly stays under test until it is retired.
-            # `test_react_frontend` owns the default launch of a copied installation.
             proc = subprocess.Popen(
-                [sys.executable, str(launcher), "--frontend", "legacy", "--port", str(port)],
+                [sys.executable, str(launcher), "--port", str(port)],
                 cwd=cwd,
                 env=env,
                 stdout=subprocess.PIPE,
@@ -350,16 +344,16 @@ print(json.dumps({{
                 code, headers, body = self._response(port, "GET", "/")
                 self.assertEqual(200, code)
                 self.assertEqual("text/html; charset=utf-8", headers["Content-Type"])
-                # The copy's own assembly, plus the focus capability `cli.main`
+                # The copy's own verified page, plus the focus capability `cli.main`
                 # injects after it. Compared with that element stripped, because
-                # the subject here is whether the copied installation assembles
+                # the subject here is whether the copied installation loads
                 # its page from its own files — the token is per run and cannot
                 # be known from outside the process that minted it.
-                self.assertEqual(frontend_page.load_page(), without_focus_meta(body))
+                self.assertEqual(frontend_page.load_frontend_page(), without_focus_meta(body))
                 self.assertIn(b'<meta name="cargento-focus" content="', body)
                 code, headers, body = self._response(port, "GET", "/?next=true")
                 self.assertEqual(404, code)
-                self.assertNotEqual(frontend_page.load_page(), body)
+                self.assertNotEqual(frontend_page.load_frontend_page(), body)
             finally:
                 stop: subprocess.CompletedProcess[bytes] | None = None
                 # A live owned process has exclusive possession of its port,
@@ -390,40 +384,6 @@ print(json.dumps({{
                     self.assertEqual(0, stop.returncode, stop.stderr.decode("utf-8", "replace"))
                     self.assertTrue(lifecycle.await_release(cfg(), port, timeout=5))
                     self.assertEqual([], list(cargento_home.iterdir()))
-
-    def test_copied_plugin_refuses_to_start_when_a_canonical_font_is_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            copied_plugin = root / "copied-plugin" / "cargento"
-            shutil.copytree(SERVER_PATH.parents[2], copied_plugin)
-            launcher = copied_plugin / "skills" / "cargento" / "server.py"
-            missing = launcher.parent / "cargento_runtime" / "web" / frontend_page.FONT_ASSETS[0][0]
-            missing.unlink()
-            port = self._candidate_port()
-            env = self._clean_env(root / "state")
-            # A missing legacy font only refuses the legacy page; the default page never
-            # reads it, so the rollback is named here.
-            launch = subprocess.run(
-                [
-                    sys.executable,
-                    str(launcher),
-                    "--frontend",
-                    "legacy",
-                    "--daemon",
-                    "--port",
-                    str(port),
-                ],
-                cwd=root,
-                env=env,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=self.OWNED_INSTANCE_READY_TIMEOUT_SEC,
-                check=False,
-            )
-
-            self.assertEqual(1, launch.returncode)
-            self.assertIn("cannot load frontend assets", launch.stderr)
 
     def test_windows_detached_argv_preserves_an_absolute_launcher_path(self) -> None:
         # The respawn target is config.launcher_path, so a Windows path survives
@@ -464,8 +424,6 @@ print(json.dumps({{
                 "4553",
                 "--window-hours",
                 "24.0",
-                "--frontend",
-                "react",
             ],
             popen.call_args.args[0],
         )
@@ -509,8 +467,6 @@ print(json.dumps({{
                 "--window-hours",
                 "7.5",
                 "--no-spacedock",
-                "--frontend",
-                "react",
             ],
             lifecycle.spawn_argv(spawned_config, spawned_args),
         )
@@ -530,14 +486,12 @@ print(json.dumps({{
                 "--window-hours",
                 "7.5",
                 "--no-spacedock",
-                "--frontend",
-                "react",
             ],
             popen.call_args.args[0],
         )
 
 
-class CargentoServerTest(PageJsHarness):
+class CargentoServerTest(support.RuntimeTestCase):
     def test_state_file_roundtrips_and_names_itself_per_port(self) -> None:
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -677,101 +631,6 @@ class CargentoServerTest(PageJsHarness):
         self.assertIn("another process", foreign)
         self.assertIn("Nothing was stopped", foreign)
         self.assertIn("not running", lifecycle.render_status({"state": "absent", "port": 4553}))
-
-    def test_status_names_the_renderer_a_running_dashboard_serves(self) -> None:
-        running = {"state": "running", "port": 4553, "pid": 7, "started": 1000.0, "log": "/l"}
-        for renderer in ("react", "legacy"):
-            with self.subTest(renderer=renderer):
-                line = lifecycle.render_status({**running, "frontend": renderer})
-                self.assertIn(renderer, line)
-        self.assertNotIn("frontend", lifecycle.render_status({**running, "frontend": None}))
-        with (
-            mock.patch.object(
-                lifecycle,
-                "probe_port",
-                return_value=(
-                    "cargento",
-                    {
-                        "ok": True,
-                        "pid": 7,
-                        "port": 4553,
-                        "started": 1000.0,
-                    },
-                ),
-            ),
-            mock.patch.object(lifecycle, "probe_frontend", return_value="legacy"),
-        ):
-            self.assertEqual("legacy", lifecycle.instance_status(cfg(), 4553)["frontend"])
-
-    def test_probe_frontend_reads_what_the_server_publishes_and_nothing_else(self) -> None:
-        for body, expected in (
-            (b'{"frontend": "legacy", "sessions": []}', "legacy"),
-            (b'{"frontend": "react"}', "react"),
-            (b'{"frontend": "next"}', None),
-            (b'{"frontend": 7}', None),
-            (b'{"sessions": []}', None),
-            (b"not json", None),
-            (b"[]", None),
-        ):
-            with self.subTest(body=body):
-
-                class Handler(http.server.BaseHTTPRequestHandler):
-                    payload = body
-
-                    def do_GET(self) -> None:
-                        self.send_response(200)
-                        self.send_header("Content-Length", str(len(self.payload)))
-                        self.end_headers()
-                        self.wfile.write(self.payload)
-
-                    def log_message(self, *_args: object) -> None:
-                        pass
-
-                httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-                thread.start()
-                try:
-                    self.assertEqual(expected, lifecycle.probe_frontend(httpd.server_port))
-                finally:
-                    httpd.shutdown()
-                    httpd.server_close()
-                    thread.join(timeout=5)
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            closed = probe.getsockname()[1]
-        self.assertIsNone(lifecycle.probe_frontend(closed, timeout=0.2))
-
-    def test_probe_frontend_gives_up_on_a_listener_that_drips_forever(self) -> None:
-        """A busy port may be held by something that is not a dashboard and never finishes
-        its answer: the probe is bounded, so a failed start is not held up by it."""
-        stop = threading.Event()
-
-        class Drip(http.server.BaseHTTPRequestHandler):
-            def do_GET(self) -> None:
-                self.send_response(200)
-                self.send_header("Content-Length", "1000000")
-                self.end_headers()
-                with contextlib.suppress(OSError):
-                    while not stop.is_set():
-                        self.wfile.write(b" ")
-                        self.wfile.flush()
-                        time.sleep(0.05)
-
-            def log_message(self, *_args: object) -> None:
-                pass
-
-        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Drip)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
-        try:
-            started = time.monotonic()
-            self.assertIsNone(lifecycle.probe_frontend(httpd.server_port, deadline=0.6))
-            self.assertLess(time.monotonic() - started, 3.0)
-        finally:
-            stop.set()
-            httpd.shutdown()
-            httpd.server_close()
-            thread.join(timeout=5)
 
     def test_render_status_survives_a_started_value_it_cannot_convert(self) -> None:
         # Keep render_status defensive even though probe_port now rejects
@@ -1358,8 +1217,6 @@ class CargentoServerTest(PageJsHarness):
                 "--window-hours",
                 "12.0",
                 "--no-spacedock",
-                "--frontend",
-                "react",
             ],
             argv,
         )
@@ -1394,8 +1251,6 @@ class CargentoServerTest(PageJsHarness):
                 "1",
                 "--window-hours",
                 "24.0",
-                "--frontend",
-                "react",
             ],
             plain,
         )
@@ -1464,9 +1319,7 @@ class CargentoServerTest(PageJsHarness):
         argv = popen.call_args.args[0]
         self.assertEqual(sys.executable, argv[0])
         self.assertTrue(argv[1].endswith("server.py"))
-        self.assertEqual(
-            ["--port", "4553", "--window-hours", "24.0", "--frontend", "react"], argv[2:]
-        )
+        self.assertEqual(["--port", "4553", "--window-hours", "24.0"], argv[2:])
         self.assertEqual(subprocess.DEVNULL, popen.call_args.kwargs["stdin"])
         self.assertTrue(popen.call_args.kwargs["close_fds"])
         # 0 on POSIX, where these creationflags do not exist; the call must

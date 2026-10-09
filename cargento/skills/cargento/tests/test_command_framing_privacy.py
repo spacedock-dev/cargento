@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
-import tempfile
-import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -28,9 +25,7 @@ from cargento_runtime import (
 from . import test_copied_corrections as copied_cases
 from . import test_window_words as window_cases
 from .test_claude_checks import SHORT, START, Transcript
-from .test_next_activity_numbers import WINDOW, WINDOWED, facts_js, rows_of
-from .test_next_drift_panel import PanelPage
-from .test_slash_command_direction import NOW, Board, _SlashSession, local_command, prompt_command
+from .test_slash_command_direction import NOW, _SlashSession, local_command, prompt_command
 
 ORDINARY = ("token: ordinary", "secret: disabled", "password: placeholder")
 EXAMPLE = "AKIAIOSFODNN7EXAMPLE"
@@ -263,25 +258,6 @@ class CopiedCommandProvenanceKeepsTheCorrectFirstPrompt(copied_cases._App):
                     self.assertTrue(messages[0].first.startswith("/review token:"))
                     self.assertIn("REDACTED", messages[0].first)
                 self.assertNotIn("IOSFODNN7EXAMPLE", messages[0].first)
-
-
-@unittest.skipUnless(shutil.which("node"), "node unavailable")
-class ThePageUsesTheOrdinaryCommandArguments(PanelPage):
-    def test_the_native_collected_direction_reaches_the_page_whole_and_credential_safe(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            board = Board(Path(temp))
-            board.session.skill("review", ORDINARY[0])
-            facts = board.facts()
-            summary = next(
-                f["summary"] for f in facts if str(f.get("summary", "")).startswith("/review")
-            )
-        rows = [*WINDOWED, ("later", 120, "user_message", summary, {})]
-        html = self.page("claude", facts_js("claude", rows) + WINDOW)
-        (flagged,) = [row for row in rows_of(html) if row["flags"]]
-        self.assertEqual(f"/review {ORDINARY[0]}", flagged["summary"])
-        self.assertNotIn("command-args", flagged["summary"])
 
 
 class RestoredCommandsKeepTheirOriginalFraming(window_cases.ThePressRecoversOnlyListedWindowWords):

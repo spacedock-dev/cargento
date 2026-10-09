@@ -14,7 +14,6 @@ import {
   workAbsence,
   workSource,
 } from './work';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The observed record a session's panel reads, and the later directions found in it, run next to the legacy
    functions over generated contexts. A difference is a bug here. */
@@ -22,7 +21,7 @@ const legacy = loadLegacyIntent();
 
 const WORK_ROWS_PROBE = 20;
 const CASES = 60;
-const SEEDS = caseCount(CASES, 'INTENT_SEEDS');
+const SEEDS = CASES;
 
 function genFact(
   rnd: Rng,

@@ -11,7 +11,6 @@ import {
   windowPhrase,
   type WorkstreamEvidence,
 } from './model';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The workstream, held to the legacy `next-workstream.js` by running both over the same generated board
    sequences: the tab's buffer (groups, entries, the seed from the history store), the per-project window
@@ -19,7 +18,7 @@ import { caseCount } from '../../test/legacy_goldens';
    gets a fresh copy because its buffer is module state. */
 
 const CASES = 80;
-const SEEDS = caseCount(CASES, 'WORKSTREAM_SEEDS');
+const SEEDS = CASES;
 
 interface Legacy {
   readonly app: ReturnType<typeof loadLegacyApp>;

@@ -106,7 +106,6 @@ try {
   assert.equal(await page.evaluate(() => globalThis.__devDocumentSentinel), 'same document');
   const first = await page.evaluate(async () => (await fetch('/api/data')).json());
   assert.match(first.build, /^react-dev-/);
-  assert.equal(first.frontend, 'react');
   await page.evaluate(() => {
     globalThis.__devRevisions = [];
     globalThis.__devOpenCount = 0;

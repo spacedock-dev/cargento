@@ -5,9 +5,12 @@
       "name": "next-boot.js",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_session.py",
-        "cargento/skills/cargento/tests/test_next_page.py"
+        "frontend/src/router/grammar.test.ts",
+        "frontend/src/router/permalink.test.ts",
+        "frontend/src/api/identity.test.ts",
+        "frontend/src/controls/SessionControls.test.tsx",
+        "frontend/e2e/shell-routing.mjs",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Released fragment routes, exact session identity, copy/re-entry/permalink controls and shared escaped display helpers; store selectors belong to DRC-4822."
     },
@@ -15,8 +18,10 @@
       "name": "next-observed.js",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_observed.py",
-        "cargento/skills/cargento/tests/test_next_integration.py"
+        "frontend/src/observed/observed.differential.test.ts",
+        "frontend/src/observed/observed.test.ts",
+        "frontend/src/store/selectors.test.ts",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Source-backed shared session/project/history/risk/capacity selectors preserve provenance and absent versus measured facts."
     },
@@ -24,7 +29,10 @@
       "name": "next-attention.js",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_attention.py"
+        "frontend/src/attention/model.differential.test.ts",
+        "frontend/src/attention/view.differential.test.tsx",
+        "frontend/src/attention/AttentionView.test.tsx",
+        "frontend/e2e/attention-parity.mjs"
       ],
       "contract": "Exact-owner asks, gate/risk queues, outcomes, coverage and ended-session distinctions stay visible without invented urgency."
     },
@@ -32,7 +40,9 @@
       "name": "next-notify.js",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_notifications.py"
+        "frontend/src/notify/owner.differential.test.ts",
+        "frontend/src/notify/NotificationControl.test.tsx",
+        "frontend/e2e/attention-parity.mjs"
       ],
       "contract": "Browser permission, fresh notification edges, native/browser lane ownership and reporting remain explicit and deduplicated."
     },
@@ -40,8 +50,8 @@
       "name": "next-cockpit-compat.js",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_integration.py"
+        "frontend/src/timeline/Timeline.test.tsx",
+        "frontend/src/terminal/TerminalSurface.test.tsx"
       ],
       "contract": "Temporary sessKey/fmtDur/lastData/render seam supplies the timeline and terminal substrate without mounting a second shell; remove after DRC-4824 and DRC-4826 consumers migrate."
     },
@@ -49,8 +59,11 @@
       "name": "project.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_interaction_prototype.py"
+        "cargento/skills/cargento/tests/test_interaction_prototype.py",
+        "frontend/src/timeline/semantic.differential.test.ts",
+        "frontend/src/terminal/owner.test.ts",
+        "frontend/e2e/timeline-filter.mjs",
+        "frontend/e2e/terminal-parity.mjs"
       ],
       "contract": "Shared semantic timeline, graph filters and redraw-safe substrate disclosures; preserve exact-session read-only terminal lifecycle with DRC-4824 and retire unused legacy renderer."
     },
@@ -58,8 +71,10 @@
       "name": "next-chrome.js",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/src/shell/Notices.test.tsx",
+        "frontend/src/shell/keyboard.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Navigation, breadcrumbs, keyboard history/focus, header counts, project More utilities, refresh/build notices and stable copy/raise live-region cues."
     },
@@ -67,7 +82,9 @@
       "name": "next-capacity.js",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_capacity.py"
+        "frontend/src/capacity/model.differential.test.ts",
+        "frontend/src/capacity/UsageConsent.test.tsx",
+        "frontend/e2e/capacity-parity.mjs"
       ],
       "contract": "Usage consent gates credential fetching; capacity bars, model sublimits, pacing, expiration and source absence remain truthful."
     },
@@ -75,8 +92,9 @@
       "name": "next-sessions.js",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_sessions.py",
-        "cargento/skills/cargento/tests/test_next_sessions_drift.py"
+        "frontend/src/sessions/sessions.differential.test.tsx",
+        "frontend/src/sessions/SessionsView.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Session-first active/blocked/ended/source-gap groups, collision-safe identities and goal/drift row summaries; shared Intent semantics belong to DRC-4825."
     },
@@ -84,7 +102,8 @@
       "name": "next-projects.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_projects.py"
+        "frontend/src/project/ProjectsView.differential.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Project list and history groups retain member identities, progress and source-backed summaries."
     },
@@ -92,8 +111,9 @@
       "name": "next-project.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_project.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/project/ProjectDetail.differential.test.tsx",
+        "frontend/src/project/model.differential.test.ts",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Project detail rejoins raw Spacedock strips/task totals, revision/goal helpers and scope navigation before composing cockpit."
     },
@@ -101,8 +121,9 @@
       "name": "next-intent.js",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_intent.py",
-        "cargento/skills/cargento/tests/test_next_reconciliation.py"
+        "frontend/src/intent/IntentLog.differential.test.tsx",
+        "frontend/src/intent/IntentLog.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Intent log membership, retained-word provenance, revision/reading limits, source-aware load/retry and exact session links."
     },
@@ -110,8 +131,9 @@
       "name": "next-activity.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_activity.py",
-        "cargento/skills/cargento/tests/test_next_activity_numbers.py"
+        "frontend/src/project/model.differential.test.ts",
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Active and finished sessions, observed subagent activity and completed tasks retain payload order and measured counts."
     },
@@ -119,8 +141,9 @@
       "name": "next-session.js",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_session.py",
-        "cargento/skills/cargento/tests/test_next_session_drift.py"
+        "frontend/src/sessions/detail.differential.test.tsx",
+        "frontend/src/sessions/SessionDetail.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Exact session detail, initial unread/outside-payload state, asks/answer confirmation, last reply and delegated-work evidence; Intent controls migrate with DRC-4825."
     },
@@ -128,7 +151,9 @@
       "name": "next-workstream.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_workstream.py"
+        "frontend/src/workstream/workstream.differential.test.ts",
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Bounded observed/seeded workstream changes, observed-since coverage and persistent collapse choice."
     },
@@ -136,7 +161,10 @@
       "name": "next-delegation.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_delegation.py"
+        "frontend/src/delegation/metric.differential.test.ts",
+        "frontend/src/delegation/rail.differential.test.tsx",
+        "frontend/src/delegation/Panels.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Delegation metrics/trends and Console rail retain their own collection/window; waiting and capacity widgets coordinate with DRC-4827."
     },
@@ -144,9 +172,10 @@
       "name": "next-controls.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_controls.py",
-        "cargento/skills/cargento/tests/test_next_pending.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/steering/ProjectSteer.test.tsx",
+        "frontend/src/steering/Tripwires.test.tsx",
+        "frontend/src/transport/pending.test.ts",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Local project steering/guardrails and workflow-stage tripwires preserve drafts, revision-safe actions and busy state; bounded transport migrates with DRC-4822."
     },
@@ -154,9 +183,10 @@
       "name": "next-cockpit.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_analyze_flow.py",
-        "cargento/skills/cargento/tests/test_next_intent_editor.py"
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/src/project/recovery.differential.test.ts",
+        "frontend/src/controls/HumanContext.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Recovery briefing, scoped project tabs, utility menu, human memos and semantic timeline; explicitly delegate shared Intent editor/analysis/review to DRC-4825 and terminal to DRC-4824."
     },
@@ -164,9 +194,11 @@
       "name": "next-render.js",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_integration.py",
-        "cargento/skills/cargento/tests/test_next_observer_consent.py",
-        "cargento/skills/cargento/tests/test_next_disclosure_motion.py"
+        "frontend/src/controls/displayGate.test.ts",
+        "frontend/src/store/commit-gate.test.ts",
+        "frontend/src/transport/refresh.test.ts",
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "View dispatch and refresh coordinator preserve observer/usage consent, request freshness, revision handling and deferred paints during open native choices or motion."
     },
@@ -174,8 +206,11 @@
       "name": "next-live.js",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_live.py",
-        "cargento/skills/cargento/tests/test_stream.py"
+        "cargento/skills/cargento/tests/test_stream.py",
+        "frontend/src/transport/live.test.ts",
+        "frontend/src/transport/runtime.test.ts",
+        "frontend/e2e/sessions-parity.mjs",
+        "docs/frontend-fluidity.json"
       ],
       "contract": "One lease-elected live connection per board namespace, SSE revision wakeups, fallback polling and bounded teardown."
     }
@@ -185,7 +220,8 @@
       "name": "primary-navigation",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Sessions, Attention, Projects and Intent remain keyboard reachable with current-location semantics."
     },
@@ -193,8 +229,9 @@
       "name": "breadcrumbs-and-history",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_reading_route.py"
+        "frontend/src/router/router.test.ts",
+        "frontend/src/shell/keyboard.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Origin-aware session breadcrumbs, Escape and browser Back return to the correct preceding scope."
     },
@@ -202,8 +239,9 @@
       "name": "header-counts-and-block-control",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_integration.py"
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/src/shell/derive.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Header running/subagent/block totals share exact observed identity and lead to Attention without claiming missing liveness."
     },
@@ -211,8 +249,8 @@
       "name": "refresh-build-and-history-notices",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_live.py"
+        "frontend/src/shell/Notices.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Failed refresh, history reset and newer server build are distinct reader-visible notices that do not fabricate a fresh success."
     },
@@ -220,8 +258,9 @@
       "name": "stable-status-and-alert-regions",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_parity_polish.py"
+        "frontend/src/shell/announcer.test.tsx",
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Status and alert nodes remain persistent outside the replaceable app subtree; repeated actions and StrictMode must not duplicate announcements."
     },
@@ -229,9 +268,10 @@
       "name": "session-copy-and-terminal-raise-controls",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_session.py",
-        "cargento/skills/cargento/tests/test_focus.py"
+        "cargento/skills/cargento/tests/test_focus.py",
+        "frontend/src/controls/SessionControls.test.tsx",
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "ID, absolute link and resume command use distinct durable copy cues; terminal raise is explicit, capability-bound and deduplicated while busy."
     },
@@ -239,9 +279,9 @@
       "name": "sessions-first-screen",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_sessions.py",
-        "cargento/skills/cargento/tests/test_next_sessions_drift.py",
-        "cargento/skills/cargento/tests/test_next_session.py"
+        "frontend/src/sessions/SessionsView.test.tsx",
+        "frontend/src/sessions/sessions.differential.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Active, blocked, ended and source-gap rows expose exact goals and drift with one-step access to a session."
     },
@@ -249,8 +289,8 @@
       "name": "session-detail-and-absence",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_session.py",
-        "cargento/skills/cargento/tests/test_next_session_drift.py"
+        "frontend/src/sessions/SessionDetail.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Exact-harness session detail distinguishes first unread payload from absent/expired identity and explains every unmeasured fact."
     },
@@ -258,8 +298,8 @@
       "name": "session-questions-and-answer-confirmation",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_session.py",
-        "cargento/skills/cargento/tests/test_next_pending.py"
+        "frontend/src/sessions/SessionDetail.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Every exact ask stays in payload order; one numeric option index is posted and only confirmed answers retire the question."
     },
@@ -267,9 +307,9 @@
       "name": "session-last-reply-and-delegated-work",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_session.py",
-        "cargento/skills/cargento/tests/test_next_sessions.py",
-        "cargento/skills/cargento/tests/test_next_delegation.py"
+        "frontend/src/sessions/SessionDetail.test.tsx",
+        "frontend/src/sessions/detail.differential.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Last reply, tasks, workers and delivery/departure evidence preserve owner, source boundaries, counts and observed end state."
     },
@@ -277,9 +317,9 @@
       "name": "intent-log",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_intent.py",
-        "cargento/skills/cargento/tests/test_next_reconciliation.py",
-        "cargento/skills/cargento/tests/test_next_session.py"
+        "frontend/src/intent/IntentLog.test.tsx",
+        "frontend/src/intent/IntentLog.differential.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "All eligible session membership and retained intent/reading/departure rows preserve provenance and exact links even with an empty project label."
     },
@@ -287,10 +327,9 @@
       "name": "intent-goal-and-outcome-editor",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_intent_editor.py",
-        "cargento/skills/cargento/tests/test_next_intent_draft.py",
-        "cargento/skills/cargento/tests/test_next_outcome_lines.py",
-        "cargento/skills/cargento/tests/test_next_parity_polish.py"
+        "frontend/src/intent/IntentEditor.test.tsx",
+        "frontend/e2e/intent-parity.mjs",
+        "docs/frontend-fluidity.json"
       ],
       "contract": "Goal and outcome drafts, counters, save/undo and stale revision refusals preserve typed words, caret and native editing continuity."
     },
@@ -298,9 +337,9 @@
       "name": "prompt-adoption-menu",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_prompt_menu.py",
-        "cargento/skills/cargento/tests/test_next_prompt_adoption.py",
-        "cargento/skills/cargento/tests/test_next_adoption_late_response.py"
+        "frontend/src/intent/IntentAdoption.test.tsx",
+        "frontend/src/intent/IntentRaces.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Prompt previews and Keep actions bind selected source and revision; late arrivals/refusals never silently approve unseen direction."
     },
@@ -308,9 +347,9 @@
       "name": "drift-explanation-and-live-monitor",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_drift_explanation.py",
-        "cargento/skills/cargento/tests/test_next_drift_panel.py",
-        "cargento/skills/cargento/tests/test_next_live_estimate.py"
+        "frontend/src/intent/LiveMonitor.test.tsx",
+        "frontend/e2e/drift-parity.mjs",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Live estimates and model readings show the actual drift in words, times/evidence and limitations; monitoring choice does not imply a new model reading."
     },
@@ -318,10 +357,9 @@
       "name": "analyze-consent-and-reading-result",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_reading_consent.py",
-        "cargento/skills/cargento/tests/test_next_analyze_flow.py",
-        "cargento/skills/cargento/tests/test_next_analysis_result.py",
-        "cargento/skills/cargento/tests/test_next_parity_polish.py"
+        "frontend/src/drift/ReadingStart.test.tsx",
+        "frontend/src/drift/ReadingResult.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Only explicit authorized Analyze starts work; consent/destination, revision floor, pending/error/withheld/completed state and result cues remain correct."
     },
@@ -329,9 +367,8 @@
       "name": "correction-to-copy",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_steer_back.py",
-        "cargento/skills/cargento/tests/test_next_copied_correction.py",
-        "cargento/skills/cargento/tests/test_next_intent_draft.py"
+        "frontend/src/drift/SteerBack.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Steer back reveals an editable bounded correction and explicit Copy; never writes it to the underlying session."
     },
@@ -339,9 +376,9 @@
       "name": "departure-review-and-reading-history",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_reconciliation.py",
-        "cargento/skills/cargento/tests/test_next_reading_route.py"
+        "frontend/src/drift/Departures.test.tsx",
+        "frontend/src/sessions/DepartureParts.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Recorded raises, review/dismissal, delivery and superseded revision state remain separate source-backed collections with honest absence. No legacy web surface calls the dismiss route, so the React page builds no dismissal control."
     },
@@ -349,8 +386,8 @@
       "name": "projects-list-and-history",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_projects.py",
-        "cargento/skills/cargento/tests/test_next_project.py"
+        "frontend/src/project/ProjectsView.differential.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Project groups preserve stable identity, member counts, recorded plans and active versus historical state."
     },
@@ -358,8 +395,9 @@
       "name": "project-detail-and-workflow-plans",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_project.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/src/project/ProjectDetail.differential.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Project header/goal/revision and Spacedock definitions, stage/task progress, plans and empty discovery retain original source facts."
     },
@@ -367,8 +405,8 @@
       "name": "project-scope-tree-and-switcher",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_project.py"
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Project root and exact focused session remain different scopes on desktop rail and compact disclosure; stale focus explains its absence."
     },
@@ -376,7 +414,9 @@
       "name": "project-recovery-briefing",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/project/recovery.differential.test.ts",
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Assignment, execution, command, latest exact direction/result and absence/authority sources stay front and center."
     },
@@ -384,8 +424,9 @@
       "name": "project-more-utility-menu",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/controls/MoreMenu.test.tsx",
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Project-only More menu exposes Copy briefing and conditionally Add human context, while retaining all-project status."
     },
@@ -393,7 +434,9 @@
       "name": "human-context-memo",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/controls/HumanContext.test.tsx",
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Outcome/current focus memos remain browser-owned, bounded, scoped and explicitly editable without becoming observed agent facts."
     },
@@ -401,9 +444,8 @@
       "name": "project-now-and-activity",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_activity.py",
-        "cargento/skills/cargento/tests/test_next_activity_numbers.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/project/model.differential.test.ts",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Now shows current/finished session activity, progress and plans with source-backed counts and disclosed detail."
     },
@@ -411,8 +453,9 @@
       "name": "project-course-and-completed-work",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_activity.py"
+        "frontend/src/project/course.differential.test.ts",
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Course displays changes, exact/derived episodes, stage conditions and completed-work evidence without turning a review into verified success."
     },
@@ -420,8 +463,12 @@
       "name": "project-decisions-semantic-timeline",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_project_context.py"
+        "cargento/skills/cargento/tests/test_project_context.py",
+        "frontend/src/timeline/Timeline.test.tsx",
+        "frontend/src/steering/ProjectDecisions.test.tsx",
+        "frontend/src/timeline/semantic.differential.test.ts",
+        "frontend/e2e/console-parity.mjs",
+        "frontend/e2e/timeline-filter.mjs"
       ],
       "contract": "Decisions shows scoped semantic work items/lanes, evidence, recorded decisions and persisted active/all/decisions filter; it is distinct from session detail."
     },
@@ -429,8 +476,9 @@
       "name": "project-console-operating-rail",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_delegation.py"
+        "frontend/src/delegation/Console.test.tsx",
+        "frontend/src/delegation/rail.differential.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Console presents delegation/waiting/capacity operations before setup, preserves exact selected-session scope and progressive disclosures."
     },
@@ -438,8 +486,9 @@
       "name": "project-steering-and-local-tripwires",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_controls.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/steering/ProjectSteer.test.tsx",
+        "frontend/src/steering/Tripwires.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Project steering bar and local guardrail drafts survive refresh; local-only controls remain explicit about their enforcement limits."
     },
@@ -447,8 +496,10 @@
       "name": "workflow-stage-tripwires",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_tripwires.py"
+        "cargento/skills/cargento/tests/test_tripwires.py",
+        "frontend/src/steering/StageConditions.test.tsx",
+        "frontend/src/steering/StageConditions.differential.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Saved stage rules preserve source/revision, suspension/unavailable states, safe explicit save/remove and request focus."
     },
@@ -456,8 +507,9 @@
       "name": "workstream-changes-and-delegation-trends",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_workstream.py",
-        "cargento/skills/cargento/tests/test_next_delegation.py"
+        "frontend/src/workstream/workstream.differential.test.ts",
+        "frontend/src/delegation/Panels.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Bounded source-observed windows, collapse preference and delegation comparisons never substitute missing history with zero."
     },
@@ -465,8 +517,11 @@
       "name": "exact-session-terminal-registration-recipe",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_interaction_prototype.py"
+        "cargento/skills/cargento/tests/test_interaction_prototype.py",
+        "frontend/src/terminal/registration.test.ts",
+        "frontend/src/terminal/TerminalSurface.test.tsx",
+        "frontend/e2e/terminal-parity.mjs",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Console registration is two numbered steps behind a redraw-safe disclosure; absent/refused/disabled bridge reasons and exact zero coordinates remain readable."
     },
@@ -474,9 +529,11 @@
       "name": "read-only-terminal-output-and-viewport",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
         "cargento/skills/cargento/tests/test_interaction_prototype.py",
-        "cargento/skills/cargento/tests/test_next_page.py"
+        "frontend/src/terminal/owner.test.ts",
+        "frontend/src/terminal/stream.test.ts",
+        "frontend/src/terminal/viewport.test.ts",
+        "frontend/e2e/terminal-parity.mjs"
       ],
       "contract": "Loopback vendored xterm, output-only socket, reconnect/dispose, short output, preserved viewport, follow and Jump to live stay scoped to one exact session."
     },
@@ -484,8 +541,9 @@
       "name": "attention-gates-risks-and-coverage",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_attention.py",
-        "cargento/skills/cargento/tests/test_next_signal_limits.py"
+        "frontend/src/attention/AttentionView.test.tsx",
+        "frontend/src/attention/view.differential.test.tsx",
+        "frontend/e2e/attention-parity.mjs"
       ],
       "contract": "Attention orders exact questions/checkpoints, risks and gate metadata without erasing lower-priority evidence; healthy/unmeasured coverage remains explicit."
     },
@@ -493,8 +551,9 @@
       "name": "capacity-model-sublimits-and-pacing",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_capacity.py",
-        "cargento/skills/cargento/tests/test_next_delegation.py"
+        "frontend/src/capacity/model.differential.test.ts",
+        "frontend/src/capacity/CapacityStrip.test.tsx",
+        "frontend/e2e/capacity-parity.mjs"
       ],
       "contract": "Capacity shows measured overall/model limits, expiration and project spread; stale, absent and true zero differ."
     },
@@ -502,8 +561,9 @@
       "name": "usage-consent-disclosure",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_capacity.py",
-        "cargento/skills/cargento/tests/test_inline_credentials.py"
+        "cargento/skills/cargento/tests/test_inline_credentials.py",
+        "frontend/src/capacity/UsageConsent.test.tsx",
+        "frontend/e2e/capacity-parity.mjs"
       ],
       "contract": "Usage fetching is offered with disclosure; declined/unanswered consent sends no usage parameter and reads no credential."
     },
@@ -511,7 +571,9 @@
       "name": "notification-permission-and-ownership",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_notifications.py"
+        "frontend/src/notify/NotificationControl.test.tsx",
+        "frontend/src/notify/owner.test.ts",
+        "frontend/e2e/attention-parity.mjs"
       ],
       "contract": "Explicit browser permission and server/native lane ownership avoid duplicate notifications and preserve reporting across refresh."
     },
@@ -519,8 +581,8 @@
       "name": "observer-model-consent-controls",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_observer_consent.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/capacity/ObserverControls.test.tsx",
+        "frontend/e2e/capacity-parity.mjs"
       ],
       "contract": "Console observer controls distinguish unread capability from disabled and require an explicit consented exact request without automatic model invocation."
     },
@@ -528,8 +590,10 @@
       "name": "live-update-and-fallback-continuity",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_live.py",
-        "cargento/skills/cargento/tests/test_next_integration.py"
+        "frontend/src/transport/live.test.ts",
+        "frontend/src/transport/runtime.test.ts",
+        "frontend/e2e/sessions-parity.mjs",
+        "docs/frontend-fluidity.json"
       ],
       "contract": "SSE, leader election, wakeup and poll fallback preserve monotonic freshness and a single in-flight revision read."
     },
@@ -537,9 +601,10 @@
       "name": "disclosure-motion-and-native-input-continuity",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_disclosure_motion.py",
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_intent_editor.py"
+        "frontend/src/controls/Disclosure.test.tsx",
+        "frontend/src/controls/displayGate.test.ts",
+        "frontend/e2e/controls-continuity.mjs",
+        "docs/frontend-fluidity.json"
       ],
       "contract": "Disclosure open state, popover position, focus, IME, native SELECT lifetime and input drafts survive source refresh; actual browser checks supplement VM assertions."
     }
@@ -549,7 +614,8 @@
       "name": "bare-or-invalid-fragment",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/router/grammar.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Bare or malformed #n token canonicalizes to #n=sessions without creating a dead project filter."
     },
@@ -557,8 +623,8 @@
       "name": "top-level-sessions",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_sessions.py"
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=sessions is the released landing route."
     },
@@ -566,8 +632,8 @@
       "name": "top-level-attention",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_attention.py"
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=attention round-trips through navigation and history."
     },
@@ -575,8 +641,8 @@
       "name": "top-level-projects",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_projects.py"
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=projects round-trips through navigation and history."
     },
@@ -584,8 +650,8 @@
       "name": "top-level-intent",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_intent.py"
+        "frontend/src/intent/IntentLog.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=intent reaches the Intent log and only source-aware entry triggers its load."
     },
@@ -593,8 +659,8 @@
       "name": "project-root",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_project.py"
+        "frontend/src/shell/ProjectTabs.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=project:<encoded project> preserves identity and defaults to Now."
     },
@@ -602,7 +668,8 @@
       "name": "project-tabs",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/shell/ProjectTabs.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=project:<encoded project>:course|decisions|console preserves tab, panel and keyboard wrap; Now is the canonical default."
     },
@@ -610,8 +677,8 @@
       "name": "project-exact-session-focus",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_project.py"
+        "frontend/src/shell/Views.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=project:<encoded project>:<encoded harness:sid>[:tab] preserves exact focused session, distinct project scope and stale-focus explanation."
     },
@@ -619,8 +686,8 @@
       "name": "session-exact-harness-and-id",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_session.py"
+        "frontend/src/shell/Views.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=session:<encoded project>:<encoded harness>:<encoded sid> distinguishes identical ids across harnesses and permits an empty project."
     },
@@ -628,8 +695,8 @@
       "name": "session-legacy-id-form",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_session.py"
+        "frontend/src/shell/Views.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Released #n=session:<encoded project>:<encoded sid> remains parseable without silently matching an ambiguous wrong owner."
     },
@@ -637,8 +704,8 @@
       "name": "session-origin-from",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_reading_route.py"
+        "frontend/src/router/router.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Closed &from=sessions|attention|intent|projects|project controls crumb, active tab and Escape after reload; unknown origins are omitted."
     },
@@ -646,7 +713,8 @@
       "name": "retired-held-to-alias",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/router/grammar.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "#n=project:<project>:<encoded harness:sid>:held-to aliases to exact session detail rather than treating the retired slug as focus."
     },
@@ -654,8 +722,9 @@
       "name": "malformed-encoding-and-empty-project",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_session.py"
+        "frontend/src/router/permalink.test.ts",
+        "frontend/src/shell/Views.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Malformed percent encoding never names the valid empty-project session, and absent focused sessions remain bounded."
     },
@@ -663,8 +732,8 @@
       "name": "absolute-session-permalink-query",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_session.py",
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/router/permalink.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Copied session links preserve the entire current pre-fragment URL including ?all=1 and reopen the same exact session after reload."
     },
@@ -672,8 +741,9 @@
       "name": "all-query-data-scope",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_capacity.py"
+        "frontend/src/api/bootstrap.test.ts",
+        "frontend/src/transport/runtime.test.ts",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Only ?all=1 extends data URL scope; usage=1 is consent-derived, never inferred from unrelated URL flags."
     },
@@ -681,7 +751,8 @@
       "name": "retired-next-query-refusal",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_flag.py"
+        "cargento/skills/cargento/tests/test_default_page.py",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "HTTP rejects retired ?next=true|false|empty aliases while canonical root and ?all=1 serve the one released UI."
     },
@@ -689,8 +760,9 @@
       "name": "browser-history-and-escape",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/router/router.test.ts",
+        "frontend/src/shell/Page.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Hash navigation and canonical replaceState preserve browser Back, origin-aware Escape and the stable document title."
     }
@@ -700,8 +772,9 @@
       "name": "An open disclosure (`<details>`)",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_disclosure_motion.py",
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/controls/Disclosure.test.tsx",
+        "frontend/e2e/controls-continuity.mjs",
+        "docs/frontend-fluidity.json"
       ],
       "contract": "Keep closed disclosure keys/open state and summary focus; unrelated updates must not replay opening motion.",
       "disposition": "stable-identity"
@@ -710,8 +783,8 @@
       "name": "An expanded Attention section",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_attention.py",
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/attention/AttentionView.test.tsx",
+        "frontend/e2e/attention-parity.mjs"
       ],
       "contract": "Expanded Attention sections survive revision/reordering; collapsed initial-three display remains reader-controlled.",
       "disposition": "store-held"
@@ -720,7 +793,9 @@
       "name": "Intent log rows",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_intent.py"
+        "frontend/src/intent/logStore.test.ts",
+        "frontend/src/intent/IntentLog.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Token invalidation immediately withholds withdrawn rows; visible view fetches once, hidden view waits; stale generations cannot restore words.",
       "disposition": "store-held"
@@ -729,7 +804,8 @@
       "name": "The selected quota window",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_capacity.py"
+        "frontend/src/capacity/CapacityStrip.test.tsx",
+        "frontend/e2e/capacity-parity.mjs"
       ],
       "contract": "Keep vendor/window identity even below initial three; choose an existing fallback only when absent, clear when none remain.",
       "disposition": "store-held"
@@ -738,7 +814,9 @@
       "name": "Keyboard focus",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/controls/focusLane.test.tsx",
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Retain actual focused keyed node; on removal use exact fallback. Preserve offscreen focus without scrolling; never interpolate hostile keys in selectors.",
       "disposition": "stable-identity"
@@ -747,8 +825,9 @@
       "name": "A row control's confirmation cue",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_controls.py"
+        "frontend/src/controls/keyedState.test.ts",
+        "frontend/src/controls/SessionControls.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Copy/raise confirmation belongs to lane+harness+sid; 30s TTL and newest32 keys, never a persistent session fact.",
       "disposition": "store-held"
@@ -757,7 +836,8 @@
       "name": "A typed and unsent draft",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_controls.py"
+        "frontend/src/steering/ProjectSteer.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Unsent steer/tripwire drafts remain per project in memory; submit clears both live node and draft before a new snapshot.",
       "disposition": "store-held"
@@ -766,7 +846,8 @@
       "name": "That draft's caret offset",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_controls.py"
+        "frontend/src/controls/fieldMemory.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Draft caret/selection offsets stay with the exact editor/project; clamp offsets only against that editor's text.",
       "disposition": "stable-identity"
@@ -775,7 +856,8 @@
       "name": "The `+ set a tripwire` box, once opened",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_controls.py"
+        "frontend/src/steering/Tripwires.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Opening set-a-tripwire stays open for the tab; Escape cancels its draft without changing the route.",
       "disposition": "store-held"
@@ -784,8 +866,9 @@
       "name": "A workflow stage-condition choice, save cue and action focus",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_tripwires.py"
+        "cargento/skills/cargento/tests/test_tripwires.py",
+        "frontend/src/steering/StageConditions.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Keep stage draft/cue/busy per workflow id; restore action focus after final enabled render only without later interaction; identical stage preserves server latch/revision.",
       "disposition": "store-held"
@@ -794,8 +877,9 @@
       "name": "An open `<select>` option list",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_live.py",
-        "cargento/skills/cargento/tests/test_next_prompt_menu.py"
+        "frontend/src/controls/choiceProbe.test.ts",
+        "frontend/src/controls/displayGate.test.ts",
+        "frontend/e2e/controls-continuity.mjs"
       ],
       "contract": "Retain native select and poll commit deferral: at most12 consecutive holds, change/blur catch up once; manual/action paint remains explicit.",
       "disposition": "retained-deferral"
@@ -804,7 +888,9 @@
       "name": "A disclosure the reader just toggled, mid-motion",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_disclosure_motion.py"
+        "frontend/src/controls/displayGate.test.ts",
+        "frontend/src/store/commit-gate.test.ts",
+        "frontend/e2e/controls-continuity.mjs"
       ],
       "contract": "Reader toggle motion lasts200ms; background/context commits coalesce for220ms; reader actions and reduced motion do not wait.",
       "disposition": "retained-deferral"
@@ -813,7 +899,9 @@
       "name": "The workstream panel's collapse",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_workstream.py"
+        "frontend/src/storage/flags.test.ts",
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Workstream collapsed preference survives reload; storage failure retains the tab's toggle.",
       "disposition": "store-held"
@@ -822,7 +910,8 @@
       "name": "The timeline's activity filter",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/timeline/modes.test.tsx",
+        "frontend/e2e/timeline-filter.mjs"
       ],
       "contract": "Keep active/all/decisions per project+session map, with explicit caller mode > stored choice > default; reload and sibling projects remain independent.",
       "disposition": "store-held"
@@ -831,8 +920,10 @@
       "name": "The prototype terminal viewport scroll offset",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_interaction_prototype.py"
+        "cargento/skills/cargento/tests/test_interaction_prototype.py",
+        "frontend/src/terminal/viewport.test.ts",
+        "frontend/src/terminal/owner.test.ts",
+        "frontend/e2e/terminal-parity.mjs"
       ],
       "contract": "Keep terminal viewport offset/follow state, clamp to actual scroll maximum, live cursor view and2px follow threshold; explicit jump resumes following.",
       "disposition": "store-held"
@@ -841,9 +932,9 @@
       "name": "Cockpit scope and selected tab",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_session.py"
+        "frontend/src/router/router.test.ts",
+        "frontend/src/shell/ProjectTabs.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Preserve fragment scope/tab/history and session origin; retired held-to becomes exact session route, not a tab/fallback session.",
       "disposition": "store-held"
@@ -852,9 +943,10 @@
       "name": "Cockpit disclosures and the mounted terminal",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_disclosure_motion.py",
-        "cargento/skills/cargento/tests/test_next_drift_explanation.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/controls/Disclosure.test.tsx",
+        "frontend/src/delegation/Console.test.tsx",
+        "frontend/src/intent/IntentDiscard.test.tsx",
+        "frontend/e2e/console-parity.mjs"
       ],
       "contract": "Keep scope/criterion+entry disclosure identities and armed-discard warning; native prompt select has one focus key. Terminal resource retention is owned by4824, not ordinary route unmount.",
       "disposition": "stable-identity"
@@ -863,7 +955,9 @@
       "name": "Cockpit human context",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/storage/memo.test.ts",
+        "frontend/src/controls/HumanContext.test.tsx",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Human outcome/focus autosave500 UTF-16 units per project+scope+field; retain in memory and show error on failed storage.",
       "disposition": "store-held"
@@ -872,9 +966,9 @@
       "name": "An unsaved goal or expected outcome checklist in the session page's drift block",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_intent_editor.py",
-        "cargento/skills/cargento/tests/test_next_adoption_late_response.py",
-        "cargento/skills/cargento/tests/test_next_outcome_lines.py"
+        "frontend/src/intent/IntentEditor.test.tsx",
+        "frontend/src/intent/IntentLines.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Keep unsaved goal/list/origins in memory only, cap from annotate_cap(default240), six lines; preserve late edits/refusals and freeze adoption+lines against locked saved_revision.",
       "disposition": "store-held"
@@ -883,8 +977,9 @@
       "name": "A prompt chosen from \"Use your prompt\" or an explicit later direction, not yet saved",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_prompt_menu.py",
-        "cargento/skills/cargento/tests/test_next_adoption_late_response.py"
+        "frontend/src/intent/IntentAdoption.test.tsx",
+        "frontend/src/intent/IntentRaces.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Chosen adoption is fact id+words+source time, not typed draft; drop only matching adopted choice, never a newer in-flight choice.",
       "disposition": "store-held"
@@ -893,8 +988,9 @@
       "name": "Selected later direction and prompt-menu choices",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_prompt_menu.py",
-        "cargento/skills/cargento/tests/test_next_intent_draft.py"
+        "frontend/src/intent/IntentDirections.test.tsx",
+        "frontend/src/intent/IntentAdoption.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Keep selected later-direction id and once-per-opening prompt list per session in memory; revalidate listing, keep-or-clear answer until save/undo.",
       "disposition": "store-held"
@@ -903,7 +999,8 @@
       "name": "A later direction opened by \"Add it to my intent\" or \"Update intent instead\", pending review",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_intent_draft.py"
+        "frontend/src/intent/IntentDirections.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Hold whole pending direction text/source/replacement in memory; no maxlength truncation, live count/refusal; duplicate Add focuses same draft, missing source/removal clears.",
       "disposition": "store-held"
@@ -912,7 +1009,8 @@
       "name": "Steer back open",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_steer_back.py"
+        "frontend/src/drift/SteerBack.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Steer back open/in-flight state survives redraw, suppresses duplicates, closes on second press and temporarily hides during analysis/question; reload drops.",
       "disposition": "store-held"
@@ -921,7 +1019,9 @@
       "name": "The correction draft",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_steer_back.py"
+        "frontend/src/drift/SteerBack.test.tsx",
+        "frontend/src/drift/correction.differential.test.ts",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Keep correction parts/stamp/text/edit/copy state, recompose unedited stale source only;2000 code points, native insertion/undo cap handling, whole composition refusal and explicit fallback.",
       "disposition": "store-held"
@@ -930,7 +1030,8 @@
       "name": "The correction's native editor and active composition",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_steer_back.py"
+        "frontend/src/drift/SteerBack.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Retain same native editor/undo during focused authored text and IME. Queue latest payload; leaving pointer waits through actual click, Tab/cancel/navigation release; provisional text never copied.",
       "disposition": "retained-deferral"
@@ -939,7 +1040,8 @@
       "name": "The correction's Copy cue",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_steer_back.py"
+        "frontend/src/drift/SteerBack.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Correction Copied/Copy unavailable lasts tab until accepted edit; recomposition disables copying and copying freezes exact text without claiming reader authorship.",
       "disposition": "store-held"
@@ -948,7 +1050,9 @@
       "name": "The whole text of each direction Keep opened before settling",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_parity_polish.py"
+        "frontend/src/intent/IntentDirections.test.tsx",
+        "frontend/src/drift/KeepAnalyze.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Keep whole directions+draw revision; first press reads all, new arrival is unread, next settle names drawn revision; sole fully quoted unclipped direction may settle once.",
       "disposition": "store-held"
@@ -957,7 +1061,9 @@
       "name": "The live monitor switch in the session page's Drift section",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_live_estimate.py"
+        "frontend/src/intent/LiveMonitor.test.tsx",
+        "frontend/src/storage/flags.test.ts",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Live monitor is session-local1/absent browser preference with tab-memory fallback; only toggles displayed deterministic cues, never server/model behavior.",
       "disposition": "store-held"
@@ -966,7 +1072,9 @@
       "name": "A Not accurate mark the store did not take",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_analysis_result.py"
+        "frontend/src/drift/ReadingResult.test.tsx",
+        "frontend/src/drift/DrawnPress.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Unsaved Not accurate error remains per session for tab; actual mark/aria-pressed derive from payload, not optimistic local state.",
       "disposition": "store-held"
@@ -975,8 +1083,9 @@
       "name": "The drift block's save cue",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_intent_draft.py"
+        "frontend/src/intent/held.test.ts",
+        "frontend/src/intent/IntentDiscard.test.tsx",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Save/discard cues use30s TTL and last16 keys; typing clears save cue, discard arm expires and has1.2s dwell; server owns discard outcome.",
       "disposition": "store-held"
@@ -985,8 +1094,9 @@
       "name": "The two live regions the drift block's cues are written into, and the last sentence written to either",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_parity_polish.py"
+        "frontend/src/shell/announcer.test.tsx",
+        "frontend/e2e/shell-routing.mjs",
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Persistent polite/assertive live nodes preexist announcements; dedup per standing key,last16; repeat Keep resets guard; retract armed warning silently when arm ends.",
       "disposition": "stable-identity"
@@ -995,7 +1105,8 @@
       "name": "Context editor focus, caret and internal scroll",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_reconciliation.py"
+        "frontend/src/controls/HumanContext.test.tsx",
+        "frontend/e2e/controls-continuity.mjs"
       ],
       "contract": "Context editor keeps focus,selection,inner scroll; Escape from field or Done restores entry value and closes without another persistence meaning.",
       "disposition": "stable-identity"
@@ -1004,8 +1115,9 @@
       "name": "A draft input's internal scroll and resized dimensions, even after focus leaves it",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_reconciliation.py",
-        "cargento/skills/cargento/tests/test_next_intent_editor.py"
+        "frontend/src/controls/fieldMemory.test.tsx",
+        "frontend/src/intent/IntentIdentity.test.tsx",
+        "frontend/e2e/controls-continuity.mjs"
       ],
       "contract": "Exact-key input retains unfocused caret,inner scroll,width/height; line resize follows index after deletion, never transfers to another session.",
       "disposition": "stable-identity"
@@ -1014,8 +1126,8 @@
       "name": "The More menu",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_reconciliation.py",
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/controls/MoreMenu.test.tsx",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "More summary/open state survives unrelated updates and remains keyboard reachable.",
       "disposition": "stable-identity"
@@ -1024,7 +1136,8 @@
       "name": "The More menu's copy-briefing result",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/controls/MoreMenu.test.tsx",
+        "frontend/e2e/controls-continuity.mjs"
       ],
       "contract": "Copy-briefing outcome has no TTL and is shown only for matching project/session context key; preserve exact clipboard result.",
       "disposition": "store-held"
@@ -1033,8 +1146,10 @@
       "name": "Project plan, raw status, earlier Course entries, other directions, and the tier-2 caveat bodies in the drift block and on Sessions",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_disclosure_motion.py",
-        "cargento/skills/cargento/tests/test_next_reconciliation.py"
+        "frontend/src/controls/Disclosure.test.tsx",
+        "frontend/src/project/ProjectDetail.test.tsx",
+        "frontend/e2e/sessions-parity.mjs",
+        "frontend/e2e/project-parity.mjs"
       ],
       "contract": "Per project/scope/session disclosures are independent; Sessions caveats have no project; Escape/outside/focus departure close only popovers.",
       "disposition": "stable-identity"
@@ -1043,8 +1158,9 @@
       "name": "Project-level semantic timeline disclosures, and Console's terminal-registration recipe",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_reconciliation.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/timeline/Timeline.test.tsx",
+        "frontend/src/terminal/TerminalSurface.test.tsx",
+        "frontend/e2e/timeline-filter.mjs"
       ],
       "contract": "Project-scope timeline and terminal recipe disclosures keep independent project ids/open state and summary focus, even with no focused session.",
       "disposition": "stable-identity"
@@ -1053,8 +1169,9 @@
       "name": "A reader-requested reading in the drift block",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_analyze_flow.py",
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/drift/ReadingStart.test.tsx",
+        "frontend/src/drift/ReadingRefusals.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Reading pending/latest feedback survives scope changes for tab; duplicate press suppressed; local refusal disappears when its reason changes; payload eligibility wins.",
       "disposition": "store-held"
@@ -1063,7 +1180,9 @@
       "name": "A control's in-flight request",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_pending.py"
+        "frontend/src/transport/pending.test.ts",
+        "frontend/src/shell/Shell.test.tsx",
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "Per-control request token owns busy/cue/timers:400ms start,15s abort,5s backstop; late handler cannot clear newer request; no rearming on keystroke.",
       "disposition": "store-held"
@@ -1072,7 +1191,9 @@
       "name": "Whether Analyze can be pressed, as the drawn Drift card last showed it",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_flips.py"
+        "frontend/src/drift/ReadingFlip.test.tsx",
+        "frontend/src/drift/DrawnPress.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Analyze/Keep visual eligibility keeps last16 drawn session states; closing requires two payloads+10s, line30s, announce at most60s; pending freezes and press resolves held state.",
       "disposition": "store-held"
@@ -1081,8 +1202,8 @@
       "name": "A Cancel on a running analysis",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_pending.py"
+        "frontend/src/drift/ReadingJob.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Cancel feedback is keyed by exact job id, duplicate requests refused; server cancelling flag survives reload; old failure never appears under new job.",
       "disposition": "store-held"
@@ -1091,7 +1212,8 @@
       "name": "A running analysis this tab has seen, and whether its box was drawn",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_parity_polish.py"
+        "frontend/src/drift/ReadingJob.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
       ],
       "contract": "Prime existing jobs silently on load; announce new drawn job once and new stored/withheld outcome once; hidden/unannounced end removes stale live text.",
       "disposition": "store-held"
@@ -1100,7 +1222,10 @@
       "name": "Observer model consent and request status",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_observer_consent.py"
+        "frontend/src/capacity/ObserverControls.test.tsx",
+        "frontend/src/transport/context.test.ts",
+        "frontend/src/storage/consent.test.ts",
+        "frontend/e2e/capacity-parity.mjs"
       ],
       "contract": "Observer summary consent persists with tab fallback; explicit request only, per-session pending/result keeps redraw; passive stale read cannot replace requested result.",
       "disposition": "store-held"
@@ -1109,7 +1234,9 @@
       "name": "The document scroll offset",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_chrome.py"
+        "frontend/src/controls/focusLane.test.tsx",
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "Browser clamps document scroll; unrelated update does not focus-scroll a previously offscreen control, only intersecting old target may move view.",
       "disposition": "stable-identity"
@@ -1129,8 +1256,9 @@
       "name": "cargento.cockpit.memo.v2:",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py",
-        "cargento/skills/cargento/tests/test_next_reconciliation.py"
+        "frontend/src/storage/memo.test.ts",
+        "frontend/src/controls/HumanContext.test.tsx",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Human outcome/focus stay browser-local and exact project/scope; memory survives failed persistence, with visible error.",
       "format": "Key prefix + encodeURIComponent(unique project_key else label) + ':' + encodeURIComponent('project' or harness:sid) + ':' + outcome|focus; raw string,500 UTF-16 units via slice/maxlength, no TTL or key-count cap; memory read wins."
@@ -1139,7 +1267,10 @@
       "name": "cargento.next.graph.mode",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/storage/project.test.ts",
+        "frontend/src/timeline/modes.test.tsx",
+        "frontend/e2e/timeline-filter.mjs",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Reload and cross-project/session filter choices stay independent; invalid legacy empty-scope key is discarded.",
       "format": "One JSON object map {'<project>\\u0000<session-or-empty>':'active'|'all'|'decisions'}; loader requires exactly two NUL-separated parts and valid mode; no TTL or map-count cap; caller pinned mode > stored > default > active."
@@ -1148,7 +1279,10 @@
       "name": "cargento.next.guardrails.",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_controls.py"
+        "frontend/src/storage/guardrails.test.ts",
+        "frontend/src/steering/Tripwires.test.tsx",
+        "frontend/e2e/console-parity.mjs",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Tripwires are browser preferences, never instructions sent to a session; older string rules remain readable.",
       "format": "Key prefix + encodeURIComponent(project); JSON array of {text:string,enabled:boolean}; accepts old strings as enabled; trim+slice500 UTF-16 units,drop empty/invalid,enabled only false disables,first50 rules; no TTL/project-count cap; tab memory survives failures."
@@ -1157,7 +1291,10 @@
       "name": "cargento.next.leader",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_live.py"
+        "frontend/src/storage/lease.test.ts",
+        "frontend/src/transport/legacyStorage.test.ts",
+        "frontend/src/transport/live.test.ts",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Use released namespaced lease only; cross-tab sole stream owner, private storage fallback and pagehide release preserved.",
       "format": "Fixed key; JSON {id:random-base36+'-'+Date.now(),ts:Date.now() milliseconds}; renew2000ms/stale6000ms; one lease, no payload-size bound in loader; foreign owner causes current leader to yield even when stale; failed storage makes tab self-lead."
@@ -1166,7 +1303,10 @@
       "name": "cargento.next.live-estimate:",
       "owner": "DRC-4825",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_live_estimate.py"
+        "frontend/src/storage/flags.test.ts",
+        "frontend/src/intent/LiveMonitor.test.tsx",
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Switch changes display only, persists only for exact harness/session, defaults off and retains tab answer on storage failure.",
       "format": "Key prefix+harness+':'+sid (sessKey, no URL encoding); raw '1' means on, absent/other value off; off removes key; no TTL/session-count cap; in-memory choice wins after a local toggle."
@@ -1175,7 +1315,10 @@
       "name": "cargento.next.revision",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_live.py"
+        "frontend/src/storage/lease.test.ts",
+        "frontend/src/transport/legacyStorage.test.ts",
+        "frontend/src/transport/live.test.ts",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Storage fan-out only not a durable acceptance/snapshot; duplicate/older stream events do not refetch.",
       "format": "Fixed key raw server revision '<started>.<counter>'; comparator splits last '.', changed start treated newer, invalid counter falls back to inequality; no TTL/length bound; read via storage event, last revision memory, not hydration from persisted key."
@@ -1184,7 +1327,10 @@
       "name": "cargento.next.usage.consent",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_capacity.py"
+        "frontend/src/storage/consent.test.ts",
+        "frontend/src/capacity/UsageConsent.test.tsx",
+        "frontend/e2e/capacity-parity.mjs",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Unanswered is distinct from declined/granted; no credential fetch before disclosure, storage error retains tab answer.",
       "format": "Fixed key raw 'granted'|'declined'; missing/unrecognized null then in-memory fallback; no TTL; valid storage consulted before memo so another tab's answer can win."
@@ -1193,7 +1339,9 @@
       "name": "cargento.next.workstream.collapsed",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_workstream.py"
+        "frontend/src/storage/flags.test.ts",
+        "frontend/e2e/project-parity.mjs",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Stored workstream collapse survives reload with in-memory fallback; legacy unnamespaced storage not adopted.",
       "format": "Fixed key raw '1' collapsed or '0' expanded; only '1' is true on load, missing/invalid expanded; no TTL; toggle updates memory before attempted persistence."
@@ -1202,7 +1350,9 @@
       "name": "cargento.observer-model-consent.v1",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_observer_consent.py"
+        "frontend/src/storage/consent.test.ts",
+        "frontend/src/capacity/ObserverControls.test.tsx",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Summary consent survives reload without automatic model action; source availability and explicit press remain separate.",
       "format": "Fixed key raw 'granted'|'declined'; missing/unrecognized falls back to null/memo; no TTL; storage consulted first, setter memo before write; not qualification or Analyze authorization."
@@ -1211,7 +1361,9 @@
       "name": "cargento.projectCockpitProject",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/storage/project.test.ts",
+        "frontend/src/storage/reads.test.ts",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Dormant legacy project selection is still inventoried; retain encoding/rollback compatibility without promoting it to a current session route.",
       "format": "Fixed key raw project-label string, missing/empty becomes null; no TTL,length/count cap; project.js boot reads it, old setProjectCockpit writes; current shared seam suppresses old navigation handlers and uses #n routes."
@@ -1220,7 +1372,9 @@
       "name": "cargento.projectGoal.v1:",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/storage/project.test.ts",
+        "frontend/src/storage/reads.test.ts",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Dormant browser project focus remains separate from durable intent and memo.v2; do not migrate into a different scope silently.",
       "format": "Key prefix+encodeURIComponent(label); raw trimmed saved string,clear removes key; old editor maxlength500 UTF-16 units but storage read/write do not enforce a raw length bound; no TTL/key-count cap; draft memory wins."
@@ -1229,7 +1383,9 @@
       "name": "cargento.projectUsage.v1",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_next_cockpit.py"
+        "frontend/src/storage/project.test.ts",
+        "frontend/src/storage/reads.test.ts",
+        "frontend/e2e/storage-conformance.mjs"
       ],
       "contract": "Dormant legacy project-use ordering remains compatibility data, not observed activity or React sort authority.",
       "format": "Fixed key JSON object label=>count; loader takes first200 entries,Math.floor(Number(value)),positive only,each<=999999; writes increment/clamp but do not bound total key count; no TTL; malformed/blocked storage yields in-memory fallback."

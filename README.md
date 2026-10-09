@@ -172,7 +172,7 @@ See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for d
 ## 4. Validation
 
 The canonical pre-PR suite lives in [AGENTS.md](AGENTS.md#pre-pr-checks): lint, types,
-frontend-asset lint, the contract validator, tests under coverage, and the native plugin validators.
+frontend lint, types and tests, the contract validator, tests under coverage, and the native plugin validators.
 Contributors should start from [CONTRIBUTING.md](CONTRIBUTING.md), which walks through setting it up.
 
 See [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract.

@@ -23,7 +23,7 @@ Checks, in order, each of which stops the release on failure:
     inventory  the archive's own runtime inventory check passes
     page       Python's integrity check accepts the archived React page, and the
                bytes it accepted are the verified document
-    launch     the archived launcher starts and runs `--frontend react --diagnose`
+    launch     the archived launcher starts and runs `--diagnose`
 
 `launch` proves only that the launcher starts: `--diagnose` exits before it loads a
 page. The `bundle` and `page` checks are what bind the served page to the verified
@@ -72,7 +72,7 @@ PAGE_PROBE = """
 import hashlib, json, sys
 sys.path.insert(0, sys.argv[1])
 from cargento_runtime.web import page
-data = page.load_frontend_page("react")
+data = page.load_frontend_page()
 print(json.dumps({"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}))
 """
 
@@ -318,11 +318,9 @@ def check_page(repo: Path, tree: Path, verified: str, home: Path) -> None:
 
 
 def check_launch(tree: Path, home: Path) -> None:
-    result = run_python(
-        home, [*LAUNCH_FLAGS, str(tree / SKILL / "server.py"), "--frontend", "react", "--diagnose"]
-    )
+    result = run_python(home, [*LAUNCH_FLAGS, str(tree / SKILL / "server.py"), "--diagnose"])
     if result.returncode:
-        message = f"archived launcher failed --frontend react --diagnose: {tail(result)}"
+        message = f"archived launcher failed --diagnose: {tail(result)}"
         raise ArchiveError(message)
 
 

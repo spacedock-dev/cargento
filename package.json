@@ -36,6 +36,7 @@
     "test:attention:browser": "node frontend/e2e/attention-parity.mjs",
     "test:capacity:browser": "node frontend/e2e/capacity-parity.mjs",
     "test:terminal:browser": "node frontend/e2e/terminal-parity.mjs && node frontend/e2e/timeline-filter.mjs",
+    "test:css:browser": "node frontend/e2e/css-contract.mjs",
     "test:production:browser": "node frontend/e2e/production-proofs.mjs"
   },
   "dependencies": {

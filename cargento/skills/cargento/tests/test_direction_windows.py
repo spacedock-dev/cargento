@@ -14,16 +14,90 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from cargento_runtime import aggregate, http_api, project_context, records
+from cargento_runtime import aggregate, http_api, levels, project_context, reading, records
 from cargento_runtime import annotations as annotation_store
 from cargento_runtime import io as runtime_io
 
 from . import test_correction as correction_tests
-from . import test_next_analysis_result as result_tests
 from .support import make_runtime, make_server, serve_until_closed
 from .test_claude_checks import SHORT
 from .test_direction_adoption import FIRST_AT, LONG, NOW, _ClaudeSession, _row
-from .test_next_intent_draft import TYPED, _DraftPage, visible_text
+
+DEPARTS = reading.RESULT_DEPARTURE
+CONSISTENT = reading.RESULT_CONSISTENT
+_WHO = {"harness": "claude", "sid": "focus-1"}
+_EVIDENCE = {"source": "Claude Bash call and paired result", "confidence": "exact"}
+
+
+def _report(fact_id: str, at: float, subject: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "fact_id": fact_id,
+        "at": at,
+        "type": "tool_report",
+        "subject": subject,
+        "source_session": _WHO,
+        "evidence": _EVIDENCE,
+        **extra,
+    }
+
+
+# A passing check and three writes in a window opening at 100, plus one write before it.
+NO_FAILURE = (
+    _report("c-pass", 104.5, "check", result="passed", summary="pytest tests/parser"),
+    _report("w-lex", 104.6, "write", summary="src/parser/lex.py"),
+    _report("w-gram", 104.7, "write", summary="src/parser/grammar.py"),
+    _report("w-readme", 104.8, "write", summary="README.md"),
+    _report("w-early", 99.5, "write", summary="old/notes.md"),
+)
+
+
+def scan_for(facts: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    """Full and numbered-window counts, with omitted paths on both sides."""
+    checks = [f for f in facts if f["subject"] == "check"]
+    writes = [f for f in facts if f["subject"] == "write"]
+    return {
+        "harness": "claude",
+        "sid": "focus-1",
+        "failed": sum(1 for f in checks if f.get("result") == "failed"),
+        "passed": sum(1 for f in checks if f.get("result") == "passed"),
+        "not_recorded": 0,
+        "background": 0,
+        "written_paths": len(writes) + (2 if writes else 0),
+        "window_written_paths": sum(f["at"] >= 100 for f in writes) + (1 if writes else 0),
+        "window_start": 100,
+        "outside_paths": 0,
+        "more": 0,
+        "last_changing_command_at": None,
+        "check_runs": len(checks),
+        "distinct_checks": len(checks),
+    }
+
+
+def criterion(result: str | None, *cites: str) -> dict[str, Any]:
+    row: dict[str, Any] = {"cites": list(cites), "why": "", "detail": ""}
+    if result is not None:
+        row["result"] = result
+    return row
+
+
+def assessment(criteria: dict[str, Any], **over: Any) -> dict[str, Any]:
+    value: dict[str, Any] = {
+        "revision_read": 2,
+        "window_start": 100,
+        "read_at": 106.0,
+        "evidence_through": 105.0,
+        "criteria": criteria,
+    }
+    value.update(over)
+    return value
+
+
+def server_level(value: dict[str, Any], facts: tuple[dict[str, Any], ...]) -> str:
+    """What the server's function answers for this reading over these facts."""
+    lines = sum(1 for key in value["criteria"] if key.startswith("line_"))
+    return levels.analysis_level(
+        value, levels.Evidence(facts, scan_for(facts), 0), outcome_lines=lines
+    ).level
 
 
 class AnUnchangedGoalKeepsItsWindow(unittest.TestCase):
@@ -330,11 +404,11 @@ class AReadingKeepsTheBaselineItRead(unittest.TestCase):
     def test_the_http_level_uses_the_read_time_for_later_directions(self) -> None:
         person = correction_tests.fact("new-person", 107, "user_message")
         person["source_session"] = {"harness": "claude", "sid": "focus-1"}
-        facts = [*result_tests.NO_FAILURE, person]
-        value = result_tests.assessment(
+        facts = [*NO_FAILURE, person]
+        value = assessment(
             {
-                "goal": result_tests.criterion(result_tests.DEPARTS, "task-a"),
-                "line_1": result_tests.criterion(result_tests.CONSISTENT, "c-pass"),
+                "goal": criterion(DEPARTS, "task-a"),
+                "line_1": criterion(CONSISTENT, "c-pass"),
             },
             read_at=103,
         )
@@ -350,61 +424,12 @@ class AReadingKeepsTheBaselineItRead(unittest.TestCase):
         }
         context = {
             "semantic": {"facts": facts},
-            "sources": {"work": {"tool_reports": [result_tests.scan_for(result_tests.NO_FAILURE)]}},
+            "sources": {"work": {"tool_reports": [scan_for(NO_FAILURE)]}},
         }
         app = SimpleNamespace(clock=lambda: 150)
         got = http_api._analysis_levels(app, context, row, entry, 103)[0]["level"]
-        expected = result_tests.server_level(value, result_tests.NO_FAILURE)
+        expected = server_level(value, NO_FAILURE)
         self.assertEqual(expected, got)
-
-
-class ThePageKeepsTheReadTime(result_tests._ResultPage):
-    def test_after_read_direction_labels_staleness_without_erasing_departure(self) -> None:
-        value = result_tests.assessment(
-            result_tests.MIXED["criteria"], read_at=103, evidence_through=103
-        )
-        html = self.page(value, extra="__s.annotation_goal_saved_at = 103;")
-        self.assertIn("Departs", " ".join(result_tests.rows_of(html)))
-        self.assertIn("Read before your message", visible_text(html))
-
-    def test_before_read_direction_still_withdraws_intent_departure(self) -> None:
-        html = self.page(result_tests.MIXED, extra="__s.annotation_goal_saved_at = 103;")
-        self.assertNotIn("Departs", " ".join(result_tests.rows_of(html)))
-
-
-class TheQuestionLetsTheReaderChoose(_DraftPage):
-    def test_add_selects_the_newest_and_offers_explicit_goal_adoption(self) -> None:
-        html = self.html()
-        self.assertIn("data-next-direction-select", html)
-        self.assertIn('value="fo-a" selected', html)
-        self.assertIn("Use this as my goal", visible_text(html))
-
-    def test_the_line_box_asks_for_the_rule(self) -> None:
-        html = self.html(
-            'nextCockpitDirectionLines.set("claude:focus-1",{factId:"fo-a",text:"Keep checks",later:true});'
-        )
-        self.assertIn("Write the rule, not the moment", visible_text(html))
-
-    def test_a_partial_visibility_cannot_claim_all_work_finished(self) -> None:
-        got = self.drive(
-            after='console.log(JSON.stringify(nextDelegatedWork({delegated_launches:2,delegated_unpaired:0,delegated_visibility:"partial",delegated_latest_launch_at:100,delegated_last_activity_at:110,delegated_quiet_since:null})));'
-        )
-        self.assertIn("cannot see", got["text"].lower())
-        self.assertNotIn("finished", got["text"].lower())
-
-    def test_a_measured_quiet_launch_is_risky_at_thirty_minutes(self) -> None:
-        got = self.drive(
-            after='console.log(JSON.stringify(nextDelegatedWork({delegated_launches:1,delegated_unpaired:1,delegated_visibility:"recorded",delegated_latest_launch_at:100,delegated_last_activity_at:110,delegated_quiet_since:110},1910)));'
-        )
-        self.assertTrue(got["risky"])
-        self.assertIn("30", got["text"])
-
-    def test_unknown_launches_are_not_measured_zero(self) -> None:
-        got = self.drive(
-            after='console.log(JSON.stringify(nextDelegatedWork({delegated_launches:null,delegated_unpaired:null,delegated_visibility:"not-recorded"},1910)));'
-        )
-        self.assertFalse(got["risky"])
-        self.assertIn("not measured", got["text"].lower())
 
 
 class TheServerVerifiesAnExplicitDirection(_ClaudeSession):
@@ -579,249 +604,3 @@ class TheServerVerifiesAnExplicitDirection(_ClaudeSession):
             )
         self.assertNotIn("prompt_choices", poll)
         self.assertGreater(len(menu["prompt_choices"]), 0)
-
-
-class ChoosingADirectionDoesNotSaveIt(_DraftPage):
-    def test_a_closed_pending_native_menu_is_not_reopened_by_its_reply(self) -> None:
-        for close in (
-            '__fire("focusout",{relatedTarget:null,target});',
-            '__fire("keydown",{type:"keydown",key:"Escape",target,preventDefault(){}});',
-        ):
-            with self.subTest(close=close):
-                got = self.drive(
-                    after="""
-let finish; let picker = 0;
-__fetchImpl = async () => await new Promise(resolve => {finish = () => resolve({ok:true,json:async()=>({prompt_choices:[{fact_id:"menu",at:104,text:"Choose retry",cut:false}]})});});
-const select = {tagName:"SELECT",dataset:{},isConnected:true,focus(){},showPicker(){picker++;},closest(selector){return selector === "[data-next-cockpit-prompt-select]" ? this : null;}};
-const target = select;
-nextIntentPromptMenuOpen({type:"pointerdown",target,preventDefault(){}});
-await __settle();
-"""
-                    + close
-                    + """
-finish(); await __settle(); await __settle();
-console.log(JSON.stringify({picker,menu:nextIntentPromptLists.get("claude:focus-1")}));
-""",
-                )
-                self.assertFalse(got["menu"]["open"])
-                self.assertEqual(0, got["picker"])
-
-    def test_one_unpaired_launch_uses_singular_grammar(self) -> None:
-        got = self.drive(
-            after='console.log(JSON.stringify(nextDelegatedWork({delegated_launches:1,delegated_unpaired:1,delegated_visibility:"recorded"},1910)));'
-        )
-        self.assertIn("1 of this session's launches has no recorded completion", got["text"])
-
-    def test_a_goal_typed_while_the_direction_opens_survives_the_reply(self) -> None:
-        got = self.drive(
-            self.CHOICE,
-            """
-const oldFetch = __fetchImpl; let finish;
-__fetchImpl = async (url, init) => String(url) === "/api/direction" ? await new Promise(resolve => {
-  finish = () => resolve({ok:true,json:async()=>({ok:true,goal_choice:{fact_id:"fo-a",at:104,text:"New retry goal",cut:false}})});
-}) : oldFetch(url, init);
-__press("direction-goal","fo-a"); await __settle();
-__typeGoal("Typed while opening"); finish(); await __settle(); await __settle();
-console.log(JSON.stringify({draft:nextCockpitHeldDrafts.get("held:claude:focus-1:goal"),chosen:nextIntentChosenPrompts.has("held:claude:focus-1:goal"),html:__els.app.innerHTML}));
-""",
-        )
-        self.assertEqual("Typed while opening", got.get("draft"))
-        self.assertFalse(got["chosen"])
-        self.assertIn("Typed while opening", got["html"])
-
-    def test_new_lines_or_a_saved_revision_refuse_a_pending_goal_choice(self) -> None:
-        for change in (
-            'nextCockpitHeldDrafts.set("held:claude:focus-1:lines",["New outcome line"]);',
-            "__s.annotation_revision = 99;",
-        ):
-            with self.subTest(change=change):
-                got = self.drive(
-                    self.CHOICE,
-                    """
-let finish;
-__fetchImpl = async () => await new Promise(resolve => {finish = () => resolve({ok:true,json:async()=>({ok:true,goal_choice:{fact_id:"fo-a",at:104,text:"New retry goal",cut:false}})});});
-__press("direction-goal","fo-a"); await __settle();
-"""
-                    + change
-                    + """
-finish(); await __settle(); await __settle();
-console.log(JSON.stringify({chosen:nextIntentChosenPrompts.has("held:claude:focus-1:goal"),lines:nextCockpitHeldDrafts.get("held:claude:focus-1:lines")}));
-""",
-                )
-                self.assertFalse(got["chosen"])
-                if "New outcome" in change:
-                    self.assertEqual(["New outcome line"], got["lines"])
-
-    def test_a_closed_menu_refreshes_on_null_blur_choice_and_escape(self) -> None:
-        got = self.drive(
-            after="""
-let requests = 0;
-__fetchImpl = async () => ({ok:true,json:async()=>({prompt_choices:[{fact_id:"menu-"+(++requests),at:104+requests,text:"Choice "+requests,cut:false}]})});
-const select = {tagName:"SELECT",dataset:{},value:"menu-2",closest(selector){return selector === "[data-next-cockpit-prompt-select]" ? this : null;}};
-await nextIntentLoadPromptChoices(__s);
-__fire("focusout",{relatedTarget:null,target:select});
-await nextIntentLoadPromptChoices(__s);
-__fire("change",{target:select});
-await nextIntentLoadPromptChoices(__s);
-__fire("keydown",{type:"keydown",key:"Escape",target:select,preventDefault(){}});
-await nextIntentLoadPromptChoices(__s);
-console.log(JSON.stringify({requests,choices:nextIntentPromptChoices(__s)}));
-"""
-        )
-        self.assertEqual(4, got["requests"])
-        self.assertEqual("menu-4", got["choices"][0]["factId"])
-
-    def test_closing_a_pending_menu_stays_closed_when_its_reply_arrives(self) -> None:
-        got = self.drive(
-            after="""
-let finish; let requests = 0;
-__fetchImpl = async () => {requests++; return await new Promise(resolve => {finish = () => resolve({ok:true,json:async()=>({prompt_choices:[{fact_id:"menu",at:104,text:"Choose retry",cut:false}]})});});};
-const first = nextIntentLoadPromptChoices(__s);
-await nextIntentLoadPromptChoices(__s);
-__fire("focusout",{relatedTarget:null,target:{closest:()=>({})}});
-finish(); await first;
-console.log(JSON.stringify({requests,menu:nextIntentPromptLists.get("claude:focus-1")}));
-"""
-        )
-        self.assertEqual(1, got["requests"])
-        self.assertFalse(got["menu"]["open"])
-
-    CHOICE = (
-        TYPED
-        + """
-__s.annotation_line_1 = "Every retry is bounded";
-__reply["/api/direction"] = () => ({status:200,body:{ok:true,text:"New retry goal",fits:true,clipped:false,
-  goal_choice:{fact_id:"fo-a",at:104,text:"New retry goal",cut:false}}});
-"""
-    )
-
-    def test_choose_only_opens_the_draft_and_asks_about_standing_lines(self) -> None:
-        got = self.drive(
-            self.CHOICE,
-            '__press("direction-goal","fo-a");await __settle();await __settle();console.log(JSON.stringify({html:__els.app.innerHTML,posts:__posts}));',
-        )
-        self.assertEqual(["/api/direction"], [r["url"] for r in got["posts"]])
-        self.assertIn("Keep your standing outcome lines", visible_text(got["html"]))
-        self.assertIn("New retry goal", got["html"])
-
-    def test_save_waits_for_the_keep_or_clear_answer(self) -> None:
-        got = self.drive(
-            self.CHOICE,
-            '__press("direction-goal","fo-a");await __settle();__press("held-save","intent");await __settle();console.log(JSON.stringify(__posts));',
-        )
-        self.assertEqual(["/api/direction"], [r["url"] for r in got])
-
-    def test_a_goal_choice_cannot_replace_an_unsaved_edit(self) -> None:
-        got = self.drive(
-            self.CHOICE,
-            '__typeGoal("My edit");__press("direction-goal","fo-a");await __settle();console.log(JSON.stringify({html:__els.app.innerHTML,posts:__posts}));',
-        )
-        self.assertEqual([], got["posts"])
-        self.assertIn("My edit", got["html"])
-
-    def test_the_same_words_from_a_new_source_still_wait_for_adoption(self) -> None:
-        got = self.drive(
-            self.CHOICE
-            + '__reply["/api/direction"] = () => ({status:200,body:{ok:true,goal_choice:{fact_id:"fo-a",at:104,text:__s.annotation_goal,cut:false}}});',
-            '__press("direction-goal","fo-a");await __settle();console.log(JSON.stringify(nextIntentDraft(__s,nextCockpitAnnotation(__s))));',
-        )
-        self.assertEqual(104, got["at"])
-        self.assertEqual("fo-a", got["factId"])
-
-    def test_any_earlier_choice_changes_the_add_target(self) -> None:
-        html = self.html('nextDirectionPicks.set("claude:focus-1","fo-b");')
-        self.assertIn('data-next-cockpit-action="direction-add" data-arg="fo-b"', html)
-        self.assertIn('value="fo-b" selected', html)
-
-    def test_the_attention_model_counts_one_quiet_launch_without_drift(self) -> None:
-        got = self.drive(
-            after='console.log(JSON.stringify(nextAttentionModel({generated:1910,sessions:[{harness:"claude",sid:"s",project:"p",state:"idle",delegated_launches:1,delegated_unpaired:1,delegated_visibility:"unattributed",delegated_latest_launch_at:100,delegated_last_activity_at:110,delegated_quiet_since:110}]})));'
-        )
-        self.assertEqual(1, got["counts"]["risk"])
-        self.assertEqual("quiet-launch", got["risk"][0]["primaryKind"])
-        self.assertNotIn("drift", got["risk"][0]["signals"][0]["detail"]["text"].lower())
-
-    def test_no_delegated_line_is_drawn_without_a_recorded_launch(self) -> None:
-        self.assertNotIn("data-next-delegated-work", self.html())
-        measured_zero = self.html(
-            'Object.assign(__s,{delegated_launches:0,delegated_unpaired:0,delegated_visibility:"recorded"});'
-        )
-        self.assertNotIn("data-next-delegated-work", measured_zero)
-
-    def test_a_recorded_launch_draws_the_count_and_its_visibility(self) -> None:
-        html = self.html(
-            'Object.assign(__s,{delegated_launches:2,delegated_unpaired:1,delegated_visibility:"unattributed",delegated_latest_launch_at:100,delegated_last_activity_at:105,delegated_quiet_since:null});'
-        )
-        self.assertIn("data-next-delegated-work", html)
-        self.assertIn("2 recorded launches", visible_text(html))
-        self.assertIn("cannot see all work", visible_text(html))
-
-    def test_the_prompt_menu_fetches_once_per_open_without_a_save(self) -> None:
-        got = self.drive(
-            after="""
-const oldFetch = __fetchImpl; let requests = [];
-__fetchImpl = async (url, init) => {
-  requests.push(String(url));
-  if(String(url).includes("prompts=1")) return {ok:true,json:async()=>({prompt_choices:[{fact_id:"menu-1",at:104,text:"Choose retry goal",cut:false}]})};
-  return oldFetch(url,init);
-};
-await nextIntentLoadPromptChoices(__s);
-await nextIntentLoadPromptChoices(__s);
-console.log(JSON.stringify({requests,posts:__posts,choices:nextIntentPromptChoices(__s)}));
-"""
-        )
-        self.assertEqual(1, sum("prompts=1" in r for r in got["requests"]))
-        self.assertEqual([], got["posts"])
-        self.assertEqual("menu-1", got["choices"][0]["factId"])
-
-    def test_quiet_time_needs_thirty_minutes_and_a_valid_recorded_clock(self) -> None:
-        got = self.drive(
-            after="""
-const base = {delegated_launches:1,delegated_unpaired:1,delegated_visibility:"recorded",delegated_latest_launch_at:100,delegated_last_activity_at:110};
-console.log(JSON.stringify([1799,1800,-1,null].map(age => nextDelegatedWork({...base,delegated_quiet_since:age == null ? null : 1910-age},1910).risky)));
-"""
-        )
-        self.assertEqual([False, True, False, False], got)
-
-    def test_loading_choices_keeps_the_open_native_select_in_place(self) -> None:
-        got = self.drive(
-            after="""
-const select = {dataset:{nextFocus:"held:claude:focus-1:goal:prompt"},innerHTML:""};
-const originalQuery = __els.app.querySelectorAll ? __els.app.querySelectorAll.bind(__els.app) : () => [];
-__els.app.querySelectorAll = selector => selector === "[data-next-cockpit-prompt-select]" ? [select] : originalQuery(selector);
-__fetchImpl = async () => ({ok:true,json:async()=>({prompt_choices:[{fact_id:"new-menu",at:104,text:"Choose retry goal",cut:false}]})});
-const before = __els.app.innerHTML;
-await nextIntentLoadPromptChoices(__s);
-console.log(JSON.stringify({same:before === __els.app.innerHTML,options:select.innerHTML}));
-"""
-        )
-        self.assertTrue(got["same"])
-        self.assertIn("new-menu", got["options"])
-
-    def test_a_saved_direction_goal_replaces_the_not_saved_announcement(self) -> None:
-        got = self.drive(
-            self.CHOICE,
-            """
-const said = []; const originalAnnounce = nextCockpitAnnounceCue;
-__reply["/api/annotate"] = () => {Object.assign(__s,{annotation_goal:"New retry goal",annotation_goal_source:"chosen-prompt",annotation_goal_source_at:104,annotation_revision:3});return {status:200,body:{ok:true,persisted:true,outcome:"stored"}};};
-nextCockpitAnnounceCue = (key,message,assertive) => {said.push(message);return originalAnnounce(key,message,assertive);};
-__press("direction-goal","fo-a");await __settle();await __settle();
-__press("direction-lines-keep");__press("held-save","intent");await __settle();await __settle();
-console.log(JSON.stringify({said,posts:__posts}));
-""",
-        )
-        self.assertEqual("/api/annotate", got["posts"][-1]["url"])
-        self.assertEqual("Saved as a new revision.", [s for s in got["said"] if s][-1])
-
-    def test_keyboard_open_focuses_before_loading_and_opens_the_picker(self) -> None:
-        got = self.drive(
-            after="""
-const events = [];
-const select = {isConnected:true,focus(){events.push("focus");},showPicker(){events.push("picker");}};
-nextIntentLoadPromptChoices = async () => {events.push("load");nextIntentPromptLists.set("claude:focus-1",{open:true});};
-nextIntentPromptMenuOpen({type:"keydown",key:"ArrowDown",preventDefault(){events.push("prevent");},target:{closest:()=>select}});
-await __settle();
-console.log(JSON.stringify(events));
-"""
-        )
-        self.assertEqual(["prevent", "focus", "load", "picker"], got)

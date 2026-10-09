@@ -31,7 +31,6 @@ import {
 } from './generate.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import { readingShape } from './shape';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The correction's pure half, run next to the legacy page: the edit arithmetic that decides what an
    over-the-cap paste keeps, the text composed from the server's parts and the list's numbers, whether it is
@@ -105,9 +104,9 @@ legacy.lift([
 legacy.lift(['fmtDur'], 'next-cockpit-compat.js');
 
 const CASES = 60;
-const SEEDS = caseCount(CASES, 'DRIFT_SEEDS');
+const SEEDS = CASES;
 // Edits are cheap to answer and cheap to store: a few hundred cover the emoji, the caret and the cap arms.
-const EDITS = caseCount(150);
+const EDITS = 150;
 const text = (html: string): string => {
   const node = document.createElement('div');
   node.innerHTML = html;

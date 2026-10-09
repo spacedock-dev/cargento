@@ -43,7 +43,8 @@ for agents that do not have the repository.
 [History](#history-and-annotations) | [Workflow and events](#workflow-and-event-controls) |
 [Notifications](#notifications-away-from-the-desk) | [Experimental interaction](#experimental-session-interaction)
 
-Arguments written in capitals are values you supply. Boolean switches affect this invocation;
+Spell every long option in full: an abbreviation such as `--no-hist` is refused rather than matched
+to the nearest option. Arguments written in capitals are values you supply. Boolean switches affect this invocation;
 leaving an off switch out on a later start enables that feature again without deleting its store.
 Pass one operation flag at a time. If combined, the current implementation chooses `--diagnose`,
 then `--forget`, then `--stop`, then `--status`; it does not execute a sequence of operations.
@@ -55,11 +56,10 @@ then `--forget`, then `--stop`, then `--status`; it does not execute a sequence 
 |---|---|
 | `-h`, `--help` | Print the launcher's current option list and exit. |
 | `--port PORT` | TCP port, an integer from 1 through 65535. Default: `4553`. Also selects the instance addressed by status, stop and forget. |
-| `--frontend MODE` | Select `react` (default) or `legacy` once for the process, including a detached child. React is the dashboard. `legacy` is the temporary rollback to the previous page: use it if the React page misbehaves, and expect it to be removed in a later release. Only this flag selects the renderer. No URL, environment variable or stored setting does, so a launch script that omits it gets React. Missing or corrupt assets of the selected page fail before serving and, for React, say how to roll back; the launcher never substitutes the other page. No Node installation or build runs at launch. A running dashboard keeps its renderer until it is stopped: `--status` names it, and a start with the other flag on that port is refused with that name. Stop it with `--stop`, then start again with the flag you want. The change moves how the board is drawn, not what it reads about a session. Where the React page words a message differently, the difference is recorded in the migration design record. |
-| `--frontend-dev-manifest PATH` | Contributor-only startup ticket for an owned Vite child. Requires React (the default; `--frontend legacy` is refused), foreground operation and `127.0.0.1`; refuses diagnose/forget and disables model calls, quota fetching and native actions. Validates fixture locations and a fresh child handshake before serving. Status/stop do not read the ticket or probe Vite. Use the [frontend development command](CONTRIBUTING.md#frontend-development) to create and own it. |
+| `--frontend-dev-manifest PATH` | Contributor-only startup ticket for an owned Vite child. Requires foreground operation and `127.0.0.1`; refuses diagnose/forget and disables model calls, quota fetching and native actions. Validates fixture locations and a fresh child handshake before serving. Status/stop do not read the ticket or probe Vite. Use the [frontend development command](CONTRIBUTING.md#frontend-development) to create and own it. |
 | `--host ADDRESS` | Accepts only `127.0.0.1` (default) or `0.0.0.0`. The latter exposes the dashboard on every IPv4 interface without authentication. Other addresses and IPv6 are rejected. Read [remote-access risks](SECURITY.md#known-and-accepted) before changing it; prefer an SSH tunnel. |
 | `--daemon` | Detach and keep serving after the starting shell exits. Reports the URL, process ID and log path. Without it, serving stays in the foreground. On Windows the launcher starts a detached child; see [platform notes](#platform-notes). |
-| `--status` | Report whether Cargento answers on the selected port, then exit. Distinguishes a running dashboard (naming the page it serves, `react` or `legacy`), no dashboard, stale state and a port held by another process. |
+| `--status` | Report whether Cargento answers on the selected port, then exit. Distinguishes a running dashboard, no dashboard, stale state and a port held by another process. |
 | `--stop` | Ask Cargento on the selected port to shut down and wait for the port to be free. A foreign process is left alone. If nothing is running, remove stale instance state if present. |
 | `--diagnose` | Report the local store paths searched, whether they are readable and what was found; exit without serving, writing history or making model calls. Use it first when a harness is missing. |
 | `--json` | Format `--diagnose` as JSON. Does not change status output or make the dashboard's normal output JSON. |
@@ -195,7 +195,7 @@ depend on the platform and harness; see [Compatibility](COMPATIBILITY.md).
 On Windows, `--daemon` respawns the server and deliberately omits the model opt-ins
 `--observer-model` and `--unasked-readings`. The experimental interaction-origin pair is also not
 forwarded. Use foreground mode on Windows when you need those options. Feature-off switches,
-port, host, the renderer choice, display/history bounds, Claude model choice, reach URL and quiet
+port, host, display/history bounds, Claude model choice, reach URL and quiet
 hours are forwarded.
 
 ## Exit status

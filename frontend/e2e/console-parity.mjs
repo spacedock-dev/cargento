@@ -6,14 +6,13 @@
  * Two kinds of proof. The DIFFERENTIAL half drives the React page over one board (`console-board.mjs`: the real
  * documents and modules, the real backend over a synthetic board with asks, a stored history, a quota provider,
  * one workflow stage source and a synthetic read-only terminal) and compares what a reader can read in each
- * state a reader reaches with what the legacy page said of the same state: the Console at project scope and with each of
+ * state a reader reaches with what the previous interface said of the same state: the Console at project scope and with each of
  * three sessions selected, the Decisions tab under each filter, the Course tab's conditions in and out of scope,
  * a sent draft, an added and toggled tripwire, and a stage condition saved, rearmed and removed through the real
- * `/api/tripwire` route. The legacy page's readings are recorded in `frontend/test/golden/e2e/console-parity.json`
- * (`support/golden.mjs` owns the three `CARGENTO_LEGACY` modes and the re-record command): replay, the default,
- * starts no legacy backend and opens no legacy page; live drives the legacy page beside the React one and must
- * agree with the recording. The legacy page's focus after opening and adding a tripwire is only reported
- * (`focusProbe`), never compared, and is recorded for that report. The BEHAVIOUR half holds the React page to what a unit test cannot see: the steering
+ * `/api/tripwire` route. The previous interface's readings are recorded in
+ * `frontend/test/golden/e2e/console-parity.json` (`support/golden.mjs`), a recording that cannot be remade because
+ * that interface is gone. Its focus after opening and adding a tripwire is only reported (`focusProbe`), never
+ * compared. The BEHAVIOUR half holds the React page to what a unit test cannot see: the steering
  * box's node, text, caret and native undo surviving the board's own revisions and a change of tab, the text and
  * caret coming back after a route away and back, the tripwire box staying open, Escape cancelling it without
  * leaving the page, a stage condition's focus and its native select across a poll, request counts over a mount,
@@ -59,6 +58,8 @@ let currentStep = '';
 const shots = [];
 const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
 
+/* A step's name is part of every key recorded under it (`support/golden.mjs`), so a name that still says "both
+   pages" or "the legacy page" is the name the recording was made under, kept so its keys resolve. */
 async function step(name, run) {
   if (only && !only.test(name)) return;
   currentStep = name;
@@ -137,7 +138,7 @@ const MUTATIONS = {
 
 const world = await startConsoleWorld({ mutations: MUTATIONS });
 const browser = await chromium.launch();
-const origins = [world.react.origin, world.react.viteOrigin, world.legacy?.origin].filter(Boolean);
+const origins = [world.react.origin, world.react.viteOrigin];
 const opened = [];
 const E = encodeURIComponent;
 const focusProbe = [];
@@ -272,7 +273,7 @@ const readCourse = () => {
   };
 };
 
-/* A duration, a clock time, an age and a fact id differ between two pages loaded a moment apart, and say the
+/* A duration, a clock time, an age and a fact id differ between two loads a moment apart, and say the
    same thing about the board either way. */
 const comparable = (value) =>
   JSON.stringify(value)
@@ -295,11 +296,8 @@ async function settled(read, { deadline = patience(9000), every = 150 } = {}) {
 }
 
 /* ---- pages ---- */
-const originOf = (kind) => (kind === 'legacy' ? world.legacy.origin : world.react.origin);
-
-async function newPage(kind, { viewport = { width: 1280, height: 1000 }, strict = true } = {}) {
+async function newPage({ viewport = { width: 1280, height: 1000 }, strict = true } = {}) {
   const o = await openTracked(browser, origins, { viewport });
-  o.kind = kind;
   o.strict = strict;
   let answered = 0;
   o.page.on('response', (response) => {
@@ -342,17 +340,13 @@ async function newPage(kind, { viewport = { width: 1280, height: 1000 }, strict 
 
 async function load(o, fragment, { wait = '[data-next-cockpit-panel]', state = 'visible' } = {}) {
   await o.page.goto('about:blank');
-  const suffix = o.kind === 'react' && !o.strict ? '?strict=0' : '';
-  await o.page.goto(`${originOf(o.kind)}/${suffix}${fragment}`);
-  if (o.kind === 'legacy') {
-    await o.page.waitForFunction('typeof nextData !== "undefined" && nextData !== null');
-  } else {
-    await o.page.waitForFunction(
-      () =>
-        document.querySelector('nav[aria-label="Primary"]') &&
-        !/Waiting for the first board|first payload has not arrived/.test(document.body.innerText),
-    );
-  }
+  const suffix = o.strict ? '' : '?strict=0';
+  await o.page.goto(`${world.react.origin}/${suffix}${fragment}`);
+  await o.page.waitForFunction(
+    () =>
+      document.querySelector('nav[aria-label="Primary"]') &&
+      !/Waiting for the first board|first payload has not arrived/.test(document.body.innerText),
+  );
   await o.page.waitForSelector(wait, { state, timeout: patience(20000) });
 }
 
@@ -362,43 +356,28 @@ async function hashTo(o, fragment) {
   }, fragment);
 }
 
-/* Runs `fn` on each page that exists in this mode; the result is `[legacy, react]`, with `null` for the legacy
-   page when it is not open (replay). */
-const both = async (fn) => {
-  const [old, mine] = await Promise.all([legacy ? fn(legacy) : null, fn(react)]);
-  return [old, mine];
-};
-let legacy = null;
 let react;
 
-/* The React page reads until it has settled, and is compared with what the legacy page said of the same state:
-   read now beside it (live, record) or from the golden file (replay). */
+/* The React page reads until it has settled, and is compared with what the previous interface said of the same
+   state, from the golden file. */
 async function same(label, read, { ready = null } = {}) {
-  if (ready)
-    await Promise.all(
-      [legacy, react]
-        .filter(Boolean)
-        .map((o) => o.page.waitForFunction(ready, null, { timeout: patience(20000) })),
-    );
+  if (ready) await react.page.waitForFunction(ready, null, { timeout: patience(20000) });
   const key = `${currentStep} :: ${label}`;
-  const [, mine] = await Promise.all([
-    golden.observe(key, () => settled(() => legacy.page.evaluate(read))),
-    settled(() => react.page.evaluate(read)),
-  ]);
+  golden.observe(key);
+  const mine = await settled(() => react.page.evaluate(read));
   golden.verify(key, mine);
   return mine;
 }
 
 /* ================================================================================================ */
 try {
-  if (golden.live) legacy = await newPage('legacy');
-  react = await newPage('react');
+  react = await newPage();
 
   /* =============================== DIFFERENTIAL =============================== */
   await step(
     'the steering bar says what it is before the first keystroke, in both pages',
     async () => {
-      await both((o) => load(o, fragmentFor('console')));
+      await load(react, fragmentFor('console'));
       const bar = await same('the steering bar', readSteer);
       assert.match(bar.caveat, /no write path into a session/);
       assert.equal(bar.maxlength, 500);
@@ -409,7 +388,7 @@ try {
   await step(
     'Console at project scope: the scope, the prompt, the rail, the setup line and the raw status',
     async () => {
-      await both((o) => load(o, fragmentFor('console')));
+      await load(react, fragmentFor('console'));
       const read = await same('the Console', readConsole, {
         ready: () => document.querySelector('[data-next-rail-panel="delegation"]'),
       });
@@ -429,7 +408,7 @@ try {
   await step(
     'Console with the terminal session selected: the terminal is operational, outside the setup',
     async () => {
-      await both((o) => load(o, fragmentFor('console', BOARD.terminal)));
+      await load(react, fragmentFor('console', BOARD.terminal));
       const read = await same('the Console on the terminal session', readConsole, {
         ready: () => document.querySelector('[data-next-cockpit-terminal]'),
       });
@@ -446,7 +425,7 @@ try {
   await step(
     'Console with a session that has no terminal: the terminal stays behind the closed setup',
     async () => {
-      await both((o) => load(o, fragmentFor('console', BOARD.live)));
+      await load(react, fragmentFor('console', BOARD.live));
       const read = await same('the Console on a session with no terminal', readConsole, {
         ready: () => document.querySelector('details.next-cockpit-console-setup'),
       });
@@ -459,7 +438,7 @@ try {
   await step(
     'Console of a project with no working time: the figure is withheld, never zero',
     async () => {
-      await both((o) => load(o, fragmentFor('console', null, BOARD.other)));
+      await load(react, fragmentFor('console', null, BOARD.other));
       const read = await same('the Console of beta/api', readConsole, {
         ready: () => document.querySelector('[data-next-rail-panel="delegation"]'),
       });
@@ -472,14 +451,14 @@ try {
   await step(
     'Decisions at project scope: the summary, the legend, each row’s rail and the unbound workers, under each filter',
     async () => {
-      await both((o) => load(o, fragmentFor('decisions'), { wait: '.pc-semantic-timeline' }));
+      await load(react, fragmentFor('decisions'), { wait: '.pc-semantic-timeline' });
       const first = await same('Decisions', readDecisions);
       assert.match(first.summary, /Decision application/);
       assert.equal(first.mode, 'decisions');
       assert.ok(first.legend.length >= 2, 'the lane legend was not drawn');
       assert.ok(first.rows.every((row) => row.rail.length === first.legend.length));
       for (const name of ['All events', 'Active', 'Decisions']) {
-        await both((o) => o.page.getByRole('button', { name, exact: true }).click());
+        await react.page.getByRole('button', { name, exact: true }).click();
         const next = await same(`Decisions under ${name}`, readDecisions);
         assert.equal(next.filter.find(([text]) => text === name)[1], 'true');
       }
@@ -488,9 +467,7 @@ try {
   );
 
   await step('Decisions with a session selected reads that session’s context', async () => {
-    await both((o) =>
-      load(o, fragmentFor('decisions', BOARD.terminal), { wait: '.pc-semantic-timeline' }),
-    );
+    await load(react, fragmentFor('decisions', BOARD.terminal), { wait: '.pc-semantic-timeline' });
     const read = await same('Decisions on the terminal session', readDecisions);
     assert.ok(read.rows.length > 0);
   });
@@ -498,17 +475,13 @@ try {
   await step(
     'Course: the stage condition narrows with the selected session, in both pages',
     async () => {
-      await both((o) => load(o, fragmentFor('course'), { wait: '.next-stage-conditions' }));
+      await load(react, fragmentFor('course'), { wait: '.next-stage-conditions' });
       const project = await same('Course at project scope', readCourse);
       assert.equal(project.cards.length, 1);
-      await both((o) =>
-        load(o, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' }),
-      );
+      await load(react, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' });
       const inScope = await same('Course on a session of the workflow', readCourse);
       assert.equal(inScope.cards.length, 1);
-      await both((o) =>
-        load(o, fragmentFor('course', BOARD.gate), { wait: '.next-stage-conditions' }),
-      );
+      await load(react, fragmentFor('course', BOARD.gate), { wait: '.next-stage-conditions' });
       const outside = await same('Course on a session outside the workflow', readCourse);
       assert.equal(outside.cards.length, 0);
       assert.match(outside.fallback.join(' '), /Workflow stage source unavailable/);
@@ -518,11 +491,9 @@ try {
   await step(
     'sending a steer draft records a receipt that says it was not delivered, in both pages',
     async () => {
-      await both((o) => load(o, fragmentFor('console')));
-      await both((o) =>
-        o.page.locator('[data-next-draft="steer"]').fill('  take the safer route  '),
-      );
-      await both((o) => o.page.locator('[data-next-draft="steer"]').press('Enter'));
+      await load(react, fragmentFor('console'));
+      await react.page.locator('[data-next-draft="steer"]').fill('  take the safer route  ');
+      await react.page.locator('[data-next-draft="steer"]').press('Enter');
       const bar = await same('the bar after a send', readSteer);
       assert.equal(bar.value, '');
       assert.equal(bar.receipts.length, 1);
@@ -531,7 +502,7 @@ try {
   );
 
   await step('a tripwire is added, toggled and persisted the same way in both pages', async () => {
-    await both((o) => load(o, fragmentFor('console')));
+    await load(react, fragmentFor('console'));
     const focusOf = (o) =>
       o.page.evaluate(() => {
         const node = document.activeElement;
@@ -539,21 +510,16 @@ try {
           ? `${node.tagName.toLowerCase()}:${(node.getAttribute('name') || node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40)}`
           : null;
       });
-    await both((o) => o.page.getByRole('button', { name: '+ set a tripwire' }).click());
-    const opened = await both(focusOf);
-    await both((o) =>
-      o.page.locator('[data-next-guardrail-input]').fill('alert me when the build breaks'),
-    );
-    await both((o) => o.page.locator('[data-next-guardrail-input]').press('Enter'));
+    await react.page.getByRole('button', { name: '+ set a tripwire' }).click();
+    const opened = await focusOf(react);
+    await react.page.locator('[data-next-guardrail-input]').fill('alert me when the build breaks');
+    await react.page.locator('[data-next-guardrail-input]').press('Enter');
     await sleep(patience(300));
-    const added = await both(focusOf);
-    // Reported, never compared: the legacy page's focus, read now or as recorded.
-    const legacyFocus = await golden.observe('tripwire add: the legacy page focus', async () => ({
-      opened: opened[0],
-      added: added[0],
-    }));
-    focusProbe.push({ legacy: legacyFocus, react: { opened: opened[1], added: added[1] } });
-    await both((o) => o.page.getByRole('switch').first().click());
+    const added = await focusOf(react);
+    // Reported, never compared: the previous interface's recorded focus.
+    const recordedFocus = golden.observe('tripwire add: the legacy page focus');
+    focusProbe.push({ recorded: recordedFocus, react: { opened, added } });
+    await react.page.getByRole('switch').first().click();
     const read = await same('the tripwires panel', readConsole);
     const panel = read.rail.find((section) => section.name === 'tripwires');
     assert.match(panel.text, /alert me when the build breaks/);
@@ -564,9 +530,7 @@ try {
         return globalThis.localStorage.getItem(key);
       });
     const stored = await readStored(react);
-    await golden.observe('tripwire add: the bytes the legacy page stored', () =>
-      readStored(legacy),
-    );
+    golden.observe('tripwire add: the bytes the legacy page stored');
     golden.verify('tripwire add: the bytes the legacy page stored', stored);
     assert.deepEqual(JSON.parse(stored), [
       { enabled: false, text: 'alert me when the build breaks' },
@@ -576,23 +540,18 @@ try {
   await step(
     'Save, Rearm and Remove through the real route say the same things in both pages',
     async () => {
-      await both((o) =>
-        load(o, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' }),
-      );
+      await load(react, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' });
       const act = async (action, expected) => {
-        await both((o) => o.page.locator(`[data-stage-action="${action}"]`).click());
-        await both((o) =>
-          o.page.waitForFunction(
-            (text) =>
-              document.querySelector('.next-stage-conditions [role="status"]')?.textContent ===
-              text,
-            expected,
-            { timeout: patience(15000) },
-          ),
+        await react.page.locator(`[data-stage-action="${action}"]`).click();
+        await react.page.waitForFunction(
+          (text) =>
+            document.querySelector('.next-stage-conditions [role="status"]')?.textContent === text,
+          expected,
+          { timeout: patience(15000) },
         );
         return same(`Course after ${action}`, readCourse);
       };
-      await both((o) => o.page.locator('[data-stage-choice]').selectOption('review'));
+      await react.page.locator('[data-stage-choice]').selectOption('review');
       const saved = await act('save', 'Saved.');
       assert.match(saved.cards[0].lines.join(' '), /Saved stage: review/);
       const rearmed = await act('rearm', 'Rearmed; baseline reset.');
@@ -856,7 +815,7 @@ try {
     'no request but the board and its passive reads from a mount, a poll, a tab change or StrictMode',
     async () => {
       for (const strict of [true, false]) {
-        const page = await newPage('react', { strict });
+        const page = await newPage({ strict });
         await load(page, fragmentFor('console', BOARD.terminal));
         await page.page.waitForSelector('[data-next-cockpit-terminal]');
         for (const tab of ['Decisions', 'Course', 'Console', 'Decisions', 'Console']) {
@@ -958,7 +917,7 @@ try {
   await step(
     'a reader who moves on during a save is not pulled back to it, and one who stays is',
     async () => {
-      const side = await newPage('react');
+      const side = await newPage();
       await side.page.route('**/api/tripwire', async (route) => {
         await sleep(patience(900));
         await route.continue();
@@ -995,7 +954,7 @@ try {
 
   await step('a refusal is said where the reader reads it, and nothing is retried', async () => {
     // A second page changes the rule underneath the first, so the first's revision is stale.
-    const other = await newPage('react');
+    const other = await newPage();
     await load(other, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' });
     await load(react, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' });
     await other.page.locator('[data-stage-choice]').selectOption('done');
@@ -1071,7 +1030,7 @@ try {
   await step(
     'the retained terminal keeps one screen and one socket across tab switches, with no frame sent',
     async () => {
-      const side = await newPage('react');
+      const side = await newPage();
       await load(side, fragmentFor('console', BOARD.terminal));
       await side.page.getByRole('button', { name: 'Open terminal', exact: true }).click();
       await side.page.waitForSelector('#pc-terminal-screen .xterm, #pc-terminal-viewport .xterm', {
@@ -1122,7 +1081,7 @@ try {
   await step(
     'the waiting session’s controls name the exact session, and a copy sends no request',
     async () => {
-      const side = await newPage('react');
+      const side = await newPage();
       await load(side, fragmentFor('console'));
       const card = side.page.locator('[data-next-wait-session="gate-open"]');
       await card.waitFor();
@@ -1148,7 +1107,7 @@ try {
     await step(
       `at ${label} px the Console and Decisions tabs draw with no horizontal page scroll`,
       async () => {
-        const side = await newPage('react', { viewport });
+        const side = await newPage({ viewport });
         for (const [tab, focus] of [
           ['console', BOARD.terminal],
           ['console', null],
@@ -1223,9 +1182,7 @@ try {
       // The harness has no page chrome around its panels, so the boxes are compared in the shipped page.
       const real = await startConsoleWorld({ harness: false });
       try {
-        const realOrigins = [real.react.origin, real.react.viteOrigin, real.legacy?.origin].filter(
-          Boolean,
-        );
+        const realOrigins = [real.react.origin, real.react.viteOrigin];
         const SEL = {
           caveat: '.next-steer-caveat',
           label: '.next-steer-label',
@@ -1261,7 +1218,7 @@ try {
               ...Object.fromEntries(props.map((prop) => [prop, style[prop]])),
               width: box.width,
               height: box.height,
-              // Where it sits inside what holds it, so the page chrome around both does not matter.
+              // Where it sits inside what holds it, so the page chrome around it does not matter.
               rightGap: Math.round(parent.right - box.right),
               leftGap: Math.round(box.left - parent.left),
             };
@@ -1286,25 +1243,23 @@ try {
                 await o.context.close();
               }
             };
-            // The legacy boxes are recorded as measured, and the slack below is applied to the recording.
+            // The previous interface's boxes are recorded as measured, and the slack below is applied to the recording.
             const pair = {
-              legacy: await golden.observe(`${currentStep} :: ${tab} at ${width}`, () =>
-                measure(real.legacy.origin),
-              ),
+              recorded: golden.observe(`${currentStep} :: ${tab} at ${width}`),
               react: await measure(real.react.origin),
             };
             const diffs = [];
-            for (const name of Object.keys(pair.legacy)) {
+            for (const name of Object.keys(pair.recorded)) {
               // A box sized by its text moves its free edge with the typeface (the add button's right gap was 308 on
               // macOS and 306 under Liberation on Linux) and keeps the edge it is anchored to, so the side it sits
               // against is the one that must agree: the smaller of the two gap differences, not each of them.
               const gap = (side) =>
-                Math.abs(pair.legacy[name][side] - (pair.react[name]?.[side] ?? Number.NaN));
+                Math.abs(pair.recorded[name][side] - (pair.react[name]?.[side] ?? Number.NaN));
               if (Math.min(gap('leftGap'), gap('rightGap')) > 1.5 || Number.isNaN(gap('leftGap')))
                 diffs.push(
-                  `${name}.gaps: legacy ${pair.legacy[name].leftGap}/${pair.legacy[name].rightGap}, react ${pair.react[name]?.leftGap}/${pair.react[name]?.rightGap}`,
+                  `${name}.gaps: recorded ${pair.recorded[name].leftGap}/${pair.recorded[name].rightGap}, react ${pair.react[name]?.leftGap}/${pair.react[name]?.rightGap}`,
                 );
-              for (const [prop, was] of Object.entries(pair.legacy[name])) {
+              for (const [prop, was] of Object.entries(pair.recorded[name])) {
                 if (prop === 'leftGap' || prop === 'rightGap') continue;
                 const now = pair.react[name]?.[prop];
                 const number = typeof was === 'number';
@@ -1312,7 +1267,7 @@ try {
                 // a spacing, a height or a side the text sits against cannot.
                 const slack = prop === 'width' ? 16 : 1.5;
                 if (number ? Math.abs(was - now) > slack : was !== now)
-                  diffs.push(`${name}.${prop}: legacy ${was}, react ${now}`);
+                  diffs.push(`${name}.${prop}: recorded ${was}, react ${now}`);
               }
             }
             cases.push({ width, tab, diffs });
@@ -1322,7 +1277,7 @@ try {
         assert.deepEqual(
           bad,
           [],
-          `typography or geometry drifted from the legacy page: ${JSON.stringify(bad).slice(0, 1500)}`,
+          `typography or geometry drifted from the recording: ${JSON.stringify(bad).slice(0, 1500)}`,
         );
         return { compared: cases.length };
       } finally {
@@ -1332,7 +1287,7 @@ try {
   );
 
   await step('the Console can be operated from the keyboard alone', async () => {
-    const side = await newPage('react');
+    const side = await newPage();
     await load(side, fragmentFor('console', BOARD.terminal));
     await side.page.waitForSelector('[data-next-cockpit-terminal]');
     // The tab strip's arrow keys move between tabs and keep focus on the new one.
@@ -1386,7 +1341,7 @@ try {
   await world.close();
 }
 
-console.log(JSON.stringify({ receipts, shots, focusProbe, legacy: golden.mode }, null, 2));
+console.log(JSON.stringify({ receipts, shots, focusProbe }, null, 2));
 // A mutation run is expected to fail and a filtered run skips steps, so neither records nor checks the golden.
 golden.finish({ complete: failures.length === 0 && !only && !world.mutation });
 if (failures.length) {

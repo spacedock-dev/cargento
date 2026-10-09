@@ -9,7 +9,6 @@ import {
   type Delegation,
   type GraphMode,
 } from './semantic';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* Which events each mode keeps is what the reader's choice means, so it is held to the legacy file that
    decides it. Generated semantic payloads run through the real `projectSemanticTimeline` and through the
@@ -18,7 +17,7 @@ import { caseCount } from '../../test/legacy_goldens';
 const legacy = loadLegacyTimeline();
 const MODES: readonly GraphMode[] = ['active', 'all', 'decisions'];
 const CASES = 80;
-const SEEDS = caseCount(CASES);
+const SEEDS = CASES;
 
 function mine(seed: number, mode: GraphMode) {
   const generated = genCase(seed);

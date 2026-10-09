@@ -16,10 +16,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from cargento_runtime import events, observation, sessions
+from cargento_runtime import events, observation
 
 from . import fixtures, support
-from .next_harness import NextPageJsHarness
 
 PLUGIN = support.SERVER_PATH.parent / "opencode_plugin.js"
 SID = "ses_" + "a" * 26
@@ -314,47 +313,3 @@ class OpenCodePluginTest(support.RuntimeTestCase):
         steps += [{"event": native("permission.replied", str(i)), "delay": 0} for i in range(65)]
         self.run_plugin(steps)
         self.assertEqual(["input_requested"], [r["body"]["event"] for r in self.records])
-
-
-@unittest.skipUnless(NODE, "node is required for rendered coverage")
-class OpenCodeCoverageTest(NextPageJsHarness):
-    def test_a_reader_sees_the_install_condition_with_and_without_observations(self) -> None:
-        spec = next(spec for spec in support.REGISTRY if spec.key == "opencode")
-        harness = {
-            "key": spec.key,
-            "label": spec.label,
-            "discovered": True,
-            "reports_needs_input": spec.reports_needs_input,
-            "reports_needs_input_when": spec.reports_needs_input_when,
-        }
-        for observed, enabled in ((True, True), (False, True), (False, False)):
-            with self.subTest(observed=observed, enabled=enabled):
-                app = support.build_app()
-                coordinator = observation.Observation(app, clock=lambda: 1000)
-                app.overlays = coordinator if enabled else None
-                if observed:
-                    self.assertEqual(
-                        "accepted",
-                        coordinator.submit(
-                            "opencode",
-                            {
-                                "v": 1,
-                                "event": "input_requested",
-                                "session_id": SID,
-                            },
-                        ),
-                    )
-                row = sessions.base_session("opencode", SID, "project")
-                app._apply_overlays([row], now=1000)
-                payload = {"harnesses": [harness], "sessions": [row], "asks": []}
-                result = self._run_page_js(
-                    f"nextData = {json.dumps(payload)}; console.log(JSON.stringify(nextAttentionView(nextAttentionModel(nextData))));"
-                )
-                assert isinstance(result, str)
-                self.assertIn(
-                    "for parent sessions where the project adapter is installed and events are enabled",
-                    result,
-                )
-                if not observed:
-                    self.assertNotIn("Input signal observed", result)
-                    self.assertIn("unknown", result)

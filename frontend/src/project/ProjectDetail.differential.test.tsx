@@ -6,7 +6,6 @@ import { sessKey, stableKey } from './group';
 import { parseHtml } from './legacy.test.helper';
 import { memoKey } from '../storage';
 import { mountProject } from './testing';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The project page held to the legacy page by what a reader can read. The legacy `nextProjectView` runs
    unchanged over a generated board and a seeded context read, and this page renders the same board in the
@@ -17,7 +16,7 @@ import { caseCount } from '../../test/legacy_goldens';
    conditions, and the whole of the Decisions and Console tabs. */
 
 const CASES = 40;
-const SEEDS = caseCount(CASES, 'PROJECT_VIEW_SEEDS');
+const SEEDS = CASES;
 
 const norm = (node: Element | null): string =>
   node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';

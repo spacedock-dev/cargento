@@ -33,7 +33,7 @@ import { createHeld } from './held';
 import { mulberry32, pick, genSession, type Rng } from './generate.test.helper';
 import { loadLegacyIntent } from './legacy.test.helper';
 import { workSource } from './work';
-import { caseCount, seedSample } from '../../test/legacy_goldens';
+import { seedSample } from '../../test/legacy_goldens';
 
 /* The Intent panel's derivations, run next to the legacy functions over generated sessions, payloads,
    contexts and held state. What the reader typed, picked and chose is the state a redraw must keep, so the
@@ -46,7 +46,7 @@ const legacy = loadLegacyIntent();
 const CASES = 60;
 // The first seed that reaches a chosen prompt in the menu.
 const WITNESSES = [150];
-const SAMPLE = seedSample(caseCount(CASES, 'INTENT_SEEDS'), WITNESSES);
+const SAMPLE = seedSample(CASES, WITNESSES);
 const SEEDS = SAMPLE.length;
 
 const PROMPTS = ['Fix the redirect', 'Ship the queue', 'Tidy the labels', 'x'.repeat(300), ''];

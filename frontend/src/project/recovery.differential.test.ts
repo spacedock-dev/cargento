@@ -13,14 +13,13 @@ import {
   recoveryBriefing,
   type RecoveryEnv,
 } from './recovery';
-import { caseCount } from '../../test/legacy_goldens';
 
 /* The recovery briefing and everything it stands on (attention coverage, the command attention list, the
    children, the assignment, the latest direction and result, and the text the More menu copies), held to
    the real legacy functions over generated boards and project-context reads. */
 
 const CASES = 40;
-const SEEDS = caseCount(CASES, 'PROJECT_SEEDS');
+const SEEDS = CASES;
 
 const VARIANTS: readonly Variant[] = ['ready', 'ready', 'stale', 'failed', 'absent'];
 

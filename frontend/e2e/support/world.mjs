@@ -5,8 +5,8 @@
  * HMR and Python serves the document and every /api route. That is what every proof has always exercised,
  * and it stays the default.
  *
- * `CARGENTO_E2E_BUNDLE=production`: the Python backend serves a PRODUCTION-built document, as `server.py
- * --frontend react` serves it to a reader. No Vite child, no HMR, no `--frontend-dev-manifest`, the minified
+ * `CARGENTO_E2E_BUNDLE=production`: the Python backend serves a PRODUCTION-built document, as `server.py`
+ * serves it to a reader. No Vite child, no HMR, no `--frontend-dev-manifest`, the minified
  * single-file page, and the lazy local xterm assets from the vendored files. Dev mode catches what a
  * development server shows; this mode catches what only the shipped bytes show: minification, dead-code
  * elimination, CSS order, StrictMode being a development-only double effect, source maps being absent.
@@ -106,8 +106,6 @@ async function startProduction(options) {
   // and a fixture that lifts some of them still sees the same starting point.
   const args = [
     launcher,
-    '--frontend',
-    'react',
     '--host',
     '127.0.0.1',
     '--port',

@@ -194,7 +194,7 @@ The proposal carries:
 1. The range: `$LAST..HEAD`, and the commit count with `chore(release)` excluded.
 2. The census.
 3. The classification, with the specific evidence that decided it, named. "Minor, because
-   `next-activity.js` gained an instruction line and `sessions.py` publishes a new `instruction`
+   `frontend/src/sessions` gained an instruction line and `sessions.py` publishes a new `instruction`
    key" is a reason. "Minor, 4 feats" is a count.
 4. Anything the breaking-change scan found, or an explicit "nothing".
 5. The proposed version, and the `docs-synced-through` note if the marker is behind. Prove it is
@@ -329,8 +329,9 @@ in the publishing job, so a hold merged while the verifiers ran still stops a re
 bump, tag move or `stable`. If main cannot be read at all, both refuse: an unreadable repository
 is not a missing hold.
 
-The file records why the hold exists and what lifts it. The current hold lasts until the legacy
-frontend is retired and the final browser, Python-only install and backend-connected development
+The file records why the hold exists and what lifts it. The legacy frontend and its rollback are
+removed (only the script parts frozen for the recorded Intent and drift replay remain), so the
+current hold lasts until the final browser, Python-only install and backend-connected development
 checks pass on one build of `main`. Only the repository owner lifts it, by deleting the file in a
 reviewed pull request. This skill never deletes it, and never edits it to make a release pass.
 

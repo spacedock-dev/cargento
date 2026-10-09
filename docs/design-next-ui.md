@@ -1,9 +1,16 @@
 # Design: the dashboard UI
 
 This document records the interface first released behind `?next=true` and the decisions that
-survived its promotion to the dashboard. That interface is the legacy page now: the React page is
-the default, and this one stays as the temporary `--frontend legacy` rollback until it is retired.
-The runtime module map remains in [design-runtime-architecture.md](design-runtime-architecture.md).
+survived its promotion to the dashboard. That interface is the legacy page now, and it is gone: the
+React page replaced it and nothing serves it, so this is a record of what was decided and why. Where it
+names a file under `web/` (`styles.css`, `next-*.js`, `project.js`), a test or a linter, it names what
+existed while that page did; the script parts remain in the tree only because the paused Intent and
+drift study binds their digest. The React frontend's own record is
+[design-frontend-migration.md](design-frontend-migration.md). The rationale below still binds the React
+page wherever it kept the behaviour: the route grammar and the retained browser namespace, the cockpit
+information architecture, the absence rules, and the palette and type tokens that
+`frontend/src/styles/shell.css` carries. The runtime module map remains in
+[design-runtime-architecture.md](design-runtime-architecture.md).
 
 It is a record of rationale, including the direction that was rejected, and it is written for
 whoever changes this interface next. What the interface promises a user, and what backs each
@@ -115,7 +122,12 @@ regions is an ownership change, not incidental cleanup.
 Board sentences have a 15px floor (`--fs-body`), at weight 500 and line-height 1.55. Labels
 identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 13px. That
 tier was 11px until v3 raised it, and the five steps are now the whole scale: no literal px size
-and no unused step survives, which a test enforces.
+and no unused step survives, which a test enforced against that sheet.
+`frontend/src/styles/css.test.ts` holds the first half against the React sheets (no pixel size, no step below
+13px, no `@import`, no remote or relative `url()`, no `prefers-color-scheme` rule, no undeclared `var()`);
+nothing checks for an unused step there. It reads declarations, so a rule that reaches an element through ancestors a
+selector never names is `frontend/e2e/css-contract.mjs`'s to catch, on computed styles over every route and tab the fixture
+boards draw.
 
 The steps are declared in rem against a `100%` root, so the board follows the reader's own
 font-size setting. The rem figures are computed against 16px, which is why a reader who has not

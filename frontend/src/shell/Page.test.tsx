@@ -454,16 +454,22 @@ describe('the page is React’s alone and starts nothing on its own', () => {
 
   it('never builds a text selection or a range of its own: selection is the browser’s, and nothing restores one', () => {
     const offenders: string[] = [];
-    for (const directory of ['shell', 'router']) {
-      const root = resolve(process.cwd(), 'frontend/src', directory);
-      for (const name of readdirSync(root)) {
-        if (!/\.(ts|tsx)$/.test(name) || /\.test\./.test(name) || /testing\.tsx?$/.test(name))
-          continue;
-        const text = readFileSync(join(root, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-        if (/getSelection|createRange|addRange|selectAllChildren|setBaseAndExtent/.test(text))
-          offenders.push(`${directory}/${name}`);
+    const walk = (directory: string) => {
+      for (const name of readdirSync(directory)) {
+        const path = join(directory, name);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (
+          /\.(ts|tsx)$/.test(name) &&
+          !/\.test\./.test(name) &&
+          !/(testing\.tsx?|\.helper\.ts)$/.test(name)
+        ) {
+          const text = readFileSync(path, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+          if (/getSelection|createRange|addRange|selectAllChildren|setBaseAndExtent/.test(text))
+            offenders.push(path);
+        }
       }
-    }
+    };
+    walk(resolve(process.cwd(), 'frontend/src'));
     expect(offenders).toEqual([]);
   });
 

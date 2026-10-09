@@ -2,10 +2,10 @@
 """Run the real CLI over a synthetic board with every session state the Sessions screen draws.
 
 Only the collectors are replaced. The CLI, HTTP guard, page selection, snapshot code, answer
-route, ask registry and capability checks are the real ones, so the same helper serves the
-legacy page and the React page and a differential run compares like with like. Nothing here
-reads a harness store, starts a terminal or calls a provider: models and usage stay off, and the
-one native action a session could cause (raising a terminal) is inert.
+route, ask registry and capability checks are the real ones, so a browser proof reads what a
+reader's page would. Nothing here reads a harness store, starts a terminal or calls a provider:
+models and usage stay off, and the one native action a session could cause (raising a terminal)
+is inert.
 
 What the board holds, by design rather than by accident:
 
