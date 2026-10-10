@@ -296,9 +296,11 @@ Shared controls keep reader state the redraw would otherwise discard. A keyed fo
 the same control or a named fallback without scrolling an offscreen one, a field memory keeps an
 unsaved draft, caret, undo and composition across live updates, and an open native select holds the
 poll commit for at most twelve consecutive attempts and catches up once on change or blur.
-Disclosures keep their node and open state, hold background commits for the 200 ms motion, and skip
-the hold under reduced motion. Headless Chromium draws a select's popup outside the DOM, so the
-browser proof covers the focus, deferral and catch-up contract around it and picks the option
+Disclosures keep their node and derive open state from the subscribed keyed store, hold background
+commits for 220 ms around the 200 ms motion, and skip the hold under reduced motion. The
+[reader-state record](design-reader-state.md#disclosure-write-precedence) owns write precedence,
+independent grouping, native fragment revelation and popover dismissal. Headless Chromium draws a
+select's popup outside the DOM, so the browser proof covers the focus, deferral and catch-up contract around it and picks the option
 programmatically rather than reading the popup.
 
 ## Sessions, session detail, the timeline and the terminal
@@ -586,7 +588,7 @@ step that operates them by key.
 
 Every parity proof can run against the shipped `react.html` rather than the development server:
 `CARGENTO_E2E_BUNDLE=production` makes the Python backend serve the minified page, `pnpm
-test:production:browser` runs all eleven, and CI runs them as the `Frontend production bundle` job in two
+test:production:browser` runs all twelve, and CI runs them as the `Frontend production bundle` job in two
 shards. The receipt's `production_artifact` block names that runner and job, and `check` fails if either
 goes missing from the package scripts or the workflow's steps. The limits it states are these. The controls
 proof mounts the controls gallery, a combination of shared controls no one page draws together, so in the
@@ -632,7 +634,7 @@ Python backend with no development ticket, so it serves the minified `react.html
 the default stays the development server, and a StrictMode-specific assertion keeps running there because
 the production build has no double effect. A proof that serves a scratch copy of the tree (a harness
 entry, the controls gallery or a deliberate mutation) has that copy packaged with the same `packageFrontend`
-the tracked artifact comes from, so it is served a production build too. Measured on a desktop, all eleven
+the tracked artifact comes from, so it is served a production build too. Measured on a desktop, all twelve
 parity proofs passed in production mode with no behavioural difference from development; the harness-hosted
 proofs differ from the shipped page in composition, which the receipt's `production_artifact.limits` states.
 `pnpm test:production:browser` runs them, and CI runs two shards of it as `Frontend production bundle`.

@@ -1,16 +1,3 @@
-/* Which disclosures the reader has opened, held by key rather than by node.
-
-   The key is the identity: project, scope (or the exact harness and session id
-   on a session page) and the disclosure's own name, so two sessions of one
-   project never share an open caveat and the Sessions caveats, which carry no
-   project, cannot collide with a project's. A component reads this once, when
-   it mounts, and writes it back from the browser's own `toggle` event, so a
-   remount draws the node already open and its opening motion runs only when the
-   reader flips it (docs/design-reader-state.md, "An open disclosure"). Nothing
-   here is derived from a DOM attribute, which is why the legacy closed key list
-   is not needed: a key only ever comes from a prop.
-
-   Held for the life of the tab and never written to browser storage. */
 export function disclosureKey(parts: {
   readonly project: string | null;
   /** The scope, or `harness:sid` on a session page. Empty where the disclosure has none. */
@@ -20,15 +7,50 @@ export function disclosureKey(parts: {
   return [parts.project ?? '', parts.scope ?? '', parts.name].join('\n');
 }
 
+export interface DisclosureSnapshot {
+  readonly open: boolean;
+  readonly version: number;
+}
+
+const CLOSED: DisclosureSnapshot = { open: false, version: 0 };
+
+/* The precedence and lifetime belong to docs/design-reader-state.md#disclosure-write-precedence. */
 export function createDisclosureStore() {
-  const open = new Map<string, boolean>();
+  const states = new Map<string, DisclosureSnapshot>();
+  const listeners = new Set<() => void>();
+  const writes = new Set<(key: string) => void>();
+  const versions = new Map<string, number>();
+  let version = 0;
+  let size = 0;
+  const read = (key: string): DisclosureSnapshot => states.get(key) ?? CLOSED;
   return {
-    isOpen: (key: string): boolean => open.get(key) === true,
+    read,
+    version: (key: string): number => versions.get(key) ?? 0,
+    isOpen: (key: string): boolean => read(key).open,
     set(key: string, value: boolean): void {
-      if (value) open.set(key, true);
-      else open.delete(key);
+      const changed = read(key).open !== value;
+      version += 1;
+      versions.set(key, version);
+      if (changed) {
+        size += value ? 1 : -1;
+        states.set(key, { open: value, version });
+      }
+      for (const listener of [...writes]) listener(key);
+      if (changed) for (const listener of [...listeners]) listener();
     },
-    size: (): number => open.size,
+    subscribe(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    watchWrites(listener: (key: string) => void): () => void {
+      writes.add(listener);
+      return () => {
+        writes.delete(listener);
+      };
+    },
+    size: (): number => size,
   };
 }
 

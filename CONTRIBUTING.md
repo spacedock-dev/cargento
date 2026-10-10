@@ -108,7 +108,7 @@ consent, checking that no usage parameter, model request or notification starts 
 Drift, Intent, Projects, project, Attention and capacity views of the fixture boards.
 
 Every proof above serves the React side through the development server by default. `pnpm test:production:browser`
-runs the same eleven proofs with `CARGENTO_E2E_BUNDLE=production`, which has the Python backend serve the minified
+runs the same twelve proofs with `CARGENTO_E2E_BUNDLE=production`, which has the Python backend serve the minified
 `react.html` that readers get (no Vite child, no hot refresh, no StrictMode double effect), so a difference only the
 shipped bytes show fails a proof. Pass `--shard a` or `--shard b` to run half of them; CI runs the two halves as
 separate jobs. Every surface proof is driven through the shipped page's own mount points (the capacity strip in

@@ -1,6 +1,6 @@
 /* A popover is a disclosure whose summary sits in a flex row beside other
    content, so its body floats out of flow and opening it moves nothing. It
-   closes the way a menu does: Escape, a click outside, or focus moving on to
+   closes on: Escape, a click outside, or focus moving on to
    another control. Anything else leaves it open, so a poll must not shut a body
    the reader is reading, and focus that goes nowhere (another window taking
    focus, or a redraw replacing the focused node) is not a departure. Accordions
@@ -10,6 +10,18 @@
    does, because Escape closes every open popover and returns focus to exactly
    one summary, which no single instance can decide. The selector is static; no
    key is ever interpolated into it. */
+const dismissals = new WeakMap<HTMLDetailsElement, () => void>();
+
+export function registerPopoverDismissal(
+  node: HTMLDetailsElement,
+  dismiss: () => void,
+): () => void {
+  dismissals.set(node, dismiss);
+  return () => {
+    dismissals.delete(node);
+  };
+}
+
 const OPEN_POPOVERS = 'details[data-ctl-popover][open]';
 
 function openPopovers(doc: Document): HTMLDetailsElement[] {
@@ -21,7 +33,7 @@ export function installPopoverDismissal(doc: Document): () => void {
     if (event.key !== 'Escape') return;
     const open = openPopovers(doc);
     if (open.length === 0) return;
-    for (const popover of open) popover.open = false;
+    for (const popover of open) dismissals.get(popover)?.();
     const target = event.target instanceof Node ? event.target : null;
     const owner = open.find((popover) => target !== null && popover.contains(target)) ?? open[0];
     owner?.querySelector<HTMLElement>(':scope > summary')?.focus();
@@ -30,7 +42,7 @@ export function installPopoverDismissal(doc: Document): () => void {
   const onClick = (event: MouseEvent) => {
     const target = event.target instanceof Node ? event.target : null;
     for (const popover of openPopovers(doc)) {
-      if (!target || !popover.contains(target)) popover.open = false;
+      if (!target || !popover.contains(target)) dismissals.get(popover)?.();
     }
   };
   const onFocusOut = (event: FocusEvent) => {
@@ -38,7 +50,7 @@ export function installPopoverDismissal(doc: Document): () => void {
     const popover = target?.closest<HTMLDetailsElement>(OPEN_POPOVERS);
     const next = event.relatedTarget;
     if (!popover || !(next instanceof Node)) return;
-    if (!popover.contains(next)) popover.open = false;
+    if (!popover.contains(next)) dismissals.get(popover)?.();
   };
   doc.addEventListener('keydown', onKeydown);
   doc.addEventListener('click', onClick);
