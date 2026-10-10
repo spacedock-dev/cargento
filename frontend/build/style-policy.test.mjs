@@ -77,3 +77,125 @@ test('the CSS count survives Windows checkout line endings and strips only the o
   );
   assert.equal(cssBytes('.a { color: red; }\n'), Buffer.byteLength('.a { color: red; }\n'));
 });
+
+async function policyFixture(run) {
+  const copy = await mkdtemp(join(tmpdir(), 'cargento-style-policy-'));
+  try {
+    await mkdir(join(copy, 'frontend/src/styles'), { recursive: true });
+    await mkdir(join(copy, 'frontend/src/lib'), { recursive: true });
+    await mkdir(join(copy, 'frontend/src/ui'), { recursive: true });
+    const record = JSON.parse(await readFile(join(root, 'frontend/css-budget.json'), 'utf8'));
+    await writeFile(
+      join(copy, 'frontend/css-budget.json'),
+      JSON.stringify({ ...record, files: [], bytes: 0 }),
+    );
+    await writeFile(join(copy, 'frontend/src/main.tsx'), '');
+    await writeFile(join(copy, 'frontend/src/styles/tailwind.css'), '');
+    await run(copy);
+  } finally {
+    await rm(copy, { recursive: true, force: true });
+  }
+}
+
+test('custom variants cannot hide declarations in the excluded Tailwind entry', async () => {
+  const { checkStyles } = await import('./style-policy.mjs');
+  await policyFixture(async (copy) => {
+    const entry = join(copy, 'frontend/src/styles/tailwind.css');
+    for (const variant of [
+      '@custom-variant data-open { padding: 44px; @slot; }',
+      '@custom-variant data-closed { &:where([data-closed]) { padding: 44px; @slot; } }',
+      '@custom-variant dark (&:where(.dark)) { padding: 44px; }',
+    ]) {
+      await writeFile(entry, variant + '\n@source inline("data-open:block");');
+      assert.match(
+        (await checkStyles(copy)).problems.join('\n'),
+        /Tailwind entry contains a rule/,
+        variant,
+      );
+    }
+    for (const variant of [
+      '@custom-variant dark (&:where(.cargento-light-mode, .cargento-light-mode *));',
+      '@custom-variant data-open (&:where([data-open]));',
+      '@custom-variant data-open { @slot; }',
+      '@custom-variant data-closed { &:where([data-closed]) { @slot; } }',
+    ]) {
+      await writeFile(entry, variant);
+      assert.deepEqual((await checkStyles(copy)).problems, [], variant);
+    }
+  });
+});
+
+test('the scale gate scans TS recipes and excludes test sources', async () => {
+  const { checkStyles } = await import('./style-policy.mjs');
+  await policyFixture(async (copy) => {
+    for (const path of ['frontend/src/lib/recipe.ts', 'frontend/src/ui/recipe.ts']) {
+      await writeFile(
+        join(copy, path),
+        'export const recipe = <T>(value: T) => { const classes = "text-sm text-[14px]"; return [value, classes]; };',
+      );
+      if (path.includes('/ui/'))
+        await writeFile(join(copy, 'frontend/src/main.tsx'), 'import "./ui/recipe";');
+      assert.deepEqual((await checkStyles(copy)).problems, [
+        `${path}: forbidden scale class text-[14px]`,
+        `${path}: forbidden scale class text-sm`,
+      ]);
+      await rm(join(copy, path));
+    }
+    await writeFile(join(copy, 'frontend/src/lib/recipe.test.ts'), 'const recipe = "text-sm";');
+    assert.deepEqual((await checkStyles(copy)).problems, []);
+  });
+});
+
+test('arbitrary text sizes follow Tailwind font-size resolution without rejecting colors', async () => {
+  const { scaleProblems } = await import('./style-policy.mjs');
+  for (const token of [
+    'text-[+14px]',
+    'hover:text-[-.5rem]',
+    'text-[50%]',
+    'text-[xx-small]',
+    'text-[x-small]',
+    'text-[small]',
+    'text-[medium]',
+    'text-[large]',
+    'text-[x-large]',
+    'text-[xx-large]',
+    'text-[xxx-large]',
+    'text-[smaller]',
+    'text-[larger]',
+    'text-[calc(1rem+2px)]',
+    'text-[clamp(1rem,2vw,2rem)]',
+    'text-[min(1rem,2vw)]',
+    'text-[max(1rem,2vw)]',
+    'text-[length:var(--x)]',
+    'text-[size:var(--x)]',
+    'text-[percentage:var(--x)]',
+    'text-[absolute-size:var(--x)]',
+    'text-[relative-size:var(--x)]',
+    'hover:text-(length:--x)',
+  ]) {
+    assert.deepEqual(scaleProblems(`const recipe = "${token}";`), [token], token);
+  }
+  for (const token of [
+    'text-[0]',
+    'text-[#fff]',
+    'text-[color:var(--x)]',
+    'text-[--x]',
+    'text-[var(--x)]',
+    'text-[rgb(10_20_30)]',
+    'text-[color:calc(var(--x))]',
+    'hover:text-(color:--x)',
+  ]) {
+    assert.deepEqual(scaleProblems(`const recipe = "${token}";`), [], token);
+  }
+});
+
+test('a static template dynamic import reaches its UI module', async () => {
+  const { unusedUi } = await import('./style-policy.mjs');
+  await policyFixture(async (copy) => {
+    await writeFile(join(copy, 'frontend/src/main.tsx'), 'void import(`@/ui/orphan`);');
+    await writeFile(join(copy, 'frontend/src/ui/orphan.tsx'), 'export const Orphan = () => null;');
+    assert.deepEqual(await unusedUi(copy), []);
+    await writeFile(join(copy, 'frontend/src/main.tsx'), 'void import(`@/ui/${name}`);');
+    assert.deepEqual(await unusedUi(copy), ['frontend/src/ui/orphan.tsx']);
+  });
+});

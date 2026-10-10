@@ -313,8 +313,11 @@ despite there being no utility callers. The entry therefore scans `ui/**/*.{ts,t
 `lib/**/*.{ts,tsx}`, excludes tests, the gallery and stylesheets, and uses `source(none)`. A later layer
 adds an explicit source glob for any utility caller outside those directories. Nothing is vendored in
 this layer. `frontend/build/style-policy.mjs` rejects a vendored module unreachable from the shipped
-entry through runtime imports, exports or dynamic imports; type-only imports and importers in dead
-code do not qualify. It scans TSX strings for default scale classes and arbitrary font sizes.
+entry through runtime imports, exports or dynamic imports with literal targets (including template
+literals without substitutions). Type-only imports and unreachable modules do not qualify; imports inside `if (false)`
+still count. It scans TS and TSX strings outside tests for default scale classes and arbitrary font
+sizes, using the pinned Tailwind compiler to distinguish font sizes from colors. Custom variants in
+the excluded entry may contain selectors and `@slot;` only; declarations are refused.
 
 `frontend/css-budget.json` records 161,464 bytes and its counting rule. Count UTF-8 bytes after CRLF
 to LF normalization, including comments, across every CSS file under `frontend/`, except the

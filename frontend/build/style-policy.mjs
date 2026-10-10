@@ -3,6 +3,9 @@ import { join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import ts from 'typescript';
+import { __unstable__loadDesignSystem } from 'tailwindcss';
+
+const utilityTypes = await __unstable__loadDesignSystem('@theme { --spacing: 0.25rem; }');
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const RECORD = 'frontend/css-budget.json';
@@ -24,15 +27,9 @@ async function files(root, directory) {
   return found.sort();
 }
 
-export function scaleProblems(source) {
+export function scaleProblems(source, file = 'source.tsx') {
   // Scan strings, including cva recipes and conditional classes, rather than className alone.
-  const tree = ts.createSourceFile(
-    'source.tsx',
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   const found = new Set();
   const visit = (node) => {
     if (
@@ -43,13 +40,18 @@ export function scaleProblems(source) {
     ) {
       for (const token of node.text.split(/\s+/)) {
         const utility = token
-          .split(/:(?![^[]*\])/)
+          .split(/:(?![^[]*\])(?![^(]*\))/)
           .at(-1)
           .replace(/^!/, '')
           .replace(/!$/, '');
         if (
           /^text-(?:xs|sm|base|lg|xl|[2-9]xl)(?:\/.*)?$/.test(utility) ||
-          /^text-\[(?:[\d.]|length:|(?:calc|clamp|min|max|var)\().*\]/.test(utility) ||
+          // Tailwind resolves unhinted variables (including [--x]) as color. Let its pinned
+          // compiler distinguish colors from signed lengths, keywords, math and size hints.
+          (/^text-(?:\[|\()/.test(utility) &&
+            utilityTypes
+              .candidatesToCss([utility])
+              .some((css) => /\bfont-size:/.test(css || ''))) ||
           /^(?:text|font)-\(length:/.test(utility) ||
           /^\[font-size:/.test(utility) ||
           /^rounded(?:-[trblse]{1,2})?-(?:xs|sm|md|lg|xl|[2-4]xl)$/.test(utility) ||
@@ -99,7 +101,7 @@ export async function unusedUi(root) {
         ts.isCallExpression(node) &&
         node.expression.kind === ts.SyntaxKind.ImportKeyword &&
         node.arguments[0] &&
-        ts.isStringLiteral(node.arguments[0])
+        ts.isStringLiteralLike(node.arguments[0])
       ) {
         importedFiles.add(node.arguments[0].text);
       }
@@ -147,8 +149,8 @@ export async function checkStyles(root = ROOT, base) {
   for (const file of css) bytes += cssBytes(await readFile(join(root, file), 'utf8'));
   if (bytes !== record.bytes)
     problems.push(`Hand-written CSS bytes differ: record ${record.bytes}, actual ${bytes}`);
-  for (const file of source.filter((file) => /\.tsx$/.test(file) && !/\.test\./.test(file))) {
-    for (const token of scaleProblems(await readFile(join(root, file), 'utf8')))
+  for (const file of source.filter((file) => /\.tsx?$/.test(file) && !/\.test\./.test(file))) {
+    for (const token of scaleProblems(await readFile(join(root, file), 'utf8'), file))
       problems.push(`${file}: forbidden scale class ${token}`);
   }
   for (const file of await unusedUi(root))
@@ -159,11 +161,14 @@ export async function checkStyles(root = ROOT, base) {
     '',
   );
   const directives = entry
+    .replace(/@theme(?:\s+static)?\s*\{[^{}]*\}/g, '')
+    // Variant bodies may wrap the slot in selectors, but cannot carry declarations.
     .replace(
-      /@(?:theme(?:\s+static)?|custom-variant\s+data-(?:open|closed))\s*\{(?:[^{}]|\{[^{}]*\})*\}/g,
+      /@custom-variant\s+data-(?:open|closed)\s*\{\s*(?:@slot;|[^;{}@]+\{\s*@slot;\s*\})\s*\}/g,
       '',
     )
-    .replace(/@[^;]+;/g, '')
+    .replace(/@custom-variant\s+(?:dark|data-open|data-closed)\s+\([^;{}]*\)\s*;/g, '')
+    .replace(/@(?:layer|import|source)\s+(?:'[^']*'|"[^"]*"|[^;{}'"])+;/g, '')
     .trim();
   if (directives) problems.push('Tailwind entry contains a rule outside its theme and variants');
   if (base) {
