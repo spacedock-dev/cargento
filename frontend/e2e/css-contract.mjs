@@ -1092,7 +1092,10 @@ function checks() {
             (value !== null &&
               size !== null &&
               value.fillsRow === size.fillsRow &&
-              (value.fillsRow || Math.abs(value.width - size.width) <= tolerance)),
+              (value.fillsRow ||
+                // Text width is font-metric dependent: macOS, Linux and Windows differ by a few
+                // percent, so a row that was not full width keeps a proportional allowance.
+                Math.abs(value.width - size.width) <= Math.max(tolerance, value.width * 0.05))),
         )
       )
         differences.push({ view, key, expected, actual: size });
