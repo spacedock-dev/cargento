@@ -83,8 +83,25 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /* ---- what a reader can read, reduced to data. These run IN the page, so they are self-contained. ---- */
 const summarizeCard = () => {
   const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
-  const card = document.querySelector('.next-session-drift');
-  if (!card) return { missing: true, body: norm(document.body).slice(0, 200) };
+  const liveCard = document.querySelector('.next-session-drift');
+  if (!liveCard) return { missing: true, body: norm(document.body).slice(0, 200) };
+  const card = liveCard.cloneNode(true);
+  // Closed native details retained their evidence and controls. Read each owned
+  // keepMounted popup after its trigger in the snapshot, without opening or moving live nodes.
+  const joined = new Set();
+  for (;;) {
+    const trigger = [...card.querySelectorAll('[data-slot="popover-trigger"]')].find(
+      (node) => !joined.has(node),
+    );
+    if (!trigger) break;
+    const panels = [...document.querySelectorAll('[data-slot="popover-content"]')].filter(
+      (popup) => popup.getAttribute('aria-labelledby') === trigger.id,
+    );
+    if (!trigger.id || panels.length !== 1)
+      throw new Error('A drift popover lost its trigger or uniquely labelled panel.');
+    trigger.after(panels[0].cloneNode(true));
+    joined.add(trigger);
+  }
   const button = (b) => [
     norm(b),
     b.getAttribute('data-next-cockpit-action') || '',
@@ -271,6 +288,64 @@ try {
     assert.match(state.text, /What is sent/);
     return state.buttons.map(([label]) => label);
   });
+
+  await step(
+    'closed popover evidence mutations still fail the recorded card comparison',
+    async () => {
+      const g = await clockOf();
+      await setState(react, () => claude(g));
+      await load(react);
+      const baseline = norm(await read(react));
+      const recorded = golden.recorded('card: no reading');
+      assert.equal(baseline.text, recorded.text);
+      assert.deepEqual(baseline.buttons, recorded.buttons);
+      const panel = await react.page.evaluateHandle(() => {
+        const trigger = document.querySelector('.next-session-drift [data-slot="popover-trigger"]');
+        if (!trigger?.id || trigger.getAttribute('aria-expanded') !== 'false')
+          throw new Error('The mutation proof requires a closed, labelled popover.');
+        const panels = [...document.querySelectorAll('[data-slot="popover-content"]')].filter(
+          (popup) => popup.getAttribute('aria-labelledby') === trigger.id,
+        );
+        if (panels.length !== 1) throw new Error('The mutation proof requires one retained popup.');
+        return panels[0];
+      });
+      const children = await panel.evaluateHandle((popup) => [...popup.childNodes]);
+      try {
+        for (const mutation of ['changed body', 'missing body']) {
+          await panel.evaluate((popup, mutation) => {
+            if (mutation === 'changed body')
+              popup.prepend(document.createTextNode('Changed disclosure evidence.'));
+            else popup.replaceChildren();
+          }, mutation);
+          try {
+            const reading = norm(await react.page.evaluate(summarizeCard));
+            assert.throws(() => assert.equal(reading.text, recorded.text), {
+              code: 'ERR_ASSERTION',
+            });
+          } finally {
+            await panel.evaluate((popup, original) => popup.replaceChildren(...original), children);
+          }
+        }
+        await panel.evaluate((popup) => {
+          popup.removeAttribute('aria-labelledby');
+        });
+        try {
+          await assert.rejects(react.page.evaluate(summarizeCard), /uniquely labelled panel/);
+        } finally {
+          const id = await react.page
+            .locator('.next-session-drift [data-slot="popover-trigger"]')
+            .first()
+            .getAttribute('id');
+          await panel.evaluate((popup, id) => popup.setAttribute('aria-labelledby', id), id);
+        }
+        assert.deepEqual(norm(await read(react)), baseline);
+      } finally {
+        await children.dispose();
+        await panel.dispose();
+      }
+      return ['changed body', 'missing body', 'missing labelled panel'];
+    },
+  );
 
   await step(
     'a refusal is said under the control that was pressed, in the recorded sentence',
