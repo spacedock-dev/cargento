@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1436780,
+    "bytes": 1438844,
     "file": "react.html",
-    "sha256": "125ea461c50b70be44a1af3497d7b6b7651ddf31050a2d2c88fc34ae30fb9aa8"
+    "sha256": "71186d9e8df7f2d0d831f4518789623d403b9c3d6420f5d8a9de6d3031bec027"
   },
   "format": 1,
   "frontend": "react",
@@ -344,7 +344,7 @@
       },
       {
         "file": "frontend/src/controls/Disclosure.tsx",
-        "sha256": "499f8188c724067be38cfe1d219f2cf18888c8ee8f7e14925a8a3b567440545f"
+        "sha256": "20f27c9bec680b509e73d19ef085a08ad7adcdcfa5bd4ce5a70e185e8ba7460a"
       },
       {
         "file": "frontend/src/controls/DraftField.tsx",
@@ -372,7 +372,7 @@
       },
       {
         "file": "frontend/src/controls/disclosureStore.ts",
-        "sha256": "d57350acf73e02e2d0d2ca52c3628b33b8dc00c15dedd60bc07f53142241cf99"
+        "sha256": "c5aefc93fe01734a136d357237097f0a27c0da7417ee0d79fb0556ef3cd809bf"
       },
       {
         "file": "frontend/src/controls/displayGate.ts",
@@ -408,7 +408,7 @@
       },
       {
         "file": "frontend/src/controls/popoverDismissal.ts",
-        "sha256": "bfd15815c88e0eb37c01c0a59787c9c6cea9c6ad560704a70f0a7b608450747f"
+        "sha256": "d843c10f33d2b64813aa93687bc11157947b89994355e8277a7edbbf5ce91b55"
       },
       {
         "file": "frontend/src/controls/resumeCommand.ts",
@@ -421,6 +421,10 @@
       {
         "file": "frontend/src/controls/useChoiceRelease.ts",
         "sha256": "ccdfb3e78179935cc7569a9e3ee5ed8f2d502de015e98b4db37949b843b3a7d3"
+      },
+      {
+        "file": "frontend/src/controls/useDisclosureState.ts",
+        "sha256": "0fc364f3466ddda84152cd78d2861db628ba174213457a5d15a1e136d9ff4ebb"
       },
       {
         "file": "frontend/src/controls/useDisplayed.ts",
