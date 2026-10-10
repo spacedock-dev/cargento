@@ -204,16 +204,31 @@ try {
 
   /* ===================== DIFFERENTIAL: the card, state by state ===================== */
   async function compare(label, make, { text = true, ready = null } = {}) {
+    const old = golden.observe(`card: ${label}`);
+    const recordUnread = /has not been read yet|record is unread rather than empty/.test(old.work);
     const g = await clockOf();
     await setState(react, (o) => make(g, o));
     const draw = async (o) => {
       await load(o);
       // A state the page reaches after a record read, said by what it draws rather than by a delay.
       if (ready) await o.page.waitForSelector(ready, { timeout: patience(15000) });
+      // Two identical unread frames can precede the context response. The golden's scan gap and
+      // annotations-off states really are unread, so only the recorded read states await the record.
+      if (!recordUnread)
+        await o.page.waitForFunction(
+          () => {
+            const work = document.querySelector('[data-next-cockpit-work]');
+            return (
+              work?.querySelector('[data-next-entry]') ||
+              work?.textContent.includes('No entry in the observed record names this session.')
+            );
+          },
+          undefined,
+          { timeout: patience(15000) },
+        );
       return read(o);
     };
     const mine = norm(await draw(react));
-    const old = golden.observe(`card: ${label}`);
     for (const key of Object.keys(old)) {
       if (!text && key === 'text') continue;
       if (typeof old[key] === 'string' && typeof mine[key] === 'string' && old[key] !== mine[key]) {
