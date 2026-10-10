@@ -399,7 +399,6 @@ of shrinking to 116.38 px with a bottom border only. The spinner is an inline SV
 the CSS border spinner. Both changes are deliberate; neither changes the request or its label.
 
 The fluidity receipt records three runs on 2026-10-10 that pass the unchanged budgets. Core HTML
-is 1,435,024 bytes against the 2,000,000-byte ceiling. For 5, 50 and 250 sessions, first-render
-medians are 128.0, 94.6 and 127.4 ms, and poll-to-paint medians are 45.3, 46.2 and 63.6 ms. The
-receipt retains the historical legacy control; no timing allowance changed. These figures
-predate the correction; the stack-head rebuild and measurement remain required.
+is 1,436,780 bytes against the 2,000,000-byte ceiling. For 5, 50 and 250 sessions, first-render
+medians are 143.7, 93.8 and 126.1 ms, and poll-to-paint medians are 43.1, 44.8 and 59.7 ms. The
+receipt retains the historical legacy control; no timing allowance changed.
