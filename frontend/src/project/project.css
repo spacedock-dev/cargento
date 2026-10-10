@@ -178,10 +178,6 @@
 @media(max-width:760px){
   .next-project-detail-rail{width:100%;border-top:1px solid var(--rule);border-left:0}
 }
-@supports not (field-sizing: content){
-  .next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{height:calc(var(--fs-body)*1.55*3 + 16px)}
-  .next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{height:calc(var(--fs-body)*1.55*4 + 16px)}
-}
 #next-session-intent-heading:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media(max-width:1100px){
   .next-session-columns{grid-template-columns:minmax(0,1fr)}
@@ -277,7 +273,7 @@
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]>button{border:0;background:none;color:var(--ink2);font:inherit;cursor:pointer}
 .next-cockpit-recovery-memos[data-next-cockpit-memo-empty]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px 8px}
 .next-cockpit-recovery-memos[data-next-cockpit-memo-empty]>span{grid-column:1/-1;margin:0}
-.next-cockpit-recovery-memos textarea{grid-column:1/-1;width:100%;min-height:54px;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit}
+.next-cockpit-recovery-memos textarea{grid-column:1/-1}
 .next-cockpit-recovery span,.next-cockpit-recovery strong,.next-cockpit-recovery small{display:block}
 .next-cockpit-recovery span{margin-bottom:5px;color:var(--ink-label);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-recovery strong{font-weight:500;overflow-wrap:anywhere}
@@ -318,7 +314,7 @@
 .next-cockpit-recovery span{font-family:var(--mono)}
 .next-cockpit-recovery strong,.next-cockpit-recovery small{font-size:var(--fs-body)}
 .next-cockpit-recovery-evidence>strong,.next-cockpit-execution-root>strong,.next-cockpit-child-row>strong,
-.next-cockpit-recovery [data-next-cockpit-memo-field]>strong,.next-cockpit-recovery textarea,
+.next-cockpit-recovery [data-next-cockpit-memo-field]>strong,
 .next-course-episode p,.next-course-episode ul,.next-course-direction p{font-family:var(--sans)}
 .next-cockpit-scope-tree [data-next-withheld],.next-cockpit-scope-options [data-next-withheld]{font-family:var(--sans);color:var(--ink-absence)}
 .next-cockpit-authority>strong,.next-cockpit-authority>small{font-family:var(--sans)}

@@ -101,6 +101,35 @@ describe('a draft field keeps its caret, inner scroll and size by exact key', ()
     expect([input.selectionStart, input.selectionEnd]).toEqual([3, 3]);
   });
 
+  it.each(['input', 'textarea'] as const)(
+    'never writes a persisting %s value on a redraw',
+    (kind) => {
+      function Page({ revision }: { revision: number }) {
+        const Field = kind === 'input' ? DraftInput : DraftTextarea;
+        return (
+          <div data-revision={revision}>
+            <Field memoryKey="native" defaultValue="initial" aria-label="native" />
+          </div>
+        );
+      }
+      const { view, rerender } = mount(<Page revision={0} />);
+      const field = view.getByLabelText('native') as HTMLInputElement | HTMLTextAreaElement;
+      // A provisional IME or autofill value can precede the caller's input event.
+      field.value = 'browser-owned words';
+      field.setSelectionRange(3, 7, 'backward');
+      field.scrollLeft = 9;
+      rerender(<Page revision={1} />);
+      expect(view.getByLabelText('native')).toBe(field);
+      expect(field.value).toBe('browser-owned words');
+      expect([field.selectionStart, field.selectionEnd, field.selectionDirection]).toEqual([
+        3,
+        7,
+        'backward',
+      ]);
+      expect(field.scrollLeft).toBe(9);
+    },
+  );
+
   it('is a no-op under StrictMode double effects', () => {
     const kit = testControls();
     const view = render(

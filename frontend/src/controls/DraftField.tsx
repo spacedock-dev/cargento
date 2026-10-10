@@ -1,4 +1,6 @@
 import type { ComponentPropsWithoutRef } from 'react';
+import { Input } from '../ui/input';
+import { Textarea, type TextareaProps } from '../ui/textarea';
 import { useFieldMemory } from './useFieldMemory';
 
 interface Memory {
@@ -19,11 +21,14 @@ interface Memory {
 export function DraftTextarea({
   memoryKey,
   ...rest
-}: Memory & ComponentPropsWithoutRef<'textarea'>) {
+}: Memory & Omit<TextareaProps, 'value' | 'ref'>) {
   return <DraftTextareaNode key={memoryKey} memoryKey={memoryKey} {...rest} />;
 }
 
-export function DraftInput({ memoryKey, ...rest }: Memory & ComponentPropsWithoutRef<'input'>) {
+export function DraftInput({
+  memoryKey,
+  ...rest
+}: Memory & Omit<ComponentPropsWithoutRef<'input'>, 'value'>) {
   return <DraftInputNode key={memoryKey} memoryKey={memoryKey} {...rest} />;
 }
 
@@ -32,9 +37,9 @@ function DraftTextareaNode({
   focusKey,
   focusFallback,
   ...rest
-}: Memory & ComponentPropsWithoutRef<'textarea'>) {
+}: Memory & Omit<TextareaProps, 'value' | 'ref'>) {
   const ref = useFieldMemory<HTMLTextAreaElement>(memoryKey, focusKey ?? null, focusFallback);
-  return <textarea ref={ref} {...rest} />;
+  return <Textarea ref={ref} appearance="draft" {...rest} />;
 }
 
 function DraftInputNode({
@@ -42,7 +47,7 @@ function DraftInputNode({
   focusKey,
   focusFallback,
   ...rest
-}: Memory & ComponentPropsWithoutRef<'input'>) {
+}: Memory & Omit<ComponentPropsWithoutRef<'input'>, 'value'>) {
   const ref = useFieldMemory<HTMLInputElement>(memoryKey, focusKey ?? null, focusFallback);
-  return <input ref={ref} {...rest} />;
+  return <Input ref={ref} {...rest} />;
 }

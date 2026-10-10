@@ -178,6 +178,17 @@ chosen destination focus. `pnpm test:popover:browser` checks close paths, forced
 viewports, popup chrome and announcements through Chrome's accessibility tree. Live regions remain
 exposed in Base UI's modal modes too, so its modal mutation also requires ordinary outside content
 to remain exposed. Render a Close part inside a popup only if a future ruling adopts modal mode.
+
+NativeSelect keeps a real `select` with its ref and handlers on that node, so `displayGate` can
+hold background paints while it has focus. Input and Textarea stay uncontrolled; pass first words
+as `defaultValue` and read edits through the existing owners. Do not add content-driven sizing:
+field memory restores the reader's dragged height. Associate visible Label elements with native
+fields. The CSS proof compares real fields with the pre-swap reference and checks their type,
+44 px targets, rings and chevron clearance at desktop, 375 and 320 px, including forced colours.
+Controls and Intent proofs exercise native undo/redo, IME, caret, scroll and dragged size. The
+[form record](docs/design-shadcn-adoption.md#form-controls-layer) owns the cascade audit and the
+explicit UA-select departures.
+
 Utilities beat `legacy` regardless of specificity: express surface chrome in variants or props
 and leave layout in the surface sheet. Update the exact count when deleting rules; a PR cannot
 raise its own allowance.

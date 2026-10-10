@@ -18,6 +18,7 @@ import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
+import { nativeFieldContinuity } from './support/native-field.mjs';
 import { startReactWorld } from './support/world.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 
@@ -32,15 +33,22 @@ const MUTATIONS = {
   'remount-draft': [
     [
       'src/controls/DraftField.tsx',
-      'return <textarea ref={ref} {...rest} />;',
-      'return <textarea ref={ref} key={String(Math.random())} {...rest} />;',
+      'return <Textarea ref={ref} appearance="draft" {...rest} />;',
+      'return <Textarea ref={ref} appearance="draft" key={String(Math.random())} {...rest} />;',
     ],
   ],
   'control-draft': [
     [
       'src/controls/DraftField.tsx',
-      'return <textarea ref={ref} {...rest} />;',
-      "return <textarea ref={ref} {...rest} value={String(rest.defaultValue ?? '')} onChange={() => undefined} />;",
+      'return <Textarea ref={ref} appearance="draft" {...rest} />;',
+      'return <Textarea ref={ref} appearance="draft" {...rest} value={String(rest.defaultValue ?? "")} onChange={() => undefined} />;',
+    ],
+  ],
+  'control-input': [
+    [
+      'src/controls/DraftField.tsx',
+      'return <Input ref={ref} {...rest} />;',
+      'return <Input ref={ref} {...rest} value={String(rest.defaultValue ?? "")} onChange={() => undefined} />;',
     ],
   ],
   'no-cap': [['src/store/commit-gate.ts', 'if (count < max) {', 'if (true) {']],
@@ -397,6 +405,26 @@ if (new URLSearchParams(location.search).has('late')) {
     assert.deepEqual(await page.evaluate(() => globalThis.__gallery.hooks.announced), []);
   });
 
+  await step(
+    'native Input and DraftTextarea keep undo, composition, caret, viewport and dragged size through redraws',
+    async () => {
+      await load();
+      await page.setViewportSize({ width: 320, height: 900 });
+      for (const selector of ['#gallery-input', '#gallery-draft']) {
+        await nativeFieldContinuity(shell, page.locator(selector), () => refresh(true));
+      }
+      await page.getByRole('button', { name: 'Edit OUTCOME', exact: true }).click();
+      await nativeFieldContinuity(
+        shell,
+        page.getByRole('textbox', { name: 'OUTCOME', exact: true }),
+        () => refresh(true),
+      );
+      await page.getByRole('textbox', { name: 'OUTCOME', exact: true }).fill('');
+      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await page.setViewportSize({ width: 1100, height: 900 });
+    },
+  );
+
   // ---------------------------------------------------------------------------------------------
   await step(
     'a native select keeps its node, focus and option list while the poll is deferred, and catches up once on change',
@@ -404,6 +432,8 @@ if (new URLSearchParams(location.search).has('late')) {
       await load();
       const select = page.locator('#stage-choice');
       await mark('#stage-choice', 'select');
+      await select.selectOption({ index: 1 });
+      const chosenBefore = await select.inputValue();
       await select.focus();
       const optionsBefore = await select.locator('option').allTextContents();
       const shownBefore = await displayed();
@@ -417,6 +447,11 @@ if (new URLSearchParams(location.search).has('late')) {
         'the option list changed under the reader',
       );
       assert.equal(await same('#stage-choice', 'select'), true);
+      assert.equal(
+        await select.inputValue(),
+        chosenBefore,
+        'the chosen native option survived the deferred polls',
+      );
       assert.equal(await page.evaluate(() => document.activeElement?.id), 'stage-choice');
       assert.equal(await commits(), commitsBefore, 'a deferred paint notified a subscriber');
       assert.equal(await page.evaluate(() => globalThis.__gallery.gate.deferredCount()), 5);

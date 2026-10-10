@@ -1,3 +1,5 @@
+import { NativeSelect } from '../ui/native-select';
+import { Label } from '../ui/label';
 import { useFocusKey } from '../controls';
 import { goalKey, promptMenu } from './derive';
 import { choosePrompt } from './edit';
@@ -48,9 +50,10 @@ export function PromptSelect() {
     }
   };
   return (
-    <label className="next-intent-prompt-pick">
+    <Label className="next-intent-prompt-pick">
       <span className="next-visually-hidden">Fill the goal from one of your prompts</span>
-      <select
+      <NativeSelect
+        appearance="prompt"
         ref={ref}
         className="next-intent-prompt-select"
         data-next-cockpit-prompt-select
@@ -76,8 +79,8 @@ export function PromptSelect() {
             {option.label}
           </option>
         ))}
-      </select>
-    </label>
+      </NativeSelect>
+    </Label>
   );
 }
 

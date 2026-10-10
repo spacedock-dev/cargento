@@ -580,3 +580,65 @@ accordion layer and 409,368 under the 2,000,000-byte ceiling; the popover primit
 code are the growth the owner accepted. First-render medians are 134.9, 94.2 and 126.4 ms and
 poll-to-paint medians are 45, 45.3 and 62.2 ms; every budget passes. The production drift proof runs
 clean against this bundle (see the source-name note in the migration record).
+
+## Form controls layer
+
+NativeSelect, Input, Textarea and Label are copied through the pinned Base UI registry procedure.
+The temporary npm `cn` dependency is removed, every import uses the local merger, and the select's
+chevron is an inline SVG. No icon library or package dependency is added. NativeSelect passes the
+ref, class and event handlers to a real `select`; its wrapper and pointer-inert icon own no choice
+state. The prompt and held-editor selectors in the fluidity driver remain valid.
+
+The three shipped selects keep `displayGate`'s focus probe and change/blur release. Background
+paints defer twelve times, then paint without re-arming; a manual refresh still bypasses that hold.
+Headless Chromium checks node identity, focus, chosen value, options and deferred paints. It cannot
+read the platform popup's contents, so none of these proofs claims to inspect that popup.
+
+Input and Textarea supply native nodes and chrome. DraftInput, DraftTextarea, HeldTextarea and the
+correction owner keep their existing uncontrolled `defaultValue`, input callbacks, keys and refs.
+No owner is moved into Base UI Field or given a controlled value. Content-driven sizing and its
+fallback heights are removed from both Intent and Project sheets: rows set the initial height,
+the reader can drag it vertically, and field memory restores the resulting dimensions. Visible
+labels use Label with native associations; outcome rows also have individual accessible names.
+
+### Field cascade audit
+
+Utilities outrank legacy selectors before specificity is considered. The recipes therefore own
+chrome explicitly, while surface sheets retain grid columns, flex placement and labels.
+
+| Field | Recipe and retained surface rules |
+|---|---|
+| Project steer and local tripwire input | Input owns panel background, foreground ink, 8 px padding, border, radius, sans type and 1.55 line height. Steering keeps label flex and form layout. |
+| Human-context note | Textarea memo owns sunk background, foreground ink, 8 px padding, radius, five-rem floor and 1.5 line height. Recovery keeps the field's grid column. |
+| Goal and outcome line | Textarea intent owns value ink, panel background, 7 px padding, 1.55 line height and vertical resizing. An untouched drafted goal uses sunk background. Intent keeps grid placement. |
+| Pending direction | The same intent recipe, with a 44 px floor. Content sizing no longer overrides a remembered drag. |
+| Correction to copy | Textarea correction owns the former panel/value recipe and 120 px floor. Its existing composition and paint-pause owner stays in place. |
+| Prompt, stage and direction select | NativeSelect owns token border and sunk background, sans control type and a 44 px floor. The prompt retains its medium weight and label-row placement. All three reserve 28 px for the ten-pixel chevron. |
+| Gallery draft | Textarea draft replaces the deleted ctl-draft chrome; the gallery select uses NativeSelect. |
+
+`field-chrome-reference.json` records sixteen identities from the pre-swap page at `bd79507d`,
+the merge base of this layer and its predecessor. The same measurement helper rejects conflicting
+styles for a repeated identity. The regular route sweep is supplemented by editable notes, an added
+tripwire, a workflow stage choice, later-direction fields and a correction box. Keys contain
+semantic owners and attributes, including the drafted flag, and no clock or count text. The gate
+compares every reached field with that reference. Its explicit select adjustments replace UA
+chrome with tokens and raise the direction choice from 13.3333 px Arial to the 15 px control tier.
+Other measured field chrome is unchanged. Focus rings are shared two-pixel solid outlines, including
+forced colours; the four former UA-ring exceptions are deleted.
+
+The gallery checks field type, 44 px targets, focus, forced colours, chevron clearance and fixed
+sizing at 1280, 375 and 320 px. Controls checks native Input, DraftTextarea and context notes;
+Intent checks the real goal, outcome, pending direction, correction, context, steer and tripwire
+fields. Keyboard undo/redo, Chromium IME, caret, inner scroll and a real vertical drag must survive
+forced redraws. Mutations cover controlled fields, select deferral, chrome, type, targets, focus,
+content sizing, chevron overlap, narrow-screen overflow and viewport restoration. Fourteen
+browser mutations and three controlled-field unit mutations fail at their intended assertions.
+
+The scoped controls, intent and steering unit run passes 287 tests in 32 files with two workers.
+The 17 development lifecycle tests and development-mode Controls, Intent, Sessions, Project and
+CSS proofs pass. The CSS sweep reaches 87 views and compares 128 fields with the pre-swap table.
+
+Hand-written CSS falls from 147,587 to 143,657 bytes with the path inventory unchanged. The stack
+head builder owns the bundle rebuild and fluidity receipt. This layer's local checks exercise the
+development page and do not certify unbuilt production bytes, a native autofill popup, screen readers,
+Firefox or WebKit.

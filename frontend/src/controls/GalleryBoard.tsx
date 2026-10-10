@@ -1,3 +1,7 @@
+import { Textarea } from '../ui/textarea';
+import { NativeSelect } from '../ui/native-select';
+import { Label } from '../ui/label';
+import { DraftInput } from './DraftField';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../ui/collapsible';
 import { useControlledDisclosureState } from './useDisclosureState';
 import { useRevealFragment } from './useRevealFragment';
@@ -119,9 +123,44 @@ export function GalleryBoard({ world }: { world: World }) {
         <output data-readout="displayed-generated">{displayedGenerated}</output>
       </p>
 
+      <section aria-label="Field gallery" data-field-gallery>
+        {(['prompt', 'stage', 'direction'] as const).map((appearance) => (
+          <div key={appearance}>
+            <Label htmlFor={`gallery-${appearance}`}>{appearance} choice</Label>
+            <NativeSelect id={`gallery-${appearance}`} appearance={appearance} defaultValue="long">
+              <option value="long">
+                A long choice whose chevron must leave room for the reader's text
+              </option>
+              <option value="short">Short choice</option>
+            </NativeSelect>
+          </div>
+        ))}
+        <Label htmlFor="gallery-intent">Intent words</Label>
+        <Textarea id="gallery-intent" rows={3} defaultValue="Reader's intent" />
+        <Label htmlFor="gallery-correction">Correction words</Label>
+        <Textarea
+          id="gallery-correction"
+          appearance="correction"
+          rows={6}
+          defaultValue="Reader's correction"
+        />
+        <Label htmlFor="gallery-invalid">Invalid words</Label>
+        <Textarea id="gallery-invalid" aria-invalid="true" defaultValue="Invalid words" />
+        <Label htmlFor="gallery-unavailable">Unavailable words</Label>
+        <Textarea id="gallery-unavailable" disabled defaultValue="Unavailable words" />
+        <Label htmlFor="gallery-input">Native input</Label>
+        <DraftInput
+          id="gallery-input"
+          memoryKey="gallery:input"
+          defaultValue=""
+          autoComplete="off"
+          placeholder="Native input"
+        />
+      </section>
       <section aria-label="Native select">
-        <label htmlFor="stage-choice">Stage condition</label>
-        <select
+        <Label htmlFor="stage-choice">Stage condition</Label>
+        <NativeSelect
+          appearance="gallery"
           id="stage-choice"
           className="ctl-select"
           value={choice}
@@ -133,7 +172,7 @@ export function GalleryBoard({ world }: { world: World }) {
               {`${row.title ?? row.sid} · ${String(row.harness)} · board ${String(displayedAccepted)}`}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <output className="ctl-wrap" data-readout="choice">
           {choice}
         </output>
@@ -247,7 +286,7 @@ export function GalleryBoard({ world }: { world: World }) {
         </Button>
         {draftShown ? (
           <>
-            <label htmlFor="gallery-draft">Draft note</label>
+            <Label htmlFor="gallery-draft">Draft note</Label>
             <DraftTextarea
               id="gallery-draft"
               memoryKey={`gallery:draft:${project}`}
