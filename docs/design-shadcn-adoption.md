@@ -488,9 +488,9 @@ A mutation restoring auto width must fail this gate. Setup proof locators target
 setup's own trigger, excluding its nested accordions.
 
 The gallery checks Accordion and Collapsible targets, type and focus at 1280 and 320 px.
-Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,464,988 bytes, 26,144 more than the
-reactive state layer. First-render medians are 130.9, 93.6 and 127.5 ms and poll-to-paint medians are
-44.9, 45.9 and 62.7 ms; every budget passes, and the opened session-facts disclosure keeps its node and its
+Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,465,036 bytes, 26,192 more than the
+reactive state layer. First-render medians are 129.3, 92 and 125.6 ms and poll-to-paint medians are
+44.4, 45.3 and 62.2 ms; every budget passes, and the opened session-facts disclosure keeps its node and its
 open state across a poll. The measurement driver reads the disclosure by its accordion trigger now. The production
 drift crash condition is qualified on hosted Linux runners before this layer merges.
 
