@@ -372,7 +372,7 @@ CORE_HTML_CEILING_BYTES = 2_000_000
 
 
 def budget_policy(baseline: dict[str, Any]) -> dict[str, Any]:
-    """The baseline's budget policy with the core page ceiling the owner set, and the reason beside it."""
+    """The baseline policy with the core page ceiling the owner set, and the reason beside it."""
     policy = dict(baseline["budget_policy"])
     policy["core_html_max_bytes_baseline"] = policy["core_html_max_bytes"]
     policy["core_html_max_bytes"] = CORE_HTML_CEILING_BYTES
