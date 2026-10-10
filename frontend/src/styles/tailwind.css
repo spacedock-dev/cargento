@@ -69,6 +69,7 @@
   --accordion-panel-height: auto;
   --collapsible-panel-height: auto;
   --transform-origin: center;
+  --available-height: 100vh;
 }
 
 /* Tailwind's default `dark:` variant emits a `prefers-color-scheme` rule, and this page is dark only.

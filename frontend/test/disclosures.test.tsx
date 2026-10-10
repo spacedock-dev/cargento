@@ -111,3 +111,121 @@ describe('recorded disclosure normalization', () => {
     });
   }
 });
+
+function popoverFixture(open: boolean) {
+  const kit = testControls();
+  kit.controls.disclosures.set('popover-first', open);
+  const view = render(
+    <ControlsProvider controls={kit.controls}>
+      <div id="app">
+        <section>
+          <Disclosure
+            disclosureKey="popover-first"
+            variant="popover"
+            className="next-proof"
+            summary="First summary"
+          >
+            <p>
+              First body <strong>with evidence</strong>
+            </p>
+          </Disclosure>
+          <Disclosure disclosureKey="popover-second" variant="popover" summary="Second summary">
+            <p>Second body</p>
+          </Disclosure>
+        </section>
+      </div>
+    </ControlsProvider>,
+  );
+  const root = view.container.querySelector('section') as Element;
+  const template = document.createElement('template');
+  template.innerHTML = `<section><details class="ctl-disclosure ctl-disclosure--pop next-proof"${open ? ' open' : ''}><summary>First summary</summary><p>First body <strong>with evidence</strong></p></details><details class="ctl-disclosure ctl-disclosure--pop"><summary>Second summary</summary><p>Second body</p></details></section>`;
+  const legacy = template.content.firstElementChild as Element;
+  return {
+    root,
+    app: view.container.querySelector('#app') as Element,
+    legacy: shape(legacy),
+    reading: () => shape(root),
+    readings: () => disclosureReadings(normalizeDisclosures(root)),
+    expected: [
+      { summary: 'First summary', open, body: 'First body with evidence' },
+      { summary: 'Second summary', open: false, body: 'Second body' },
+    ],
+  };
+}
+
+describe('recorded popover disclosure normalization', () => {
+  for (const open of [false, true]) {
+    it(`keeps portalled bodies and ${open ? 'open' : 'closed'} state equivalent to native details`, () => {
+      const made = popoverFixture(open);
+      expect(made.root.querySelector('[data-slot=popover-content]')).toBeNull();
+      expect(made.app.querySelectorAll('[data-slot=popover-content]')).toHaveLength(2);
+      expect(firstShapeDifference(made.legacy, made.reading())).toBeNull();
+      expect(made.readings()).toEqual(made.expected);
+      expect(disclosureReadings(normalizeDisclosures(made.app))).toEqual(made.expected);
+      expect(normalizeDisclosures(made.app).textContent).toBe(
+        'First summaryFirst body with evidenceSecond summarySecond body',
+      );
+      expect(made.root.querySelector('[data-slot=popover-trigger]')).not.toBeNull();
+      expect(made.app.querySelectorAll('[data-slot=popover-content]')).toHaveLength(2);
+    });
+  }
+
+  const mutations: readonly [string, (made: ReturnType<typeof popoverFixture>) => void][] = [
+    [
+      'changed body',
+      (made) => {
+        const body = made.app.querySelector('[data-slot=popover-content] p');
+        if (body) body.textContent = 'Other evidence';
+      },
+    ],
+    [
+      'renamed summary',
+      (made) => {
+        const trigger = made.root.querySelector('[data-slot=popover-trigger]');
+        if (trigger?.firstChild) trigger.firstChild.textContent = 'Other summary';
+      },
+    ],
+    [
+      'flipped open state',
+      (made) => {
+        const disclosure = made.root.querySelector('[data-slot=popover]');
+        disclosure?.setAttribute('data-open', '');
+        disclosure
+          ?.querySelector('[data-slot=popover-trigger]')
+          ?.setAttribute('aria-expanded', 'true');
+      },
+    ],
+  ];
+  for (const [name, mutate] of mutations) {
+    it(`rejects a popover with ${name}`, () => {
+      const made = popoverFixture(false);
+      expect(firstShapeDifference(made.legacy, made.reading())).toBeNull();
+      expect(made.readings()).toEqual(made.expected);
+      mutate(made);
+      expect(firstShapeDifference(made.legacy, made.reading())).not.toBeNull();
+      expect(made.readings()).not.toEqual(made.expected);
+    });
+  }
+  for (const missing of ['trigger', 'panel']) {
+    it(`rejects a missing popover ${missing}`, () => {
+      const made = popoverFixture(false);
+      expect(made.readings()).toEqual(made.expected);
+      (missing === 'trigger'
+        ? made.root.querySelector('[data-slot=popover-trigger]')
+        : made.app.querySelector('[data-slot=popover-content]')
+      )?.remove();
+      expect(made.reading).toThrow('A popover disclosure lost its trigger or labelled panel.');
+    });
+  }
+  it('rejects ambiguously labelled popup bodies', () => {
+    const made = popoverFixture(false);
+    const panel = made.app.querySelector('[data-slot=popover-content]');
+    if (panel) made.app.append(panel.cloneNode(true));
+    expect(made.reading).toThrow('A popover disclosure lost its trigger or labelled panel.');
+  });
+  it('rejects inconsistent popover open state', () => {
+    const made = popoverFixture(false);
+    made.root.querySelector('[data-slot=popover]')?.setAttribute('data-open', '');
+    expect(made.reading).toThrow('A disclosure has inconsistent open state.');
+  });
+});

@@ -56,6 +56,15 @@ renamed summaries, flipped open state, removed disclosures and reordered disclos
 Missing triggers or panels and inconsistent open state fail normalization. These equivalents
 preserve the legacy observations without changing a recording or dropping closed evidence.
 
+The same normalizer reads a Popover disclosure as native `details`. The recorded closed
+popover bodies include their evidence, and the current `keepMounted` portal retains those bodies
+inside the app root. A cloned snapshot rejoins each popup to the trigger named by its
+`aria-labelledby`, preserving summary text and `aria-expanded` state without opening the popup
+or moving live nodes. Portal wrappers, focus guards and portal ownership markers are component
+chrome. Missing or ambiguously labelled panels refuse normalization. Sessions and session-detail
+comparisons use that snapshot and compare ordered summary, open state and body readings;
+mutation proofs reject changes to each. The recorded fixtures and shipped bundle are unchanged.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script
@@ -707,3 +716,16 @@ the owner lifts it in a reviewed pull request.
 The Intent and drift study remains paused. Controlled reading fixtures prove frontend parity,
 not model accuracy. Earlier failed measurements stay failed. A future study resume must bind the
 final runtime again rather than reuse a pre-migration source binding.
+
+
+### Popover snapshot ancestry
+
+Popover bodies move through a portal inside the app root, retaining their mounted content while
+closed. Sessions' recorded text snapshots included closed native bodies. The proof rejoins a
+cloned popup body to its labelled trigger in a virtual snapshot; it never moves the live nodes.
+Popover triggers are now native buttons, so the snapshot's existing action-button list excludes
+those triggers just as it excluded native summaries. The controls and popover proofs check their
+new button role, focus and target floor directly. The computed Button reference uses the same
+trigger identity for portalled descendants and reads their actual computed styles. The recorded
+fixtures are unchanged. [The adoption record](design-shadcn-adoption.md#popover-layer) owns the
+component and cascade decisions.

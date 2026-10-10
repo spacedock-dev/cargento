@@ -1,3 +1,4 @@
+import { disclosureReadings, normalizeDisclosures } from '../../test/disclosures';
 import { describe, expect, it } from 'vitest';
 import { fragmentForRoute } from '../router/grammar';
 import { genPayload } from '../observed/generate.test.helper';
@@ -19,11 +20,13 @@ interface DetailSummary {
   readonly state: string | null;
   readonly attributes: Record<string, string | null>;
   readonly text: string;
+  readonly disclosures: ReturnType<typeof disclosureReadings>;
   readonly answers: readonly string[];
   readonly links: readonly string[];
 }
 
-function summarize(root: ParentNode): DetailSummary {
+function summarize(source: Element | DocumentFragment): DetailSummary {
+  const root = normalizeDisclosures(source);
   const article = root.querySelector('article.next-session-detail');
   if (!article)
     return {
@@ -32,6 +35,7 @@ function summarize(root: ParentNode): DetailSummary {
         null,
       attributes: {},
       text: norm(root.querySelector('.next-session-detail-empty')),
+      disclosures: [],
       answers: [],
       links: [],
     };
@@ -58,6 +62,7 @@ function summarize(root: ParentNode): DetailSummary {
       blocked: String(article.classList.contains('next-session-detail--blocked')),
     },
     text: norm(copy),
+    disclosures: disclosureReadings(copy),
     answers: [...article.querySelectorAll('[data-next-answer]')].map(
       (button) =>
         `${button.getAttribute('data-next-answer')}#${button.getAttribute('data-next-answer-index')}:${norm(button)}`,

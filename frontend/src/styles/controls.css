@@ -22,8 +22,6 @@
   --ctl-sans: var(--sans, system-ui, sans-serif);
   --ctl-hatch: var(--hatch, repeating-linear-gradient(135deg, transparent 0 5px, rgba(163, 156, 136, 0.26) 5px 6px));
   --ctl-measure: var(--measure, 33.75rem);
-  /* A disclosure eases for --disclose-dur; the commit gate's motion hold (220 ms) is that plus one frame. */
-  --ctl-dur: var(--disclose-dur, 200ms);
   --ctl-pop-dur: var(--disclose-pop-dur, 160ms);
   --ctl-ease: var(--disclose-ease, ease-in-out);
 }
@@ -40,25 +38,24 @@
   border: 0;
 }
 
-.ctl-menu > summary:focus-visible,
-.ctl-disclosure > summary:focus-visible {
+.ctl-menu > summary:focus-visible {
   outline: 2px solid var(--ctl-accent);
   outline-offset: 2px;
 }
 
 /* ===== Disclosures =====
-   Native popovers and menus retain their opacity transition. Adopted panels own
+   Native menus retain their opacity transition. Adopted panels own
    height motion through Base UI's measured variable, without remount animations. */
-.ctl-disclosure :where([data-slot='accordion-trigger'], [data-slot='collapsible-trigger']) {
+.ctl-disclosure :where([data-slot='accordion-trigger'], [data-slot='collapsible-trigger'], [data-slot='popover-trigger']) {
   border: 0;
   background: transparent;
   padding: 0;
   font: inherit;
   text-align: start;
 }
-.ctl-disclosure > summary,
 .ctl-disclosure [data-slot='accordion-trigger'],
 .ctl-disclosure [data-slot='collapsible-trigger'],
+.ctl-disclosure [data-slot='popover-trigger'],
 .ctl-menu > summary {
   display: flex;
   align-items: center;
@@ -70,93 +67,31 @@
   max-inline-size: 100%;
   color: var(--ctl-ink2);
 }
-.ctl-disclosure > summary::-webkit-details-marker,
 .ctl-menu > summary::-webkit-details-marker {
   display: none;
 }
-.ctl-disclosure > summary::after {
-  content: '';
-  display: inline-block;
-  inline-size: 0.4em;
-  block-size: 0.4em;
-  margin-inline-start: 0.45em;
-  border-inline-end: 1.5px solid currentColor;
-  border-block-end: 1.5px solid currentColor;
-  rotate: 45deg;
-  translate: 0 -0.2em;
-  transition:
-    rotate var(--ctl-dur) var(--ctl-ease),
-    translate var(--ctl-dur) var(--ctl-ease);
-}
-.ctl-disclosure[open] > summary::after {
-  rotate: 225deg;
-  translate: 0 0.1em;
-}
 .ctl-disclosure--pop {
-  position: relative;
-  z-index: 3;
   flex: none;
   inline-size: max-content;
   max-inline-size: 100%;
 }
-.ctl-disclosure--pop > summary {
-  inline-size: max-content;
-}
-/* A body never outgrows the window it sits in: its text carries a reading measure that can exceed a narrow window at a large text size. */
-.ctl-disclosure > .ctl-disclosure-body {
-  min-inline-size: 0;
-  max-inline-size: 100%;
-  overflow-wrap: anywhere;
-}
-.ctl-disclosure--pop > .ctl-disclosure-body {
-  position: absolute;
-  inset-block-start: calc(100% + 4px);
-  inset-inline-end: 0;
-  inline-size: min(var(--ctl-measure), calc(100vw - 32px));
-  box-sizing: border-box;
-  padding: 10px 12px;
-  border: 1px solid var(--ctl-line);
-  border-radius: var(--ctl-radius);
-  background: var(--ctl-raise);
-  box-shadow: 0 18px 44px -22px #000;
-  text-align: start;
-  overflow-wrap: anywhere;
-}
-/* Under 620px the popover's summary can sit at the start edge, where an end-anchored body would
-   run off the screen's start. Hang it from the start there. */
-@media (max-width: 620px) {
-  .ctl-disclosure--pop > .ctl-disclosure-body {
-    inset-inline-start: 0;
-    inset-inline-end: auto;
-  }
-}
-
 @supports selector(::details-content) {
-  .ctl-disclosure--pop::details-content,
   .ctl-menu::details-content {
     opacity: 0;
     transition:
       opacity var(--ctl-pop-dur) var(--ctl-ease),
       content-visibility var(--ctl-pop-dur) var(--ctl-ease) allow-discrete;
   }
-  .ctl-disclosure--pop[open]::details-content,
   .ctl-menu[open]::details-content {
     opacity: 1;
   }
   /* Its own rule: a selector list holding an unsupported pseudo-element invalidates the whole rule. */
   @media (prefers-reduced-motion: reduce) {
-    .ctl-disclosure--pop::details-content,
     .ctl-menu::details-content {
       transition: none;
     }
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .ctl-disclosure > summary::after {
-    transition: none;
-  }
-}
-
 /* ===== More menu ===== */
 .ctl-menu {
   position: relative;

@@ -2021,11 +2021,11 @@
         "proofs": [
           {
             "vitest": "frontend/src/controls/Disclosure.test.tsx",
-            "test": "closes the popover on Escape, returns focus to its summary, and leaves the accordion open"
+            "test": "closes every popover on Escape and focuses the document-order fallback while the accordion stays open"
           },
           {
             "vitest": "frontend/src/controls/Disclosure.test.tsx",
-            "test": "closes when focus moves to another control, and stays open when focus goes nowhere"
+            "test": "keeps an inside click open and ignores a focus departure with no related target"
           },
           {
             "vitest": "frontend/src/project/ProjectDetail.test.tsx",

@@ -99,7 +99,7 @@ describe('a disclosure keeps its open state by key, not by node', () => {
 
   it('ignores a queued native opening superseded by newer external writes', async () => {
     const { view, kit } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="menu">
         Body
       </Disclosure>,
     );
@@ -137,7 +137,7 @@ describe('a disclosure keeps its open state by key, not by node', () => {
 
   it('lets an external close supersede a native opening while the store is still closed', async () => {
     const { view, kit } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="menu">
         Body
       </Disclosure>,
     );
@@ -156,7 +156,7 @@ describe('a disclosure keeps its open state by key, not by node', () => {
 
   it('closes a native opening on a summary press before its queued toggle', async () => {
     const { view, kit } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="menu">
         Body
       </Disclosure>,
     );
@@ -215,7 +215,7 @@ describe('a disclosure keeps its open state by key, not by node', () => {
 
   it('accepts a native browser opening even when a redraw precedes the queued event', async () => {
     const { view, kit, rerender } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="menu">
         Body
       </Disclosure>,
     );
@@ -224,7 +224,7 @@ describe('a disclosure keeps its open state by key, not by node', () => {
       .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(details, true);
     rerender(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="menu">
         Poll
       </Disclosure>,
     );
@@ -431,136 +431,221 @@ describe('a disclosure keeps its open state by key, not by node', () => {
   });
 });
 
-describe('a popover closes on Escape, outside, and focus departure, and nothing else does', () => {
+describe('controlled popovers keep the dismissal contract', () => {
   beforeEach(() => {
-    // After the click's own activation behaviour has opened the node, as a real frame is.
     vi.stubGlobal('requestAnimationFrame', (run: () => void) => setTimeout(run, 0));
     Element.prototype.scrollIntoView = vi.fn();
   });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
+  afterEach(() => vi.unstubAllGlobals());
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await flushToggle();
+  };
   function page() {
     return (
-      <>
+      <main id="app">
         <Disclosure disclosureKey={key('why')} summary="Why" variant="popover">
-          <p>Because</p>
+          <button type="button">Inside why</button>
+        </Disclosure>
+        <Disclosure disclosureKey={key('other')} summary="Other" variant="popover">
+          <button type="button">Inside other</button>
         </Disclosure>
         <Disclosure disclosureKey={key('plan')} summary="Plan">
           <p>Plan body</p>
         </Disclosure>
         <button type="button">Elsewhere</button>
-      </>
+      </main>
     );
   }
-
-  async function openBoth(view: ReturnType<typeof mount>['view']) {
-    const why = view
-      .getByText('Why')
-      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
-    const plan = view
-      .getByText('Plan')
-      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
-    toggle(plan, true);
-    toggle(why, true);
-    await flushToggle();
-    return { why, plan };
-  }
-
-  it('closes the popover on Escape, returns focus to its summary, and leaves the accordion open', async () => {
-    const { view } = mount(page());
-    const { why, plan } = await openBoth(view);
-    view.getByText('Elsewhere').focus();
-    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  const opened = (view: ReturnType<typeof mount>['view'], name = 'Why') =>
+    view.getByRole('button', { name }).getAttribute('aria-expanded') === 'true';
+  async function openBoth(
+    view: ReturnType<typeof mount>['view'],
+    kit: ReturnType<typeof mount>['kit'],
+  ) {
     act(() => {
-      view.getByText('Elsewhere').dispatchEvent(event);
+      kit.controls.disclosures.set(key('why'), true);
+      kit.controls.disclosures.set(key('other'), true);
+      kit.controls.disclosures.set(key('plan'), true);
     });
-    expect(isOpen(why)).toBe(false);
-    expect(isOpen(plan)).toBe(true);
+    await settle();
+    return view.getByRole('button', { name: 'Why' });
+  }
+  it('closes every popover on Escape and focuses the document-order fallback while the accordion stays open', async () => {
+    const { view, kit } = mount(page());
+    const why = await openBoth(view, kit);
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => view.getByText('Elsewhere').dispatchEvent(event));
+    await settle();
+    expect(opened(view)).toBe(false);
+    expect(opened(view, 'Other')).toBe(false);
+    expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(true);
     expect(event.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(view.getByText('Why'));
+    expect(document.activeElement).toBe(why);
   });
-
-  it('publishes dismissal before a poll or a queued toggle can reopen the popover', async () => {
+  it('returns focus to the owner of a portalled event target', async () => {
+    const { view, kit } = mount(page());
+    await openBoth(view, kit);
+    fireEvent.keyDown(view.getByText('Inside other'), { key: 'Escape' });
+    await settle();
+    expect(opened(view)).toBe(false);
+    expect(opened(view, 'Other')).toBe(false);
+    expect(document.activeElement).toBe(view.getByRole('button', { name: 'Other' }));
+  });
+  function nestedPage() {
+    return (
+      <main id="app">
+        <Disclosure disclosureKey={key('outer')} summary="Outer" variant="popover">
+          <Disclosure disclosureKey={key('inner')} summary="Inner" variant="popover">
+            <button type="button">Inside inner</button>
+          </Disclosure>
+        </Disclosure>
+        <button type="button">Elsewhere</button>
+      </main>
+    );
+  }
+  async function openNested() {
+    const mounted = mount(nestedPage());
+    act(() => mounted.kit.controls.disclosures.set(key('outer'), true));
+    await settle();
+    act(() => mounted.kit.controls.disclosures.set(key('inner'), true));
+    await settle();
+    return mounted;
+  }
+  it('keeps the popup open through the Base UI forward Tab guard', async () => {
+    const { view, kit } = mount(page());
+    const why = view.getByRole('button', { name: 'Why' });
+    act(() => why.focus());
+    fireEvent.click(why);
+    await settle();
+    const guard = why.nextElementSibling as HTMLElement;
+    expect(guard.hasAttribute('data-base-ui-focus-guard')).toBe(true);
+    act(() => guard.focus());
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('why'))).toBe(true);
+    expect(view.getByRole('dialog', { name: 'Why' }).contains(document.activeElement)).toBe(true);
+  });
+  it('keeps both popovers open when focus enters a nested portal', async () => {
+    const { view, kit } = await openNested();
+    const outer = view.getByRole('dialog', { name: 'Outer' });
+    const inner = view.getByRole('dialog', { name: 'Inner' });
+    expect(outer.contains(inner)).toBe(false);
+    act(() => view.getByRole('button', { name: 'Inner' }).focus());
+    act(() => view.getByText('Inside inner').focus());
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('outer'))).toBe(true);
+    expect(kit.controls.disclosures.isOpen(key('inner'))).toBe(true);
+    expect(view.getByRole('dialog', { name: 'Inner' }).contains(document.activeElement)).toBe(true);
+    act(() => view.getByText('Elsewhere').focus());
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('outer'))).toBe(false);
+    expect(kit.controls.disclosures.isOpen(key('inner'))).toBe(false);
+    expect(document.activeElement).toBe(view.getByText('Elsewhere'));
+  });
+  it('returns Escape from a nested portal to the visible outer trigger', async () => {
+    const { view, kit } = await openNested();
+    fireEvent.keyDown(view.getByText('Inside inner'), { key: 'Escape' });
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('outer'))).toBe(false);
+    expect(kit.controls.disclosures.isOpen(key('inner'))).toBe(false);
+    expect(document.activeElement).toBe(view.getByRole('button', { name: 'Outer' }));
+  });
+  it('publishes dismissal before a poll can reopen it', async () => {
     const { view, kit, rerender } = mount(page());
-    const { why } = await openBoth(view);
+    await openBoth(view, kit);
     fireEvent.keyDown(view.getByText('Elsewhere'), { key: 'Escape' });
     expect(kit.controls.disclosures.isOpen(key('why'))).toBe(false);
     rerender(page());
-    await flushToggle();
-    expect(isOpen(why)).toBe(false);
+    await settle();
+    expect(opened(view)).toBe(false);
   });
-
-  it('dismisses a native opening before its queued toggle reaches the store', async () => {
-    const { view, kit, rerender } = mount(page());
-    const why = view
-      .getByText('Why')
-      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
-    toggle(why, true);
-    fireEvent.keyDown(view.getByText('Elsewhere'), { key: 'Escape' });
-    expect(isOpen(why)).toBe(false);
-    rerender(page());
-    await flushToggle();
-    expect(kit.controls.disclosures.isOpen(key('why'))).toBe(false);
-    expect(isOpen(why)).toBe(false);
-  });
-
   it('does not swallow Escape when no popover is open', () => {
     const { view } = mount(page());
     const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-    act(() => {
-      view.getByText('Elsewhere').dispatchEvent(event);
-    });
+    act(() => view.getByText('Elsewhere').dispatchEvent(event));
     expect(event.defaultPrevented).toBe(false);
   });
-
-  it('closes on a click outside, but not on a click inside', async () => {
+  it('keeps trigger focus on opening and mounts the popup inside the app root', async () => {
     const { view } = mount(page());
-    const { why, plan } = await openBoth(view);
-    fireEvent.click(view.getByText('Because'));
-    expect(isOpen(why)).toBe(true);
-    fireEvent.click(view.getByText('Elsewhere'));
-    expect(isOpen(why)).toBe(false);
-    expect(isOpen(plan)).toBe(true);
+    const why = view.getByRole('button', { name: 'Why' });
+    why.focus();
+    fireEvent.click(why);
+    await settle();
+    expect(document.activeElement).toBe(why);
+    expect(view.getByRole('dialog').closest('#app')).not.toBeNull();
+    expect(view.getByRole('dialog').querySelector('[data-slot=popover-close]')).toBeNull();
   });
-
-  it('closes when focus moves to another control, and stays open when focus goes nowhere', async () => {
+  it('dismisses outside without stealing the destination focus or its click', async () => {
+    const { view, kit } = mount(page());
+    fireEvent.click(view.getByRole('button', { name: 'Why' }));
+    await settle();
+    const outside = view.getByText('Elsewhere');
+    const clicked = vi.fn();
+    outside.addEventListener('click', clicked);
+    act(() => outside.focus());
+    fireEvent.pointerDown(outside);
+    fireEvent.mouseDown(outside);
+    fireEvent.pointerUp(outside);
+    fireEvent.click(outside);
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('why'))).toBe(false);
+    expect(document.activeElement).toBe(outside);
+    expect(clicked).toHaveBeenCalledOnce();
+  });
+  it('keeps an inside click open and ignores a focus departure with no related target', async () => {
     const { view } = mount(page());
-    const { why } = await openBoth(view);
-    const summary = view.getByText('Why');
-    summary.focus();
-    fireEvent.focusOut(summary, { relatedTarget: null });
-    expect(isOpen(why)).toBe(true);
-    fireEvent.focusOut(summary, { relatedTarget: view.getByText('Elsewhere') });
-    expect(isOpen(why)).toBe(false);
+    const why = view.getByRole('button', { name: 'Why' });
+    why.focus();
+    fireEvent.click(why);
+    await settle();
+    fireEvent.click(view.getByText('Inside why'));
+    fireEvent.focusOut(why, { relatedTarget: null });
+    await settle();
+    expect(opened(view)).toBe(true);
+    act(() => view.getByText('Elsewhere').focus());
+    await settle();
+    expect(opened(view)).toBe(false);
+    expect(document.activeElement).toBe(view.getByText('Elsewhere'));
   });
-
-  it('scrolls an opened popover into view once, on the reader press, and not on a redraw', async () => {
+  it('scrolls once on an opening press and keeps popup identity and focus across a poll', async () => {
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
     const { view, rerender } = mount(page());
-    fireEvent.click(view.getByText('Why'));
-    await flushToggle();
-    await flushToggle();
-    await flushToggle();
+    const why = view.getByRole('button', { name: 'Why' });
+    why.focus();
+    fireEvent.click(why);
+    await settle();
+    const popup = view.getByRole('dialog');
     expect(scroll).toHaveBeenCalledOnce();
     rerender(page());
-    rerender(page());
+    await settle();
+    expect(view.getByRole('dialog')).toBe(popup);
+    expect(document.activeElement).toBe(why);
     expect(scroll).toHaveBeenCalledOnce();
   });
-
-  it('adds and removes its document handlers in balance, StrictMode double effects included', () => {
+  it('follows external writes and restores the open snapshot on a remount without scrolling', async () => {
+    const { view, kit, rerender } = mount(page());
+    act(() => kit.controls.disclosures.set(key('why'), true));
+    await settle();
+    expect(opened(view)).toBe(true);
+    rerender(<p>elsewhere</p>);
+    rerender(page());
+    await settle();
+    expect(opened(view)).toBe(true);
+    expect(view.getByRole('dialog', { name: 'Why' })).toBeVisible();
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    act(() => kit.controls.disclosures.set(key('why'), false));
+    await settle();
+    expect(opened(view)).toBe(false);
+  });
+  it('releases the document Escape handler after StrictMode cleanup', () => {
     const add = vi.spyOn(document, 'addEventListener');
     const remove = vi.spyOn(document, 'removeEventListener');
     const { view } = mount(page());
     view.unmount();
-    for (const type of ['keydown', 'click', 'focusout']) {
-      const added = add.mock.calls.filter(([name]) => name === type).length;
-      const removed = remove.mock.calls.filter(([name]) => name === type).length;
-      expect(added, type).toBeGreaterThan(0);
-      expect(removed, type).toBe(added);
-    }
+    const ours = (calls: typeof add.mock.calls) =>
+      calls.filter(([name, , capture]) => name === 'keydown' && capture === true).length;
+    expect(ours(add.mock.calls)).toBeGreaterThan(0);
+    expect(ours(remove.mock.calls)).toBe(ours(add.mock.calls));
     add.mockRestore();
     remove.mockRestore();
   });

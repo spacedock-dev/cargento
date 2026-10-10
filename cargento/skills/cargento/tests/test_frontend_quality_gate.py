@@ -316,7 +316,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "test:attention:browser": ("attention-parity.mjs",),
             "test:capacity:browser": ("capacity-parity.mjs",),
             "test:shell:browser": ("shell-routing.mjs",),
-            "test:controls:browser": ("controls-continuity.mjs",),
+            "test:controls:browser": ("controls-continuity.mjs", "popover-continuity.mjs"),
             "test:storage:browser": ("storage-conformance.mjs",),
             "test:css:browser": ("css-contract.mjs",),
         }
