@@ -208,7 +208,13 @@ class ControlledTerminal(installed_backend.SyntheticTerminal):
 
 def attach_terminal(server: Any) -> None:
     prototype = interaction_prototype.InteractionPrototype(
-        ControlledTerminal(interaction_prototype), lease_sec=3
+        # A synthetic client renews every third of the lease from a thread of this
+        # process. Three seconds let a slow runner miss one renewal inside the proof's
+        # 3.3 s disconnected window, so the registration expired ("Terminal
+        # registration has expired") and the reconnect step saw an empty terminal.
+        # Nothing here waits for an expiry, so the lease is long.
+        ControlledTerminal(interaction_prototype),
+        lease_sec=30,
     )
     server.interaction_prototype = prototype
     session = f"codex:{TERMINAL_SID}"
