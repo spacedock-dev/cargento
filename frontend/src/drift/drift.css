@@ -1,3 +1,4 @@
+@layer legacy {
 /* The Drift step's own parts: the level and its meter, the Analyze control and its consent step, the running
    analysis, the result, Steer back and its box, the departures section and the numbered activity list. Ported rule
    for rule from the legacy sheet's COCKPIT and SESSIONS sections so the two renderers look alike (the browser parity
@@ -145,3 +146,4 @@
 .next-cockpit-content .next-cockpit-source,.next-cockpit-recovery [data-next-cockpit-task-known]>strong{font-family:var(--mono)}
 .next-cockpit-recovery span.next-cockpit-source{display:inline;margin:0;color:inherit;font-size:inherit;letter-spacing:0}
 .next-cockpit-content .next-course-evidence .next-cockpit-source{display:inline;font:inherit;font-family:var(--mono)}
+}

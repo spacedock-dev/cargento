@@ -1,3 +1,4 @@
+@layer legacy {
 .next-attention-resume,.next-attention-raise{margin-top:0;margin-inline-start:8px;vertical-align:baseline}
 .next-attention-controls{display:inline-flex;flex-wrap:wrap;gap:8px;margin-inline-start:8px;vertical-align:baseline}
 .next-attention{min-width:0;padding:26px 0 34px;overflow-wrap:anywhere}
@@ -80,4 +81,5 @@
   .next-attention-risk-observation,.next-attention-risk-source{grid-column:2}
   .next-attention-item--legacy{grid-template-columns:minmax(0,1fr)}
   .next-attention-open li{grid-template-columns:minmax(0,1fr);gap:4px}
+}
 }

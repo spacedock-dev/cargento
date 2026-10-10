@@ -1,7 +1,9 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "root": true,
-  "vcs": { "enabled": false },
+  "vcs": {
+    "enabled": false
+  },
   "files": {
     "ignoreUnknown": false,
     "includes": [
@@ -25,8 +27,19 @@
     "lineWidth": 100,
     "lineEnding": "lf"
   },
-  "javascript": { "formatter": { "quoteStyle": "single" } },
-  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "off" } } },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "off"
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -123,10 +136,17 @@
         "useAsConstAssertion": "error",
         "useComponentExportOnlyModules": {
           "level": "error",
-          "options": { "allowConstantExport": true }
+          "options": {
+            "allowConstantExport": true
+          }
         },
         "useConst": "error",
-        "useErrorCause": { "level": "error", "options": { "requireCatchParameter": false } },
+        "useErrorCause": {
+          "level": "error",
+          "options": {
+            "requireCatchParameter": false
+          }
+        },
         "useLiteralEnumMembers": "error",
         "useSpreadOverApply": "error",
         "useUnifiedTypeSignatures": "error"
@@ -141,9 +161,25 @@
       "includes": ["**/*.test.ts", "**/*.test.tsx"],
       "linter": {
         "rules": {
-          "correctness": { "noUnsafeOptionalChaining": "off" },
-          "style": { "useComponentExportOnlyModules": "off" },
-          "suspicious": { "noShadowRestrictedNames": "off" }
+          "correctness": {
+            "noUnsafeOptionalChaining": "off"
+          },
+          "style": {
+            "useComponentExportOnlyModules": "off"
+          },
+          "suspicious": {
+            "noShadowRestrictedNames": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["frontend/src/ui/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useComponentExportOnlyModules": "off"
+          }
         }
       }
     }

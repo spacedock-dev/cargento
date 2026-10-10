@@ -1,3 +1,4 @@
+@layer legacy {
 /* The exact-session terminal and its registration recipe. Ported rule for rule from the legacy sheet's
    SUBSTRATE section so the two renderers look alike; the tokens are the React page's own (see
    styles/shell.css). xterm's own stylesheet is not here: it is a vendored same-origin file the loader
@@ -28,4 +29,5 @@
 .pc-terminal-screen>.xterm{width:100%;height:100%}
 @media(max-width:760px){
   .pc-terminal-viewport{height:220px}
+}
 }

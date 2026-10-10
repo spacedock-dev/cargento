@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
@@ -14,6 +15,7 @@ process.env['LANGUAGE'] = 'en_US';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: { alias: { '@': fileURLToPath(new URL('./frontend/src', import.meta.url)) } },
   test: {
     environment: 'jsdom',
     include: ['frontend/**/*.test.ts', 'frontend/**/*.test.tsx'],

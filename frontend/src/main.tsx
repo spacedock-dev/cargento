@@ -1,8 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { SpikeHarness } from './spike/SpikeHarness';
 import { createShell } from './shell/createShell';
 import { replaceRuntime } from './transport/runtime';
+import './styles/tailwind.css';
 import './styles/shell.css';
 import './styles/controls.css';
 
@@ -18,5 +20,6 @@ replaceRuntime(shell.runtime);
 createRoot(root).render(
   <StrictMode>
     <App shell={shell} />
+    <SpikeHarness />
   </StrictMode>,
 );

@@ -1,3 +1,4 @@
+@layer legacy {
 /* The Console's operating rail (delegation, waiting, capacity) and the setup disclosures. Each rule is the legacy sheet's own, copied so the two pages draw alike while the
    Python dashboard stays the rollback. */
 .next-project-detail-rail{width:356px;max-width:100%;min-width:0;border-left:1px solid var(--rule);background:var(--sunk);display:flex;flex-direction:column}
@@ -81,3 +82,4 @@
 .next-cockpit-scope{flex-wrap:wrap}
 /* A rail's caution reads as the quiet ink inside the project page, as the legacy sheet sets it for the cockpit. */
 .next-project-detail .next-rail-meta--amber{color:var(--ink2)}
+}

@@ -1,15 +1,15 @@
 {
   "document": {
-    "bytes": 1376448,
+    "bytes": 1609756,
     "file": "react.html",
-    "sha256": "fca17473a95b6485869e8008aa0048313eb40208b7f25eebc914d69fc7f94349"
+    "sha256": "df34ac64912b4941133dfc0db374dfba3dd82848c82ed45732f13d34735b8016"
   },
   "format": 1,
   "frontend": "react",
   "licenses": {
-    "bytes": 14102,
+    "bytes": 35658,
     "file": "react-licenses.txt",
-    "sha256": "43c9a564feb07404c6c9e753c06bab0f4d9fb7a957048a97ee00739997a739b1"
+    "sha256": "a39dc18e3bc90bcc0cd835a2ac0ed971f99a05453ca7dd4097556a0710a52036"
   },
   "optionalTerminal": {
     "javascript": {
@@ -120,6 +120,62 @@
       {
         "license": "MIT",
         "licenseFile": "LICENSE",
+        "name": "@base-ui/react",
+        "sha256": "07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a",
+        "version": "1.8.0"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "@base-ui/utils",
+        "sha256": "07fc1b39d69d14bc7d40482a628f47226258eb01265db68ae684944b916beb2a",
+        "version": "0.4.0"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "@floating-ui/core",
+        "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+        "version": "1.8.0"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "@floating-ui/dom",
+        "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+        "version": "1.8.0"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "@floating-ui/react-dom",
+        "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+        "version": "2.1.9"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "@floating-ui/utils",
+        "sha256": "0e4c9a9b6c71019cbbea3bdc20b01223110a9035700f9c960c8fcbf78c2325ce",
+        "version": "0.2.12"
+      },
+      {
+        "license": "Apache-2.0",
+        "licenseFile": "LICENSE",
+        "name": "class-variance-authority",
+        "sha256": "2d35024b0d328a99072c5deb2b41eae037ae1c8d7388ea20e5123497d234d812",
+        "version": "0.7.1"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "clsx",
+        "sha256": "9a9edad7baae52622bddf3c15b2ef8a33d2c89f2d25408ad13e8a7481c6b0c97",
+        "version": "2.1.1"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
         "name": "react",
         "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
         "version": "19.3.0"
@@ -137,6 +193,20 @@
         "name": "scheduler",
         "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
         "version": "0.28.0"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "tailwind-merge",
+        "sha256": "d4c70c7ce38cea8778f0aed3fc0bef0a9dbd27f13bd8b6773cbd6d37941971e5",
+        "version": "3.7.0"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "use-sync-external-store",
+        "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
+        "version": "1.7.0"
       }
     ],
     "sources": [
@@ -226,7 +296,7 @@
       },
       {
         "file": "frontend/src/attention/attention.css",
-        "sha256": "517ab2d3a3ac07d756fe28b57a5bd926810e17a18053b2864e40c2532e27541a"
+        "sha256": "3934b2abd71879f7859ebdaa121a9ae333f612829c86aebb67b47d6a6ab7a70f"
       },
       {
         "file": "frontend/src/attention/expansion.ts",
@@ -270,7 +340,7 @@
       },
       {
         "file": "frontend/src/capacity/capacity.css",
-        "sha256": "cd8771f59b3fa2699971048c796531e10de871b666c2c21323dba776741ce308"
+        "sha256": "b6be8af4cbd26be768dc378361c00c783f1824dc5ad2846b9f8292c706b4b9bf"
       },
       {
         "file": "frontend/src/capacity/held.ts",
@@ -406,7 +476,7 @@
       },
       {
         "file": "frontend/src/delegation/delegation.css",
-        "sha256": "e3c98e4986ce3dc55075b3529f30ea4735c6f1f4036b77b8fb7563c72cfe24b2"
+        "sha256": "523b931a4198e9e02b1467275c32fd5bf21cf2272092b871bec40fb9bcd95565"
       },
       {
         "file": "frontend/src/delegation/evidence.ts",
@@ -478,7 +548,7 @@
       },
       {
         "file": "frontend/src/drift/drift.css",
-        "sha256": "25c8b38b341dd35968e6d67232ca7028346ef94d8f782cd2803048d58deb80bb"
+        "sha256": "3357a87bc117180fe3bb408b6e42029e921f6a7591a4e779d2aafb884adebf5b"
       },
       {
         "file": "frontend/src/drift/editor.ts",
@@ -630,7 +700,7 @@
       },
       {
         "file": "frontend/src/intent/intent.css",
-        "sha256": "856f8ec4f763b94d10d99ae9ec8e7b08d2754d845a73df0c26c4533637194da0"
+        "sha256": "fffbddcd7a41123cfefebfbcf06c16ba7cbbdbc27ce689d5113b0c0a02f58afd"
       },
       {
         "file": "frontend/src/intent/liveMonitor.ts",
@@ -677,8 +747,12 @@
         "sha256": "4d6aa44a1a5ea7d0380e20bc86778c15d435aa86a5802986abedb528f6499c07"
       },
       {
+        "file": "frontend/src/lib/utils.ts",
+        "sha256": "203ebe7a03044ef074303174636a07fe7e59ca70805f69a59fb07d7e71659c3e"
+      },
+      {
         "file": "frontend/src/main.tsx",
-        "sha256": "b689b6898fcf9cfd466f83caf04697df3873144e3775b256bd97e6f9b1ae5459"
+        "sha256": "bf4b28719ac91e8bddd80c97351df437b725168c27c091cd512cf40a984a6f63"
       },
       {
         "file": "frontend/src/notify/NotificationControl.tsx",
@@ -694,7 +768,7 @@
       },
       {
         "file": "frontend/src/notify/notify.css",
-        "sha256": "cf3d2f542ad3cf8f9c4731816060d484ef1b0ebbb67ccf619f421cc54d0d2074"
+        "sha256": "550308ec953df3e1a7f42238a4d76ccab8b9afd66c7df8485d44b5e2342179f9"
       },
       {
         "file": "frontend/src/notify/owner.ts",
@@ -814,7 +888,7 @@
       },
       {
         "file": "frontend/src/project/project.css",
-        "sha256": "9ed56efc847ade6556dbd7b1d75aceb4282cc905d957a131ceafd2ec27446d3a"
+        "sha256": "680494b8f5fe8b6a4158e03af1ed4fb73541dbdc541d2cd4434f0ffdfca912ab"
       },
       {
         "file": "frontend/src/project/raw.ts",
@@ -910,7 +984,7 @@
       },
       {
         "file": "frontend/src/sessions/sessions.css",
-        "sha256": "0c27057d08c22c1aa94e8ed25731ca5a7999352533e288c527f7a5ae0decd94d"
+        "sha256": "adc629668ab9c67cef895ee3d4c566e01afafe398b550aacc930431552fd1509"
       },
       {
         "file": "frontend/src/sessions/testing.tsx",
@@ -993,6 +1067,10 @@
         "sha256": "af66637d4de9275982c7f725999dd4bfc01d02736e53c5c6d6eb3d937d897064"
       },
       {
+        "file": "frontend/src/spike/SpikeHarness.tsx",
+        "sha256": "a54ab10f28b1f49146230feae6529bb345cf69dd4398407543f8c7fddbe603c4"
+      },
+      {
         "file": "frontend/src/steering/ProjectDecisions.tsx",
         "sha256": "bb3050abe70e69abe8f16a2019909669f9126b8f15f6e17e007af3bea0546c52"
       },
@@ -1030,7 +1108,7 @@
       },
       {
         "file": "frontend/src/steering/steering.css",
-        "sha256": "4b0ebaad6442b2033e0f5c192895ae45098745e42f5b516cfe02c3f5c93bc239"
+        "sha256": "87a1d99729157a173c3e2555e55ce5c000d54dc62852644f2298587b0af2688c"
       },
       {
         "file": "frontend/src/steering/testing.tsx",
@@ -1102,11 +1180,15 @@
       },
       {
         "file": "frontend/src/styles/controls.css",
-        "sha256": "8c93f7919521a962ab810613a4e2bbec119a17137a45184fe30394dd83b379b0"
+        "sha256": "b27b976ffe28bea196c45a3295bd07bc4a3fe6f9d866369b5f0c89e12774d4a6"
       },
       {
         "file": "frontend/src/styles/shell.css",
-        "sha256": "a5bb7427b449e3fab704265654ad2c0cf955cb34f60f518849b2bc73a3a9eaca"
+        "sha256": "a7e86a63d712cf5f19b2dbfdc071d85347ded3ee55a19c051756bea85d2a0a98"
+      },
+      {
+        "file": "frontend/src/styles/tailwind.css",
+        "sha256": "1bc7d144a9f1dfdef84af87d00625b760459663429c2b5db722e23700d3c931e"
       },
       {
         "file": "frontend/src/terminal/TerminalSurface.tsx",
@@ -1130,7 +1212,7 @@
       },
       {
         "file": "frontend/src/terminal/terminal.css",
-        "sha256": "3cd1e52ba20eb9a56bd7fb91119a3880a23d1a2d340b11e3786e421bbcfd02bd"
+        "sha256": "692aaec44e4a6d3a48ef64bd4f9e7e35464b85eb7ea1702ecc9ba497abb887d1"
       },
       {
         "file": "frontend/src/terminal/testing.ts",
@@ -1194,7 +1276,7 @@
       },
       {
         "file": "frontend/src/timeline/timeline.css",
-        "sha256": "7e4e82815d35083a63b066a80d32a8e914fb99d46491d3cddbc4a6c4b5ad04eb"
+        "sha256": "c5983d499467c525cb4377e72768f2634a86a15b2dfb478263484c41211e08c8"
       },
       {
         "file": "frontend/src/timeline/view.ts",
@@ -1245,6 +1327,42 @@
         "sha256": "e94ddb3a4bcc1b813f31085f7f73d7c7ce1532e7eabfe6fd123fea6a2a572748"
       },
       {
+        "file": "frontend/src/ui/accordion.tsx",
+        "sha256": "2b7cad2ae1ae7ef7f8e04fae1104ce48e21c422863af573fca3dc1eaafe05c4c"
+      },
+      {
+        "file": "frontend/src/ui/button.tsx",
+        "sha256": "33cee7073a630a3c55fe65a171136df1f51f5f567f19c948c429c4221dacc0e4"
+      },
+      {
+        "file": "frontend/src/ui/collapsible.tsx",
+        "sha256": "98df8b0ca983785fa8d481e5b8e88cc6d20a2431b39fa181b992abcdde60603a"
+      },
+      {
+        "file": "frontend/src/ui/icons.tsx",
+        "sha256": "7fc16113300c07209754b60e43f4d4ade0d5f0ec23a1380b3c3cc684e61bfbc3"
+      },
+      {
+        "file": "frontend/src/ui/input.tsx",
+        "sha256": "65cfa3c1b0ba2b489eb65fab071589e7ceb4f7e02556cbd774b8dbfb6f5909bc"
+      },
+      {
+        "file": "frontend/src/ui/label.tsx",
+        "sha256": "a08b2ae6952529a5131a5cc669fedbeb3b596cafa6a32123ba437408930d0067"
+      },
+      {
+        "file": "frontend/src/ui/native-select.tsx",
+        "sha256": "5560171e87de04d1942afbe5b0166fc5000906df63ba2f5e6d83229f2a08c7df"
+      },
+      {
+        "file": "frontend/src/ui/popover.tsx",
+        "sha256": "a899ddb80d1e26bfa8e05756bfd19918ab58f3596db47e6473d6d591458b6a5c"
+      },
+      {
+        "file": "frontend/src/ui/textarea.tsx",
+        "sha256": "c95dcf8df08e34a4627ea4b5038d863e03540742c5e5fb8637a377ee5a9a7864"
+      },
+      {
         "file": "frontend/src/workstream/ChangesPanel.tsx",
         "sha256": "2b6deac6598f66f964c6187101e907e237443aac10b29fb2ec644a891b54b9aa"
       },
@@ -1270,15 +1388,15 @@
       },
       {
         "file": "frontend/vite.config.mts",
-        "sha256": "aaac41fa9d583aecda95b955cd8c9e5c4f68ef0976c129d82604f9a7d00e1557"
+        "sha256": "95e8459932c04b1df0fc4d0b673c56711bda7efebef6864110e061480228ed6c"
       },
       {
         "file": "package.json",
-        "sha256": "cdb87c1eb840dc04e338d407da36362959a36aa71bd073d6d4470a761e00c47c"
+        "sha256": "386cd355a85db3012953c5fc9c2adbf5cf88b3095041005b1c5680d6d71ab09f"
       },
       {
         "file": "pnpm-lock.yaml",
-        "sha256": "e32726b5ca899ee60621a772e6664c290a585b65b4f42b5fb59169da8b99b599"
+        "sha256": "a90b512448cbfd71d6563356bd6e0ca42a5823e9facbd61eb5c3d7b3e639ee13"
       }
     ]
   }

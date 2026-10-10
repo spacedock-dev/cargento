@@ -3,6 +3,7 @@ import { realpath } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { handshakeSignature, parseArguments } from './protocol.mjs';
 import { readFonts } from '../build/package.mjs';
 
@@ -63,8 +64,10 @@ async function start(options) {
     configFile: false,
     envFile: false,
     root: frontendRoot,
+    resolve: { alias: { '@': join(frontendRoot, 'src') } },
     plugins: [
       react(),
+      tailwindcss(),
       {
         name: 'cargento-dev-origin',
         configureServer(server) {

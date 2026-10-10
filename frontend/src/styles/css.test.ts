@@ -63,6 +63,11 @@ function declaredProperties(): Set<string> {
 
 /* Used and never declared. None is held: a rule that names an undeclared custom property resolves to nothing, as
    the popover's shadow once did, so a new one fails here rather than joining this list. */
+const TAILWIND_IMPORTS = [
+  "@import 'tailwindcss/theme.css' layer(theme);",
+  "@import 'tailwindcss/utilities.css' layer(utilities);",
+];
+
 const UNDECLARED: string[] = [];
 
 // The five type steps of `styles/shell.css`, spelled as the rem values they hold.
@@ -102,7 +107,11 @@ describe('the bundled stylesheets', () => {
     const offenders: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
-      if (/@import/.test(stripped(text))) offenders.push(`${relative(ROOT, file)}: @import`);
+      /* The Tailwind entry names exactly two imports, both resolved by the build into the one stylesheet;
+         the built CSS is checked for `@import` again by the package step. */
+      const permitted = relative(ROOT, file) === 'styles/tailwind.css' ? TAILWIND_IMPORTS : [];
+      const remaining = stripped(permitted.reduce((rest, line) => rest.replace(line, ''), text));
+      if (/@import/.test(remaining)) offenders.push(`${relative(ROOT, file)}: @import`);
       for (const value of externalUrls(text))
         offenders.push(`${relative(ROOT, file)}: url(${value})`);
       if (/https?:\/\//.test(uncommented(text)))

@@ -1,0 +1,72 @@
+/* Layer order: the hand-written sheets sit in `legacy`, below everything Tailwind emits, so a utility on a
+   migrated component beats the old rule. Preflight is not imported: the page keeps the UA defaults the
+   css-contract exceptions rely on. */
+@layer legacy, theme, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* Cargento's scale replaces Tailwind's: five type steps and four radii, nothing else exists. */
+@theme inline {
+  --text-*: initial;
+  --text-label: var(--fs-label);
+  --text-body: var(--fs-body);
+  --text-value: var(--fs-value);
+  --text-head: var(--fs-head);
+  --text-hero: var(--fs-hero);
+  --radius-*: initial;
+  --radius-control: var(--r-control);
+  --radius-card: var(--r-card);
+  --radius-shell: var(--r-shell);
+  --radius-pill: var(--r-pill);
+  --color-*: initial;
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--raise);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--bg);
+  --color-secondary: var(--panel);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--sunk);
+  --color-muted-foreground: var(--ink3);
+  --color-accent: var(--raise);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--clay);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+}
+
+/* shadcn's classes reach for a few plain semantic variables and for two the library sets at run time; they
+   are declared here so every `var()` in the page resolves. Cargento's own `--accent` is a colour, not shadcn's
+   hover surface, so the semantic names are mapped through `--color-*` above and only these are plain. */
+@layer theme {
+  :root {
+    --foreground: var(--ink);
+    --secondary: var(--panel);
+    --accordion-panel-height: auto;
+    --transform-origin: center;
+  }
+}
+
+/* Cargento is dark only: shadcn's `dark:` variant must not become a prefers-color-scheme media rule. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The two data variants the vendored accordion and popover use. They come from shadcn/tailwind.css, which
+   also carries scroll-fade utilities and keyframes Cargento does not use, so they are copied, not imported.
+   Without them a `data-open:` class generates nothing and the open state silently draws unstyled. */
+@custom-variant data-open {
+  &:where([data-state='open']),
+  &:where([data-open]:not([data-open='false'])) {
+    @slot;
+  }
+}
+
+@custom-variant data-closed {
+  &:where([data-state='closed']),
+  &:where([data-closed]:not([data-closed='false'])) {
+    @slot;
+  }
+}
