@@ -7,7 +7,7 @@ export function DisclosureChevron() {
       width="10"
       height="10"
       fill="none"
-      className="shrink-0 ml-[.45em] transition-transform duration-[var(--disclose-dur)] ease-[var(--disclose-ease)] in-aria-expanded:rotate-180 motion-reduce:transition-none"
+      className="shrink-0 ms-[.45em] transition-transform duration-[var(--disclose-dur)] ease-[var(--disclose-ease)] in-aria-expanded:rotate-180 motion-reduce:transition-none"
     >
       <path d="m2 3.5 3 3 3-3" stroke="currentColor" strokeWidth="1.5" />
     </svg>

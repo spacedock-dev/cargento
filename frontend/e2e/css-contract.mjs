@@ -628,7 +628,8 @@ const SURFACES = {
   'a reading': '.next-cockpit-reading',
   'a stated absence':
     '[data-next-absent],[class*="-absent"],[class*="--absent"],[data-next-withheld]',
-  'a disclosure': 'details',
+  'a disclosure': '[data-slot="accordion"]',
+  'a native disclosure': 'details',
   'a stored reading result': '.next-cockpit-result',
   'a running analysis': '.next-cockpit-reading-steps',
   'the capacity absence': '.next-capacity-absent',

@@ -43,7 +43,7 @@
       "font-size": "13px",
       "line-height": "normal"
     },
-    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project · appChange scope |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 appChange scope |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -57,7 +57,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-execution-root > next-cockpit-child-row > ctl-disclosure |  | Evidence · child handoff |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-execution-root > next-cockpit-child-row > ctl-disclosure |  | Evidence \u00b7 child handoff |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -71,7 +71,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-authority.next-cockpit-authority--captain-needed > ctl-disclosure |  | Evidence · attention sources |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-authority.next-cockpit-authority--captain-needed > ctl-disclosure |  | Evidence \u00b7 attention sources |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -113,7 +113,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started — terminal bridge per-session, observer model off |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started \u2014 terminal bridge per-session, observer model off |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -141,7 +141,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project · apiChange scope |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 apiChange scope |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -155,7 +155,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-authority.next-cockpit-authority--fo-inspecting > ctl-disclosure |  | Evidence · attention sources |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-authority.next-cockpit-authority--fo-inspecting > ctl-disclosure |  | Evidence \u00b7 attention sources |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -169,7 +169,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project · gammaChange scope |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 gammaChange scope |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -183,7 +183,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project · deltaChange scope |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 deltaChange scope |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -211,7 +211,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell.next-cockpit-shell--single > next-cockpit-content > next-cockpit-recovery > next-cockpit-authority.next-cockpit-authority--fo-inspecting > ctl-disclosure |  | Evidence · attention sources |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell.next-cockpit-shell--single > next-cockpit-content > next-cockpit-recovery > next-cockpit-authority.next-cockpit-authority--fo-inspecting > ctl-disclosure |  | Evidence \u00b7 attention sources |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -225,7 +225,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell.next-cockpit-shell--single > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started — terminal bridge per-session, observer model off |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell.next-cockpit-shell--single > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started \u2014 terminal bridge per-session, observer model off |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -295,7 +295,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-session-detail.next-session-detail--blocked > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed · Git state was not measured |  | disabled=false hidden=false": {
+    "next-session-detail.next-session-detail--blocked > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -463,7 +463,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed · Git state was not measured |  | disabled=false hidden=false": {
+    "next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -491,7 +491,7 @@
       "font-size": "15px",
       "line-height": "normal"
     },
-    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.next-cockpit-held-stamp |  | Saved · reads from 13:10 |  | disabled=false hidden=false": {
+    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.next-cockpit-held-stamp |  | Saved \u00b7 reads from <clock> |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -617,21 +617,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.next-cockpit-held-stamp |  | Saved · reads from 13:17 |  | disabled=false hidden=false": {
-      "color": "rgb(205, 199, 180)",
-      "background-color": "rgba(0, 0, 0, 0)",
-      "border-top": "0px none rgb(205, 199, 180)",
-      "border-right": "0px none rgb(205, 199, 180)",
-      "border-bottom": "0px none rgb(205, 199, 180)",
-      "border-left": "0px none rgb(205, 199, 180)",
-      "display": "flex",
-      "padding": "0px",
-      "justify-content": "normal",
-      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
-      "font-size": "15px",
-      "line-height": "normal"
-    },
-    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing session · Claude Code · workingChange scope |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing session \u00b7 Claude Code \u00b7 workingChange scope |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -645,7 +631,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing session · Claude Code · needs_inputChange scope |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing session \u00b7 Claude Code \u00b7 needs_inputChange scope |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -659,7 +645,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing session · Claude Code · idleChange scope |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing session \u00b7 Claude Code \u00b7 idleChange scope |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -687,7 +673,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started — terminal bridge per-session, observer model on |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started \u2014 terminal bridge per-session, observer model on |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -701,7 +687,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started — terminal bridge off, observer model on |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started \u2014 terminal bridge off, observer model on |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -729,7 +715,7 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started — terminal bridge off, observer model off |  | disabled=false hidden=false": {
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > ctl-disclosure.next-cockpit-console-setup |  | How this server was started \u2014 terminal bridge off, observer model off |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
