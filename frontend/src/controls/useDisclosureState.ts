@@ -18,6 +18,9 @@ export function createDisclosureBinding(store: DisclosureStore, key: string) {
   return {
     read: () => store.read(key),
     subscribe(listener: () => void) {
+      // A parent layout effect can write before React installs this passive subscription; without
+      // refreshing here, the next native opening would carry a version older than the store's.
+      observedVersion = store.version(key);
       const unwatch = store.watchWrites((writtenKey) => {
         if (writtenKey !== key) return;
         drain();

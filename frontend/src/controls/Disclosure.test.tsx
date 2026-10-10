@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ControlsProvider } from './ControlsProvider';
 import { Disclosure } from './Disclosure';
 import { disclosureKey } from './disclosureStore';
+import { createDisclosureBinding } from './useDisclosureState';
 import { testControls, type TestControlsOptions } from './testControls';
 
 function mount(ui: ReactElement, options: TestControlsOptions = {}) {
@@ -95,6 +96,24 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(false);
     await flushToggle();
     expect(details.open).toBe(false);
+  });
+
+  it('accepts a native opening after a write that landed before the subscription', () => {
+    const { controls } = testControls();
+    const store = controls.disclosures;
+    const binding = createDisclosureBinding(store, key('plan'));
+    const details = document.createElement('details');
+    const detach = binding.attach(details);
+    // The parent's layout effect closes the section before the passive subscribe runs.
+    store.set(key('plan'), false);
+    const release = binding.subscribe(vi.fn());
+    details.open = true;
+    const opening = new Event('toggle');
+    Object.defineProperty(opening, 'newState', { value: 'open' });
+    binding.toggle(opening);
+    expect(store.isOpen(key('plan'))).toBe(true);
+    release();
+    detach();
   });
 
   it('lets an external close supersede a native opening while the store is still closed', async () => {
