@@ -2174,6 +2174,74 @@ class TheSavePathReportsTruthfullyTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(["file fsync", "replace", "directory fsync"], calls)
 
+    def test_a_rename_that_is_briefly_refused_is_tried_again_and_the_words_land(self) -> None:
+        # Windows refuses to replace a file something else has open for an instant (an indexer or a scanner
+        # that read the previous version), and the hosted runner's thread test lost saves to it: "could not
+        # write the annotation store" for words that were one retry from landing. A refusal that clears is
+        # not a failed save.
+        real_replace = os.replace
+        refused = [PermissionError(13, "Access is denied"), PermissionError(13, "Access is denied")]
+        calls: list[str] = []
+        said: list[str] = []
+
+        def replace(src: str, dst: str) -> None:
+            calls.append("replace")
+            if refused:
+                raise refused.pop()
+            real_replace(src, dst)
+
+        with (
+            mock.patch("cargento_runtime.annotations.os.replace", side_effect=replace),
+            mock.patch("cargento_runtime.annotations.time.sleep") as sleep,
+        ):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=said.append)
+
+        self.assertTrue(ok)
+        self.assertEqual(["replace"] * 3, calls)
+        self.assertEqual(2, sleep.call_count)
+        self.assertEqual([], said)
+        leftovers = [name for name in os.listdir(self.config.state_home) if name.endswith(".tmp")]
+        self.assertEqual([], leftovers)
+
+    def test_a_rename_that_stays_refused_is_a_failed_save_after_a_bounded_wait(self) -> None:
+        calls: list[str] = []
+        said: list[str] = []
+
+        def replace(_src: str, _dst: str) -> None:
+            calls.append("replace")
+            raise PermissionError(13, "Access is denied")
+
+        with (
+            mock.patch("cargento_runtime.annotations.os.replace", side_effect=replace),
+            mock.patch("cargento_runtime.annotations.time.sleep") as sleep,
+        ):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=said.append)
+
+        self.assertFalse(ok)
+        self.assertEqual(annotation_store._REPLACE_ATTEMPTS, len(calls))
+        self.assertLessEqual(sum(call.args[0] for call in sleep.call_args_list), 1.0)
+        self.assertTrue(any("could not write the annotation store" in line for line in said))
+        leftovers = [name for name in os.listdir(self.config.state_home) if name.endswith(".tmp")]
+        self.assertEqual([], leftovers)
+
+    def test_a_refusal_that_is_not_a_permission_error_is_not_tried_again(self) -> None:
+        calls: list[str] = []
+        said: list[str] = []
+
+        def replace(_src: str, _dst: str) -> None:
+            calls.append("replace")
+            raise OSError(28, "No space left on device")
+
+        with (
+            mock.patch("cargento_runtime.annotations.os.replace", side_effect=replace),
+            mock.patch("cargento_runtime.annotations.time.sleep") as sleep,
+        ):
+            ok = annotation_store.save(self.config, (), diagnostic_sink=said.append)
+
+        self.assertFalse(ok)
+        self.assertEqual(["replace"], calls)
+        sleep.assert_not_called()
+
     def test_a_directory_that_cannot_be_synced_does_not_report_the_words_as_lost(self) -> None:
         # Windows refuses to open a directory at all, and some filesystems
         # refuse to fsync one. By then the bytes are durable and the rename has

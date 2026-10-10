@@ -1312,7 +1312,7 @@ def _write(
             # is reconstructible from what the harnesses already wrote.
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp, target)
+        _replace_over(tmp, target)
         # The directory sync may fail where the file sync did not (Windows
         # cannot open a directory; some filesystems refuse to fsync one), and
         # by then the bytes are durable and the rename has happened -- only the
@@ -1332,6 +1332,28 @@ def _write(
             os.unlink(tmp)
         return False
     return True
+
+
+# Windows refuses `os.replace` onto a file something else has open, and an indexer or scanner that
+# read the previous version holds it for an instant. The hosted Windows runner's thread test lost
+# saves to that ("could not write the annotation store" for words one retry from landing), so a
+# refusal is tried again a few times over about a third of a second before it is a failed save.
+# Only `PermissionError`, which is what Windows raises for it: a full disk or a missing directory
+# fails at once.
+_REPLACE_ATTEMPTS = 6
+_REPLACE_PAUSE_SECONDS = 0.02
+
+
+def _replace_over(tmp: str, target: str) -> None:
+    for attempt in range(1, _REPLACE_ATTEMPTS + 1):
+        try:
+            os.replace(tmp, target)
+        except PermissionError:
+            if attempt == _REPLACE_ATTEMPTS:
+                raise
+            time.sleep(_REPLACE_PAUSE_SECONDS * attempt)
+        else:
+            return
 
 
 def _say_unwritten(config: RuntimeConfig, diagnostic_sink: Callable[[str], None]) -> None:
