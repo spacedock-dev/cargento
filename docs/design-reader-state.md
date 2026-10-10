@@ -349,9 +349,9 @@ own scroll position lives in the terminal owner (`frontend/src/terminal/viewport
 the viewport is attached again. When follow-live is enabled, the restored viewport follows its newest output.
 That state has its own row in the inventory above.
 
-The other overflow forms remain `overflow:hidden`, `overflow-wrap:anywhere` and `overflow:clip`.
-The last is an Accordion or Collapsible panel while it eases open: clipping
-is not scrolling, so it has no offset to keep.
+The other overflow forms in the sheets are `overflow:hidden` and `overflow-wrap:anywhere`.
+An Accordion or Collapsible panel clips while it eases open through the `overflow-clip` utility in
+`frontend/src/ui`, which no sheet declares: clipping is not scrolling, so it has no offset to keep.
 The React sheets declare auto scrolling only on the terminal. Native textareas also
 scroll internally; their viewport and user-resized dimensions have a separate inventory row. Adding another scroll
 container requires its own state owner and an inventory update. `text-overflow:ellipsis` is a text
