@@ -51,10 +51,18 @@ import {
 import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
+import { startConsoleWorld, fragmentFor } from './console-board.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
 
 const BUTTON_TABLE = JSON.parse(
   await readFile(new URL('./button-chrome-reference.json', import.meta.url), 'utf8'),
+);
+const disclosureKey = (key) => key.replace(/\b\d{1,2}:\d{2}\b/g, '<clock>');
+const DISCLOSURE_TABLE = JSON.parse(
+  await readFile(new URL('./disclosure-chrome-reference.json', import.meta.url), 'utf8'),
+);
+const DISCLOSURE_REFERENCE = Object.fromEntries(
+  Object.entries(DISCLOSURE_TABLE.instances).map(([key, chrome]) => [disclosureKey(key), chrome]),
 );
 const BUTTON_REFERENCE = Object.fromEntries(
   Object.entries(BUTTON_TABLE.instances).map(([key, profile]) => [
@@ -96,6 +104,29 @@ const MUTATIONS = {
       'capacity/capacity.css',
       '.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-label)}',
       '.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-hero)}',
+    ],
+  ],
+  'disclosure-type-small': [
+    ['styles/controls.css', 'font: inherit;', 'font: var(--fs-label) var(--sans);'],
+  ],
+  'disclosure-cascade-colour': [
+    ['styles/controls.css', 'color: var(--ctl-ink2);', 'color: var(--ctl-ink);'],
+  ],
+  'disclosure-target-removed': [
+    ['ui/accordion.tsx', 'min-h-[44px] min-w-[44px]', 'min-h-0 min-w-0'],
+  ],
+  'disclosure-row-shrinks': [
+    [
+      'timeline/timeline.css',
+      'inline-size:100%;max-inline-size:none',
+      'inline-size:auto;max-inline-size:none',
+    ],
+  ],
+  'disclosure-focus-removed': [
+    [
+      'ui/accordion.tsx',
+      'focus-visible:outline-2 focus-visible:outline-solid',
+      'focus-visible:outline-none',
     ],
   ],
   'button-size-removed': [['ui/button.tsx', 'text-body', 'text-label']],
@@ -187,7 +218,6 @@ const INVENTORY = {
     'main > nav.next-breadcrumb > span',
     'section.next-capacity > div.next-capacity-models > i',
     'section.next-capacity > div.next-capacity-row.next-capacity-more > i',
-    'section.next-cockpit-recovery > header > small.next-cockpit-recovery-gloss',
     'section.next-cockpit-semantic > section.pc-semantic-timeline > p.pc-substrate-empty',
     'section.next-control.next-guardrails > header.next-rail-header > span.next-rail-meta',
     'section.next-project-activity > div.next-activity-cards > p.next-activity-empty',
@@ -589,6 +619,8 @@ const measured = {
   groups: [],
   buttons: [],
   chrome: [],
+  disclosureChrome: [],
+  disclosureInlineSizes: [],
 };
 
 const SURFACES = {
@@ -604,7 +636,8 @@ const SURFACES = {
   'a reading': '.next-cockpit-reading',
   'a stated absence':
     '[data-next-absent],[class*="-absent"],[class*="--absent"],[data-next-withheld]',
-  'a disclosure': 'details',
+  'a disclosure': '[data-slot="accordion"]',
+  'a native disclosure': 'details',
   'a stored reading result': '.next-cockpit-result',
   'a running analysis': '.next-cockpit-reading-steps',
   'the capacity absence': '.next-capacity-absent',
@@ -651,11 +684,35 @@ async function visit(opened, origin, fragment, options = {}) {
   return first;
 }
 
+async function measureDisclosureInlineSizes(page, view) {
+  for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey}, true)`))
+    measured.disclosureInlineSizes.push({
+      view,
+      key: disclosureKey(row.key),
+      size: row.inlineSize,
+    });
+}
+
 async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
+  await page.evaluate(() => document.fonts.ready);
   measured.views.push(view);
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
     measured.chrome.push({ view, ...row });
+  for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey}, true)`))
+    measured.disclosureChrome.push({ view, ...row, key: disclosureKey(row.key) });
+  await measureDisclosureInlineSizes(page, view);
+  const openedPanels = await page.evaluate(() => {
+    const triggers = [
+      ...document.querySelectorAll(
+        '[data-slot=accordion-trigger][aria-expanded=false],[data-slot=collapsible-trigger][aria-expanded=false]',
+      ),
+    ];
+    for (const trigger of triggers) trigger.click();
+    return triggers.length;
+  });
+  if (openedPanels) await page.waitForTimeout(patience(250));
+  await measureDisclosureInlineSizes(page, `${view} [expanded]`);
   const { rows, registers, groups, buttons, linkColour, scheme } = await page.evaluate(measureText);
   measured.registers ??= registers;
   measured.palette = registers;
@@ -907,6 +964,36 @@ async function runConsole(browser, world) {
   }
 }
 
+/* The capacity worlds have no timeline rows. The populated Console board catches an auto-width
+   button shrinking where the pre-swap block summary filled its row. */
+async function runTimelineInlineSizes(browser) {
+  const world = await startConsoleWorld({
+    harness: false,
+    mutation: MUTATION === 'disclosure-row-shrinks' ? MUTATION : '',
+    mutations: {
+      'disclosure-row-shrinks': MUTATIONS['disclosure-row-shrinks'].map(
+        ([file, needle, replacement]) => [`src/${file}`, needle, replacement],
+      ),
+    },
+  });
+  try {
+    for (const width of [1280, 375]) {
+      const opened = await openWorldPage(browser, world.react, { width, height: 900 });
+      try {
+        await opened.page.goto(`${world.react.origin}/${fragmentFor('decisions')}`);
+        await opened.page.waitForSelector('.pc-graph-row');
+        await settle(opened.page);
+        await opened.page.evaluate(() => document.fonts.ready);
+        await measureDisclosureInlineSizes(opened.page, `timeline @${width}`);
+      } finally {
+        await opened.close();
+      }
+    }
+  } finally {
+    await world.close();
+  }
+}
+
 const RUNNERS = { sessions: runSessions, intent: runIntent, console: runConsole };
 
 /* ---- the checks ---- */
@@ -963,6 +1050,69 @@ function checks() {
   const text = measured.text.filter((row) => !row.hidden);
   const regs = measured.registers;
 
+  step_('disclosures: every real-route trigger keeps its pre-adoption chrome', () => {
+    const failures = [];
+    const seen = new Set();
+    for (const row of measured.disclosureChrome) {
+      seen.add(row.key);
+      const expected = DISCLOSURE_REFERENCE[row.key];
+      if (!expected || JSON.stringify(expected) !== JSON.stringify(row.chrome)) failures.push(row);
+    }
+    assert.deepEqual(
+      failures.slice(0, 15).map((row) => ({ ...row, expected: DISCLOSURE_REFERENCE[row.key] })),
+      [],
+      `${failures.length} disclosure chrome differences`,
+    );
+    assert.ok(
+      measured.disclosureChrome.length >= 50,
+      'too few disclosure triggers reached the chrome gate',
+    );
+    if (WORLDS.length === 3)
+      assert.deepEqual(
+        Object.keys(DISCLOSURE_REFERENCE).filter((key) => !seen.has(key)),
+        [],
+        'a baseline disclosure was not reached',
+      );
+    return `${measured.disclosureChrome.length} instances against 7d4a23c3`;
+  });
+  step_('disclosures: triggers keep their pre-swap inline size and row filling', () => {
+    const differences = [];
+    const seen = new Set();
+    for (const { view, key, size } of measured.disclosureInlineSizes) {
+      const identity = `${view} | ${key}`;
+      seen.add(identity);
+      const expected = DISCLOSURE_TABLE.inlineSizes[identity];
+      // Clock labels normalize their identity, but proportional digits still change their real width.
+      const tolerance = key.includes('<clock>') ? 8 : 1.5;
+      if (
+        !expected ||
+        !expected.some(
+          (value) =>
+            value === size ||
+            (value !== null &&
+              size !== null &&
+              value.fillsRow === size.fillsRow &&
+              (value.fillsRow ||
+                // Text width is font-metric dependent: macOS, Linux and Windows differ by a few
+                // percent, so a row that was not full width keeps a proportional allowance.
+                Math.abs(value.width - size.width) <= Math.max(tolerance, value.width * 0.05))),
+        )
+      )
+        differences.push({ view, key, expected, actual: size });
+    }
+    assert.deepEqual(
+      differences.slice(0, 15),
+      [],
+      `${differences.length} disclosure inline-size differences`,
+    );
+    if (WORLDS.length === 3)
+      assert.deepEqual(
+        Object.keys(DISCLOSURE_TABLE.inlineSizes).filter((key) => !seen.has(key)),
+        [],
+        'a baseline disclosure inline size was not reached',
+      );
+    return `${measured.disclosureInlineSizes.length} widths against 7d4a23c3`;
+  });
   step_('buttons: every real-route instance keeps its pre-adoption chrome', () => {
     const failures = new Map();
     const seen = new Set();
@@ -1272,6 +1422,35 @@ async function checkButtonGallery(browser) {
           assert.equal(ring.width, '2px');
           assert.equal(ring.style, 'solid');
         }
+        const triggers = opened.page.locator(
+          '[data-slot=accordion-trigger],[data-slot=collapsible-trigger]',
+        );
+        assert.equal(await triggers.count(), 3);
+        for (const trigger of await triggers.all()) {
+          const metrics = await trigger.evaluate((el) => {
+            const box = el.getBoundingClientRect();
+            return {
+              width: box.width,
+              height: box.height,
+              px: parseFloat(getComputedStyle(el).fontSize),
+            };
+          });
+          assert.ok(
+            metrics.width >= 44 && metrics.height >= 44,
+            'adopted disclosure gallery has 44 px targets',
+          );
+          assert.equal(metrics.px, 15, 'adopted disclosure gallery stays on the sentence step');
+          await trigger.focus();
+          const ring = await trigger.evaluate((el) => ({
+            width: getComputedStyle(el).outlineWidth,
+            style: getComputedStyle(el).outlineStyle,
+          }));
+          assert.deepEqual(
+            ring,
+            { width: '2px', style: 'solid' },
+            'adopted disclosure gallery has an authored focus ring',
+          );
+        }
         const hover = opened.page.locator('[data-example="hover"]');
         assert.equal(
           await opened.page
@@ -1372,6 +1551,7 @@ try {
     }
     receipts[`world ${name}`] = `${Math.round((Date.now() - started) / 1000)}s`;
   }
+  if (WORLDS.includes('console')) await runTimelineInlineSizes(browser);
 } catch (error) {
   failures.push({ name: 'run', message: String(error.stack || error).slice(0, 4000) });
 } finally {

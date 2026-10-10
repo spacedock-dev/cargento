@@ -73,3 +73,8 @@ export function useDisclosureState(store: DisclosureStore, key: string) {
   useLayoutEffect(() => binding.commit(snapshot), [binding, snapshot]);
   return { open: snapshot.open, binding };
 }
+
+export function useControlledDisclosureState(store: DisclosureStore, key: string) {
+  const read = useMemo(() => () => store.read(key), [store, key]);
+  return useSyncExternalStore(store.subscribe, read).open;
+}

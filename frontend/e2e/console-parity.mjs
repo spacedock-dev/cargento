@@ -164,7 +164,7 @@ const readConsole = () => {
   const norm = globalThis.__norm;
   const panel = document.querySelector('[data-next-cockpit-panel="console"]');
   if (!panel) return null;
-  const setup = panel.querySelector('details.next-cockpit-console-setup');
+  const setup = panel.querySelector('[data-slot=accordion].next-cockpit-console-setup');
   const rail = panel.querySelector('aside[data-next-project-rail]');
   const terminal = panel.querySelector('[data-next-cockpit-terminal]');
   const cue = panel.querySelector('.next-cockpit-scope--evidence .next-scope-cue');
@@ -174,7 +174,7 @@ const readConsole = () => {
     else if (child.matches('p.next-cockpit-empty')) order.push('prompt');
     else if (child.matches('aside[data-next-project-rail]')) order.push('rail');
     else if (child.matches('[data-next-cockpit-terminal]')) order.push('terminal');
-    else if (child.matches('details.next-cockpit-console-setup')) order.push('setup');
+    else if (child.matches('[data-slot=accordion].next-cockpit-console-setup')) order.push('setup');
   }
   const prompt = panel.querySelector(':scope > p.next-cockpit-empty');
   return {
@@ -209,7 +209,10 @@ const readConsole = () => {
       ? { inside: Boolean(setup && setup.contains(terminal)), text: norm(terminal) }
       : null,
     setup: setup
-      ? { summary: norm(setup.querySelector(':scope > summary')), open: setup.open }
+      ? {
+          summary: norm(setup.querySelector('[data-slot=accordion-trigger]')),
+          open: setup.hasAttribute('data-open'),
+        }
       : null,
     status: [...panel.querySelectorAll('.next-cockpit-console-status li')].map(norm),
   };
@@ -427,7 +430,7 @@ try {
     async () => {
       await load(react, fragmentFor('console', BOARD.live));
       const read = await same('the Console on a session with no terminal', readConsole, {
-        ready: () => document.querySelector('details.next-cockpit-console-setup'),
+        ready: () => document.querySelector('[data-slot=accordion].next-cockpit-console-setup'),
       });
       assert.equal(read.terminal.inside, true);
       assert.match(read.setup.summary, /terminal bridge off/);
@@ -991,37 +994,43 @@ try {
     'the Console’s setup disclosure stays as the reader left it, per session, across polls and tabs',
     async () => {
       await load(react, fragmentFor('console', BOARD.live));
-      const setup = react.page.locator('details.next-cockpit-console-setup');
+      const setup = react.page.locator('[data-slot=accordion].next-cockpit-console-setup');
       await setup.waitFor();
-      await setup.locator('> summary').click();
-      assert.equal(await setup.evaluate((node) => node.open), true);
+      await setup
+        .locator(':scope > [data-slot=accordion-item] > div > [data-slot=accordion-trigger]')
+        .click();
+      assert.equal(await setup.evaluate((node) => node.hasAttribute('data-open')), true);
       await refreshNow();
       await waitRevisions(1);
-      assert.equal(await setup.evaluate((node) => node.open), true, 'a poll shut the setup');
+      assert.equal(
+        await setup.evaluate((node) => node.hasAttribute('data-open')),
+        true,
+        'a poll shut the setup',
+      );
       await react.page.getByRole('tab', { name: 'Decisions' }).click();
       await react.page.getByRole('tab', { name: 'Console' }).click();
       assert.equal(
         await react.page
-          .locator('details.next-cockpit-console-setup')
-          .evaluate((node) => node.open),
+          .locator('[data-slot=accordion].next-cockpit-console-setup')
+          .evaluate((node) => node.hasAttribute('data-open')),
         true,
         'a tab change shut the setup',
       );
       await hashTo(react, fragmentFor('console', BOARD.gate));
-      await react.page.locator('details.next-cockpit-console-setup').waitFor();
+      await react.page.locator('[data-slot=accordion].next-cockpit-console-setup').waitFor();
       assert.equal(
         await react.page
-          .locator('details.next-cockpit-console-setup')
-          .evaluate((node) => node.open),
+          .locator('[data-slot=accordion].next-cockpit-console-setup')
+          .evaluate((node) => node.hasAttribute('data-open')),
         false,
         'another session shares the first’s disclosure',
       );
       await hashTo(react, fragmentFor('console', BOARD.live));
-      await react.page.locator('details.next-cockpit-console-setup').waitFor();
+      await react.page.locator('[data-slot=accordion].next-cockpit-console-setup').waitFor();
       assert.equal(
         await react.page
-          .locator('details.next-cockpit-console-setup')
-          .evaluate((node) => node.open),
+          .locator('[data-slot=accordion].next-cockpit-console-setup')
+          .evaluate((node) => node.hasAttribute('data-open')),
         true,
       );
     },
@@ -1191,7 +1200,7 @@ try {
           add: '.next-guardrail-add',
           summary: '.next-cockpit-decision-summary',
           event: '.pc-timeline-event',
-          eventSummary: '.pc-timeline-event > summary',
+          eventSummary: '.pc-timeline-event [data-slot=accordion-trigger]',
           trailSummary: '.pc-trail-summary',
           top: '.pc-trail-top',
           topMeta: '.pc-trail-top > span',

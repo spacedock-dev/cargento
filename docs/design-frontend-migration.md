@@ -40,6 +40,22 @@ legacy page said; they say nothing the React page was not also asserted to do. S
 port was "run next to" or "compared with" the legacy page describe how it was proved while that page
 existed.
 
+Accordion adoption keeps recorded labels, text and independent open-state observations, while
+proofs locate the new triggers and panels by their slots. A session-facts part retains its recorded
+logical part name after the former `details` tag becomes an Accordion root. The fixture files are
+unchanged. The adoption record owns the component chrome reference and the mounted-panel limits.
+
+Vitest DOM comparisons use `frontend/test/disclosures.ts` to read an Accordion disclosure as
+native `details`: the trigger becomes its summary, `aria-expanded` supplies its open state, and
+the panel's children remain its body even when closed with `hidden="until-found"`. The item,
+header and panel wrappers, decorative chevron, generated trigger attributes and default vertical
+orientation are component chrome rather than recorded content. Root surface attributes and body
+markup remain comparable. Project and timeline summaries also compare ordered disclosure readings
+with their summary, open state and body text. Mutation proofs reject missing or changed bodies,
+renamed summaries, flipped open state, removed disclosures and reordered disclosures or evidence.
+Missing triggers or panels and inconsistent open state fail normalization. These equivalents
+preserve the legacy observations without changing a recording or dropping closed evidence.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script
@@ -160,6 +176,13 @@ the HTML budget. It preserves comparison operators, regular expressions and tagg
 without allowing their text to change the HTML parser's state. A global replacement of `<` would
 break operators; replacing only script end tags would miss HTML comment and script parser states.
 The browser tests must execute hostile literals, rather than infer safety from a string check.
+
+The JavaScript resource ends with a fixed `sourceURL=cargento-bundle.js` comment. Without
+that short name, Chromium captured the full 1.1 MB data URL in callback source locations;
+repeated production drift loads reached 8.3 GiB renderer RSS while the JavaScript heap
+stayed below 65 MiB. The short name kept the same proof below 478 MiB. The callback-stack
+check in `frontend/e2e/parser.test.mjs` bounds those names with a production-sized module.
+The comment changes no fetch URL or executable bytes.
 
 A data module has its own `import.meta.url`. The build must therefore refuse residual imports,
 chunk-relative resource construction and unexpected emitted assets instead of silently resolving

@@ -89,21 +89,10 @@
 .next-cockpit-reading-consent-title:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .next-cockpit-reading-parts{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:var(--sp-2);color:var(--ink2);font:500 var(--fs-body)/1.5 var(--sans)}
 .next-cockpit-why{margin:0}
-.next-cockpit-why>summary{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure);cursor:pointer}
-.next-cockpit-why[open]>summary{margin-bottom:4px}
-:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary{list-style:none;inline-size:fit-content;max-inline-size:100%;cursor:pointer}
-:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary::-webkit-details-marker{display:none}
-:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary::after{content:"";display:inline-block;inline-size:.4em;block-size:.4em;margin-inline-start:.45em;border-inline-end:1.5px solid currentColor;border-block-end:1.5px solid currentColor;rotate:45deg;translate:0 -.2em;transition:rotate var(--disclose-dur) var(--disclose-ease),translate var(--disclose-dur) var(--disclose-ease)}
-:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)[open]>summary::after{rotate:225deg;translate:0 .1em}
+.next-cockpit-why :is(summary,[data-slot="accordion-trigger"],[data-slot="collapsible-trigger"]){color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure);cursor:pointer}
+.next-cockpit-why:is([open],[data-open]) :is(summary,[data-slot="accordion-trigger"],[data-slot="collapsible-trigger"]){margin-bottom:4px}
 :is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details.next-disclose--pop.next-cockpit-reading-sent{inline-size:100%}
 :is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details.next-disclose--pop.next-cockpit-reading-sent>.next-disclose-body{inset-inline-start:0;inset-inline-end:0;inline-size:auto;max-inline-size:var(--measure)}
-@supports selector(::details-content){
-:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher):not(.next-disclose--pop)::details-content{block-size:0;overflow:clip;overflow-clip-margin:6px;opacity:0;transition:block-size var(--disclose-dur) var(--disclose-ease),opacity var(--disclose-dur) var(--disclose-ease),content-visibility var(--disclose-dur) var(--disclose-ease) allow-discrete}
-:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher):not(.next-disclose--pop)[open]::details-content{block-size:auto;opacity:1}
-}
-@media (prefers-reduced-motion:reduce){
-:is([data-next-view-body="session"],[data-next-view-body="sessions"],[data-next-view-body="attention"],[data-next-view-body="project"]) details:is(.next-cockpit-why,[data-next-cockpit-disclosure],.next-attention-coverage-details):not(.next-menu):not(.next-cockpit-scope-switcher)>summary::after{transition:none}
-}
 .next-cockpit-reading button{align-self:flex-start}
 .next-cockpit-result-answer{display:flex;flex-direction:column;gap:4px}
 .next-cockpit-result-headline{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0;color:var(--ink);font:600 var(--fs-body)/1.45 var(--sans)}

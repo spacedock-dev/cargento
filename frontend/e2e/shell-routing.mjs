@@ -935,7 +935,8 @@ try {
           'the disclosure stayed open across a poll',
         );
         const navigated = o.page.waitForEvent('framenavigated', { timeout: 5000 });
-        await notice.getByRole('button', { name: 'Reload' }).click();
+        // The disclosure trigger "Why reload" is a button now, so a substring name matches two.
+        await notice.getByRole('button', { name: 'Reload', exact: true }).click();
         await navigated;
       } finally {
         await o.close();

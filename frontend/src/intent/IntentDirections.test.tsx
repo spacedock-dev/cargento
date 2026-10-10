@@ -79,7 +79,9 @@ describe('the question before the press', () => {
     });
     await settle(settled);
     expect(document.querySelector('[data-next-cockpit-direction-question]')).toBeNull();
-    expect(text('.next-cockpit-conflict summary')).toMatch(/^Later directions: settled /);
+    expect(text('.next-cockpit-conflict [data-slot=accordion-trigger]')).toMatch(
+      /^Later directions: settled /,
+    );
   });
 
   it('does not count a correction the reader copied from Cargento as something they said', async () => {
@@ -128,7 +130,7 @@ describe('the question before the press', () => {
       routes: { '/api/project-context': () => json({}, 500) },
     });
     await settle(page);
-    expect(text('.next-cockpit-conflict summary')).toBe(
+    expect(text('.next-cockpit-conflict [data-slot=accordion-trigger]')).toBe(
       'Later directions: unknown (record unread)',
     );
   });

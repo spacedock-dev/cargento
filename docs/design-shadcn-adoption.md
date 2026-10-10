@@ -434,3 +434,76 @@ the Button layer. First-render medians for small, median and large cohorts are 1
 and 126.5 ms; poll-to-paint medians are 44.9, 46.2 and 61.1 ms. Every budget passes, no long
 task is recorded, edited and open nodes retain identity, and resource counts settle after
 collection. The receipt preserves the historical legacy control.
+
+## Accordion and Collapsible layer
+
+The accordion variant of `Disclosure` uses a controlled Base UI Accordion with one keyed item per
+root. Independent siblings form no exclusive group, so several sections in one session can stay
+open together. The armed discard offer uses controlled Collapsible, with its warning exposed by a
+store write when armed. Popover and menu variants keep native details and their existing dismissal
+contracts. `Disclosure` keeps its public props and call sites.
+
+Both panels use `hiddenUntilFound`. Base UI's `beforematch` callback writes the keyed store; the
+library does not own open state. `useRevealFragment` re-applies a matching target hash after the
+panel mounts, because the browser's initial fragment pass precedes client rendering. The controls
+proof reaches text in a closed panel through same-document and fresh-load fragments, then checks
+polls and remounts. The browser's own find bar cannot be driven by this tooling, so that bar remains
+unverified.
+
+The fresh-load proof mounts after the document's load event and waits for the first payload. A
+same-hash assignment after load does nothing, so replay replaces the current history entry while
+keeping the public URL and history length. Replay is remembered per disclosure key and hash: the
+first payload can replace a loading-scope key, and that new owner still needs to reveal its target.
+A same-key remount does not replay navigation over a reader's later close.
+
+Panels transition height through `--accordion-panel-height` or `--collapsible-panel-height`, and
+opacity through the existing 200 ms duration and easing tokens. No animation package is added.
+Base UI suppresses an opening transition when the panel mounts open. Reduced motion disables
+transitions; the proof checks computed transition property, animation name and stable open-panel heights.
+Reduced motion also overrides Base UI's starting and ending height and opacity flags, which
+otherwise draw one collapsed frame even with transitions disabled.
+The trigger still holds background paint for 220 ms, except under reduced motion. The armed
+warning opens without a transition. Each panel adds no inner content wrapper, and the inline
+chevron replaces the registry's icon-library imports.
+
+The cascade audit keeps surface chrome in the legacy sheets and gives adopted triggers only the
+target floor and focus ring utilities. Native button defaults are reset in the legacy layer so
+surface font, padding, alignment and ink rules still win there. Setup and timeline rules target
+their own triggers, because a descendant selector would also restyle nested disclosures. Accordion item and header wrappers
+carry no competing chrome. `frontend/e2e/disclosure-chrome-reference.json` records the actual
+pre-swap cascade on `7d4a23c3`, measured over the CSS proof's 87 views before changing the markup.
+The gate compares every reached trigger, including hidden controls; it does not change the retired
+page's golden fixtures. The inline-size reference adds measurements from an archive of `7d4a23c3`
+under the worktree's ignored `docs/screenshots/acc-fix/baseline/`, built once with the packager.
+It compares row filling against parent content width and exact width for content-sized triggers,
+before and after opening panels, and includes the populated Decisions timeline at 375 and
+1280 px. Rounding has a 1.5 px allowance; clock labels allow 8 px for proportional digits.
+Existing chrome columns stay unchanged.
+
+Native block summaries filled their row at `inline-size:auto`; auto-width buttons
+shrink instead, so the timeline trigger explicitly takes `100%` in `legacy`. The shared trigger
+has no maximum-width utility to override surface caps, and the chevron reserves the native
+marker's `.4em`. The setup surface keeps the container cap the pre-swap cascade computed.
+A mutation restoring auto width must fail this gate. Setup proof locators target only the
+setup's own trigger, excluding its nested accordions.
+
+The gallery checks Accordion and Collapsible targets, type and focus at 1280 and 320 px.
+Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,465,036 bytes, 26,192 more than the
+reactive state layer. First-render medians are 129.3, 92 and 125.6 ms and poll-to-paint medians are
+44.4, 45.3 and 62.2 ms; every budget passes, and the opened session-facts disclosure keeps its node and its
+open state across a poll. The measurement driver reads the disclosure by its accordion trigger now. The production
+drift crash condition is qualified on hosted Linux runners before this layer merges.
+
+The CSS proof now settles opened panels before measuring their text. The native proof read inside
+the opening transition and missed some bodies at zero height. Newly reached harness-source prose,
+recovery evidence and terminal-registration instructions use the existing 15 px sentence step;
+no readability exception is added. Clock text in Saved triggers is normalized only for identity,
+with all computed chrome still compared exactly.
+
+Measured locally on 2026-10-10: controls and intent unit tests pass (238 tests), as do the dev
+supervisor tests (17) and controls, sessions, intent, project and CSS browser proofs. The CSS proof
+compares 403 reached disclosure triggers across 87 views. Ten controls mutations and four CSS
+mutations fail at their intended gates, including delayed replay, loading-scope identity, history,
+keyboard, revelation, motion, store memory, remounts, target floor and focus. Hand-written CSS falls
+from 153,203 to 149,833 bytes, with the path inventory unchanged. Lint, typecheck and style policy
+pass. These measurements do not certify the unbuilt production bundle or its fluidity receipt.

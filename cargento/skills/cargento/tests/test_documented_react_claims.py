@@ -99,7 +99,7 @@ class OnlyTheTerminalScrollsTest(unittest.TestCase):
                 )
             ]
         self.assertEqual(
-            ["overflow-wrap:anywhere", "overflow:auto", "overflow:clip", "overflow:hidden"],
+            ["overflow-wrap:anywhere", "overflow:auto", "overflow:hidden"],
             sorted(forms),
         )
         self.assertEqual([".pc-terminal-viewport"], scrollers)

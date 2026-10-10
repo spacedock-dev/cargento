@@ -386,9 +386,9 @@ describe('the activity filter', () => {
 });
 
 describe('disclosures', () => {
-  const open = (details: HTMLDetailsElement) => {
+  const open = (details: HTMLElement) => {
     act(() => {
-      details.open = true;
+      (details.querySelector('[data-slot=accordion-trigger]') as HTMLElement).click();
     });
     return act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
   };
@@ -398,15 +398,15 @@ describe('disclosures', () => {
     const view = mount(w);
     await settle();
     const row = view.container.querySelector('article[data-event-id="fo-a"]');
-    const details = row?.querySelector('details') as HTMLDetailsElement;
+    const details = row?.querySelector('[data-slot=accordion]') as HTMLElement;
     await open(details);
     w.script.generated = 2000;
     await refresh(w);
     const after = view.container.querySelector(
-      'article[data-event-id="fo-a"] details',
-    ) as HTMLDetailsElement;
+      'article[data-event-id="fo-a"] [data-slot=accordion]',
+    ) as HTMLElement;
     expect(after).toBe(details);
-    expect(after.open).toBe(true);
+    expect(after.hasAttribute('data-open')).toBe(true);
     w.release();
   });
 
@@ -415,25 +415,36 @@ describe('disclosures', () => {
     const view = mount(w, { project: 'alpha/app' });
     await settle();
     await open(
-      view.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement,
+      view.container.querySelector(
+        'article[data-event-id="fo-a"] [data-slot=accordion]',
+      ) as HTMLElement,
     );
     fireEvent.click(view.getByRole('button', { name: 'toggle view' }));
     fireEvent.click(view.getByRole('button', { name: 'toggle view' }));
     expect(
-      (view.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement)
-        .open,
+      (
+        view.container.querySelector(
+          'article[data-event-id="fo-a"] [data-slot=accordion]',
+        ) as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(true);
     // Only that event: another in the same list did not open with it.
     expect(
-      (view.container.querySelector('article[data-event-id="fo-b"] details') as HTMLDetailsElement)
-        .open,
+      (
+        view.container.querySelector(
+          'article[data-event-id="fo-b"] [data-slot=accordion]',
+        ) as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(false);
     view.unmount();
     const other = mount(w, { project: 'beta/api' });
     await settle();
     expect(
-      (other.container.querySelector('article[data-event-id="fo-a"] details') as HTMLDetailsElement)
-        .open,
+      (
+        other.container.querySelector(
+          'article[data-event-id="fo-a"] [data-slot=accordion]',
+        ) as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(false);
     w.release();
   });
@@ -444,8 +455,8 @@ describe('disclosures', () => {
     await settle();
     await open(
       focused.container.querySelector(
-        'article[data-event-id="fo-a"] details',
-      ) as HTMLDetailsElement,
+        'article[data-event-id="fo-a"] [data-slot=accordion]',
+      ) as HTMLElement,
     );
     focused.unmount();
     const projectScope = mount(w, { project: 'alpha/app', focus: false });
@@ -453,9 +464,9 @@ describe('disclosures', () => {
     expect(
       (
         projectScope.container.querySelector(
-          'article[data-event-id="fo-a"] details',
-        ) as HTMLDetailsElement
-      ).open,
+          'article[data-event-id="fo-a"] [data-slot=accordion]',
+        ) as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(false);
     w.release();
   });
@@ -466,7 +477,7 @@ describe('disclosures', () => {
     await settle();
     const lane = w.shell.controls.focusLane;
     expect(lane.focus('substrate:project:alpha/app\ntimeline-event:fo-a')).toBe(true);
-    expect(document.activeElement?.tagName).toBe('SUMMARY');
+    expect(document.activeElement?.tagName).toBe('BUTTON');
     expect(document.activeElement?.closest('article')?.getAttribute('data-event-id')).toBe('fo-a');
     project.unmount();
     const session = mount(w, { project: 'alpha/app' });
@@ -535,8 +546,10 @@ describe('disclosures', () => {
     const view = mount(w);
     await settle();
     const band = view.getByText('Earlier meaningful · 3');
-    expect(band.tagName).toBe('SUMMARY');
-    expect(band.closest('details')?.querySelectorAll('article[data-event-id]')).toHaveLength(3);
+    expect(band.tagName).toBe('BUTTON');
+    expect(
+      band.closest('[data-slot=accordion]')?.querySelectorAll('article[data-event-id]'),
+    ).toHaveLength(3);
     w.release();
   });
 });

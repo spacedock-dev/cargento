@@ -257,9 +257,12 @@ async function ready(side, fragment) {
 async function revealSetup(side) {
   // The shipped Console owns the "How this server was started" disclosure; the harness has none around the terminal.
   if (!SHIPPED) return;
-  const details = side.page.locator('details.next-cockpit-console-setup');
+  const details = side.page.locator('[data-slot=accordion].next-cockpit-console-setup');
   await details.waitFor();
-  if (!(await details.evaluate((node) => node.open))) await details.locator('> summary').click();
+  if (!(await details.evaluate((node) => node.hasAttribute('data-open'))))
+    await details
+      .locator(':scope > [data-slot=accordion-item] > div > [data-slot=accordion-trigger]')
+      .click();
   await pause(300);
 }
 const openButton = (side) => side.page.getByRole('button', { name: 'Open terminal', exact: true });
@@ -892,13 +895,18 @@ try {
       // Open it, then let live data arrive: it must stay open, and keep its node in the React page.
       await world.react.page.getByText('How to register a terminal').click();
       await world.react.page.evaluate(() => {
-        globalThis.__recipe = globalThis.document.querySelector('details:has(.pc-substrate-steps)');
+        globalThis.__recipe = globalThis.document.querySelector(
+          '[data-slot=accordion]:has(.pc-substrate-steps)',
+        );
       });
       await refreshReact(world.react.page, SHIPPED);
       await pause(500);
       const open = await pairs((side) =>
         side.page.evaluate(
-          () => globalThis.document.querySelector('details:has(.pc-substrate-steps)')?.open ?? null,
+          () =>
+            globalThis.document
+              .querySelector('[data-slot=accordion]:has(.pc-substrate-steps)')
+              ?.hasAttribute('data-open') ?? null,
         ),
       );
       assert.deepEqual(open, { recorded: true, react: true });
@@ -906,7 +914,7 @@ try {
         await world.react.page.evaluate(
           () =>
             globalThis.__recipe ===
-            globalThis.document.querySelector('details:has(.pc-substrate-steps)'),
+            globalThis.document.querySelector('[data-slot=accordion]:has(.pc-substrate-steps)'),
         ),
         true,
         'the disclosure was rebuilt by a live update',
@@ -920,7 +928,10 @@ try {
       await pause(500);
       const back = await pairs((side) =>
         side.page.evaluate(
-          () => globalThis.document.querySelector('details:has(.pc-substrate-steps)')?.open ?? null,
+          () =>
+            globalThis.document
+              .querySelector('[data-slot=accordion]:has(.pc-substrate-steps)')
+              ?.hasAttribute('data-open') ?? null,
         ),
       );
       assert.deepEqual(back, { recorded: true, react: true });

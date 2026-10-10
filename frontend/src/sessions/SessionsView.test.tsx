@@ -224,16 +224,15 @@ describe('a redraw leaves the reader’s place alone', () => {
     const alpha = document.querySelector('article[data-next-session="a"]');
     const summary = screen.getByText('How rows are split');
     fireEvent.click(summary);
-    const details = summary.closest('details') as HTMLDetailsElement;
-    details.open = true;
-    fireEvent(details, new Event('toggle'));
     (alpha?.querySelector('a.next-operation-route') as HTMLElement).focus();
     await page.poll(
       board([{ ...(data.sessions[0] as object), state_detail: 'now different' }, data.sessions[1]]),
     );
     expect(document.querySelector('article[data-next-session="a"]')).toBe(alpha);
     expect(
-      (screen.getByText('How rows are split').closest('details') as HTMLDetailsElement).open,
+      (
+        screen.getByText('How rows are split').closest('[data-slot=accordion]') as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(true);
     expect(document.activeElement).toBe(alpha?.querySelector('a.next-operation-route'));
   });

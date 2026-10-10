@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { disclosureReadings, normalizeDisclosures } from '../../test/disclosures';
 import { json, mountPanels } from '../steering/testing';
 import { genCase } from './generate.test.helper';
 import { loadLegacyTimeline } from './legacy.test.helper';
@@ -19,7 +20,8 @@ const SEEDS = CASES;
 const norm = (node: Element | null): string =>
   (node?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
-function summarize(root: ParentNode) {
+function summarize(source: Element | DocumentFragment) {
+  const root = normalizeDisclosures(source);
   return {
     legend: [...root.querySelectorAll('.pc-lane-labels > span')].map((node) => [
       node.getAttribute('title'),
@@ -48,13 +50,14 @@ function summarize(root: ParentNode) {
     })),
     unbound: [...root.querySelectorAll('.pc-unbound-context')].map((node) => ({
       head: norm(node.querySelector(':scope > .pc-trail-top')),
-      summary: norm(node.querySelector(':scope > details > summary')),
+      summary: norm(node.querySelector('summary')),
       items: [...node.querySelectorAll('.pc-trail-event')].map((item) => [
         norm(item.querySelector(':scope > strong')),
         norm(item.querySelector(':scope > span')),
         norm(item.querySelector('.pc-event-evidence > div')),
       ]),
     })),
+    disclosures: disclosureReadings(root),
   };
 }
 

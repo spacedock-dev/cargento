@@ -18,7 +18,9 @@ test('hostile JavaScript and CSS values remain exact embedded bytes', () => {
   const scripts = [...document.querySelectorAll('script')];
   assert.equal(scripts.length, 1);
   assert.equal(scripts[0].type, 'module');
-  assert.equal(Buffer.from(scripts[0].src.split(',')[1], 'base64').toString(), javascript);
+  const embedded = Buffer.from(scripts[0].src.split(',')[1], 'base64').toString();
+  assert.equal(embedded.slice(0, javascript.length), javascript);
+  assert.match(embedded.slice(javascript.length), /^\n\/\/# sourceURL=[^\r\n]+\n$/);
   assert.equal(
     Buffer.from(document.querySelector('link').href.split(',')[1], 'base64').toString(),
     css,

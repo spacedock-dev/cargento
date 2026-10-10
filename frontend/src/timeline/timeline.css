@@ -7,19 +7,19 @@
 .next-cockpit-stale-read{margin:0 0 10px;max-width:var(--measure);color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
 .pc-semantic-timeline{--lane-count:1;min-width:0;position:relative;padding:10px 0 4px;font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}
 .pc-semantic-timeline code,.pc-semantic-timeline .pc-source{font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
-.pc-semantic-timeline button:focus-visible,.pc-semantic-timeline summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.pc-semantic-timeline button:focus-visible,.pc-semantic-timeline :is(summary,[data-slot="accordion-trigger"],[data-slot="collapsible-trigger"]):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .pc-substrate-empty,.pc-substrate-reason{color:var(--ink2);font:var(--fs-label)/1.55 var(--sans);overflow-wrap:anywhere}
 .pc-substrate-empty{margin:8px 0}
 .pc-graph-filter{display:flex;justify-content:flex-end;gap:4px;margin-bottom:8px;flex-wrap:wrap}
 .pc-graph-filter button{padding:4px 8px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--ink2);font:var(--fs-label) var(--sans);cursor:pointer}
 .pc-graph-filter button.selected{border-bottom-color:var(--accent);color:var(--ink)}
 .pc-history-band{margin-top:8px;border-top:1px solid var(--rule);padding-top:7px}
-.pc-history-band>summary,.pc-trail-history>summary,.pc-entry-suppressed>summary,.pc-event-evidence>summary{cursor:pointer;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+.pc-history-band :is(summary,[data-slot="accordion-trigger"],[data-slot="collapsible-trigger"]),.pc-trail-history :is(summary,[data-slot="accordion-trigger"],[data-slot="collapsible-trigger"]),.pc-entry-suppressed :is(summary,[data-slot="accordion-trigger"],[data-slot="collapsible-trigger"]),.pc-event-evidence :is(summary,[data-slot="accordion-trigger"],[data-slot="collapsible-trigger"]){cursor:pointer;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .pc-graph-row{display:grid;grid-template-columns:74px calc(var(--lane-count) * 24px) minmax(0,1fr);align-items:start;min-height:48px}
 .pc-graph-row>time,.pc-graph-time{padding:8px 6px 0 0;color:var(--ink2);text-align:right;overflow-wrap:anywhere}
 .pc-graph-row>time{font:var(--fs-label)/1.5 var(--mono)}
 .pc-graph-row>.pc-trail-body{min-width:0;padding:5px 0 15px}
-.pc-timeline-event>summary{cursor:pointer;border-radius:var(--r-control)}
+.pc-timeline-event>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"]{cursor:pointer;border-radius:var(--r-control)}
 .pc-trail-summary,.pc-trail-summary>span{display:block}
 .pc-entry-details{display:grid;gap:7px;margin-top:9px;padding:10px 12px;border-left:2px solid var(--rule);background:var(--sunk);color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);overflow-wrap:anywhere}
 .pc-entry-details b{color:var(--ink2);font:var(--fs-label) var(--sans)}
@@ -63,6 +63,6 @@
    ink. As the shared disclosure it was a shrink-to-fit flex line in the quiet ink, which narrowed the title and
    summary to a third of the row and left the right-hand meta unaligned. The legacy row sets its marker on a line
    of its own above the title, and so does this one, so a row is the height it was. */
-details.pc-timeline-event>summary{display:block;position:relative;padding-block-start:1.5em;inline-size:auto;max-inline-size:none;min-block-size:0;color:var(--ink)}
-details.pc-timeline-event>summary::after{position:absolute;inset-block-start:.55em;inset-inline-start:0;margin:0}
+.pc-timeline-event>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"]{display:block;position:relative;padding-block-start:1.5em;inline-size:100%;max-inline-size:none;min-block-size:0;color:var(--ink)}
+.pc-timeline-event>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"]>[data-slot="disclosure-chevron"]{position:absolute;inset-block-start:.55em;inset-inline-start:0;margin:0}
 }

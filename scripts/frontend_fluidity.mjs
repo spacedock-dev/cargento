@@ -346,12 +346,14 @@ async function run(o) {
     // asks the question of all three nodes at once. A popup cannot be opened through CDP here; the
     // open-popup hold has its own browser proof (see the cutover receipt).
     await evaluate(`(() => {
-      const details = document.querySelector('details.next-session-facts-more');
+      const details = document.querySelector('.next-session-facts-more');
       if (!details) throw Error('the session facts disclosure is missing');
-      details.querySelector('summary').click();
+      details.querySelector('[data-slot="accordion-trigger"]').click();
       const select = document.querySelector('select.next-intent-prompt-select');
       if (!select) throw Error('the prompt select is missing');
       window.__baselineDetails = details; window.__baselineSelect = select;
+      // The disclosure is an accordion item now: its open state is the trigger's aria-expanded.
+      window.__isOpen = (node) => node.querySelector('[data-slot="accordion-trigger"]')?.getAttribute('aria-expanded') === 'true';
     })()`);
     await evaluate('new Promise(r => setTimeout(r, 600))'); // past the disclosure's 220 ms motion hold
     const editorBefore = await evaluate(`(() => {const e=document.querySelector('textarea[data-next-cockpit-held-key]'); e.focus(); window.__baselineEditor=e;
@@ -362,7 +364,7 @@ async function run(o) {
     await call('Input.insertText', {text: 'Baseline native editor draft'});
     const before = await evaluate(`({value:__baselineEditor.value, start:__baselineEditor.selectionStart,
       end:__baselineEditor.selectionEnd, focused:document.activeElement===__baselineEditor,
-      detailsOpen:__baselineDetails.open, selectIndex:__baselineSelect.selectedIndex, selectOptions:__baselineSelect.options.length})`);
+      detailsOpen:__isOpen(__baselineDetails), selectIndex:__baselineSelect.selectedIndex, selectOptions:__baselineSelect.options.length})`);
     const updated = await configure('small', 'healthy');
     const removedBefore = await removed();
     await poll(); await markerPaint(updated.sequence);
@@ -370,8 +372,8 @@ async function run(o) {
     const after = await evaluate(`(() => {const e=document.querySelector('textarea[data-next-cockpit-held-key]');return {
       value:e?.value,start:e?.selectionStart,end:e?.selectionEnd,focused:document.activeElement===e,
       sameNode:e===__baselineEditor,
-      sameDetailsNode:document.querySelector('details.next-session-facts-more')===__baselineDetails,
-      detailsStillAttached:document.contains(__baselineDetails), detailsOpen:__baselineDetails.open,
+      sameDetailsNode:document.querySelector('.next-session-facts-more')===__baselineDetails,
+      detailsStillAttached:document.contains(__baselineDetails), detailsOpen:__isOpen(__baselineDetails),
       sameSelectNode:document.querySelector('select.next-intent-prompt-select')===__baselineSelect,
       selectIndex:__baselineSelect.selectedIndex, selectOptions:__baselineSelect.options.length};})()`);
     const removedDuringUpdate = await removed() - removedBefore;
@@ -396,7 +398,7 @@ async function run(o) {
       focusedSelectKeptChoice: before.selectIndex === after.selectIndex && before.selectOptions === after.selectOptions,
       scope: 'The goal textarea (typed and focused), the opened session-facts disclosure and the prompt select, on the small cohort over one fallback poll that changed every row title.'};
     // Release the intentionally held nodes before DOM-retention trends are recorded.
-    await evaluate('delete window.__baselineEditor; delete window.__baselineDetails; delete window.__baselineSelect');
+    await evaluate('delete window.__baselineEditor; delete window.__baselineDetails; delete window.__baselineSelect; delete window.__isOpen');
     // A document that opened after a recent one finds that one's lease still fresh and follows it,
     // so it holds no stream, and a stream count of zero would say nothing about leaks. Drop the
     // lease and wait for this document to take it (it re-elects every two seconds), so the

@@ -51,10 +51,8 @@
   --sp-4: 1rem;
   --sp-5: 1.5rem;
   --sp-6: 2rem;
-  /* A dark scheme so a native select's open list matches the page, and `interpolate-size` so an accordion
-     can ease to `block-size:auto`; a browser without it ignores the line and opens instantly. */
+  /* Native select menus use the same dark palette as the page. */
   color-scheme: dark;
-  interpolate-size: allow-keywords;
   --disclose-dur: 200ms;
   --disclose-pop-dur: 160ms;
   --disclose-ease: ease-in-out;

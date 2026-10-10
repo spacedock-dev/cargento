@@ -400,26 +400,27 @@ describe('disclosures keep their state by project and scope', () => {
     });
     await page.settle();
     fireEvent.click(screen.getByText('Evidence · attention sources'));
-    const details = screen
-      .getByText('Evidence · attention sources')
-      .closest('details') as HTMLDetailsElement;
-    details.open = true;
-    fireEvent(details, new Event('toggle'));
     act(() =>
       page.router.navigate({ view: 'project', project: 'wait/app', focus: 'claude:a', tab: null }),
     );
     await page.settle();
     expect(
-      (screen.getByText('Evidence · attention sources').closest('details') as HTMLDetailsElement)
-        .open,
+      (
+        screen
+          .getByText('Evidence · attention sources')
+          .closest('[data-slot=accordion]') as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(false);
     act(() =>
       page.router.navigate({ view: 'project', project: 'wait/app', focus: null, tab: null }),
     );
     await page.settle();
     expect(
-      (screen.getByText('Evidence · attention sources').closest('details') as HTMLDetailsElement)
-        .open,
+      (
+        screen
+          .getByText('Evidence · attention sources')
+          .closest('[data-slot=accordion]') as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(true);
   });
 
@@ -428,19 +429,20 @@ describe('disclosures keep their state by project and scope', () => {
     await page.settle();
     const summary = screen.getByText('Show project plan');
     fireEvent.click(summary);
-    const details = summary.closest('details') as HTMLDetailsElement;
-    details.open = true;
-    fireEvent(details, new Event('toggle'));
     fireEvent.click(screen.getByRole('tab', { name: /Course/ }));
     await page.settle();
     fireEvent.click(screen.getByRole('tab', { name: /Now/ }));
     await page.settle();
     expect(
-      (screen.getByText('Show project plan').closest('details') as HTMLDetailsElement).open,
+      (
+        screen.getByText('Show project plan').closest('[data-slot=accordion]') as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(true);
     await page.poll({ ...(PLAN?.board as object), generated: 1010 });
     expect(
-      (screen.getByText('Show project plan').closest('details') as HTMLDetailsElement).open,
+      (
+        screen.getByText('Show project plan').closest('[data-slot=accordion]') as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(true);
   });
 });

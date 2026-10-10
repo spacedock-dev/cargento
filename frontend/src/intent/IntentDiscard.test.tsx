@@ -54,7 +54,9 @@ describe('Discard everything', () => {
     page.unmount();
     const saved = mount();
     await settle(saved);
-    expect(text('.next-cockpit-held-discard-offer summary')).toBe('Discard everything');
+    expect(text('.next-cockpit-held-discard-offer [data-slot=accordion-trigger]')).toBe(
+      'Discard everything',
+    );
     expect(discard()?.textContent).toBe('Discard everything');
   });
 
@@ -69,9 +71,9 @@ describe('Discard everything', () => {
     expect(text('#next-cockpit-cue-alert')).toBe(SENTENCES.armed);
     expect(discard()?.getAttribute('aria-describedby')).toBe('next-cockpit-discard-armed');
     expect(text('#next-cockpit-discard-armed')).toBe(SENTENCES.armed);
-    expect(document.querySelector('.next-cockpit-held-discard-offer')?.hasAttribute('open')).toBe(
-      true,
-    );
+    expect(
+      document.querySelector('.next-cockpit-held-discard-offer')?.hasAttribute('data-open'),
+    ).toBe(true);
   });
 
   it('treats a press inside the dwell, and a double-click, as another arm and never as a confirmation', async () => {

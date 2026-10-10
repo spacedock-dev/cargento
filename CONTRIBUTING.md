@@ -164,10 +164,13 @@ The packager ships the full upstream MIT text from `frontend/build/shadcn-LICENS
 package notices. The vendored directory has a Biome export-rule override; formatting still applies.
 
 The [adoption record](docs/design-shadcn-adoption.md#toolchain-layer) owns the source boundaries and
-CSS byte ratchet. Button and the local `cn` are the first shared consumers; `cn` knows the
+CSS byte ratchet. Button, Accordion, Collapsible and the local `cn` are shared consumers; `cn` knows the
 entry's type steps and radii. A new step or radius must update that configuration and its theme
 inventory test. The CSS browser proof measures the Button gallery's type, target size and rings
-at desktop and 320 px, and compares real-route Button chrome with the pre-adoption reference.
+at desktop and 320 px, and compares real-route Button and disclosure trigger chrome with their pre-adoption references.
+Accordion and Collapsible stay controlled by the disclosure store, use `hiddenUntilFound`, and
+re-apply a matching target hash after mount. Keep their panel bodies small; content stays mounted
+while closed so browser fragment revelation can reach it.
 Utilities beat `legacy` regardless of specificity: express surface chrome in variants or props
 and leave layout in the surface sheet. Update the exact count when deleting rules; a PR cannot
 raise its own allowance.

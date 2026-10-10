@@ -36,9 +36,10 @@ const mount = (
     { data: board(), routes: { '/api/project-context': context(false) }, ...options },
   );
 const summary = (): string =>
-  document.querySelector('.next-cockpit-console-setup > summary')?.textContent ?? '';
-const setup = (): HTMLDetailsElement =>
-  document.querySelector('.next-cockpit-console-setup') as HTMLDetailsElement;
+  document.querySelector('.next-cockpit-console-setup [data-slot=accordion-trigger]')
+    ?.textContent ?? '';
+const setup = (): HTMLElement =>
+  document.querySelector('.next-cockpit-console-setup') as HTMLElement;
 const inside = (selector: string): boolean => setup().querySelector(selector) !== null;
 
 describe('the Console is operations first', () => {
@@ -62,7 +63,7 @@ describe('the Console is operations first', () => {
         node.tagName.toLowerCase() +
         (node.classList.contains('next-cockpit-console-setup') ? ':setup' : ''),
     );
-    expect(order).toEqual(['header', 'aside', 'details:setup']);
+    expect(order).toEqual(['header', 'aside', 'div:setup']);
     const cue = document.querySelector('header.next-cockpit-scope .next-scope-cue') as HTMLElement;
     expect(cue.dataset['scopeKind']).toBe('session');
     expect(cue.dataset['scopeOwner']).toBe('claude:s1');
@@ -158,7 +159,7 @@ describe('where the terminal and the observer controls sit', () => {
     expect(document.querySelectorAll('[data-test="observer-slot"]')).toHaveLength(1);
     expect(inside('[data-next-cockpit-terminal]')).toBe(true);
     expect(inside('[data-test="observer-slot"]')).toBe(true);
-    expect(setup().open).toBe(false);
+    expect(setup().hasAttribute('data-open')).toBe(false);
   });
 
   it('the terminal keeps its place across a poll: a revision that re-reads the registration does not move it', async () => {
@@ -185,21 +186,20 @@ describe('the setup disclosures are the reader’s', () => {
     const page = mount();
     await page.settle();
     await act(async () => {
-      setup().open = true;
-      fireEvent(setup(), new Event('toggle'));
+      fireEvent.click(setup().querySelector('[data-slot=accordion-trigger]') as HTMLElement);
     });
     await page.poll({ ...board(), generated: 1001 });
-    expect(setup().open).toBe(true);
+    expect(setup().hasAttribute('data-open')).toBe(true);
     page.show(<p>elsewhere</p>);
     page.show(<ProjectConsole project="alpha" projectKey="alpha" focus={focus} />);
     await page.settle();
-    expect(setup().open).toBe(true);
+    expect(setup().hasAttribute('data-open')).toBe(true);
     // Another session of the same project has its own.
     page.show(
       <ProjectConsole project="alpha" projectKey="alpha" focus={{ harness: 'codex', sid: 's2' }} />,
     );
     await page.settle();
-    expect(setup().open).toBe(false);
+    expect(setup().hasAttribute('data-open')).toBe(false);
   });
 
   it('lists every session of the project exactly, with its state, in the raw status', async () => {

@@ -352,7 +352,11 @@ try {
         'the editor differs from the recorded editor over a pending line',
       );
       // An armed discard.
-      await react.page.locator('.next-cockpit-held-discard-offer summary').click();
+      await react.page
+        .locator(
+          '.next-cockpit-held-discard-offer [data-slot=accordion-trigger],.next-cockpit-held-discard-offer [data-slot=collapsible-trigger]',
+        )
+        .click();
       await react.page.locator('[data-next-cockpit-action="held-discard"]').click();
       old = await versus(
         'editor: an armed discard',
@@ -697,7 +701,11 @@ try {
       const discard = react.page.locator('[data-next-cockpit-action="held-discard"]');
       react.reset();
       // Behind its own summary, as a reader finds it.
-      await react.page.locator('.next-cockpit-held-discard-offer summary').click();
+      await react.page
+        .locator(
+          '.next-cockpit-held-discard-offer [data-slot=accordion-trigger],.next-cockpit-held-discard-offer [data-slot=collapsible-trigger]',
+        )
+        .click();
       await discard.click();
       assert.equal(await discard.innerText(), 'Confirm discard');
       assert.match(await react.page.locator('#next-cockpit-cue-alert').innerText(), /^.+$/);
@@ -726,7 +734,11 @@ try {
     await load(react, fragmentOf('intent-2'));
     await readEditor(react);
     const discard = react.page.locator('[data-next-cockpit-action="held-discard"]');
-    await react.page.locator('.next-cockpit-held-discard-offer summary').click();
+    await react.page
+      .locator(
+        '.next-cockpit-held-discard-offer [data-slot=accordion-trigger],.next-cockpit-held-discard-offer [data-slot=collapsible-trigger]',
+      )
+      .click();
     await discard.click();
     await react.page.keyboard.press('Escape');
     assert.equal(await discard.innerText(), 'Discard everything');
