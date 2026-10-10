@@ -43,6 +43,8 @@ python3 -m webbrowser -t http://127.0.0.1:4553/
 The root package builds React source in `frontend/`. Install the exact Node and pnpm versions
 declared above using verified distributions; Node does not provide pnpm through bundled Corepack.
 Dependency install scripts are denied, and no dependency currently has a build approval.
+Tailwind 4 runs in the preview builder, the owned development worker and Vitest. Its entry imports
+theme and utilities only; the existing sheets live in the `legacy` layer. Preflight is absent.
 The lockfile fixes package versions and integrity hashes. Installs check engine and peer
 compatibility; project commands refuse stale installs.
 
@@ -140,10 +142,28 @@ both without starting a browser: `docs/frontend-fluidity.json` (the React page m
 pre-React budgets) and `docs/frontend-cutover-receipt.json` (every row of the migration inventory mapped to
 a named React-side proof, with a keyboard, narrow, zoom and editor column per surface class). Adding a row
 to `scripts/frontend-migration.json` fails the check until the receipt maps it, and renaming a proof it names
-fails it too. Measure again after any change to the React page with `scripts/frontend_fluidity.mjs` (three
-runs, then `python3 scripts/frontend_cutover.py fluidity`; the commands are in the
-[migration contract](docs/design-frontend-migration.md#fluidity-measurements)), and use `check --final` for
+fails it too. Measure again after any change to the React page with
+`python3 scripts/frontend_cutover.py remeasure` (checks the clean build, measures three runs and
+keeps the historical legacy control; pass `--chrome` with the browser executable). Details are in the
+[migration contract](docs/design-frontend-migration.md#fluidity-measurements). Use `check --final` for
 the final verification.
+
+#### Adding a shadcn component
+
+Use the hand-written `components.json`; `shadcn init` cannot detect this layout. Preview an addition
+with `pnpm dlx shadcn@4.21.4 add button --dry-run`, then apply it without `--dry-run` in the layer that
+first uses the component. The CLI stays outside the dependencies. Pin Base UI to 1.8.0 when it is first
+needed and refuse any `minimumReleaseAgeExclude` change. Remove the registry's `cn` dependency,
+rewrite its imports to `@/lib/utils`, tune the scale and format the vendored files as described in
+[the adoption procedure](docs/design-shadcn-adoption.md#the-pull-request-procedure-for-a-component).
+
+Each copied component starts with an upstream header naming the component, CLI version, registry URL
+and SHA-256 of the fetched registry item's `content` before edits. Record why local changes were made.
+The packager ships the full upstream MIT text from `frontend/build/shadcn-LICENSE.txt` alongside the
+package notices. The vendored directory has a Biome export-rule override; formatting still applies.
+
+The [adoption record](docs/design-shadcn-adoption.md#toolchain-layer) owns the source boundaries and
+CSS byte ratchet. Update the exact count when deleting rules; a PR cannot raise its own allowance.
 
 ## Before you open a PR
 

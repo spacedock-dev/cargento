@@ -1,0 +1,90 @@
+/* The one Tailwind entry. Nothing here draws the page: the thirteen hand-written sheets keep every rule they
+   had, now inside `@layer legacy`, and this file only decides what the utilities may say.
+   docs/design-shadcn-adoption.md owns the measurements behind each line.
+
+   Layer order is `legacy, theme, utilities`: the utilities win over the sheets, and the sheets win over
+   nothing Tailwind writes because Preflight is deliberately not imported (it would reset the user-agent
+   defaults the css contract's exact-set exceptions stand on). `source(none)` stops Tailwind reading the
+   repository; the `@source` lines below name what it may read, because it reads files as text, not imports. */
+@layer legacy, theme, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+
+/* Existing prose and property names emitted utilities despite no utility callers. Scan only the adopted
+   code; a layer introducing utility classes elsewhere adds that caller's path explicitly. */
+@source '../ui/**/*.{ts,tsx}';
+@source '../lib/**/*.{ts,tsx}';
+@source not '../**/*.test.*';
+@source not '../controls/{gallery,GalleryBoard,galleryWorld}.*';
+@source not '../**/*.css';
+
+/* The scale reset. A default `text-sm`, `rounded-lg` or `bg-blue-500` generates nothing, silently, so a
+   scan in `frontend/build/style-policy.mjs` fails them where they are written. The names below alias the page's own
+   tokens; the colours stay variables, never a second copy of a value. */
+@theme {
+  --text-*: initial;
+  --radius-*: initial;
+  --color-*: initial;
+
+  --text-label: var(--fs-label);
+  --text-body: var(--fs-body);
+  --text-value: var(--fs-value);
+  --text-head: var(--fs-head);
+  --text-hero: var(--fs-hero);
+
+  --radius-control: var(--r-control);
+  --radius-card: var(--r-card);
+  --radius-shell: var(--r-shell);
+  --radius-pill: var(--r-pill);
+
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--panel);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--sunk);
+  --color-secondary: var(--raise);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--sunk);
+  --color-muted-foreground: var(--ink2);
+  --color-accent: var(--raise);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--clay);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+}
+
+/* Read directly by the vendored classes, not through `--color-*`, so they are declared whether or not a
+   utility uses them. shadcn's `--accent` is a hover surface and Cargento's `--accent` is a lime, which is why
+   the semantic names above go through `--color-*` and only these two plain names exist. The last two are set
+   at run time by Base UI on the element it measures; the defaults only keep the production css contract
+   from calling them undeclared. */
+@theme static {
+  --foreground: var(--ink);
+  --secondary: var(--raise);
+  --accordion-panel-height: auto;
+  --transform-origin: center;
+}
+
+/* Tailwind's default `dark:` variant emits a `prefers-color-scheme` rule, and this page is dark only.
+   Redefined to a selector nothing carries, so a vendored `dark:` class emits an inert rule at most. */
+@custom-variant dark (&:where(.cargento-light-mode, .cargento-light-mode *));
+
+/* Copied from shadcn/tailwind.css (shadcn 4.21.4, MIT): the two variants the vendored files use. The rest of
+   that file (keyframes, scroll-fade utilities) is not imported. */
+@custom-variant data-open {
+  &:where([data-state='open']),
+  &:where([data-open]:not([data-open='false'])) {
+    @slot;
+  }
+}
+
+@custom-variant data-closed {
+  &:where([data-state='closed']),
+  &:where([data-closed]:not([data-closed='false'])) {
+    @slot;
+  }
+}

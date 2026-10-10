@@ -85,6 +85,12 @@ lazy same-origin files or become part of that HTML, with their size/startup cost
 and bundled modules retain their licenses and provenance. Canonical builds use Linux unless a
 cross-platform probe establishes byte equality.
 
+The Tailwind toolchain imports theme and utilities without Preflight, with the existing sheets in
+the `legacy` layer. Its source boundary, scale reset and CSS ratchet are owned by
+[the adoption record](design-shadcn-adoption.md#toolchain-layer). The packager includes
+`components.json`, the entry stylesheet and vendored source in provenance, and ships the upstream
+MIT text for copied shadcn code alongside bundled package licenses.
+
 In development Python owns the document and API origin. The explicitly enabled page imports
 Vite modules and the React-refresh preamble from a validated loopback child. Strict ports,
 an owned-child handshake and exact origin checks prevent accidentally loading a different local
@@ -494,7 +500,10 @@ the day of the runs, re-ran the unchanged baseline driver and page with the same
 was visible: its medians sit within noise of the recorded baseline. It is embedded as it was taken and
 cannot be taken again.
 
-On 2026-10-10 (Chrome 156.0.8078.12 against the baseline's 156.0.8078.4, a load average near 4 on ten
+The retirement figures below are historical. Later layers refresh the receipt's runs and record their
+measurements in [the adoption record](design-shadcn-adoption.md#toolchain-layer).
+
+At retirement on 2026-10-10 (Chrome 156.0.8078.12 against the baseline's 156.0.8078.4, a load average near 4 on ten
 cores, measured against the final shipped page after the last rebuild) every timing budget passed by a wide
 margin. First-render medians were 124.3, 95.0 and 128.5 ms against budgets of 199.1, 159.5 and 192.8;
 poll-to-paint medians were 46.8, 47.0 and 63.5 ms against 119.8, 121.4 and 146.4; no run recorded a long
@@ -531,13 +540,14 @@ under the ruling. A later rebuild changed the page, and the runs recorded here w
 page and judged under the ruling from the start.
 
 ```bash
-node scripts/frontend_fluidity.mjs --output /tmp/cargento-fluidity-1.json --chrome "$CARGENTO_FLUIDITY_CHROME"
-python3 scripts/frontend_cutover.py fluidity --run /tmp/cargento-fluidity-1.json --run … --run …
-python3 scripts/frontend_cutover.py check
+python3 scripts/frontend_cutover.py remeasure --chrome "$CARGENTO_FLUIDITY_CHROME"
 python3 scripts/frontend_cutover.py check --final
 ```
 
-Run the first command three times with distinct names; the driver owns its browser, backend and ports
+The first command verifies that the tracked bundle matches a clean build, runs the driver three times
+in an owned temporary directory, recomposes only after every budget passes, and preserves the embedded
+historical `legacy_control` block. It does not require a committed tree; the build check prevents stale
+source provenance from being measured. The driver owns its browser, backend and ports
 (4581 to 4586, 4594, 4595 and 4597 to 4599) and refuses a busy one. Its fixture
 (`scripts/frontend_fluidity_fixture.py`) serves the baseline's cohorts, rows and states behind the React
 page and no longer depends on a baseline script. `check` re-derives every figure and verdict from the

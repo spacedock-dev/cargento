@@ -1,3 +1,4 @@
+@layer legacy {
 /* The Sessions screen and the session page, ported rule for rule from the legacy sheet's SESSIONS and
    SESSION sections so the two renderers look alike (the browser parity test compares their layout at
    320, 375 and 1280 CSS px). What is left behind belongs to later steps and is not drawn here: the
@@ -427,4 +428,5 @@
 .next-session-columns > *,
 .next-session-activity > * {
   min-width: 0;
+}
 }

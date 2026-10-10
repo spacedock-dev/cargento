@@ -144,6 +144,24 @@ class FrontendAggregateControlsTest(unittest.TestCase):
 
 
 class FrontendWiringControlsTest(unittest.TestCase):
+    def test_the_css_ratchet_reads_the_actual_pr_base_without_shell_specific_variables(
+        self,
+    ) -> None:
+        frontend = jobs()["frontend"]
+        steps = frontend["steps"]
+        ratchet = next((step for step in steps if step.get("run") == "pnpm test:styles"), None)
+        self.assertIsNotNone(ratchet, "the PR base gate must run on Windows as well as Unix")
+        assert ratchet is not None
+        self.assertEqual("${{ github.event.pull_request.base.sha }}", ratchet["env"]["PR_BASE"])
+        self.assertEqual("github.event_name == 'pull_request'", ratchet["if"])
+        self.assertNotIn("continue-on-error", ratchet)
+        checkout = next(
+            step for step in steps if step.get("uses", "").startswith("actions/checkout@")
+        )
+        self.assertEqual(0, checkout["with"]["fetch-depth"])
+        unit = next(step for step in steps if step.get("run") == "pnpm test")
+        self.assertGreaterEqual(unit["timeout-minutes"], 6)
+
     def check_runs_everywhere(self, job: dict[str, Any], runners: list[str]) -> None:
         """Every pull request and every push runs every platform: the Windows legs are no longer paused."""
         selection = job["strategy"]["matrix"]["os"]

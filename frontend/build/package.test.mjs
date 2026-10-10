@@ -49,6 +49,13 @@ test('production packaging includes full licenses and a matching document digest
   assert.ok(packed.metadata.provenance.packages.some((pkg) => pkg.name === 'react'));
   assert.ok(packed.metadata.provenance.packages.some((pkg) => pkg.name === 'react-dom'));
   assert.ok(packed.metadata.provenance.packages.some((pkg) => pkg.name === 'scheduler'));
+  assert.ok(packed.licenses.includes('Copyright (c) 2023 shadcn'));
+  assert.ok(packed.metadata.provenance.sources.some((source) => source.file === 'components.json'));
+  assert.ok(
+    packed.metadata.provenance.sources.some(
+      (source) => source.file === 'frontend/src/styles/tailwind.css',
+    ),
+  );
   assert.equal(packed.document.includes('sourceMappingURL'), false);
   assert.equal(packed.document.includes('cargento-focus'), false);
 });
@@ -56,7 +63,13 @@ test('production packaging includes full licenses and a matching document digest
 async function copiedSource(prefix, use) {
   const copy = await mkdtemp(join(tmpdir(), prefix));
   try {
-    for (const file of ['package.json', 'pnpm-lock.yaml', '.node-version', '.gitattributes'])
+    for (const file of [
+      'package.json',
+      'pnpm-lock.yaml',
+      '.node-version',
+      '.gitattributes',
+      'components.json',
+    ])
       await cp(join(root, file), join(copy, file));
     await cp(join(root, 'frontend'), join(copy, 'frontend'), { recursive: true });
     const web = 'cargento/skills/cargento/cargento_runtime/web';

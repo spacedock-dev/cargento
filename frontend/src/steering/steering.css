@@ -1,3 +1,4 @@
+@layer legacy {
 /* The project steering bar and the local tripwires: the legacy sheet's own rules. */
 .next-steer{padding-top:12px;border-top:1px solid var(--rule)}
 .next-steer form{display:flex;gap:7px;padding:12px 0}
@@ -46,3 +47,4 @@
 .next-steer input,.next-guardrail-add-input input{min-block-size:44px}
 .next-guardrails .next-guardrail-add{color:var(--ink2)}
 .next-cockpit-decision-summary{font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
+}

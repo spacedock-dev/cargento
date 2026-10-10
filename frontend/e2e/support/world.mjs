@@ -43,7 +43,13 @@ if (
 
 /* The files `packageFrontend` reads from the root besides `frontend/` and `cargento/`, which a scratch copy
    already carries. */
-const ROOT_FILES = ['.gitattributes', '.node-version', 'package.json', 'pnpm-lock.yaml'];
+const ROOT_FILES = [
+  '.gitattributes',
+  '.node-version',
+  'package.json',
+  'pnpm-lock.yaml',
+  'components.json',
+];
 
 function resolvePython(name) {
   const python =

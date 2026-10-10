@@ -1,0 +1,19 @@
+{
+  "rule": "UTF-8 bytes after CRLF to LF normalization, including comments, of all CSS under frontend except the directive-only Tailwind entry. Strip only an outer @layer legacy wrapper. Inventory every path; added paths need prior base approval.",
+  "bytes": 161464,
+  "files": [
+    "frontend/src/attention/attention.css",
+    "frontend/src/capacity/capacity.css",
+    "frontend/src/delegation/delegation.css",
+    "frontend/src/drift/drift.css",
+    "frontend/src/intent/intent.css",
+    "frontend/src/notify/notify.css",
+    "frontend/src/project/project.css",
+    "frontend/src/sessions/sessions.css",
+    "frontend/src/steering/steering.css",
+    "frontend/src/styles/controls.css",
+    "frontend/src/styles/shell.css",
+    "frontend/src/terminal/terminal.css",
+    "frontend/src/timeline/timeline.css"
+  ]
+}

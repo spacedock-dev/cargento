@@ -1,3 +1,4 @@
+@layer legacy {
 /* The React page's chrome: tokens, the page frame, primary navigation, breadcrumb, notices, the header
    counts and the visually hidden live regions. Ported from the legacy sheet's FOUNDATION and CHROME
    sections, rule for rule where the page still draws the same thing, so the two renderers look alike
@@ -513,4 +514,5 @@ body {
   #app {
     padding: 18px 8px 40px;
   }
+}
 }

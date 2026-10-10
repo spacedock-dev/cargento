@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
@@ -13,7 +15,8 @@ process.env['LANG'] = 'en_US.UTF-8';
 process.env['LANGUAGE'] = 'en_US';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: { alias: { '@': fileURLToPath(new URL('./frontend/src', import.meta.url)) } },
   test: {
     environment: 'jsdom',
     include: ['frontend/**/*.test.ts', 'frontend/**/*.test.tsx'],

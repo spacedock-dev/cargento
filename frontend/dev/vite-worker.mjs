@@ -3,6 +3,7 @@ import { realpath } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { createServer } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { handshakeSignature, parseArguments } from './protocol.mjs';
 import { readFonts } from '../build/package.mjs';
 
@@ -63,8 +64,12 @@ async function start(options) {
     configFile: false,
     envFile: false,
     root: frontendRoot,
+    // `configFile: false` means none of frontend/vite.config.mts applies: the Tailwind plugin and the `@/` alias
+    // are written here too, or every `@/ui/...` import answers 500 and the development proofs time out.
+    resolve: { alias: { '@': join(frontendRoot, 'src') } },
     plugins: [
       react(),
+      tailwindcss(),
       {
         name: 'cargento-dev-origin',
         configureServer(server) {

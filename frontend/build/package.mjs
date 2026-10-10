@@ -139,10 +139,12 @@ async function authoredSources(root) {
     '.gitattributes',
     '.node-version',
     'package.json',
+    'components.json',
     'pnpm-lock.yaml',
     'frontend/index.html',
     'frontend/vite.config.mts',
     'frontend/build/package.mjs',
+    'frontend/build/shadcn-LICENSE.txt',
     `${WEB}/styles.css`,
     `${WEB}/page.py`,
     `${WEB}/fonts/SOURCES.txt`,
@@ -258,6 +260,11 @@ export async function packageFrontend({ root = ROOT, write = true, check = false
     sections.push(`${item.name}@${item.version} (${item.identifier})\n\n${text}`);
   }
   if (owned.size) fail('bundled dependency has no full license notice');
+  const copiedLicense = lf(await readFile(join(root, 'frontend/build/shadcn-LICENSE.txt')));
+  if (!copiedLicense.trim()) fail('missing shadcn copied-source notice');
+  sections.push(
+    `shadcn/ui copied source (MIT)\nSource: https://github.com/shadcn-ui/ui/blob/main/LICENSE.md\n\n${copiedLicense.trimEnd()}\n`,
+  );
   for (const [title, file] of [
     ['Space Grotesk', 'fonts/SpaceGrotesk-OFL.txt'],
     ['IBM Plex Mono', 'fonts/IBMPlexMono-OFL.txt'],

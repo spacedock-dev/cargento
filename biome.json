@@ -146,6 +146,14 @@
           "suspicious": { "noShadowRestrictedNames": "off" }
         }
       }
+    },
+    {
+      "includes": ["frontend/src/ui/**"],
+      "linter": {
+        "rules": {
+          "style": { "useComponentExportOnlyModules": "off" }
+        }
+      }
     }
   ]
 }

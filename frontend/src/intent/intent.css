@@ -1,3 +1,4 @@
+@layer legacy {
 /* The Intent log and the Intent panel's own parts: the goal and outcome editor, the prompt menu, the later
    directions, the live monitor switch and the discard offer. Ported rule for rule from the legacy sheet's
    COCKPIT section so the two renderers look alike (the browser parity test compares their layout at 320,
@@ -115,4 +116,5 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-cockpit-conflict-why,.next-cockpit-conflict-settled{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 @media(max-width:760px){
 .next-cockpit-held-fields{grid-template-columns:1fr}
+}
 }
