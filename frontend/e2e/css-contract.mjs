@@ -51,18 +51,18 @@ import {
 import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
+import { startConsoleWorld, fragmentFor } from './console-board.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
 
 const BUTTON_TABLE = JSON.parse(
   await readFile(new URL('./button-chrome-reference.json', import.meta.url), 'utf8'),
 );
 const disclosureKey = (key) => key.replace(/\b\d{1,2}:\d{2}\b/g, '<clock>');
+const DISCLOSURE_TABLE = JSON.parse(
+  await readFile(new URL('./disclosure-chrome-reference.json', import.meta.url), 'utf8'),
+);
 const DISCLOSURE_REFERENCE = Object.fromEntries(
-  Object.entries(
-    JSON.parse(
-      await readFile(new URL('./disclosure-chrome-reference.json', import.meta.url), 'utf8'),
-    ).instances,
-  ).map(([key, chrome]) => [disclosureKey(key), chrome]),
+  Object.entries(DISCLOSURE_TABLE.instances).map(([key, chrome]) => [disclosureKey(key), chrome]),
 );
 const BUTTON_REFERENCE = Object.fromEntries(
   Object.entries(BUTTON_TABLE.instances).map(([key, profile]) => [
@@ -114,6 +114,13 @@ const MUTATIONS = {
   ],
   'disclosure-target-removed': [
     ['ui/accordion.tsx', 'min-h-[44px] min-w-[44px]', 'min-h-0 min-w-0'],
+  ],
+  'disclosure-row-shrinks': [
+    [
+      'timeline/timeline.css',
+      'inline-size:100%;max-inline-size:none',
+      'inline-size:auto;max-inline-size:none',
+    ],
   ],
   'disclosure-focus-removed': [
     [
@@ -613,6 +620,7 @@ const measured = {
   buttons: [],
   chrome: [],
   disclosureChrome: [],
+  disclosureInlineSizes: [],
 };
 
 const SURFACES = {
@@ -676,13 +684,24 @@ async function visit(opened, origin, fragment, options = {}) {
   return first;
 }
 
+async function measureDisclosureInlineSizes(page, view) {
+  for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey}, true)`))
+    measured.disclosureInlineSizes.push({
+      view,
+      key: disclosureKey(row.key),
+      size: row.inlineSize,
+    });
+}
+
 async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
+  await page.evaluate(() => document.fonts.ready);
   measured.views.push(view);
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
     measured.chrome.push({ view, ...row });
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey}, true)`))
     measured.disclosureChrome.push({ view, ...row, key: disclosureKey(row.key) });
+  await measureDisclosureInlineSizes(page, view);
   const openedPanels = await page.evaluate(() => {
     const triggers = [
       ...document.querySelectorAll(
@@ -693,6 +712,7 @@ async function measure(opened, view, { walk = false } = {}) {
     return triggers.length;
   });
   if (openedPanels) await page.waitForTimeout(patience(250));
+  await measureDisclosureInlineSizes(page, `${view} [expanded]`);
   const { rows, registers, groups, buttons, linkColour, scheme } = await page.evaluate(measureText);
   measured.registers ??= registers;
   measured.palette = registers;
@@ -944,6 +964,36 @@ async function runConsole(browser, world) {
   }
 }
 
+/* The capacity worlds have no timeline rows. The populated Console board catches an auto-width
+   button shrinking where the pre-swap block summary filled its row. */
+async function runTimelineInlineSizes(browser) {
+  const world = await startConsoleWorld({
+    harness: false,
+    mutation: MUTATION === 'disclosure-row-shrinks' ? MUTATION : '',
+    mutations: {
+      'disclosure-row-shrinks': MUTATIONS['disclosure-row-shrinks'].map(
+        ([file, needle, replacement]) => [`src/${file}`, needle, replacement],
+      ),
+    },
+  });
+  try {
+    for (const width of [1280, 375]) {
+      const opened = await openWorldPage(browser, world.react, { width, height: 900 });
+      try {
+        await opened.page.goto(`${world.react.origin}/${fragmentFor('decisions')}`);
+        await opened.page.waitForSelector('.pc-graph-row');
+        await settle(opened.page);
+        await opened.page.evaluate(() => document.fonts.ready);
+        await measureDisclosureInlineSizes(opened.page, `timeline @${width}`);
+      } finally {
+        await opened.close();
+      }
+    }
+  } finally {
+    await world.close();
+  }
+}
+
 const RUNNERS = { sessions: runSessions, intent: runIntent, console: runConsole };
 
 /* ---- the checks ---- */
@@ -1024,6 +1074,41 @@ function checks() {
         'a baseline disclosure was not reached',
       );
     return `${measured.disclosureChrome.length} instances against 7d4a23c3`;
+  });
+  step_('disclosures: triggers keep their pre-swap inline size and row filling', () => {
+    const differences = [];
+    const seen = new Set();
+    for (const { view, key, size } of measured.disclosureInlineSizes) {
+      const identity = `${view} | ${key}`;
+      seen.add(identity);
+      const expected = DISCLOSURE_TABLE.inlineSizes[identity];
+      // Clock labels normalize their identity, but proportional digits still change their real width.
+      const tolerance = key.includes('<clock>') ? 8 : 1.5;
+      if (
+        !expected ||
+        !expected.some(
+          (value) =>
+            value === size ||
+            (value !== null &&
+              size !== null &&
+              value.fillsRow === size.fillsRow &&
+              (value.fillsRow || Math.abs(value.width - size.width) <= tolerance)),
+        )
+      )
+        differences.push({ view, key, expected, actual: size });
+    }
+    assert.deepEqual(
+      differences.slice(0, 15),
+      [],
+      `${differences.length} disclosure inline-size differences`,
+    );
+    if (WORLDS.length === 3)
+      assert.deepEqual(
+        Object.keys(DISCLOSURE_TABLE.inlineSizes).filter((key) => !seen.has(key)),
+        [],
+        'a baseline disclosure inline size was not reached',
+      );
+    return `${measured.disclosureInlineSizes.length} widths against 7d4a23c3`;
   });
   step_('buttons: every real-route instance keeps its pre-adoption chrome', () => {
     const failures = new Map();
@@ -1463,6 +1548,7 @@ try {
     }
     receipts[`world ${name}`] = `${Math.round((Date.now() - started) / 1000)}s`;
   }
+  if (WORLDS.includes('console')) await runTimelineInlineSizes(browser);
 } catch (error) {
   failures.push({ name: 'run', message: String(error.stack || error).slice(0, 4000) });
 } finally {

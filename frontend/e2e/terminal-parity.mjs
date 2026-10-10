@@ -260,7 +260,9 @@ async function revealSetup(side) {
   const details = side.page.locator('[data-slot=accordion].next-cockpit-console-setup');
   await details.waitFor();
   if (!(await details.evaluate((node) => node.hasAttribute('data-open'))))
-    await details.locator('[data-slot=accordion-trigger]').click();
+    await details
+      .locator(':scope > [data-slot=accordion-item] > div > [data-slot=accordion-trigger]')
+      .click();
   await pause(300);
 }
 const openButton = (side) => side.page.getByRole('button', { name: 'Open terminal', exact: true });

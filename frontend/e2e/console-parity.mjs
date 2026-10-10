@@ -996,7 +996,9 @@ try {
       await load(react, fragmentFor('console', BOARD.live));
       const setup = react.page.locator('[data-slot=accordion].next-cockpit-console-setup');
       await setup.waitFor();
-      await setup.locator('[data-slot=accordion-trigger]').click();
+      await setup
+        .locator(':scope > [data-slot=accordion-item] > div > [data-slot=accordion-trigger]')
+        .click();
       assert.equal(await setup.evaluate((node) => node.hasAttribute('data-open')), true);
       await refreshNow();
       await waitRevisions(1);

@@ -60,6 +60,8 @@
 .next-cockpit-console-status ul{margin:8px 0 0;padding-left:18px}
 .next-cockpit-plan-details>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"],.next-cockpit-console-status>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"],
 .next-cockpit-console-setup>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"]{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px;max-width:var(--measure)}
+/* The pre-swap setup's computed cap was its container: the shared logical maximum won over the surface cap. */
+.next-cockpit-panel .next-cockpit-console-setup>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"]{max-width:100%}
 .next-cockpit-content .next-rail-meta--amber{color:var(--ink2)}
 @media(max-width:760px){
   .next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{grid-template-columns:minmax(0,1fr)}

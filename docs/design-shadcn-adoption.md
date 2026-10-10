@@ -473,8 +473,22 @@ their own triggers, because a descendant selector would also restyle nested disc
 carry no competing chrome. `frontend/e2e/disclosure-chrome-reference.json` records the actual
 pre-swap cascade on `7d4a23c3`, measured over the CSS proof's 87 views before changing the markup.
 The gate compares every reached trigger, including hidden controls; it does not change the retired
-page's golden fixtures. The gallery checks Accordion and Collapsible targets, type and focus at
-1280 and 320 px. Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,464,768 bytes, 25,924 more than the
+page's golden fixtures. The inline-size reference adds measurements from an archive of `7d4a23c3`
+under the worktree's ignored `docs/screenshots/acc-fix/baseline/`, built once with the packager.
+It compares row filling against parent content width and exact width for content-sized triggers,
+before and after opening panels, and includes the populated Decisions timeline at 375 and
+1280 px. Rounding has a 1.5 px allowance; clock labels allow 8 px for proportional digits.
+Existing chrome columns stay unchanged.
+
+Native block summaries filled their row at `inline-size:auto`; auto-width buttons
+shrink instead, so the timeline trigger explicitly takes `100%` in `legacy`. The shared trigger
+has no maximum-width utility to override surface caps, and the chevron reserves the native
+marker's `.4em`. The setup surface keeps the container cap the pre-swap cascade computed.
+A mutation restoring auto width must fail this gate. Setup proof locators target only the
+setup's own trigger, excluding its nested accordions.
+
+The gallery checks Accordion and Collapsible targets, type and focus at 1280 and 320 px.
+Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,464,768 bytes, 25,924 more than the
 reactive state layer. First-render medians are 135.7, 95.1 and 125.3 ms and poll-to-paint medians are
 43.8, 45.9 and 62.3 ms; every budget passes, and the opened session-facts disclosure keeps its node and its
 open state across a poll. The measurement driver reads the disclosure by its accordion trigger now. The production
