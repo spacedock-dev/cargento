@@ -20,6 +20,11 @@
     "noUncheckedSideEffectImports": true,
     "verbatimModuleSyntax": true,
     "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@/*": [
+        "./frontend/src/*"
+      ]
+    },
     "types": [
       "vite/client",
       "node"

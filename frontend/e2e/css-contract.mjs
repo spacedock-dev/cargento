@@ -37,6 +37,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { call, startIntentBoard } from './intent-board.mjs';
+import { awaitRecordRead } from './support/record.mjs';
 import {
   ASSESSMENT,
   freshScript,
@@ -599,6 +600,7 @@ async function visit(opened, origin, fragment, options = {}) {
   await page.goto('about:blank');
   await page.goto(`${origin}/${fragment}`);
   await settle(page);
+  if (options.recordRead) await awaitRecordRead(page);
   const view = `${fragment}${options.narrow ? ' @375' : ''}`;
   const first = await measure(opened, view, options);
   // A control that changes what is drawn (a capacity window selects which one is read out) is pressed in turn,
@@ -812,12 +814,15 @@ async function runIntent(browser, world) {
       Object.assign(script, freshScript(), next);
       await visit(opened, world.origin, `#n=session:${E('w/alpha')}:claude:intent-2`, {
         walk: !walked,
+        recordRead: true,
       });
       walked = true;
     }
     for (const key of Object.keys(script)) delete script[key];
     Object.assign(script, freshScript());
-    await visit(opened, world.origin, `#n=session:${E('w/alpha')}:claude:intent-1`);
+    await visit(opened, world.origin, `#n=session:${E('w/alpha')}:claude:intent-1`, {
+      recordRead: true,
+    });
     await visit(opened, world.origin, `#n=session:${E('')}:claude:intent-3`);
   } finally {
     await opened.close();

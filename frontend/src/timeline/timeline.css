@@ -1,3 +1,4 @@
+@layer legacy {
 /* The semantic timeline and its activity filter. Ported from the legacy sheet's SUBSTRATE section so the
    two renderers look alike: a row is a grid of age, rail and body, one rail column for each lane. Tokens are the React page's own (styles/shell.css). */
 .next-cockpit-semantic{border-top:1px solid var(--rule)}
@@ -64,3 +65,4 @@
    of its own above the title, and so does this one, so a row is the height it was. */
 details.pc-timeline-event>summary{display:block;position:relative;padding-block-start:1.5em;inline-size:auto;max-inline-size:none;min-block-size:0;color:var(--ink)}
 details.pc-timeline-event>summary::after{position:absolute;inset-block-start:.55em;inset-inline-start:0;margin:0}
+}

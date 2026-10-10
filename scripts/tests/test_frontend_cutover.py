@@ -51,6 +51,29 @@ class FluidityReceiptTest(unittest.TestCase):
     def test_the_committed_receipt_is_what_its_runs_give(self) -> None:
         self.assertEqual([], self.check(self.receipt))
 
+    def test_refresh_keeps_the_historical_control_and_rederives_the_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = []
+            for index, run in enumerate(self.receipt["runs"]):
+                path = Path(temporary) / f"run-{index}.json"
+                path.write_text(json.dumps(run), encoding="utf-8")
+                paths.append(path)
+            refreshed = cutover.compose_refresh(ROOT, paths, date="2026-10-10", commit="test")
+        self.assertEqual(self.receipt["legacy_control"], refreshed["legacy_control"])
+        self.assertEqual(self.receipt["runs"], refreshed["runs"])
+        self.assertEqual([], self.check(refreshed))
+
+    def test_one_command_exposes_three_run_remeasurement(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "frontend_cutover.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("remeasure", result.stdout)
+
     def test_it_holds_the_baselines_number_of_complete_runs_and_cohorts(self) -> None:
         baseline = load(cutover.BASELINE)
         self.assertEqual(len(baseline["runs"]), len(self.receipt["runs"]))

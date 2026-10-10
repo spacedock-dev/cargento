@@ -15,7 +15,7 @@
     "lint": "biome check --error-on-warnings",
     "format": "biome format --write",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run && node --test frontend/build/package.test.mjs",
+    "test": "vitest run && node --test frontend/build/*.test.mjs",
     "test:watch": "vitest",
     "test:browser": "playwright test",
     "build:preview": "vite build --config frontend/vite.config.mts",
@@ -37,15 +37,20 @@
     "test:capacity:browser": "node frontend/e2e/capacity-parity.mjs",
     "test:terminal:browser": "node frontend/e2e/terminal-parity.mjs && node frontend/e2e/timeline-filter.mjs",
     "test:css:browser": "node frontend/e2e/css-contract.mjs",
-    "test:production:browser": "node frontend/e2e/production-proofs.mjs"
+    "test:production:browser": "node frontend/e2e/production-proofs.mjs",
+    "test:styles": "node frontend/build/style-policy.mjs"
   },
   "dependencies": {
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@playwright/test": "1.63.0",
+    "@tailwindcss/vite": "4.3.3",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",

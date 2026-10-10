@@ -44,6 +44,7 @@ import { call, startIntentBoard } from './intent-board.mjs';
 import { instrumentResources, recordClipboard, resources } from './sessions-board.mjs';
 import { openPage } from './support/browser.mjs';
 import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
+import { awaitRecordRead } from './support/record.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
@@ -51,10 +52,7 @@ import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(
-  /\/\.claude\/worktrees\/[^/]+\/?$/,
-  '/',
-);
+const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
@@ -174,7 +172,17 @@ async function newPage(viewport = { width: 1280, height: 900 }) {
   return o;
 }
 
-async function load(o, fragment = FRAGMENT) {
+const expectsUnread = (o) =>
+  o.script.contextError ||
+  o.script.payload.annotate === false ||
+  (o.script.work.omitted || []).some((row) => row.harness === HARNESS && row.sid === SID);
+
+async function read(o, { expectUnread = expectsUnread(o) } = {}) {
+  await awaitRecordRead(o.page, { expectUnread });
+  return settled(() => o.page.evaluate(summarizeCard));
+}
+
+async function load(o, fragment = FRAGMENT, { expectUnread = expectsUnread(o) } = {}) {
   await o.page.goto('about:blank');
   await o.page.goto(`${board.react.origin}/${fragment}`);
   await o.page.waitForFunction(
@@ -183,6 +191,7 @@ async function load(o, fragment = FRAGMENT) {
       !/Waiting for the first board|first payload has not arrived/.test(document.body.innerText),
   );
   await o.page.waitForSelector('.next-session-drift');
+  await awaitRecordRead(o.page, { expectUnread });
 }
 
 /* The real board's own clock, so every time in a state is relative to it. */
@@ -200,20 +209,20 @@ async function setState(o, make) {
 
 try {
   const react = await newPage();
-  const read = (o) => settled(() => o.page.evaluate(summarizeCard));
 
   /* ===================== DIFFERENTIAL: the card, state by state ===================== */
   async function compare(label, make, { text = true, ready = null } = {}) {
+    const old = golden.observe(`card: ${label}`);
+    const recordUnread = /has not been read yet|record is unread rather than empty/.test(old.work);
     const g = await clockOf();
     await setState(react, (o) => make(g, o));
     const draw = async (o) => {
-      await load(o);
+      await load(o, FRAGMENT, { expectUnread: recordUnread });
       // A state the page reaches after a record read, said by what it draws rather than by a delay.
       if (ready) await o.page.waitForSelector(ready, { timeout: patience(15000) });
-      return read(o);
+      return read(o, { expectUnread: recordUnread });
     };
     const mine = norm(await draw(react));
-    const old = golden.observe(`card: ${label}`);
     for (const key of Object.keys(old)) {
       if (!text && key === 'text') continue;
       if (typeof old[key] === 'string' && typeof mine[key] === 'string' && old[key] !== mine[key]) {
@@ -651,7 +660,7 @@ try {
     async () => {
       await apply(react, (g) => claude(g));
       await load(react);
-      await settled(() => react.page.evaluate(summarizeCard));
+      await read(react);
       react.reset();
       react.script.posts.length = 0;
       const ask = react.page.locator('[data-next-cockpit-action="reading-ask"]');
@@ -671,7 +680,7 @@ try {
         }, FRAGMENT);
         await backOnTheSession(react);
       }
-      await settled(() => react.page.evaluate(summarizeCard));
+      await read(react);
       assert.deepEqual(react.log.nonGet, []);
       assert.deepEqual(react.script.posts, []);
       const r = await resources(react.page);
@@ -689,6 +698,7 @@ try {
         );
         throw new Error(`${error.message} at ${where}`);
       });
+    await awaitRecordRead(o.page, { expectUnread: expectsUnread(o) });
   }
 
   const deferred = () => {
@@ -714,7 +724,7 @@ try {
         }),
       );
       await load(react);
-      await settled(() => react.page.evaluate(summarizeCard));
+      await read(react);
       react.script.posts.length = 0;
       const ask = react.page.locator('[data-next-cockpit-action="reading-ask"]');
       await ask.focus();
@@ -817,7 +827,7 @@ try {
   await step('the end of a watched analysis is announced once, in the server’s words', async () => {
     await apply(react, (g) => claude(g, { payload: {} }));
     await load(react);
-    await settled(() => react.page.evaluate(summarizeCard));
+    await read(react);
     await apply(react, (g) =>
       claude(g, {
         session: { state: 'working' },
@@ -840,7 +850,7 @@ try {
       }),
     );
     await tick(react);
-    await settled(() => react.page.evaluate(summarizeCard));
+    await read(react);
     // No job was in play, so there is nothing new to say: the last word stays the last thing said.
     assert.equal(await said(react), 'The analysis finished. Its result is in the Drift section.');
   });
@@ -860,7 +870,7 @@ try {
         }),
       );
       await load(react);
-      await settled(() => react.page.evaluate(summarizeCard));
+      await read(react);
       react.script.posts.length = 0;
       await react.page.locator('[data-next-cockpit-action="reading-ask"]').click();
       await react.page.waitForSelector('.next-cockpit-reading-consent');
@@ -922,7 +932,7 @@ try {
   async function openSteer(o, extra = {}) {
     await apply(o, (g) => steerState(g, extra));
     await load(o);
-    await settled(() => o.page.evaluate(summarizeCard));
+    await read(o);
     o.script.posts.length = 0;
     await o.page.locator('[data-next-cockpit-action="steer-back"]').click();
     await o.page.waitForSelector(BOX);
@@ -1152,7 +1162,7 @@ try {
         }),
       );
       await load(react);
-      await settled(() => react.page.evaluate(summarizeCard));
+      await read(react);
       react.script.posts.length = 0;
       const reach = async (selector) => {
         for (let i = 0; i < 80; i += 1) {
@@ -1191,7 +1201,7 @@ try {
       // Steer back, from a stored departure, the same way.
       await apply(react, (g) => steerState(g));
       await load(react);
-      await settled(() => react.page.evaluate(summarizeCard));
+      await read(react);
       await react.page.locator('.next-session-drift-heading').focus();
       await reach('[data-next-cockpit-action="steer-back"]');
       await react.page.keyboard.press('Enter');
@@ -1238,7 +1248,7 @@ try {
         for (const [name, make] of states) {
           await apply(o, make);
           await load(o);
-          await settled(() => o.page.evaluate(summarizeCard));
+          await read(o);
           if (name.startsWith('result')) {
             await o.page.locator('[data-next-cockpit-action="steer-back"]').click();
             await o.page.waitForSelector(BOX);

@@ -239,6 +239,7 @@ git diff "$(git merge-base origin/main HEAD)"..HEAD \
 pnpm install --frozen-lockfile   # exact Node from .node-version; pnpm from package.json
 pnpm lint   # Biome: lint rules and formatting; `pnpm format` rewrites the formatting
 pnpm typecheck
+pnpm test:styles --base origin/main   # exact CSS count, scale and live imports; CI uses the actual PR base SHA
 pnpm test
 pnpm test:dev
 pnpm build
@@ -471,7 +472,10 @@ slow script suite (about 12 minutes on Windows) does not hold the dashboard suit
 what a pull request waits for. A passing Windows log carries no tracebacks from test servers.
 
 The required frontend matrix uses pinned Node and pnpm on Linux, macOS and Windows. It runs
-frontend lint, strict types, unit tests and a clean preview build on each platform. Linux checks
+frontend lint, strict types, unit tests and a clean preview build on each platform. Each native leg checks
+the hand-written CSS record against the actual pull request base through a Node environment read,
+without shell-specific variable syntax. Unit tests have a six-minute step limit because Windows took
+159 seconds against the former three-minute limit. Linux checks
 the canonical tracked build; every platform checks hostile HTML literals and an installed Python
 3.11 copy in pinned Chromium, with Node hidden from the backend and external asset requests refused.
 Every platform also exercises owned development startup/cleanup and real Python/Vite hot refresh,

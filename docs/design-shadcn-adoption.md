@@ -301,3 +301,52 @@ replaces.
 
 The browser's find bar, any screen reader, Firefox and WebKit, touch, and the Windows and Linux x64 timings
 outside what the pull request's CI legs recorded. The full browser proof set was not run on the branch.
+
+## Toolchain layer
+
+The first layer adds Tailwind 4.3.3, its Vite plugin, clsx and class-variance-authority. No component,
+`cn`, Base UI or tailwind-merge is introduced. The thirteen sheets gain only an outer `legacy` layer;
+their rule bodies are unchanged. The entry imports theme and utilities without Preflight.
+
+Scanning all of `frontend/src` emitted utility rules from ordinary words such as `hidden` and `filter`
+despite there being no utility callers. The entry therefore scans `ui/**/*.{ts,tsx}` and
+`lib/**/*.{ts,tsx}`, excludes tests, the gallery and stylesheets, and uses `source(none)`. A later layer
+adds an explicit source glob for any utility caller outside those directories. Nothing is vendored in
+this layer. `frontend/build/style-policy.mjs` rejects a vendored module unreachable from the shipped
+entry through runtime imports, exports or dynamic imports with literal targets (including template
+literals without substitutions). Type-only imports and unreachable modules do not qualify; imports inside `if (false)`
+still count. It scans TS and TSX strings outside tests for default scale classes and arbitrary font
+sizes, using the pinned Tailwind compiler to distinguish font sizes from colors. Custom variants in
+the excluded entry may contain selectors and `@slot;` only; declarations are refused.
+
+`frontend/css-budget.json` records 161,464 bytes and its counting rule. Count UTF-8 bytes after CRLF
+to LF normalization, including comments, across every CSS file under `frontend/`, except the
+directive-only Tailwind entry. Strip only the mechanical outer `@layer legacy` wrapper. The record
+inventories paths; a new sheet outside that inventory fails. Ordinary rules in the excluded entry
+fail separately, so moving a rule there cannot hide it. The actual total must equal the record.
+
+CI compares the record with `github.event.pull_request.base.sha`, fetched with full history, and
+refuses an increased count or an added counted path. When introducing the record, it derives the
+allowance from the base's actual sheets instead of trusting the new record. An implementation PR
+cannot grant itself an increase. An owner-approved increase requires a separate reviewed baseline
+change, with the justified rules and matching record, landed using an explicit required-check
+override; subsequent layers use that new base. There is no label or head-side opt-out in the gate.
+
+The package includes the configuration, entry and any later vendored files in provenance. Copied
+shadcn source gets the full upstream MIT notice in `react-licenses.txt`. The component CLI procedure
+and upstream-header fields are in [Contributing](../CONTRIBUTING.md#adding-a-shadcn-component).
+
+Measured on 2026-10-10: the page grows from 1,376,448 to 1,376,752 bytes, an increase of 304. JavaScript
+stays byte for byte at 701,374 bytes; CSS grows by 229 bytes for layers and bridged variables, with no
+utility rules and no imports in the built CSS. Three fresh fluidity runs pass every budget, retain
+native editor state and settle resource counts after collection. The historical legacy control is
+preserved by `python3 scripts/frontend_cutover.py remeasure`, which first checks the clean build and
+leaves the previous receipt untouched if measurement fails.
+
+All development and production proofs pass on macOS, including the owned development worker and
+terminal's first asset load. Both CSS bundle modes keep the exception inventory unchanged across
+87 views. Linux arm64 reproduces the artifact and passes all twelve production proof commands plus
+an extra production drift run. Five deliberate mutations fail: default type scale, arbitrary font
+size, an unused vendored module, CSS growth and a rule hidden in the excluded entry. Native Windows
+was not run here; the separator normalization is tested, and the unit-test step now allows six
+minutes against the spike's measured 159 seconds.

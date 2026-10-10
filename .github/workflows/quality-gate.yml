@@ -438,6 +438,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          fetch-depth: 0
       # actions/setup-node@v7.0.0 — exact verified release commit.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -468,8 +469,15 @@ jobs:
       - name: Strict frontend types
         timeout-minutes: 2
         run: pnpm typecheck
+      - name: Hand-written CSS ratchet against the actual PR base
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 1
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: pnpm test:styles
       - name: Frontend behavioral unit tests
-        timeout-minutes: 3
+        # Windows took 159 seconds against the old 180-second limit.
+        timeout-minutes: 6
         run: pnpm test
       - name: Owned development lifecycle and isolation tests
         timeout-minutes: 3

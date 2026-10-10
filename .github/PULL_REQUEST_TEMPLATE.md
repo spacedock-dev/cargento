@@ -9,6 +9,7 @@
 - [ ] Invoked the `sync-docs` skill — the doc updates for this change ride in this PR, or there was nothing to reconcile
 - [ ] Behavior changes to `server.py` or `cargento_runtime/` include a regression test
 - [ ] No version field was touched (`version-guard` fails any PR that bumps one)
+- [ ] The hand-written CSS record matches the rules and respects the actual PR base
 - [ ] PR title, user-facing docs and proposed release text contain no tracker names, issue keys or tracker links, including copied/generated sections; internal traceability stays in this PR body or development records
 - [ ] Commits are signed off (`git commit -s`, DCO)
 

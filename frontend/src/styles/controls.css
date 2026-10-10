@@ -1,3 +1,4 @@
+@layer legacy {
 /* Shared controls: copy, raise, disclosures, the More menu and the human-context
    editor. Every colour reads the shell's token and falls back to the released
    palette, so this sheet draws correctly before or without the shell's own tokens
@@ -397,4 +398,5 @@
 }
 .ctl-wrap {
   overflow-wrap: anywhere;
+}
 }

@@ -564,6 +564,45 @@ try {
     async () => {
       const live = await newPage();
       try {
+        await live.context.addInitScript(() => {
+          const causes = { revisions: new Set(), polls: 0 };
+          globalThis.__readCauses = causes;
+          const Source = globalThis.EventSource;
+          globalThis.EventSource = class extends Source {
+            constructor(...args) {
+              super(...args);
+              this.addEventListener('revision', (event) => causes.revisions.add(event.data));
+            }
+          };
+          const setInterval = globalThis.setInterval;
+          globalThis.setInterval = (callback, ms, ...args) =>
+            setInterval(
+              (...values) => {
+                if (ms === 20_000) causes.polls += 1;
+                callback(...values);
+              },
+              ms,
+              ...args,
+            );
+        });
+        const readCauses = () =>
+          live.page.evaluate(() => ({
+            revisions: [...globalThis.__readCauses.revisions],
+            polls: globalThis.__readCauses.polls,
+          }));
+        const assertReads = (sample, phase) => {
+          // The live producer advances the revision while a slow runner waits or navigates. Count
+          // those wakes and fallback polls, rather than giving every run a fixed spare-read budget.
+          const allowed = 1 + sample.causes.revisions.length + sample.causes.polls;
+          assert.ok(
+            sample.counts.data >= 1 && sample.counts.data <= allowed,
+            `${phase} read, saw ${sample.counts.data}; boot, revisions and polls allow ${allowed}`,
+          );
+          assert.ok(
+            sample.context >= 1 && sample.context <= sample.counts.data,
+            `${phase}: the project context was read ${sample.context} times for ${sample.counts.data} board reads`,
+          );
+        };
         await live.page.goto(board.react.origin + '/' + fragmentFor('alpha/app'));
         await reactReady(live.page);
         await live.page.waitForTimeout(patience(600));
@@ -573,18 +612,12 @@ try {
           counts: live.counts(),
           res: await resources(live.page),
           context: contextReads(),
+          causes: await readCauses(),
         };
-        assert.ok(
-          first.counts.data >= 1 && first.counts.data <= 2,
-          `boot read, saw ${first.counts.data}`,
-        );
+        assertReads(first, 'boot');
         assert.equal(first.counts.stream, 1, 'one stream');
         assert.equal(first.counts.nonGet, 0, 'nothing but reads');
         assert.deepEqual([first.res.opened, first.res.closed, first.res.sources], [1, 0, 1]);
-        assert.ok(
-          first.context >= 1 && first.context <= 2,
-          `the project context was read ${first.context} times`,
-        );
         for (let round = 0; round < 5; round += 1) {
           await live.page.locator('nav[aria-label="Primary"] a', { hasText: 'Projects' }).click();
           await live.page.waitForSelector('[data-next-view-body="projects"]');
@@ -603,19 +636,10 @@ try {
           counts: live.counts(),
           res: await resources(live.page),
           context: contextReads(),
+          causes: await readCauses(),
         };
         assert.equal(after.counts.stream, 1, 'navigation opened no second stream');
-        // The board's revision ticks with the wall clock, so a slow runner that spends several seconds on the five
-        // rounds sees a follow-up read per tick. A read per navigation would be at least fifteen (five rounds of
-        // three moves) and a context read per round at least five; these bounds sit below both.
-        assert.ok(
-          after.counts.data <= first.counts.data + 8,
-          `navigation read ${after.counts.data - first.counts.data} more times`,
-        );
-        assert.ok(
-          after.context <= first.context + 4,
-          `navigation asked for the context ${after.context - first.context} more times`,
-        );
+        assertReads(after, 'navigation');
         assert.equal(after.counts.nonGet, 0);
         assert.deepEqual([after.res.opened, after.res.closed, after.res.sources], [1, 0, 1]);
         assert.ok(
@@ -631,8 +655,8 @@ try {
         assert.deepEqual(live.log.pageErrors, []);
         assert.deepEqual(live.log.externalRequests, []);
         return {
-          first: { ...first.counts, ...first.res, context: first.context },
-          after: { ...after.counts, ...after.res, context: after.context },
+          first: { ...first.counts, ...first.res, context: first.context, causes: first.causes },
+          after: { ...after.counts, ...after.res, context: after.context, causes: after.causes },
         };
       } finally {
         await live.close();

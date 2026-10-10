@@ -27,6 +27,7 @@ import { call, startIntentBoard } from './intent-board.mjs';
 import { instrumentResources, recordClipboard, resources } from './sessions-board.mjs';
 import { openPage } from './support/browser.mjs';
 import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
+import { awaitRecordRead } from './support/record.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
@@ -34,10 +35,7 @@ import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
-const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(
-  /\/\.claude\/worktrees\/[^/]+\/?$/,
-  '/',
-);
+const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
@@ -195,6 +193,7 @@ async function load(o, fragment) {
       document.querySelector('nav[aria-label="Primary"]') &&
       !/Waiting for the first board|first payload has not arrived/.test(document.body.innerText),
   );
+  if (fragment.startsWith('#n=session:')) await awaitRecordRead(o.page);
 }
 
 /* One write to the backend. A prompt adoption names its prompt as the backend published it. */
@@ -253,7 +252,10 @@ try {
   );
 
   /* ===================== DIFFERENTIAL: the editor ===================== */
-  const readEditor = (o) => settled(() => o.page.evaluate(summarizeEditor));
+  const readEditor = async (o) => {
+    await awaitRecordRead(o.page);
+    return settled(() => o.page.evaluate(summarizeEditor));
+  };
   /* The React editor against the previous editor's recorded reading of the same state, under `key`. */
   async function versus(key, message) {
     const mine = await readEditor(react);
@@ -332,13 +334,6 @@ try {
       );
       await new Promise((resolve) => setTimeout(resolve, patience(1800)));
       await load(react, fragmentOf('intent-4'));
-      // The observed record is read after the page draws; a slow runner compared before it arrived and saw
-      // 'Later directions: unknown (record unread)' where the recording has the question.
-      await react.page.waitForFunction(
-        () => !/record unread|not been read yet/.test(document.body.textContent ?? ''),
-        null,
-        { timeout: patience(30000) },
-      );
       old = await versus(
         'editor: later directions',
         'the editor differs from the recorded editor over later directions',
@@ -406,7 +401,7 @@ try {
     'the goal box keeps its node, text, caret, selection, focus and native undo through the board’s own revisions',
     async () => {
       await load(react, fragmentOf('intent-2'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       react.reset();
       const box = react.page.locator(GOAL);
       await mark(react, GOAL, 'goal');
@@ -462,7 +457,7 @@ try {
     'an outcome line keeps its node, text, caret and undo through revisions too',
     async () => {
       await load(react, fragmentOf('intent-2'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       await react.page.locator('[data-next-cockpit-action="held-line-add"]').click();
       const line = react.page.locator('textarea[data-next-cockpit-held-line-index="1"]');
       await mark(react, 'textarea[data-next-cockpit-held-line-index="1"]', 'line');
@@ -492,7 +487,7 @@ try {
     'an IME composition in the goal box survives the board’s revisions: no compositionend, same node, commits once',
     async () => {
       await load(react, fragmentOf('intent-2'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       await react.page.evaluate(() => {
         globalThis.__ime = [];
         const target = document.querySelector('textarea[data-next-cockpit-held-kind="goal"]');
@@ -546,7 +541,7 @@ try {
     'a draft survives leaving the session and coming back, with no write and no second read of the log',
     async () => {
       await load(react, fragmentOf('intent-2'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       await react.page.locator(GOAL).click();
       await react.page.keyboard.press(`${MOD}+a`);
       await react.page.keyboard.type('half a sentence');
@@ -571,7 +566,7 @@ try {
     'mount, StrictMode, revisions and repeated navigation send no write and do not grow the page’s resources',
     async () => {
       await load(react, fragmentOf('intent-2'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       await react.page.waitForFunction(() => globalThis.__resources?.sources >= 1);
       react.reset();
       const start = await resources(react.page);
@@ -601,7 +596,7 @@ try {
     'the native select reads the prompts once per opening, fills the box, and Save adopts it naming the fact',
     async () => {
       await load(react, fragmentOf('intent-2'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       react.reset();
       const select = react.page.locator('[data-next-cockpit-prompt-select]');
       await select.click();
@@ -698,7 +693,7 @@ try {
     'Discard everything arms on the first press and is not confirmed by a double-click or a slip, then performs once',
     async () => {
       await load(react, fragmentOf('intent-1'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       const discard = react.page.locator('[data-next-cockpit-action="held-discard"]');
       react.reset();
       // Behind its own summary, as a reader finds it.
@@ -729,7 +724,7 @@ try {
 
   await step('Escape on the armed control disarms it without leaving the page', async () => {
     await load(react, fragmentOf('intent-2'));
-    await settled(() => react.page.evaluate(summarizeEditor));
+    await readEditor(react);
     const discard = react.page.locator('[data-next-cockpit-action="held-discard"]');
     await react.page.locator('.next-cockpit-held-discard-offer summary').click();
     await discard.click();
@@ -742,7 +737,7 @@ try {
     'leaving the page while a save is open neither repeats nor drops it: one write, answered once, words kept',
     async () => {
       await load(react, fragmentOf('intent-3', 'w/unlabelled'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       // The write is held on its way to the backend, so the route change happens while it is open.
       await react.page.route('**/api/annotate', async (route) => {
         await new Promise((resolve) => setTimeout(resolve, patience(1500)));
@@ -784,7 +779,7 @@ try {
     'the live monitor switch writes 1 for this exact session, removes the key when off, and sends nothing',
     async () => {
       await load(react, fragmentOf('intent-2'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       const key = 'cargento.next.live-estimate:claude:intent-2';
       const sw = react.page.locator('.next-session-drift-switch');
       react.reset();
@@ -815,7 +810,7 @@ try {
     'the editor is operable from the keyboard: Tab order, Enter on Save, Escape in the box',
     async () => {
       await load(react, fragmentOf('intent-1'));
-      await settled(() => react.page.evaluate(summarizeEditor));
+      await readEditor(react);
       await react.page.locator(GOAL).focus();
       await react.page.keyboard.press(`${MOD}+a`);
       await react.page.keyboard.type('Typed with the keyboard');

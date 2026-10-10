@@ -11,7 +11,8 @@ checks the mapped cutover receipt
 (`docs/frontend-cutover-receipt.json`): every row of the ownership map in
 `scripts/frontend-migration.json` must name a React-side proof that exists, or be recorded as a
 deviation, a deferral with an owner, or an explicit gap. Nothing here starts a browser, a server
-or a model; the measurement itself is `frontend_fluidity.mjs`.
+or a model when checking. `remeasure` checks the clean build, runs the measurement driver three
+times and refreshes the receipt while preserving its historical legacy control.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import re
 import statistics
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
@@ -479,7 +481,7 @@ def _comparability(base: dict[str, Any], run: dict[str, Any]) -> str:
         f"Same platform and architecture. Chrome moved from {then['chrome']['product']} to "
         f"{now['chrome']['product']} (same major) and Node from {then['node']} to {now['node']}; "
         "the baseline's own receipt says its timings are not compared across machines or "
-        "browsers, so the control block re-runs the unchanged baseline on this day."
+        "browsers. The control block is historical and cannot be re-measured after retirement."
     )
 
 
@@ -570,6 +572,14 @@ def compose(root: Path, run_paths: list[Path], *, date: str, commit: str) -> dic
         "overall": {"failed": failed, "all_budgets_pass": not failed},
         "runs": runs,
     }
+
+
+def compose_refresh(root: Path, run_paths: list[Path], *, date: str, commit: str) -> dict[str, Any]:
+    """Keep the control that cannot be re-measured after the baseline's retirement."""
+    previous = read_json(root / FLUIDITY)
+    refreshed = compose(root, run_paths, date=date, commit=commit)
+    refreshed["legacy_control"] = previous["legacy_control"]
+    return refreshed
 
 
 def _derivation_problems(
@@ -1084,6 +1094,48 @@ def _run_fluidity(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_remeasure(root: Path, args: argparse.Namespace) -> int:
+    try:
+        subprocess.run(  # noqa: S603 - the operator selects Node; arguments are never shell code
+            [args.node, str(root / "frontend/build/package.mjs"), "--check"],
+            cwd=root,
+            check=True,
+            timeout=120,
+        )
+        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-refresh-") as temporary:
+            runs = [Path(temporary) / f"run-{index}.json" for index in range(3)]
+            for path in runs:
+                command = [
+                    args.node,
+                    str(root / SCRIPTS["driver"]),
+                    "--output",
+                    str(path),
+                    "--python",
+                    sys.executable,
+                ]
+                if args.chrome:
+                    command.extend(["--chrome", args.chrome])
+                subprocess.run(command, cwd=root, check=True, timeout=180)  # noqa: S603 - owned driver
+            receipt = compose_refresh(root, runs, date=args.date, commit=_git_head(root))
+        problems = check_fluidity(root, receipt, require_current_page=True)
+        if problems or not receipt["overall"]["all_budgets_pass"]:
+            print(
+                f"Remeasurement refused: {problems or receipt['overall']['failed']}",
+                file=sys.stderr,
+            )
+            return 1
+        target = root / FLUIDITY
+        staged = target.with_suffix(".json.tmp")
+        staged.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+        staged.replace(target)
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print(f"Cannot refresh fluidity: {error}", file=sys.stderr)
+        return 1
+    return _run_check(
+        root, argparse.Namespace(fluidity=None, inventory=None, receipt=None, final=True)
+    )
+
+
 def _run_check(root: Path, args: argparse.Namespace) -> int:
     try:
         fluidity = read_json(args.fluidity or root / FLUIDITY)
@@ -1116,6 +1168,12 @@ def main(argv: list[str] | None = None) -> int:
     flu.add_argument("--output", type=Path)
     flu.add_argument("--date", default=datetime.now(tz=UTC).date().isoformat())
     flu.add_argument("--commit")
+    measure = commands.add_parser(
+        "remeasure", help="measure three runs and keep the legacy control"
+    )
+    measure.add_argument("--chrome")
+    measure.add_argument("--node", default="node")
+    measure.add_argument("--date", default=datetime.now(tz=UTC).date().isoformat())
     check = commands.add_parser("check", help="check the fluidity and cutover receipts")
     check.add_argument("--fluidity", type=Path)
     check.add_argument("--receipt", type=Path)
@@ -1127,6 +1185,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    if args.command == "remeasure":
+        return _run_remeasure(root, args)
     return _run_fluidity(root, args) if args.command == "fluidity" else _run_check(root, args)
 
 

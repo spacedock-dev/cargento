@@ -42,6 +42,27 @@ export function externalUrls(css: string): string[] {
 
 const files = sheets();
 
+/* The one stylesheet that may import, and the only two imports it may hold, spelled as written. Tailwind
+   inlines both at build time, and the packager still fails a built sheet that keeps an `@import`. */
+const TAILWIND_ENTRY = 'styles/tailwind.css';
+const TAILWIND_IMPORTS = [
+  "@import 'tailwindcss/theme.css' layer(theme);",
+  "@import 'tailwindcss/utilities.css' layer(utilities) source(none);",
+];
+
+/** A sheet's path under `frontend/src` with forward slashes, because Windows reports the other kind. */
+function slashed(file: string): string {
+  return relative(ROOT, file).replaceAll('\\', '/');
+}
+
+/** Every `@import` a sheet writes that its path does not allow; a path is the one under `frontend/src`. */
+export function strayImports(path: string, css: string): string[] {
+  const allowed = path.replaceAll('\\', '/') === TAILWIND_ENTRY ? TAILWIND_IMPORTS : [];
+  return [...uncommented(css).matchAll(/@import[^;]*;?/g)]
+    .map((match) => match[0].trim())
+    .filter((statement) => !allowed.includes(statement));
+}
+
 /** The custom properties a sheet declares, plus every one the components set through an inline style. */
 function declaredProperties(): Set<string> {
   const declared = new Set<string>();
@@ -102,13 +123,31 @@ describe('the bundled stylesheets', () => {
     const offenders: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
-      if (/@import/.test(stripped(text))) offenders.push(`${relative(ROOT, file)}: @import`);
+      for (const statement of strayImports(relative(ROOT, file), text))
+        offenders.push(`${slashed(file)}: ${statement}`);
       for (const value of externalUrls(text))
         offenders.push(`${relative(ROOT, file)}: url(${value})`);
       if (/https?:\/\//.test(uncommented(text)))
         offenders.push(`${relative(ROOT, file)}: an absolute address`);
     }
     expect(offenders).toEqual([]);
+  });
+
+  it('lets the Tailwind entry hold exactly its two imports and no other sheet any', () => {
+    const entry = TAILWIND_IMPORTS.join('\n');
+    expect(strayImports('styles/tailwind.css', entry)).toEqual([]);
+    expect(strayImports('styles\\tailwind.css', entry)).toEqual([]);
+    expect(
+      strayImports('styles/tailwind.css', `${entry}\n@import 'tailwindcss/preflight.css';`),
+    ).toEqual(["@import 'tailwindcss/preflight.css';"]);
+    expect(strayImports('styles/tailwind.css', "@import 'tailwindcss/theme.css';")).toHaveLength(1);
+    expect(strayImports('styles/shell.css', TAILWIND_IMPORTS[0] as string)).toHaveLength(1);
+    expect(strayImports('styles/shell.css', "/* @import 'x'; */ .a{color:red}")).toEqual([]);
+    expect(files.some((file) => slashed(file) === TAILWIND_ENTRY)).toBe(true);
+    const actual = uncommented(readFileSync(join(ROOT, TAILWIND_ENTRY), 'utf8'));
+    expect([...actual.matchAll(/@import[^;]*;/g)].map((match) => match[0])).toEqual(
+      TAILWIND_IMPORTS,
+    );
   });
 
   it('reads a quoted url as it reads an unquoted one', () => {
