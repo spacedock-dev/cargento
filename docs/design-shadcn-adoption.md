@@ -639,8 +639,8 @@ The 17 development lifecycle tests and development-mode Controls, Intent, Sessio
 CSS proofs pass. The CSS sweep reaches 87 views and compares 128 fields with the pre-swap table.
 
 Hand-written CSS falls from 147,587 to 143,657 bytes with the path inventory unchanged. Measured on
-2026-10-10 in three fresh fluidity runs: the page is 1,592,388 bytes, 2,024 more than the popover layer.
-First-render medians are 142.5, 93.0 and 126.0 ms and poll-to-paint medians are 44.8, 46.6 and 61.6 ms;
+2026-10-10 in three fresh fluidity runs: the page is 1,592,612 bytes, 2,028 more than the popover layer.
+First-render medians are 141, 94.4 and 140.6 ms and poll-to-paint medians are 44.1, 45.7 and 62 ms;
 every budget passes, and in all three runs the edited textarea and the focused select keep their nodes and
 the select keeps its choice. Local checks do not certify a native autofill popup, screen readers, Firefox
 or WebKit.
