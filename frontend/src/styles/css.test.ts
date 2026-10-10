@@ -109,7 +109,10 @@ describe('the bundled stylesheets', () => {
       const text = readFileSync(file, 'utf8');
       /* The Tailwind entry names exactly two imports, both resolved by the build into the one stylesheet;
          the built CSS is checked for `@import` again by the package step. */
-      const permitted = relative(ROOT, file) === 'styles/tailwind.css' ? TAILWIND_IMPORTS : [];
+      const permitted =
+        relative(ROOT, file).replaceAll('\\', '/') === 'styles/tailwind.css'
+          ? TAILWIND_IMPORTS
+          : [];
       const remaining = stripped(permitted.reduce((rest, line) => rest.replace(line, ''), text));
       if (/@import/.test(remaining)) offenders.push(`${relative(ROOT, file)}: @import`);
       for (const value of externalUrls(text))
