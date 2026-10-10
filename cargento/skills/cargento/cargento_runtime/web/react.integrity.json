@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1464988,
+    "bytes": 1465036,
     "file": "react.html",
-    "sha256": "62040f98257cabc9134c67177d6ad1d4168e1ea74759f086643d8e4578723adc"
+    "sha256": "cd984d2be00fc569b31fdaa903eaee94f29ab6157b7ed2eae48b5e80e8c1d4e9"
   },
   "format": 1,
   "frontend": "react",
@@ -224,7 +224,7 @@
       },
       {
         "file": "frontend/build/package.mjs",
-        "sha256": "64761eff46ae72da128dad6fde99a3b0023fb4bd32f502812bbb219a96b7f990"
+        "sha256": "c87262a8963cc9d4da3bc86bae45528ee295f11c6e42342aa99ddab8246d7265"
       },
       {
         "file": "frontend/build/shadcn-LICENSE.txt",
