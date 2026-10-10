@@ -23,6 +23,18 @@ test('elapsed seconds, minutes, hours and days cannot change a Button identity',
     ['in 2 minutes · 1.5 seconds elapsed', 'in <time> · <time> elapsed'],
     ['Approve the retry plan?0s', 'Approve the retry plan?<time>'],
     ['Approve the retry plan?3s', 'Approve the retry plan?<time>'],
+    [
+      '▾ OBSERVED STATE CHANGES0 of 0 unattended · last 4m',
+      '▾ OBSERVED STATE CHANGES<n> of <n> unattended',
+    ],
+    [
+      '▾ OBSERVED STATE CHANGES4 of 10 unattended · last 2m',
+      '▾ OBSERVED STATE CHANGES<n> of <n> unattended',
+    ],
+    [
+      '▾ OBSERVED STATE CHANGES0 of 0 unattended · since this tab opened',
+      '▾ OBSERVED STATE CHANGES<n> of <n> unattended',
+    ],
   ]) {
     assert.equal(normaliseButtonKey(key(name)), key(expected), name);
   }

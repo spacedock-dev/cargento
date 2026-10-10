@@ -6,6 +6,9 @@ export function normaliseButtonKey(key) {
   // Only the label varies with the clock; paths and action attributes remain exact identities.
   const duration = String.raw`\d+(?:\.\d+)?\s*(?:milliseconds?|seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|ms|[smhd])(?=$|[^a-z]|child|finished|lead)`;
   parts[2] = parts[2].replace(new RegExp(`${duration}(?:\\s*${duration})*`, 'g'), '<time>');
+  // The observed-state header says how many changes were read and when; both depend on whether
+  // the record read had landed when the proof measured, so only the label is an identity.
+  parts[2] = parts[2].replace(/\d+ of \d+ unattended(?: · .*)?$/, '<n> of <n> unattended');
   return parts.join(' | ');
 }
 
