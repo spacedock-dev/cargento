@@ -97,6 +97,8 @@ const summarizeCard = () => {
     text: norm(card),
     buttons: [...card.querySelectorAll('button')]
       .filter((b) => !b.closest('.next-cockpit-held'))
+      // A disclosure's trigger is a button now; the retired page's summary was not one.
+      .filter((b) => !b.matches('[data-slot$="-trigger"]'))
       .map(button),
     resultStates: [...card.querySelectorAll('[data-next-result-state]')].map(
       (node) => node.dataset.nextResultState,
