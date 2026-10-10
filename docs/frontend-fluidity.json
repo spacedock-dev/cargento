@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-10",
-  "candidate_base_commit": "fd3bc28a5b4dfd2377510e746d073e9cc8a8332e",
+  "candidate_base_commit": "cde1188bc9c1400b76d664746570576777f02c8f",
   "purpose": "The assembled production React page measured the way the pre-React baseline was measured, against the budgets that receipt fixes.",
   "cohort_sizing": "Controlled synthetic 5/50/250 cohorts. The median label is the middle scenario, not a measured real-user median.",
   "methodology": {
@@ -100,7 +100,7 @@
     "bytes": 1376448,
     "legacy_page_bytes": 1453021,
     "change_vs_legacy_pct": -5.27,
-    "max_bytes": 1816276,
+    "max_bytes": 2000000,
     "optional_terminal_bytes": {
       "javascript": 488663,
       "stylesheet": 7112
@@ -109,10 +109,11 @@
   },
   "budget_policy": {
     "timing": "Same browser, machine, driver and cohort order only. Median times 1.5 plus 50ms allows runner noise; cross-machine timings are not compared to these absolute limits.",
-    "core_html_max_bytes": 1816276,
-    "core_html": "At most 25% growth over the recorded core HTML; separately account for the optional terminal packaging decision before migration.",
+    "core_html_max_bytes": 2000000,
+    "core_html": "Re-based by the owner on 2026-10-10 from the baseline's 25% growth to a fixed ceiling, because the page is served locally and the time budgets are the guard; the optional terminal packaging is accounted apart, as before.",
     "edited_or_open_node_replacements": 0,
-    "resource_counts": "Main-window timers, WebSockets and listener counts must settle after navigation; CDP raw node growth alone is not a retained-memory proof. EventSource/TCP/detached-node coverage remains unavailable here and needs separate behavioral transport tests."
+    "resource_counts": "Main-window timers, WebSockets and listener counts must settle after navigation; CDP raw node growth alone is not a retained-memory proof. EventSource/TCP/detached-node coverage remains unavailable here and needs separate behavioral transport tests.",
+    "core_html_max_bytes_baseline": 1816276
   },
   "scope_limits": [
     "Each run starts a fresh owned browser profile; later cohorts load new documents in that same profile and may share browser/font caches.",
@@ -636,7 +637,7 @@
       "budget": "core_html_bytes",
       "cohort": null,
       "measured": 1376448,
-      "limit": 1816276,
+      "limit": 2000000,
       "pass": true
     }
   ],

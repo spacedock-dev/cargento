@@ -501,11 +501,18 @@ poll-to-paint medians were 46.8, 47.0 and 63.5 ms against 119.8, 121.4 and 146.4
 task. Against the legacy page re-run on 2026-10-09 with the same Chrome (control medians of 90.9, 62.6 and
 96.5 ms first render, taken under a heavier load of about 5), React's first render is slower by 37%, 52% and
 33%, inside every budget, and poll-to-paint is level (46.8, 47.0 and 63.5 ms against 47.3, 47.3 and
-64.2). The core page is 1,376,448 bytes against a ceiling of 1,816,276 and the legacy page's 1,453,021,
+64.2). The core page is 1,376,448 bytes against the ceiling the baseline recorded, 1,816,276, and the legacy
+page's 1,453,021,
 which is 5.3% smaller; the optional terminal assets (488,663 and 7,112 bytes) are accounted apart, as they
 were. The typed goal, an opened disclosure and the focused prompt select kept their nodes through a poll
 that changed every row title, and the draft, caret, focus and native undo survived, where the baseline
 replaced the goal node on every poll. The cohort polls removed no node; the editor update removed two.
+
+The ceiling is no longer the baseline's. On 2026-10-10 the owner re-based it to a fixed 2,000,000 bytes
+(`CORE_HTML_CEILING_BYTES` in `scripts/frontend_cutover.py`, recorded in the receipt's `budget_policy`) because the
+page is served from the reader's machine and the time budgets measure the cost the size stood in for. The
+baseline's own record keeps its figure and its digest. A layer that needs more raises the constant in its own
+pull request with its measured times; see [the adoption record](design-shadcn-adoption.md).
 
 Read the baseline's way, with no collection forced, the page's JavaScript event listeners grow by 37 per
 navigation round (1,815 to 2,000 across five rounds through Projects, Attention and Sessions) where the

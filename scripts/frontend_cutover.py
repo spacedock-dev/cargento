@@ -362,6 +362,28 @@ def _resource_verdicts(
     return [verdict], navigation
 
 
+# The baseline records its own ceiling for the core page (1,816,276 bytes, 1.25 times the replaced
+# page), and that record is historical and digest-bound, so it is not edited. The owner re-based the
+# ceiling to 2,000,000 bytes on 2026-10-10: the page is served from the reader's machine, the size
+# proxy stood in for a cost the time budgets measure directly, and the shadcn/ui migration is known
+# to add to it. A layer that needs more raises this constant in its own pull request, with its
+# measured times. See docs/design-shadcn-adoption.md.
+CORE_HTML_CEILING_BYTES = 2_000_000
+
+
+def budget_policy(baseline: dict[str, Any]) -> dict[str, Any]:
+    """The baseline policy with the core page ceiling the owner set, and the reason beside it."""
+    policy = dict(baseline["budget_policy"])
+    policy["core_html_max_bytes_baseline"] = policy["core_html_max_bytes"]
+    policy["core_html_max_bytes"] = CORE_HTML_CEILING_BYTES
+    policy["core_html"] = (
+        "Re-based by the owner on 2026-10-10 from the baseline's 25% growth to a fixed ceiling, "
+        "because the page is served locally and the time budgets are the guard; the optional "
+        "terminal packaging is accounted apart, as before."
+    )
+    return policy
+
+
 def evaluate(runs: list[dict[str, Any]], baseline: dict[str, Any]) -> dict[str, Any]:
     """Everything derived from the runs. Pure, so `check` can derive it again and compare."""
     medians = baseline_medians(baseline)
@@ -371,7 +393,7 @@ def evaluate(runs: list[dict[str, Any]], baseline: dict[str, Any]) -> dict[str, 
         one, found = _cohort_summary(runs, index, medians[cohort])
         summary.append(one)
         verdicts.extend(found)
-    policy = baseline["budget_policy"]
+    policy = budget_policy(baseline)
     verdicts.append(_retention_verdict(runs, policy))
     resource, navigation = _resource_verdicts(runs, baseline)
     verdicts.extend(resource)
@@ -442,7 +464,7 @@ def _page_binding(
         "bytes": size,
         "legacy_page_bytes": legacy,
         "change_vs_legacy_pct": round((size - legacy) / legacy * 100, 2),
-        "max_bytes": baseline["budget_policy"]["core_html_max_bytes"],
+        "max_bytes": budget_policy(baseline)["core_html_max_bytes"],
         "optional_terminal_bytes": {
             name: terminal[name]["bytes"] for name in ("javascript", "stylesheet")
         },
@@ -530,7 +552,7 @@ def compose(root: Path, run_paths: list[Path], *, date: str, commit: str) -> dic
         "baseline_status": BASELINE_STATUS,
         "baseline_binding": digest(baseline_path),
         "page": _page_binding(root, runs, baseline),
-        "budget_policy": baseline["budget_policy"],
+        "budget_policy": budget_policy(baseline),
         "scope_limits": [
             *baseline["scope_limits"],
             "Each run starts a fresh owned browser profile; the three cohorts of one run share it.",

@@ -76,8 +76,11 @@ class FluidityReceiptTest(unittest.TestCase):
                 mine["comparison_budget_ms"]["poll_to_render"],
                 places=6,
             )
+        self.assertEqual(cutover.CORE_HTML_CEILING_BYTES, self.receipt["page"]["max_bytes"])
+        self.assertEqual(2_000_000, cutover.CORE_HTML_CEILING_BYTES)
         self.assertEqual(
-            baseline["budget_policy"]["core_html_max_bytes"], self.receipt["page"]["max_bytes"]
+            baseline["budget_policy"]["core_html_max_bytes"],
+            self.receipt["budget_policy"]["core_html_max_bytes_baseline"],
         )
 
     def test_every_budget_the_policy_names_has_a_verdict(self) -> None:
