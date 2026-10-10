@@ -694,7 +694,9 @@ change from a section border to a decorative child.
 The Sessions browser comparison locates adopted surfaces by slot and retains the original logical
 health-part name in its recorded summary. Text, evidence order, disclosure state and action lists
 remain compared. No recorded fixture changes. Hand-written CSS falls from 143,898 to 142,131 bytes,
-with the counted paths unchanged. Bundle rebuilding and fluidity measurement belong to the lead.
+with the counted paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,596,260 bytes, 3,604 more than the
+form controls layer; first-render medians are 143.4, 93.4 and 142.9 ms and poll-to-paint medians are 44.4, 45.7 and 62.8 ms;
+every budget passes.
 
 The dev CSS sweep passes with 234 adopted instances across 87 views. Scoped mutations fail the
 Sessions comparison for Card padding (18 differences), row width (3), Badge ink (18), Alert padding
