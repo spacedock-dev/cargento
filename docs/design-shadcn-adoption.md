@@ -474,8 +474,11 @@ carry no competing chrome. `frontend/e2e/disclosure-chrome-reference.json` recor
 pre-swap cascade on `7d4a23c3`, measured over the CSS proof's 87 views before changing the markup.
 The gate compares every reached trigger, including hidden controls; it does not change the retired
 page's golden fixtures. The gallery checks Accordion and Collapsible targets, type and focus at
-1280 and 320 px. The production drift crash condition, stack-head bundle and fluidity receipt
-remain the lead's verification before merging this layer.
+1280 and 320 px. Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,464,760 bytes, 25,916 more than the
+reactive state layer. First-render medians are 143.2, 94.6 and 125.1 ms and poll-to-paint medians are
+45.3, 43.9 and 62.4 ms; every budget passes, and the opened session-facts disclosure keeps its node and its
+open state across a poll. The measurement driver reads the disclosure by its accordion trigger now. The production
+drift crash condition is qualified on hosted Linux runners before this layer merges.
 
 The CSS proof now settles opened panels before measuring their text. The native proof read inside
 the opening transition and missed some bodies at zero height. Newly reached harness-source prose,
