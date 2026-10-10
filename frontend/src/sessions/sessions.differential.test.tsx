@@ -1,3 +1,4 @@
+import { disclosureReadings, normalizeDisclosures } from '../../test/disclosures';
 import { describe, expect, it } from 'vitest';
 import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
@@ -31,6 +32,7 @@ interface Summary {
   readonly groups: readonly {
     readonly kind: string;
     readonly header: string;
+    readonly disclosures: ReturnType<typeof disclosureReadings>;
     readonly empty: string | null;
     readonly rows: readonly RowSummary[];
   }[];
@@ -39,7 +41,8 @@ interface Summary {
 const norm = (node: Element | null): string =>
   node ? (node.textContent ?? '').replace(/\s+/g, ' ').trim() : '';
 
-function summarize(root: ParentNode): Summary {
+function summarize(source: Element | DocumentFragment): Summary {
+  const root = normalizeDisclosures(source);
   return {
     header: norm(root.querySelector('.next-operations-header')),
     fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map(
@@ -48,6 +51,7 @@ function summarize(root: ParentNode): Summary {
     groups: [...root.querySelectorAll('[data-next-operation-group]')].map((group) => ({
       kind: (group as HTMLElement).dataset['nextOperationGroup'] ?? '',
       header: norm(group.querySelector(':scope > header')),
+      disclosures: disclosureReadings(group),
       empty: group.querySelector('.next-sessions-empty')
         ? norm(group.querySelector('.next-sessions-empty'))
         : null,
