@@ -350,7 +350,9 @@ export async function startDevelopment(options = {}) {
     await restart();
     return handle;
   } catch (error) {
-    failure = error;
+    // An interruption stops the children, and a child that dies under it reports its own exit;
+    // that exit is the consequence of the interruption, not a second failure.
+    failure = interrupted ? Error('Development startup was interrupted.') : error;
     await close();
     throw failure;
   }
