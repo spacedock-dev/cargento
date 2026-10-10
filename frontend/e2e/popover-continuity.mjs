@@ -6,9 +6,15 @@ import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
+import { copyProofPath } from './support/proof-copy.mjs';
 
 const mutation = process.env.POPOVER_MUTATION || '';
 const MUTATIONS = {
+  'tab-guard': [
+    'controls/Disclosure.tsx',
+    "if (next instanceof Element && next.hasAttribute('data-base-ui-focus-guard')) return;",
+    'void next;',
+  ],
   'outside-focus': [
     'controls/Disclosure.tsx',
     'if (!popupRef.current?.contains(next) && !triggerNode.current?.contains(next))\n      controls.disclosures.set(disclosureKey, false);',
@@ -35,8 +41,8 @@ const MUTATIONS = {
     'for (const trigger of open)',
     'for (const trigger of open.slice(0, 1))',
   ],
-  'escape-owner': ['controls/popoverEscape.ts', 'open.find(', '[].find('],
-  'escape-order': ['controls/popoverEscape.ts', '?? open[0]', '?? open.at(-1)'],
+  'escape-owner': ['controls/popoverEscape.ts', 'visible.find(', '[].find('],
+  'escape-order': ['controls/popoverEscape.ts', '?? visible[0]', '?? visible.at(-1)'],
   'focus-departure': ['controls/Disclosure.tsx', 'if (!(next instanceof Node)) return;', 'return;'],
   'window-blur': [
     'controls/Disclosure.tsx',
@@ -83,8 +89,8 @@ const MUTATIONS = {
   'popup-chrome': ['ui/popover.tsx', 'bg-[var(--ctl-raise)]', 'bg-[var(--ctl-sunk)]'],
   modal: [
     'controls/Disclosure.tsx',
-    'open={open}\n      triggerId=',
-    'modal={true}\n      open={open}\n      triggerId=',
+    'open={open}\n        triggerId=',
+    'modal={true}\n        open={open}\n        triggerId=',
   ],
 };
 assert.ok(!mutation || MUTATIONS[mutation], `unknown popover mutation ${mutation}`);
@@ -101,7 +107,8 @@ const step = async (name, run) => {
     throw error;
   }
 };
-const pause = (ms) => new Promise((resolve) => setTimeout(resolve, process.env.CI ? ms * 3 : ms));
+const patience = (ms) => (process.env.CI ? ms * 3 : ms);
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, patience(ms)));
 const scratch = join(REPOSITORY, 'docs/screenshots/popover-layer');
 await mkdir(scratch, { recursive: true });
 const copy = await mkdtemp(join(scratch, 'proof-'));
@@ -110,7 +117,7 @@ try {
   for (const directory of ['frontend', 'cargento'])
     await cp(join(REPOSITORY, directory), join(copy, directory), {
       recursive: true,
-      filter: (path) => !path.includes('/test-results') && !path.includes('__pycache__'),
+      filter: copyProofPath,
     });
   await symlink(
     join(REPOSITORY, 'node_modules'),
@@ -158,6 +165,28 @@ try {
   const popup = () => page.getByRole('dialog', { name: 'Why', exact: true });
   const isOpen = async (name = 'Why') =>
     (await trigger(name).getAttribute('aria-expanded')) === 'true';
+  const waitOpen = async (name = 'Why', open = true) => {
+    await page.waitForFunction(
+      ({ name, open }) =>
+        [...document.querySelectorAll('[data-slot=popover-trigger]')].some(
+          (el) =>
+            el.textContent.trim() === name && el.getAttribute('aria-expanded') === String(open),
+        ),
+      { name, open },
+      { timeout: patience(5000) },
+    );
+    await page.getByRole('dialog', { name, exact: true }).waitFor({
+      state: open ? 'visible' : 'hidden',
+      timeout: patience(5000),
+    });
+  };
+  const waitFocus = async (name) => {
+    await page.waitForFunction(
+      (name) => document.activeElement?.textContent.trim() === name,
+      name,
+      { timeout: patience(5000) },
+    );
+  };
   const load = async () => {
     await page.route('**/api/stream', (route) =>
       route.fulfill({ contentType: 'text/event-stream', body: ': held by popover proof\n\n' }),
@@ -166,6 +195,8 @@ try {
     await page.locator('[data-readout=displayed-accepted]').waitFor();
     await page.waitForFunction(
       () => Number(document.querySelector('[data-readout=displayed-accepted]')?.textContent) > 0,
+      null,
+      { timeout: patience(5000) },
     );
     await page.evaluate(() => {
       const original = Element.prototype.scrollIntoView;
@@ -179,8 +210,10 @@ try {
   const open = async () => {
     await trigger().click();
     assert.equal(await isOpen(), true, 'trigger press did not write the open store');
-    await popup().waitFor();
-    await pause(100);
+    await waitOpen();
+    await page.waitForFunction(() => globalThis.__popoverScrolls === 1, null, {
+      timeout: patience(5000),
+    });
   };
   const openBoth = async () => {
     await page.evaluate(() => {
@@ -190,8 +223,8 @@ try {
           true,
         );
     });
-    await page.getByRole('dialog', { name: 'Another why', exact: true }).waitFor();
-    await pause(100);
+    await waitOpen();
+    await waitOpen('Another why');
   };
   await step(
     'opening leaves trigger focus, scrolls once and exposes popup chrome and app targets',
@@ -238,6 +271,26 @@ try {
       await page.screenshot({ path: join(scratch, 'popover-desktop.png') });
     },
   );
+  await step('Tab from the trigger enters the popup and keeps it open', async () => {
+    await load();
+    await open();
+    await page.keyboard.press('Tab');
+    await page.waitForFunction(
+      () => document.querySelector('[data-slot=popover-content]')?.contains(document.activeElement),
+      null,
+      { timeout: patience(5000) },
+    );
+    assert.equal(await isOpen(), true, 'Tab into popup closed it');
+    assert.equal(await popup().isVisible(), true, 'Tab focused hidden popup content');
+    await page.keyboard.press('Tab');
+    await waitFocus('Popup link');
+    assert.equal(await isOpen(), true, 'Tab within popup closed it');
+    assert.equal(
+      await popup().evaluate((el) => el.contains(document.activeElement)),
+      true,
+      'Tab within popup moved focus outside',
+    );
+  });
   await step(
     'inside click stays open; an outside click is delivered and never steals destination focus',
     async () => {
@@ -253,7 +306,8 @@ try {
         el.addEventListener('click', () => (globalThis.__outsideClicks += 1));
       });
       await destination.click();
-      await pause(100);
+      await waitOpen('Why', false);
+      await waitFocus('Default action');
       assert.equal(await isOpen(), false, 'outside click did not close');
       assert.equal(
         await destination.evaluate((el) => document.activeElement === el),
@@ -277,11 +331,13 @@ try {
         new FocusEvent('focusout', { bubbles: true, relatedTarget: null }),
       ),
     );
+    // Window blur has no positive state change to await; allow queued dismissal to run.
     await pause(100);
     assert.equal(await isOpen(), true, 'window blur closed popup');
     const destination = page.getByRole('button', { name: 'Default action', exact: true });
     await destination.focus();
-    await pause(100);
+    await waitOpen('Why', false);
+    await waitFocus('Default action');
     assert.equal(await isOpen(), false, 'focus departure did not close');
     assert.equal(
       await destination.evaluate((el) => document.activeElement === el),
@@ -299,7 +355,9 @@ try {
       await page
         .getByRole('button', { name: 'Inside another why', exact: true })
         .dispatchEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-      await pause(100);
+      await waitOpen('Why', false);
+      await waitOpen('Another why', false);
+      await waitFocus('Another why');
       assert.equal(await isOpen(), false, 'Escape left first popup open');
       assert.equal(await isOpen('Another why'), false, 'Escape left second popup open');
       assert.equal(
@@ -318,7 +376,9 @@ try {
       await page
         .getByRole('heading', { name: 'Shared controls' })
         .dispatchEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
-      await pause(100);
+      await waitOpen('Why', false);
+      await waitOpen('Another why', false);
+      await waitFocus('Why');
       assert.equal(await isOpen(), false);
       assert.equal(await isOpen('Another why'), false);
       assert.equal(
@@ -337,7 +397,9 @@ try {
     await load();
     await open();
     await trigger('Another why').click();
-    await pause(100);
+    await waitOpen('Why', false);
+    await waitOpen('Another why');
+    await waitFocus('Another why');
     assert.equal(await isOpen(), false);
     assert.equal(await isOpen('Another why'), true);
     assert.equal(
@@ -365,8 +427,10 @@ try {
         (number) =>
           Number(document.querySelector('[data-readout=displayed-accepted]')?.textContent) > number,
         before,
+        { timeout: patience(5000) },
       );
-      await pause(100);
+      await waitOpen();
+      await waitFocus('Inside why');
       assert.equal(await isOpen(), true, 'poll closed popup');
       assert.deepEqual(
         await page.evaluate(() => ({
@@ -384,8 +448,7 @@ try {
     async () => {
       await load();
       await trigger().click();
-      await popup().waitFor();
-      await pause(100);
+      await waitOpen();
       await page.evaluate(() =>
         globalThis.__gallery.controls.announce(
           'popover-proof',

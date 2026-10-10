@@ -1,6 +1,8 @@
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../ui/accordion';
 import { useRevealFragment } from './useRevealFragment';
 import {
+  createContext,
+  useContext,
   useCallback,
   useRef,
   useState,
@@ -132,6 +134,8 @@ function DisclosureNode({
   );
 }
 
+const PopoverAncestors = createContext<readonly string[]>([]);
+
 function PopoverDisclosure({
   disclosureKey,
   summary,
@@ -147,6 +151,7 @@ function PopoverDisclosure({
   const triggerNode = useRef<HTMLButtonElement>(null);
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const triggerId = useId();
+  const ancestors = useContext(PopoverAncestors);
   const triggerRef = useCallback(
     (node: HTMLButtonElement | null) => {
       if (!node) return;
@@ -170,64 +175,75 @@ function PopoverDisclosure({
   const onBlur = (event: FocusEvent<HTMLElement>) => {
     const next = event.relatedTarget;
     if (!(next instanceof Node)) return;
+    // Base UI's forward Tab guard is outside the trigger and popup. Nested portals
+    // also leave the DOM subtree, so React ancestry supplies their popup owners.
+    if (next instanceof Element && next.hasAttribute('data-base-ui-focus-guard')) return;
+    const owners =
+      next instanceof Element
+        ? next.closest('[data-popover-owners]')?.getAttribute('data-popover-owners')?.split(' ')
+        : undefined;
+    if (owners?.includes(triggerId)) return;
     if (!popupRef.current?.contains(next) && !triggerNode.current?.contains(next))
       controls.disclosures.set(disclosureKey, false);
   };
   return (
-    <Popover
-      open={open}
-      triggerId={triggerId}
-      onOpenChange={(next, detail) => {
-        // The document handler chooses one return target for all open popovers.
-        if (detail.reason === 'escape-key') {
-          detail.cancel();
-          return;
-        }
-        if (detail.reason === 'trigger-press') controls.noteToggle();
-        controls.disclosures.set(disclosureKey, next);
-        if (!next || detail.reason !== 'trigger-press') return;
-        const reduce = controls.reducedMotion();
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => {
-            if (!controls.disclosures.isOpen(disclosureKey)) return;
-            popupRef.current?.scrollIntoView({
-              block: 'nearest',
-              behavior: reduce ? 'auto' : 'smooth',
-            });
-          }),
-        );
-      }}
-    >
-      <div
-        data-slot="popover"
-        data-open={open ? '' : undefined}
-        className={
-          className
-            ? `ctl-disclosure ctl-disclosure--pop ${className}`
-            : 'ctl-disclosure ctl-disclosure--pop'
-        }
+    <PopoverAncestors.Provider value={[...ancestors, triggerId]}>
+      <Popover
+        open={open}
+        triggerId={triggerId}
+        onOpenChange={(next, detail) => {
+          // The document handler chooses one return target for all open popovers.
+          if (detail.reason === 'escape-key') {
+            detail.cancel();
+            return;
+          }
+          if (detail.reason === 'trigger-press') controls.noteToggle();
+          controls.disclosures.set(disclosureKey, next);
+          if (!next || detail.reason !== 'trigger-press') return;
+          const reduce = controls.reducedMotion();
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              if (!controls.disclosures.isOpen(disclosureKey)) return;
+              popupRef.current?.scrollIntoView({
+                block: 'nearest',
+                behavior: reduce ? 'auto' : 'smooth',
+              });
+            }),
+          );
+        }}
       >
-        <PopoverTrigger
-          id={triggerId}
-          ref={triggerRef}
-          onBlur={onBlur}
-          {...(summaryLabel ? { 'aria-label': summaryLabel } : {})}
+        <div
+          data-slot="popover"
+          data-open={open ? '' : undefined}
+          className={
+            className
+              ? `ctl-disclosure ctl-disclosure--pop ${className}`
+              : 'ctl-disclosure ctl-disclosure--pop'
+          }
         >
-          {summary}
-        </PopoverTrigger>
-      </div>
-      {container ? (
-        <PopoverContent
-          container={container}
-          ref={popupRef}
-          onBlur={onBlur}
-          initialFocus={false}
-          finalFocus={false}
-          aria-labelledby={triggerId}
-        >
-          {children}
-        </PopoverContent>
-      ) : null}
-    </Popover>
+          <PopoverTrigger
+            id={triggerId}
+            ref={triggerRef}
+            onBlur={onBlur}
+            {...(summaryLabel ? { 'aria-label': summaryLabel } : {})}
+          >
+            {summary}
+          </PopoverTrigger>
+        </div>
+        {container ? (
+          <PopoverContent
+            data-popover-owners={ancestors.join(' ')}
+            container={container}
+            ref={popupRef}
+            onBlur={onBlur}
+            initialFocus={false}
+            finalFocus={false}
+            aria-labelledby={triggerId}
+          >
+            {children}
+          </PopoverContent>
+        ) : null}
+      </Popover>
+    </PopoverAncestors.Provider>
   );
 }

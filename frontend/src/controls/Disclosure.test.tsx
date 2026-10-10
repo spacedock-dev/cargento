@@ -491,6 +491,64 @@ describe('controlled popovers keep the dismissal contract', () => {
     expect(opened(view, 'Other')).toBe(false);
     expect(document.activeElement).toBe(view.getByRole('button', { name: 'Other' }));
   });
+  function nestedPage() {
+    return (
+      <main id="app">
+        <Disclosure disclosureKey={key('outer')} summary="Outer" variant="popover">
+          <Disclosure disclosureKey={key('inner')} summary="Inner" variant="popover">
+            <button type="button">Inside inner</button>
+          </Disclosure>
+        </Disclosure>
+        <button type="button">Elsewhere</button>
+      </main>
+    );
+  }
+  async function openNested() {
+    const mounted = mount(nestedPage());
+    act(() => mounted.kit.controls.disclosures.set(key('outer'), true));
+    await settle();
+    act(() => mounted.kit.controls.disclosures.set(key('inner'), true));
+    await settle();
+    return mounted;
+  }
+  it('keeps the popup open through the Base UI forward Tab guard', async () => {
+    const { view, kit } = mount(page());
+    const why = view.getByRole('button', { name: 'Why' });
+    act(() => why.focus());
+    fireEvent.click(why);
+    await settle();
+    const guard = why.nextElementSibling as HTMLElement;
+    expect(guard.hasAttribute('data-base-ui-focus-guard')).toBe(true);
+    act(() => guard.focus());
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('why'))).toBe(true);
+    expect(view.getByRole('dialog', { name: 'Why' }).contains(document.activeElement)).toBe(true);
+  });
+  it('keeps both popovers open when focus enters a nested portal', async () => {
+    const { view, kit } = await openNested();
+    const outer = view.getByRole('dialog', { name: 'Outer' });
+    const inner = view.getByRole('dialog', { name: 'Inner' });
+    expect(outer.contains(inner)).toBe(false);
+    act(() => view.getByRole('button', { name: 'Inner' }).focus());
+    act(() => view.getByText('Inside inner').focus());
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('outer'))).toBe(true);
+    expect(kit.controls.disclosures.isOpen(key('inner'))).toBe(true);
+    expect(view.getByRole('dialog', { name: 'Inner' }).contains(document.activeElement)).toBe(true);
+    act(() => view.getByText('Elsewhere').focus());
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('outer'))).toBe(false);
+    expect(kit.controls.disclosures.isOpen(key('inner'))).toBe(false);
+    expect(document.activeElement).toBe(view.getByText('Elsewhere'));
+  });
+  it('returns Escape from a nested portal to the visible outer trigger', async () => {
+    const { view, kit } = await openNested();
+    fireEvent.keyDown(view.getByText('Inside inner'), { key: 'Escape' });
+    await settle();
+    expect(kit.controls.disclosures.isOpen(key('outer'))).toBe(false);
+    expect(kit.controls.disclosures.isOpen(key('inner'))).toBe(false);
+    expect(document.activeElement).toBe(view.getByRole('button', { name: 'Outer' }));
+  });
   it('publishes dismissal before a poll can reopen it', async () => {
     const { view, kit, rerender } = mount(page());
     await openBoth(view, kit);
@@ -573,6 +631,7 @@ describe('controlled popovers keep the dismissal contract', () => {
     rerender(page());
     await settle();
     expect(opened(view)).toBe(true);
+    expect(view.getByRole('dialog', { name: 'Why' })).toBeVisible();
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     act(() => kit.controls.disclosures.set(key('why'), false));
     await settle();

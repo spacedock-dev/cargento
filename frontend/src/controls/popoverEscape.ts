@@ -25,12 +25,17 @@ export function installPopoverEscape(doc: Document): () => void {
     ];
     if (open.length === 0) return;
     const target = event.target instanceof Node ? event.target : null;
+    // A nested trigger will disappear with its parent's popup. Preserve the
+    // event owner only among triggers that remain visible after all dismissals.
+    const visible = open.filter(
+      (trigger) => !open.some((other) => popovers.get(other)?.popup()?.contains(trigger)),
+    );
     const owner =
-      open.find(
+      visible.find(
         (trigger) =>
           target !== null &&
           (trigger.contains(target) || popovers.get(trigger)?.popup()?.contains(target)),
-      ) ?? open[0];
+      ) ?? visible[0];
     for (const trigger of open) popovers.get(trigger)?.dismiss();
     owner?.focus();
     event.preventDefault();
