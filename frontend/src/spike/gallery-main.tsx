@@ -19,7 +19,9 @@ function Gallery() {
         <Button variant="secondary">Secondary</Button>
         <Button variant="ghost">Ghost</Button>
         <Button variant="outline">Outline</Button>
-        <Button disabled focusableWhenDisabled aria-busy="true">Pending</Button>
+        <Button disabled focusableWhenDisabled aria-busy="true">
+          Pending
+        </Button>
       </section>
       <Accordion defaultValue={['a']}>
         <AccordionItem value="a">
