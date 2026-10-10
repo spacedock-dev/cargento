@@ -51,7 +51,7 @@ import {
 import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
-import { measureButtonChrome } from './support/button-chrome.mjs';
+import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
 
 const BUTTON_TABLE = JSON.parse(
   await readFile(new URL('./button-chrome-reference.json', import.meta.url), 'utf8'),
@@ -654,7 +654,7 @@ async function visit(opened, origin, fragment, options = {}) {
 async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   measured.views.push(view);
-  for (const row of await page.evaluate(measureButtonChrome))
+  for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
     measured.chrome.push({ view, ...row });
   const { rows, registers, groups, buttons, linkColour, scheme } = await page.evaluate(measureText);
   measured.registers ??= registers;

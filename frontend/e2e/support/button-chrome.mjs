@@ -1,6 +1,15 @@
 /* A surface identity independent of the shared Button classes. The reference was measured on
    30bac258 with the same css-contract worlds; it is separate from the retired-page goldens. */
-export function measureButtonChrome() {
+export function normaliseButtonKey(key) {
+  const parts = key.split(' | ');
+  // DOM text joins adjacent labels ("lead4mchild1m"), so word boundaries miss real durations.
+  // Only the label varies with the clock; paths and action attributes remain exact identities.
+  const duration = String.raw`\d+(?:\.\d+)?\s*(?:milliseconds?|seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|ms|[smhd])(?=$|[^a-z]|child|finished|lead)`;
+  parts[2] = parts[2].replace(new RegExp(`${duration}(?:\\s*${duration})*`, 'g'), '<time>');
+  return parts.join(' | ');
+}
+
+export function measureButtonChrome(normaliseKey) {
   const semantic = (el) =>
     [...el.classList]
       .filter(
@@ -42,7 +51,9 @@ export function measureButtonChrome() {
     const name = el.getAttribute('aria-label') || text.textContent.replace(/\s+/g, ' ').trim();
     const css = getComputedStyle(el);
     return {
-      key: `${path.join(' > ')} | ${semantic(el)} | ${name} | ${state} | disabled=${el.disabled} hidden=${el.hidden}`,
+      key: normaliseKey(
+        `${path.join(' > ')} | ${semantic(el)} | ${name} | ${state} | disabled=${el.disabled} hidden=${el.hidden}`,
+      ),
       chrome: Object.fromEntries(
         [
           'color',
@@ -54,6 +65,8 @@ export function measureButtonChrome() {
           'display',
           'padding',
           'justify-content',
+          // These are CSS family lists and fixed sizes, not the selected fallback face or its metrics.
+          // `normal` stays symbolic; numeric line heights resolve explicit 1.55 declarations.
           'font-family',
           'font-size',
           'line-height',
