@@ -429,8 +429,8 @@ can coalesce its own queued events into a closing event that would hide missing 
 The controls proof's memory mutation drops the native opening's store write, so fragment
 revelation cannot publish its opening for a remount.
 
-Measured on 2026-10-10 in three fresh fluidity runs on the stacked page: the page is 1,437,064 bytes, 2,040 more than
-the Button layer. First-render medians for small, median and large cohorts are 136.7, 93.9
-and 127.9 ms; poll-to-paint medians are 45.6, 46.4 and 63.4 ms. Every budget passes, no long
+Measured on 2026-10-10 in three fresh fluidity runs on the stacked page: the page is 1,438,844 bytes, 2,064 more than
+the Button layer. First-render medians for small, median and large cohorts are 145.2, 93.4
+and 126.5 ms; poll-to-paint medians are 44.9, 46.2 and 61.1 ms. Every budget passes, no long
 task is recorded, edited and open nodes retain identity, and resource counts settle after
 collection. The receipt preserves the historical legacy control.
