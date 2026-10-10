@@ -776,7 +776,7 @@
         "frontend/e2e/controls-continuity.mjs",
         "docs/frontend-fluidity.json"
       ],
-      "contract": "Keep closed disclosure keys/open state and summary focus; unrelated updates must not replay opening motion.",
+      "contract": "Derive open state from the subscribed keyed store and preserve summary focus. Newer writes supersede queued native toggles, native fragment revelation is retained, and remounts do not replay opening motion.",
       "disposition": "stable-identity"
     },
     {
@@ -1151,7 +1151,7 @@
         "frontend/e2e/sessions-parity.mjs",
         "frontend/e2e/project-parity.mjs"
       ],
-      "contract": "Per project/scope/session disclosures are independent; Sessions caveats have no project; Escape/outside/focus departure close only popovers.",
+      "contract": "Per project/scope/session disclosures subscribe independently to versioned snapshots; multiple siblings may open together. Sessions caveats have no project. Escape/outside/focus departure write the store and close only popovers; menus keep their no-Escape contract.",
       "disposition": "stable-identity"
     },
     {

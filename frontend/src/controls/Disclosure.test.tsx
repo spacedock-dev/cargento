@@ -39,6 +39,176 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     vi.unstubAllGlobals();
   });
 
+  it('follows a store write made outside React, without remounting', async () => {
+    const { view, kit, rerender } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    act(() => kit.controls.disclosures.set(key('plan'), true));
+    expect(details.open).toBe(true);
+    await flushToggle();
+    act(() => kit.controls.disclosures.set(key('plan'), false));
+    rerender(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Poll
+      </Disclosure>,
+    );
+    await flushToggle();
+    expect(details.open).toBe(false);
+    expect(view.getByText('Project plan').closest('details')).toBe(details);
+  });
+
+  it('records a summary opening before a poll and its queued toggle', async () => {
+    const { view, kit, rerender } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    fireEvent.click(view.getByText('Project plan'));
+    expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(true);
+    rerender(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Poll
+      </Disclosure>,
+    );
+    await flushToggle();
+    expect((view.getByText('Project plan').closest('details') as HTMLDetailsElement).open).toBe(
+      true,
+    );
+  });
+
+  it('ignores a queued native opening superseded by newer external writes', async () => {
+    const { view, kit } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    toggle(details, true);
+    act(() => kit.controls.disclosures.set(key('plan'), true));
+    act(() => kit.controls.disclosures.set(key('plan'), false));
+    const stale = new Event('toggle');
+    Object.defineProperty(stale, 'newState', { value: 'open' });
+    fireEvent(details, stale);
+    expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(false);
+    await flushToggle();
+    expect(details.open).toBe(false);
+  });
+
+  it('lets an external close supersede a native opening while the store is still closed', async () => {
+    const { view, kit } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    toggle(details, true);
+    act(() => kit.controls.disclosures.set(key('plan'), false));
+    const stale = new Event('toggle');
+    Object.defineProperty(stale, 'newState', { value: 'open' });
+    fireEvent(details, stale);
+    await flushToggle();
+    expect(details.open).toBe(false);
+    expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(false);
+  });
+
+  it('closes a native opening on a summary press before its queued toggle', async () => {
+    const { view, kit } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    toggle(details, true);
+    fireEvent.click(view.getByText('Project plan'));
+    await flushToggle();
+    expect(details.open).toBe(false);
+    expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(false);
+  });
+
+  it('never echoes a toggle caused by rendering a store write', async () => {
+    const { view, kit } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    const set = vi.spyOn(kit.controls.disclosures, 'set');
+    act(() => kit.controls.disclosures.set(key('plan'), true));
+    await flushToggle();
+    expect((view.getByText('Project plan').closest('details') as HTMLDetailsElement).open).toBe(
+      true,
+    );
+    expect(set).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the latest rapid press and lets siblings open together', async () => {
+    const { view, kit } = mount(
+      <>
+        <Disclosure disclosureKey={key('a')} summary="A">
+          A body
+        </Disclosure>
+        <Disclosure disclosureKey={key('b')} summary="B">
+          B body
+        </Disclosure>
+      </>,
+    );
+    for (let i = 0; i < 3; i += 1) fireEvent.click(view.getByText('A'));
+    fireEvent.click(view.getByText('B'));
+    expect(kit.controls.disclosures.isOpen(key('a'))).toBe(true);
+    expect(kit.controls.disclosures.isOpen(key('b'))).toBe(true);
+    await flushToggle();
+    expect((view.getByText('A').closest('details') as HTMLDetailsElement).open).toBe(true);
+    expect((view.getByText('B').closest('details') as HTMLDetailsElement).open).toBe(true);
+  });
+
+  it('accepts a native browser opening even when a redraw precedes the queued event', async () => {
+    const { view, kit, rerender } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    toggle(details, true);
+    rerender(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Poll
+      </Disclosure>,
+    );
+    await flushToggle();
+    expect(details.open).toBe(true);
+    expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(true);
+  });
+
+  it('publishes only changed snapshots and releases subscriptions on unmount', async () => {
+    const { view, kit } = mount(
+      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+        Body
+      </Disclosure>,
+    );
+    const store = kit.controls.disclosures;
+    const snapshots: boolean[] = [];
+    const release = store.subscribe(() => snapshots.push(store.isOpen(key('plan'))));
+    const closed = store.read(key('plan'));
+    act(() => store.set(key('plan'), false));
+    expect(store.read(key('plan'))).toBe(closed);
+    act(() => store.set(key('plan'), true));
+    const opened = store.read(key('plan'));
+    act(() => store.set(key('plan'), true));
+    expect(store.read(key('plan'))).toBe(opened);
+    expect(store.size()).toBe(1);
+    act(() => store.set(key('plan'), false));
+    expect(store.read(key('plan')).version).toBeGreaterThan(opened.version);
+    expect(store.size()).toBe(0);
+    expect(snapshots).toEqual([true, false]);
+    release();
+    view.unmount();
+    store.set(key('plan'), true);
+    await flushToggle();
+    expect(snapshots).toEqual([true, false]);
+  });
+
   it('draws closed until the reader opens it, and reads as a details with a named summary', () => {
     const { view } = mount(
       <Disclosure disclosureKey={key('plan')} summary="Project plan">
@@ -211,6 +381,28 @@ describe('a popover closes on Escape, outside, and focus departure, and nothing 
     expect(plan.open).toBe(true);
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(view.getByText('Why'));
+  });
+
+  it('publishes dismissal before a poll or a queued toggle can reopen the popover', async () => {
+    const { view, kit, rerender } = mount(page());
+    const { why } = await openBoth(view);
+    fireEvent.keyDown(view.getByText('Elsewhere'), { key: 'Escape' });
+    expect(kit.controls.disclosures.isOpen(key('why'))).toBe(false);
+    rerender(page());
+    await flushToggle();
+    expect(why.open).toBe(false);
+  });
+
+  it('dismisses a native opening before its queued toggle reaches the store', async () => {
+    const { view, kit, rerender } = mount(page());
+    const why = view.getByText('Why').closest('details') as HTMLDetailsElement;
+    toggle(why, true);
+    fireEvent.keyDown(view.getByText('Elsewhere'), { key: 'Escape' });
+    expect(why.open).toBe(false);
+    rerender(page());
+    await flushToggle();
+    expect(kit.controls.disclosures.isOpen(key('why'))).toBe(false);
+    expect(why.open).toBe(false);
   });
 
   it('does not swallow Escape when no popover is open', () => {

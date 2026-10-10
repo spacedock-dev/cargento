@@ -69,11 +69,7 @@ const MUTATIONS = {
     ],
   ],
   'drop-disclosure-memory': [
-    [
-      'src/controls/Disclosure.tsx',
-      'controls.disclosures.set(disclosureKey, event.currentTarget.open);',
-      'void disclosureKey;',
-    ],
+    ['src/controls/useDisclosureState.ts', 'store.set(key, pending.open);', 'void key;'],
   ],
   'scroll-offscreen-focus': [
     [
@@ -238,6 +234,31 @@ try {
     }, name);
   const same = (selector, name) =>
     page.locator(selector).evaluate((node, key) => globalThis.__marks[key] === node, name);
+
+  await step(
+    'fragment navigation reveals a closed native disclosure and survives a poll and remount',
+    async () => {
+      await load();
+      const trigger = page.getByText('Project plan', { exact: true });
+      assert.equal(await trigger.evaluate((node) => node.parentElement.open), false);
+      await trigger.evaluate((node) => {
+        const details = node.parentElement;
+        const body = document.createElement('p');
+        body.id = 'native-disclosure-fragment';
+        body.textContent = 'Native find target';
+        details.append(body);
+        globalThis.location.hash = '#native-disclosure-fragment';
+      });
+      await page.waitForFunction(() => globalThis.__gallery.controls.disclosures.size() > 0);
+      assert.equal(await trigger.evaluate((node) => node.parentElement.open), true);
+      await settleRefresh(2);
+      assert.equal(await trigger.evaluate((node) => node.parentElement.open), true);
+      await page.getByRole('button', { name: 'Hide disclosures' }).click();
+      await page.getByRole('button', { name: 'Show disclosures' }).click();
+      assert.equal(await trigger.evaluate((node) => node.parentElement.open), true);
+      return { nativeFragment: true, remountedOpen: true };
+    },
+  );
 
   // ---------------------------------------------------------------------------------------------
   await step('mount and StrictMode send no request that is an action', async () => {

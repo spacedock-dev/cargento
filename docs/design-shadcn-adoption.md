@@ -402,3 +402,35 @@ The fluidity receipt records three runs on 2026-10-10 that pass the unchanged bu
 is 1,436,780 bytes against the 2,000,000-byte ceiling. For 5, 50 and 250 sessions, first-render
 medians are 143.7, 93.8 and 126.1 ms, and poll-to-paint medians are 43.1, 44.8 and 59.7 ms. The
 receipt retains the historical legacy control; no timing allowance changed.
+
+## Reactive disclosure state layer
+
+This layer keeps native `details` and the public `Disclosure` props. It adds versioned snapshots
+and a subscription to the keyed store, with the store as the single writer of open state. The
+[reader-state record](design-reader-state.md#disclosure-write-precedence) owns grouping, queued
+native events, focus, motion and dismissal. The accordion and popover component swaps remain
+separate layers.
+
+A summary activation writes the store synchronously and prevents the browser's later default
+toggle. Native attribute changes from fragment navigation are captured with their version;
+write notifications drain those records before React renders a newer write. This distinction
+keeps a delayed native event from undoing a dismissal without treating a rendered attribute
+change as another reader gesture.
+
+Headless Chromium reveals a closed section through same-document fragment navigation, publishes
+the opening to the store, and retains it through two polls and a remount. The actual browser find
+bar is still unverified. Tests also cover external writes, rapid presses, independent siblings,
+idempotent publishing and delayed events. A redundant close advances write precedence and
+reapplies the store projection, so Escape also wins before a native opening has published. Mutations that remove version precedence, echo a
+rendered toggle, omit subscriptions, publish repeated values, omit native capture or drop
+dismissal all fail. Two more mutations that omit redundant-write precedence or projection fail.
+The redundant-close test delivers a stale native opening after the close, because the browser
+can coalesce its own queued events into a closing event that would hide missing precedence.
+The controls proof's memory mutation drops the native opening's store write, so fragment
+revelation cannot publish its opening for a remount.
+
+Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,378,676 bytes, 1,924 more than
+the toolchain layer. First-render medians for small, median and large cohorts are 126.7, 94.9
+and 127.4 ms; poll-to-paint medians are 46.2, 46.4 and 63.4 ms. Every budget passes, no long
+task is recorded, edited and open nodes retain identity, and resource counts settle after
+collection. The receipt preserves the historical legacy control.
