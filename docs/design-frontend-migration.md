@@ -45,6 +45,17 @@ proofs locate the new triggers and panels by their slots. A session-facts part r
 logical part name after the former `details` tag becomes an Accordion root. The fixture files are
 unchanged. The adoption record owns the component chrome reference and the mounted-panel limits.
 
+Vitest DOM comparisons use `frontend/test/disclosures.ts` to read an Accordion disclosure as
+native `details`: the trigger becomes its summary, `aria-expanded` supplies its open state, and
+the panel's children remain its body even when closed with `hidden="until-found"`. The item,
+header and panel wrappers, decorative chevron, generated trigger attributes and default vertical
+orientation are component chrome rather than recorded content. Root surface attributes and body
+markup remain comparable. Project and timeline summaries also compare ordered disclosure readings
+with their summary, open state and body text. Mutation proofs reject missing or changed bodies,
+renamed summaries, flipped open state, removed disclosures and reordered disclosures or evidence.
+Missing triggers or panels and inconsistent open state fail normalization. These equivalents
+preserve the legacy observations without changing a recording or dropping closed evidence.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script

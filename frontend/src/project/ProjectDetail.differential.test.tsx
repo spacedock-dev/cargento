@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { disclosureReadings, normalizeDisclosures } from '../../test/disclosures';
 import { compatSessKey, exactIdentity } from '../api/identity';
 import { arrange, labelsOf } from './arrange.test.helper';
 import { genBoard, genContext, parityBoard, scenarios } from './generate.test.helper';
@@ -35,9 +36,11 @@ interface Summary {
   readonly panel: string;
   readonly panelLinks: readonly (string | null)[];
   readonly panelKinds: readonly string[];
+  readonly disclosures: ReturnType<typeof disclosureReadings>;
 }
 
-function summarize(article: ParentNode, tab: string): Summary {
+function summarize(source: Element | DocumentFragment, tab: string): Summary {
+  const article = normalizeDisclosures(source);
   const header = article.querySelector('.next-project-detail-header');
   const tree = article.querySelector('nav.next-cockpit-scope-tree');
   const strip = article.querySelector('.next-cockpit-recovery');
@@ -57,9 +60,7 @@ function summarize(article: ParentNode, tab: string): Summary {
           link.hasAttribute('aria-current'),
         ] as const,
     ),
-    switcher: norm(
-      article.querySelector('.next-cockpit-scope-switcher [data-slot=accordion-trigger]'),
-    ),
+    switcher: norm(article.querySelector('.next-cockpit-scope-switcher summary')),
     strip: norm(strip),
     stripLinks: [...(strip?.querySelectorAll('a') ?? [])].map((link) => link.getAttribute('href')),
     stripAttrs: [
@@ -89,6 +90,7 @@ function summarize(article: ParentNode, tab: string): Summary {
         node.getAttribute('data-scope-kind') ??
         '',
     ),
+    disclosures: disclosureReadings(article),
   };
 }
 

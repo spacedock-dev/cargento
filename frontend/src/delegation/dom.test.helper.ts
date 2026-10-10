@@ -3,6 +3,8 @@
    are sorted, text is collapsed, and attributes that belong to one renderer's own bookkeeping (the legacy
    focus keys and route delegation) are left out. Buttons and links are compared by their name and target, not
    by the markup of the shared controls inside them, which their own tests hold. */
+import { normalizeDisclosures } from '../../test/disclosures';
+
 const DROPPED = new Set([
   'data-next-focus',
   'data-next-route',
@@ -28,6 +30,10 @@ export interface Shape {
 const squash = (text: string | null): string => (text ?? '').replace(/\s+/g, ' ').trim();
 
 export function shape(element: Element): Shape {
+  return shapeNode(normalizeDisclosures(element));
+}
+
+function shapeNode(element: Element): Shape {
   const attrs: Record<string, string> = {};
   for (const name of element.getAttributeNames().sort()) {
     if (
@@ -84,7 +90,7 @@ export function shape(element: Element): Shape {
     if (node.nodeType === 3) run += node.textContent ?? '';
     else if (node instanceof Element) {
       flush();
-      children.push(shape(node));
+      children.push(shapeNode(node));
     }
   }
   flush();
