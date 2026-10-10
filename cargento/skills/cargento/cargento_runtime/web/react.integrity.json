@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1464768,
+    "bytes": 1464988,
     "file": "react.html",
-    "sha256": "59121e6701aca60f63b21bbedc32ae3059d637ac522f8b6cf36b61fd863693da"
+    "sha256": "62040f98257cabc9134c67177d6ad1d4168e1ea74759f086643d8e4578723adc"
   },
   "format": 1,
   "frontend": "react",
@@ -464,7 +464,7 @@
       },
       {
         "file": "frontend/src/delegation/delegation.css",
-        "sha256": "49a2fe882bfc690e25de7fb880fff7a1f4cc218080e8b2f03308aaeaa0838bb8"
+        "sha256": "9ffc467d5a461db1adbadce5267b2494eaccc7b9d87bdb101b6033d0e68903f1"
       },
       {
         "file": "frontend/src/delegation/evidence.ts",
@@ -1260,7 +1260,7 @@
       },
       {
         "file": "frontend/src/timeline/timeline.css",
-        "sha256": "cbfdc31cf206bd15c250c3bca01cbd1bb750f517db2bae128b509ce70f2f5976"
+        "sha256": "ae27acc47a831d23789a0d45a2d5a7a3fe92bbf044673e7e34f75e6456380b13"
       },
       {
         "file": "frontend/src/timeline/view.ts",
@@ -1312,7 +1312,7 @@
       },
       {
         "file": "frontend/src/ui/accordion.tsx",
-        "sha256": "22699452001806018f4478afe7c03052fb89b95c84de60647cf5769a33ed20a9"
+        "sha256": "322c0648d633c551d23fba41b47abbae2eccca9024eb02c372a59130d7d327fa"
       },
       {
         "file": "frontend/src/ui/button.tsx",
@@ -1324,7 +1324,7 @@
       },
       {
         "file": "frontend/src/ui/disclosureChevron.tsx",
-        "sha256": "510481b2294b05191f2f8adaf7204830c27512a4bf5019afe683eac7d94be616"
+        "sha256": "45e589e0d7390c346534636f0f8fe3fc386d57e5aa93bbd1f8f8a8f81ed3b44b"
       },
       {
         "file": "frontend/src/workstream/ChangesPanel.tsx",
