@@ -1,3 +1,5 @@
+import { Alert } from '../ui/alert';
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useFocusKey } from '../controls';
 import { useDisplayed, useShell } from '../shell/context';
@@ -89,7 +91,12 @@ export function AnswerBlock({
   const notes = answerNotesFor(runtime);
   const held = useStore(notes);
   return (
-    <section className="next-session-section" data-next-session-section="ask">
+    <Card
+      as="section"
+      variant="session-ask"
+      className="next-session-section"
+      data-next-session-section="ask"
+    >
       <div className="next-session-ask-callout">
         <span>
           {'ASKED YOU · '}
@@ -128,9 +135,9 @@ export function AnswerBlock({
                 <p className="next-session-answer-empty">No answer options were supplied.</p>
               )}
               {failure ? (
-                <p className="next-session-answer-failure" role="status">
+                <Alert as="p" variant="answer-failure" className="next-session-answer-failure">
                   {failure}
-                </p>
+                </Alert>
               ) : null}
             </article>
           );
@@ -138,6 +145,6 @@ export function AnswerBlock({
       ) : (
         <p className="next-session-ask-question">{observed.askText}</p>
       )}
-    </section>
+    </Card>
   );
 }

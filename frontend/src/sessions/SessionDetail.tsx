@@ -1,3 +1,5 @@
+import { Badge } from '../ui/badge';
+import { Card } from '../ui/card';
 import { useMemo, type ReactNode } from 'react';
 import {
   CopyControl,
@@ -180,7 +182,13 @@ function CommandSurface({
       : observed.state;
   return (
     <div className="next-session-command-surface" aria-label="Session command surface">
-      <section className="next-session-current" data-next-session-command="activity">
+      <Card
+        as="section"
+        variant="session-current"
+        tone={observed.tone}
+        className="next-session-current"
+        data-next-session-command="activity"
+      >
         <span className="next-session-current-label">CURRENT ACTIVITY</span>
         <strong
           {...(observed.nowKnown ? {} : { className: 'next-session-absent' })}
@@ -192,7 +200,7 @@ function CommandSurface({
             className="next-session-command-context"
           />
         ) : null}
-      </section>
+      </Card>
     </div>
   );
 }
@@ -226,10 +234,10 @@ function Header({
     <header className="next-session-detail-header">
       <div className="next-session-detail-title">
         {state ? (
-          <span className="next-session-state">
+          <Badge variant="session-state" className="next-session-state">
             <span className="next-visually-hidden">State: </span>
             {word}
-          </span>
+          </Badge>
         ) : null}
         <h1
           ref={titleRef}

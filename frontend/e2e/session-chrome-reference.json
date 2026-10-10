@@ -1,0 +1,487 @@
+{
+  "commit": "a5aae027",
+  "instances": {
+    "row|wide|next-operation-row--want": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "0px none rgb(246, 243, 234)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "row|wide|next-operation-row--ok": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "0px none rgb(246, 243, 234)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "row|wide|next-operation-row--bad": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "0px none rgb(246, 243, 234)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "row|wide|next-operation-row--unknown": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "0px none rgb(246, 243, 234)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "current|wide|want": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(53, 52, 42)",
+        "border-right": "1px solid rgb(53, 52, 42)",
+        "border-bottom": "1px solid rgb(53, 52, 42)",
+        "border-left": "2px solid rgb(240, 185, 94)",
+        "display": "block",
+        "padding": "14px 17px",
+        "border-radius": "10px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "ask|wide|": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(53, 52, 42)",
+        "border-right": "1px solid rgb(53, 52, 42)",
+        "border-bottom": "1px solid rgb(53, 52, 42)",
+        "border-left": "2px solid rgb(240, 185, 94)",
+        "display": "block",
+        "padding": "13px 16px",
+        "border-radius": "10px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "landed|wide|": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "0px none rgb(246, 243, 234)",
+        "border-left": "1px solid rgb(53, 52, 42)",
+        "display": "flex",
+        "padding": "0px 0px 0px 9px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 0.4915492957746479
+      }
+    },
+    "state|wide|": {
+      "chrome": {
+        "color": "rgb(205, 199, 180)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "1px solid rgb(116, 114, 95)",
+        "border-right": "1px solid rgb(116, 114, 95)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "1px solid rgb(116, 114, 95)",
+        "display": "block",
+        "padding": "2px 8px",
+        "border-radius": "999px",
+        "font-family": "\"IBM Plex Mono\", ui-monospace, monospace",
+        "font-size": "13px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "text",
+        "ratio": 1
+      }
+    },
+    "current|wide|bad": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(53, 52, 42)",
+        "border-right": "1px solid rgb(53, 52, 42)",
+        "border-bottom": "1px solid rgb(53, 52, 42)",
+        "border-left": "2px solid rgb(228, 136, 106)",
+        "display": "block",
+        "padding": "14px 17px",
+        "border-radius": "10px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "current|wide|ok": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(53, 52, 42)",
+        "border-right": "1px solid rgb(53, 52, 42)",
+        "border-bottom": "1px solid rgb(53, 52, 42)",
+        "border-left": "2px solid rgb(207, 232, 132)",
+        "display": "block",
+        "padding": "14px 17px",
+        "border-radius": "10px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "health|wide|": {
+      "chrome": {
+        "color": "rgb(205, 199, 180)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "0px none rgb(205, 199, 180)",
+        "border-right": "0px none rgb(205, 199, 180)",
+        "border-bottom": "0px none rgb(205, 199, 180)",
+        "border-left": "3px solid rgb(240, 185, 94)",
+        "display": "block",
+        "padding": "14px 16px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "22.5px"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "current|wide|unknown": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(53, 52, 42)",
+        "border-right": "1px solid rgb(53, 52, 42)",
+        "border-bottom": "1px solid rgb(53, 52, 42)",
+        "border-left": "2px solid rgb(116, 114, 95)",
+        "display": "block",
+        "padding": "14px 17px",
+        "border-radius": "10px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "failure|wide|": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "0px none rgb(246, 243, 234)",
+        "border-left": "0px none rgb(246, 243, 234)",
+        "display": "block",
+        "padding": "0px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "13px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "row|small|next-operation-row--want": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(116, 114, 95)",
+        "border-right": "1px solid rgb(116, 114, 95)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "1px solid rgb(116, 114, 95)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "4px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "row|small|next-operation-row--ok": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(116, 114, 95)",
+        "border-right": "1px solid rgb(116, 114, 95)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "1px solid rgb(116, 114, 95)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "4px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "row|small|next-operation-row--bad": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(116, 114, 95)",
+        "border-right": "1px solid rgb(116, 114, 95)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "1px solid rgb(116, 114, 95)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "4px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "row|small|next-operation-row--unknown": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(116, 114, 95)",
+        "border-right": "1px solid rgb(116, 114, 95)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "1px solid rgb(116, 114, 95)",
+        "display": "grid",
+        "padding": "0px",
+        "border-radius": "4px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "current|small|want": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(53, 52, 42)",
+        "border-right": "1px solid rgb(53, 52, 42)",
+        "border-bottom": "1px solid rgb(53, 52, 42)",
+        "border-left": "2px solid rgb(240, 185, 94)",
+        "display": "block",
+        "padding": "14px 17px",
+        "border-radius": "10px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "ask|small|": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgb(36, 35, 27)",
+        "border-top": "1px solid rgb(53, 52, 42)",
+        "border-right": "1px solid rgb(53, 52, 42)",
+        "border-bottom": "1px solid rgb(53, 52, 42)",
+        "border-left": "2px solid rgb(240, 185, 94)",
+        "display": "block",
+        "padding": "13px 16px",
+        "border-radius": "10px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "landed|small|": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "0px none rgb(246, 243, 234)",
+        "border-left": "1px solid rgb(53, 52, 42)",
+        "display": "flex",
+        "padding": "0px 0px 0px 9px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "15px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 0.48032786885245904
+      }
+    },
+    "state|small|": {
+      "chrome": {
+        "color": "rgb(205, 199, 180)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "1px solid rgb(116, 114, 95)",
+        "border-right": "1px solid rgb(116, 114, 95)",
+        "border-bottom": "1px solid rgb(116, 114, 95)",
+        "border-left": "1px solid rgb(116, 114, 95)",
+        "display": "block",
+        "padding": "2px 8px",
+        "border-radius": "999px",
+        "font-family": "\"IBM Plex Mono\", ui-monospace, monospace",
+        "font-size": "13px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "text",
+        "ratio": 1
+      }
+    },
+    "failure|small|": {
+      "chrome": {
+        "color": "rgb(246, 243, 234)",
+        "background-color": "rgba(0, 0, 0, 0)",
+        "border-top": "0px none rgb(246, 243, 234)",
+        "border-right": "0px none rgb(246, 243, 234)",
+        "border-bottom": "0px none rgb(246, 243, 234)",
+        "border-left": "0px none rgb(246, 243, 234)",
+        "display": "block",
+        "padding": "0px",
+        "border-radius": "0px",
+        "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+        "font-size": "13px",
+        "font-weight": "400",
+        "line-height": "normal"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "delivery-rule|wide": {
+      "chrome": {
+        "color": "rgb(53, 52, 42)",
+        "thickness": "1px"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    },
+    "delivery-rule|small": {
+      "chrome": {
+        "color": "rgb(53, 52, 42)",
+        "thickness": "1px"
+      },
+      "inlineSize": {
+        "kind": "row",
+        "ratio": 1
+      }
+    }
+  }
+}

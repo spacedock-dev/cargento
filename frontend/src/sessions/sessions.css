@@ -1,10 +1,6 @@
 @layer legacy {
-/* The Sessions screen and the session page, ported rule for rule from the legacy sheet's SESSIONS and
-   SESSION sections so the two renderers look alike (the browser parity test compares their layout at
-   320, 375 and 1280 CSS px). What is left behind belongs to later steps and is not drawn here: the
-   capacity strip and usage consent (Attention and capacity), and the Intent and drift panel's own
-   fields (Intent). Selectors are copied as written, `#app` included, because the React page draws the
-   same `<main id="app">` and the cascade has to resolve the same way. */
+/* Layout and semantic children stay in legacy. Adopted surface chrome lives in the Sessions
+   component recipes; docs/design-shadcn-adoption.md#sessions-layer records their cascade audit. */
 
 /* ===== Row dots and tones ===== */
 .next-project-tone--ok{--project-tone:var(--accent)}
@@ -56,8 +52,8 @@
 .next-operations-columns,#app .next-operation-row{grid-template-columns:minmax(0,1.2fr) 140px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 140px}
 .next-operations-columns{display:grid;border-bottom:1px solid var(--rule);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-operations-columns span{padding:9px 12px}
-#app .next-operation-row{display:grid;grid-template-columns:minmax(0,1.2fr) 140px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 140px;position:relative;width:100%;min-width:0;border-bottom:1px solid var(--line);color:var(--ink);text-decoration:none;cursor:pointer}
-.next-operation-row:hover{background:var(--panel)}
+#app .next-operation-row{grid-template-columns:minmax(0,1.2fr) 140px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 140px;position:relative;text-decoration:none;cursor:pointer}
+
 .next-operation-route{display:block;color:var(--ink);text-decoration-color:var(--line);text-underline-offset:3px}
 .next-operation-route::after{content:"";position:absolute;inset:0}
 .next-operation-route:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -123,7 +119,7 @@
   .next-operation-group>header{align-items:flex-start;flex-direction:column;gap:6px;padding-bottom:6px}
   .next-operation-group>header p{text-align:left}
   .next-operation-rows{display:grid;gap:12px;padding-top:6px}
-  #app .next-operation-row{grid-template-columns:minmax(0,1fr);border:1px solid var(--line);border-radius:var(--r-control);background:var(--panel)}
+  #app .next-operation-row{grid-template-columns:minmax(0,1fr)}
   .next-operation-identity{grid-column:auto}
   .next-operation-fact{display:grid;grid-template-columns:minmax(74px,.34fr) minmax(0,1fr);gap:4px 10px;border-top:1px solid var(--rule);border-left:0}
   .next-operation-fact small{grid-row:1 / span 2}
@@ -172,7 +168,7 @@
 .next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
 .next-session-activity{grid-column:1;grid-row:1;min-width:0}
 .next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
-.next-session-state{display:inline-block;margin:0;padding:2px var(--sp-2);border:1px solid var(--line);border-radius:var(--r-pill);color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
+
 /* Two rows: state, name and id; then the measured line with the controls on
    its right. One element per line took 205px and pushed Analyze drift to
    978-1022px at 1440x900 (DRC-4680 walk). */
@@ -186,10 +182,6 @@
 .next-instruction-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em;text-transform:uppercase}
 .next-session-detail-meta{margin:0;color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
 .next-session-command-surface{margin-top:0}
-.next-session-current{padding:14px 17px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
-.next-session-detail[data-tone="want"] .next-session-current{border-left-color:var(--amber)}
-.next-session-detail[data-tone="bad"] .next-session-current{border-left-color:var(--clay)}
-.next-session-detail[data-tone="ok"] .next-session-current{border-left-color:var(--accent)}
 .next-session-command-surface h2,.next-session-current-label{display:block;margin:0 0 10px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-current>strong,.next-session-command-facts strong,.next-session-command-context{display:block;margin:0;font-size:var(--fs-body);font-weight:500;line-height:1.5;overflow-wrap:anywhere}
 .next-session-current-subagents{margin-top:16px;border-top:1px solid var(--rule)}
@@ -197,7 +189,7 @@
 .next-session-command-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));border:1px solid var(--rule);border-top:0}
 .next-session-command-facts>section{min-width:0;padding:18px 20px}
 .next-session-command-facts>section+section{border-left:1px solid var(--rule)}
-.next-session-health{margin:20px 0 0;padding:14px 16px;border-left:3px solid var(--amber);background:var(--panel);color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
+.next-session-health{margin:20px 0 0}
 .next-session-health strong{color:var(--ink);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-health-separator{color:var(--ink2)}
 .next-session-section{padding:28px 0;border-bottom:1px solid var(--rule)}
@@ -208,8 +200,8 @@
 .next-session-ask+.next-session-ask{border-top:1px solid var(--rule)}
 .next-session-ask-question{margin:0 0 14px;font-size:var(--fs-body);line-height:1.6}
 .next-session-answer-options{display:flex;flex-wrap:wrap;gap:9px}
-.next-session-answer-empty,.next-session-answer-failure{margin:10px 0 0;color:var(--ink2);font-size:var(--fs-label)}
-.next-session-answer-failure{color:var(--ink)}
+.next-session-answer-empty{margin:10px 0 0;color:var(--ink2);font-size:var(--fs-label)}
+.next-session-answer-failure{margin:10px 0 0}
 .next-session-task,.next-session-subagent{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:44px;padding:9px 8px;border-top:1px solid var(--rule)}
 .next-session-task--pending{color:var(--ink2)}
 .next-session-task-subject,.next-session-subagent-name{font-size:var(--fs-body);font-weight:500}
@@ -226,7 +218,7 @@
 /* A missing way back, said once beside the controls it is about (DRC-4758 slice E). */
 .next-session-reentry-none{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;flex:1 1 100%;justify-content:flex-end;color:var(--ink2);font-size:var(--fs-body)}
 .next-session-reentry-none .next-departure-reentry-why{margin:4px 0 0}
-.next-session-section[data-next-session-section="ask"]{padding:13px 16px;border:1px solid var(--rule);border-left:2px solid var(--amber);border-radius:var(--r-card);background:var(--panel)}
+
 .next-session-ask-callout{margin:0;padding:0;border:0;background:transparent}
 .next-session-ask-callout>span{color:var(--amber);font-size:var(--fs-label);letter-spacing:.07em}
 .next-session-wait{color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label);letter-spacing:normal;text-transform:none}
@@ -332,7 +324,7 @@
    the only one who can act on a signal the machine failed to send. `no-lane` is
    the plain reading ink, because nothing was published. `handed-over` and `did-not-return` stay
    uncoloured: the first is not a delivery and the second is unknown. */
-.next-session-delivery{margin:14px 0 0;padding:10px 0 0;border-top:1px solid var(--rule)}
+.next-session-delivery{margin:14px 0 0}
 /* The same label shape as every other fact on this panel, and that is the
    correction rather than a preference: walked on a real board, the block was the
    only one here without an uppercase mono label, so it read as a loose paragraph
@@ -353,7 +345,7 @@
 [data-next-delivery="no-lane"] .next-session-delivery-why{color:var(--ink2)}
 
 .next-cockpit-landed-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
-.next-cockpit-landed-card{display:flex;flex-direction:column;gap:4px;padding-left:9px;border-left:1px solid var(--rule)}
+
 .next-cockpit-landed-label{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-landed-value{font:500 var(--fs-body)/1.55 var(--sans);color:var(--ink-value);max-width:var(--measure)}
 .next-cockpit-landed-value--absent{color:var(--ink-absence)}

@@ -45,10 +45,7 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, patience(ms))
 process.removeAllListeners('warning');
 const { attentionBoard } = await import('../test/attention_boards.ts');
 
-const SHOTS = join(REPOSITORY, 'docs/screenshots').replace(
-  /\/\.claude\/worktrees\/[^/]+\/docs\/screenshots$/,
-  '/docs/screenshots',
-);
+const SHOTS = join(REPOSITORY, 'docs/screenshots');
 const shotsOn = process.env.CARGENTO_SCREENSHOTS === '1';
 const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
 

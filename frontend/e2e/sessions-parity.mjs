@@ -95,7 +95,9 @@ const summarizeList = () => {
       empty: group.querySelector('.next-sessions-empty')
         ? norm(group.querySelector('.next-sessions-empty'))
         : null,
-      rows: [...group.querySelectorAll('article.next-operation-row')].map((row) => {
+      rows: [
+        ...group.querySelectorAll('article[data-slot="card"][data-variant="session-row"]'),
+      ].map((row) => {
         const route = row.querySelector('a.next-operation-route');
         return {
           harness: row.dataset.nextHarness,
@@ -154,7 +156,7 @@ const summarizeDetail = () => {
     'dl.next-session-facts',
     '[data-slot=accordion].next-session-facts-more',
     '.next-session-evidence',
-    '.next-session-health',
+    '[data-slot=alert][data-variant=session-health]',
     '[data-next-session-section="tasks"]',
     '[data-next-command-reports]',
     '.next-session-delivery',
@@ -164,7 +166,14 @@ const summarizeDetail = () => {
   const parts = [...clone.querySelector('.next-session-activity').children]
     .map((child) => {
       const hit = own.find((selector) => child.matches(selector));
-      return hit ? [hit.replace('[data-slot=accordion]', 'details'), norm(child)] : null;
+      return hit
+        ? [
+            hit
+              .replace('[data-slot=accordion]', 'details')
+              .replace('[data-slot=alert][data-variant=session-health]', '.next-session-health'),
+            norm(child),
+          ]
+        : null;
     })
     .filter(Boolean);
   const header = clone.querySelector('.next-session-detail-header');
@@ -324,7 +333,7 @@ try {
       const open = async (origin, opened_) => {
         await load(opened_, origin, '#n=sessions');
         const link = opened_.page.locator(
-          'article.next-operation-row[data-next-harness="codex"][data-next-session="colon:sid"] a.next-operation-route',
+          'article[data-slot="card"][data-variant="session-row"][data-next-harness="codex"][data-next-session="colon:sid"] a.next-operation-route',
         );
         await link.click();
         await opened_.page.waitForFunction(() => globalThis.location.hash.includes('session:'));
@@ -430,7 +439,7 @@ try {
       await load(react, board.react.origin, '#n=sessions');
       assert.equal(
         await react.page
-          .locator('article.next-operation-row')
+          .locator('article[data-slot="card"][data-variant="session-row"]')
           .first()
           .getAttribute('data-next-session'),
         'a\u0000b',
@@ -464,7 +473,7 @@ try {
         );
         for (let round = 0; round < 6; round += 1) {
           await live.page
-            .locator('article.next-operation-row a.next-operation-route')
+            .locator('article[data-slot="card"][data-variant="session-row"] a.next-operation-route')
             .first()
             .click();
           await live.page.waitForSelector('article.next-session-detail');
@@ -610,9 +619,16 @@ try {
         // This tab still holds the card: the stream is refused for it so it cannot learn otherwise before the press.
         await live.page.route('**/api/data*', (route) => route.abort('failed'));
         await live.page.locator('[data-next-answer-index="1"]').click();
-        await live.page.waitForSelector('.next-session-answer-failure');
+        await live.page.waitForSelector('[data-slot=alert][data-variant=answer-failure]');
         assert.equal(
-          await live.page.locator('.next-session-answer-failure').innerText(),
+          await live.page
+            .locator('[data-slot=alert][data-variant=answer-failure]')
+            .getAttribute('role'),
+          'status',
+          'the failure stays polite',
+        );
+        assert.equal(
+          await live.page.locator('[data-slot=alert][data-variant=answer-failure]').innerText(),
           'no confirmation came back — it may already have been answered',
         );
         assert.ok(
@@ -740,7 +756,10 @@ try {
         await o.page.keyboard.press('Escape');
         assert.deepEqual(await open(), [], 'Escape closed it');
         await o.page.getByText('What recent means').click();
-        await o.page.locator('article.next-operation-row a.next-operation-route').first().focus();
+        await o.page
+          .locator('article[data-slot="card"][data-variant="session-row"] a.next-operation-route')
+          .first()
+          .focus();
         assert.deepEqual(await open(), [], 'focus leaving closed it');
       } finally {
         await o.close();
@@ -758,7 +777,9 @@ try {
           .click();
         await o.page.evaluate(() => {
           const range = globalThis.document.createRange();
-          const target = globalThis.document.querySelector('.next-session-current > strong');
+          const target = globalThis.document.querySelector(
+            '[data-slot=card][data-variant=session-current] > strong',
+          );
           range.selectNodeContents(target);
           const selection = globalThis.getSelection();
           selection.removeAllRanges();

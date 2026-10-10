@@ -1,0 +1,86 @@
+/* Keys name surfaces and state attributes; widths are ratios so a platform's font metrics can vary. */
+export function measureSessionChrome() {
+  const surfaces = {
+    row: '[data-slot="card"][data-variant="session-row"]',
+    current: '[data-slot="card"][data-variant="session-current"]',
+    ask: '[data-slot="card"][data-variant="session-ask"]',
+    landed: '[data-slot="card"][data-variant="session-landed"]',
+    state: '[data-slot="badge"][data-variant="session-state"]',
+    health: '[data-slot="alert"][data-variant="session-health"]',
+    failure: '[data-slot="alert"][data-variant="answer-failure"]',
+  };
+  const rows = [];
+  for (const [surface, selector] of Object.entries(surfaces)) {
+    for (const el of document.querySelectorAll(selector)) {
+      const css = getComputedStyle(el);
+      const parent = getComputedStyle(el.parentElement);
+      const parentWidth =
+        el.parentElement.getBoundingClientRect().width -
+        parseFloat(parent.paddingLeft) -
+        parseFloat(parent.paddingRight) -
+        parseFloat(parent.borderLeftWidth) -
+        parseFloat(parent.borderRightWidth);
+      const tone = el.closest('[data-tone]')?.getAttribute('data-tone') ?? '';
+      const rowTone =
+        [...el.classList].find((name) => name.startsWith('next-operation-row--')) ?? '';
+      const key = `${surface}|${innerWidth <= 620 ? 'small' : innerWidth <= 1100 ? 'medium' : 'wide'}|${surface === 'current' ? tone : rowTone}`;
+      const width = el.getBoundingClientRect().width;
+      // A pill is content-sized: compare its excess over the actual text rather than absolute font width.
+      let inlineSize = { kind: 'row', ratio: parentWidth ? width / parentWidth : 0 };
+      if (surface === 'state') {
+        const range = document.createRange();
+        range.selectNodeContents(el.lastChild);
+        const textWidth = range.getBoundingClientRect().width;
+        inlineSize = {
+          kind: 'text',
+          ratio: textWidth
+            ? width /
+              (textWidth +
+                parseFloat(css.paddingLeft) +
+                parseFloat(css.paddingRight) +
+                parseFloat(css.borderLeftWidth) +
+                parseFloat(css.borderRightWidth))
+            : 0,
+        };
+      }
+      rows.push({
+        key,
+        chrome: Object.fromEntries(
+          [
+            'color',
+            'background-color',
+            'border-top',
+            'border-right',
+            'border-bottom',
+            'border-left',
+            'display',
+            'padding',
+            'border-radius',
+            'font-family',
+            'font-size',
+            'font-weight',
+            'line-height',
+          ].map((property) => [property, css.getPropertyValue(property)]),
+        ),
+        inlineSize,
+      });
+    }
+  }
+  for (const section of document.querySelectorAll('[data-next-delivery]')) {
+    const rule = section.querySelector('[data-slot="separator"]');
+    const css = getComputedStyle(rule ?? section);
+    const width = (rule ?? section).getBoundingClientRect().width;
+    rows.push({
+      key: `delivery-rule|${innerWidth <= 620 ? 'small' : innerWidth <= 1100 ? 'medium' : 'wide'}`,
+      chrome: {
+        color: rule ? css.backgroundColor : css.borderTopColor,
+        thickness: rule ? css.height : css.borderTopWidth,
+      },
+      inlineSize: {
+        kind: 'row',
+        ratio: width / section.parentElement.getBoundingClientRect().width,
+      },
+    });
+  }
+  return rows;
+}

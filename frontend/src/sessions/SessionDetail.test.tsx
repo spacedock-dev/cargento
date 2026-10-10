@@ -151,6 +151,39 @@ describe('answering a held request', () => {
     }
   });
 
+  it('exposes one polite failure notice and retains it silently through polls', async () => {
+    const page = await open(asked(), { answer: { kind: 'refuse' } });
+    const additions: Element[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches('[data-slot="alert"]')) additions.push(node);
+          additions.push(...node.querySelectorAll('[data-slot="alert"]'));
+        }
+      }
+    });
+    observer.observe(page.container, { childList: true, subtree: true });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /^Yes$/ }));
+      await page.settle();
+      const notice = failure();
+      expect(notice).not.toBeNull();
+      expect(notice?.getAttribute('role')).toBe('status');
+      expect(notice?.getAttribute('aria-live')).not.toBe('assertive');
+      expect(additions).toEqual([notice]);
+      await page.poll(asked());
+      await page.poll(asked());
+      expect(failure()).toBe(notice);
+      expect(additions).toEqual([notice]);
+      expect(notice?.textContent).toBe(
+        'no confirmation came back — it may already have been answered',
+      );
+    } finally {
+      observer.disconnect();
+    }
+  });
+
   it('clears the failure sentence when a later press is confirmed, and retires the question only when the board stops carrying it', async () => {
     const page = await open(asked(), { answer: { kind: 'refuse' } });
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
