@@ -57,7 +57,9 @@ function summarize(article: ParentNode, tab: string): Summary {
           link.hasAttribute('aria-current'),
         ] as const,
     ),
-    switcher: norm(article.querySelector('.next-cockpit-scope-switcher > summary')),
+    switcher: norm(
+      article.querySelector('.next-cockpit-scope-switcher [data-slot=accordion-trigger]'),
+    ),
     strip: norm(strip),
     stripLinks: [...(strip?.querySelectorAll('a') ?? [])].map((link) => link.getAttribute('href')),
     stripAttrs: [

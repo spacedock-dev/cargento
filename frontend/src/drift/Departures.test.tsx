@@ -55,7 +55,9 @@ describe('the departures section', () => {
     await page.settle();
     await page.settle();
     const section = document.querySelector('.next-cockpit-departures') as HTMLElement;
-    expect(section.querySelector('summary')?.textContent).toBe('Raised while you were away: 2');
+    expect(section.querySelector('[data-slot=accordion-trigger]')?.textContent).toBe(
+      'Raised while you were away: 2',
+    );
     const text = section.textContent ?? '';
     expect(text).toContain('2 departures were raised');
     expect(text).toContain('read against revision 2');

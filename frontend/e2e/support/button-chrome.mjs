@@ -12,7 +12,7 @@ export function normaliseButtonKey(key) {
   return parts.join(' | ');
 }
 
-export function measureButtonChrome(normaliseKey) {
+export function measureButtonChrome(normaliseKey, disclosures = false) {
   const semantic = (el) =>
     [...el.classList]
       .filter(
@@ -24,7 +24,10 @@ export function measureButtonChrome(normaliseKey) {
       )
       .sort()
       .join('.');
-  return [...document.querySelectorAll('button')].map((el) => {
+  const selector = disclosures
+    ? '.ctl-disclosure:not(.ctl-disclosure--pop) > summary,[data-slot=accordion-trigger],[data-slot=collapsible-trigger]'
+    : 'button:not([data-slot=accordion-trigger]):not([data-slot=collapsible-trigger])';
+  return [...document.querySelectorAll(selector)].map((el) => {
     const path = [];
     for (let node = el.parentElement; node && node.id !== 'app'; node = node.parentElement) {
       const classes = semantic(node);
@@ -48,14 +51,18 @@ export function measureButtonChrome(normaliseKey) {
       'aria-busy',
     ];
     const state = attrs
-      .filter((name) => el.hasAttribute(name))
+      .filter(
+        (name) =>
+          el.hasAttribute(name) &&
+          !(disclosures && name === 'aria-disabled' && el.getAttribute(name) === 'false'),
+      )
       .map((name) => `${name}=${el.getAttribute(name)}`)
       .join(' ');
     const name = el.getAttribute('aria-label') || text.textContent.replace(/\s+/g, ' ').trim();
     const css = getComputedStyle(el);
     return {
       key: normaliseKey(
-        `${path.join(' > ')} | ${semantic(el)} | ${name} | ${state} | disabled=${el.disabled} hidden=${el.hidden}`,
+        `${path.join(' > ')} | ${semantic(el)} | ${name} | ${state} | disabled=${el.disabled ?? false} hidden=${el.hidden}`,
       ),
       chrome: Object.fromEntries(
         [

@@ -125,7 +125,7 @@ describe('the Course tab reads as the legacy tab does', () => {
             for (const sentence of model.missing)
               if (!text.includes(sentence))
                 failures.push(`${at} evidence: missing sentence ${sentence} not drawn`);
-            if ((model.details === null) !== !html.includes('<details'))
+            if ((model.details === null) !== !html.includes('data-slot="accordion"'))
               failures.push(`${at} evidence: disclosure offered differently`);
             if (
               model.details &&

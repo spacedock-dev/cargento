@@ -26,7 +26,6 @@
   --ctl-dur: var(--disclose-dur, 200ms);
   --ctl-pop-dur: var(--disclose-pop-dur, 160ms);
   --ctl-ease: var(--disclose-ease, ease-in-out);
-  interpolate-size: allow-keywords;
 }
 
 .ctl-visually-hidden {
@@ -48,15 +47,18 @@
 }
 
 /* ===== Disclosures =====
-   An accordion eases its height and fade; a popover floats out of flow beside its
-   summary so opening it moves nothing. Motion comes only from transitions on
-   ::details-content, which run when the reader flips `open` on a node already
-   drawn: the component writes `open` into the markup at mount, so a remount starts
-   open and replays nothing. @starting-style, keyframes on [open] and a toggle
-   animation all replay on every poll, measured, and are not used. No transform on
-   ::details-content: it would become the popover body's containing block and move
-   the anchor. */
+   Native popovers and menus retain their opacity transition. Adopted panels own
+   height motion through Base UI's measured variable, without remount animations. */
+.ctl-disclosure :where([data-slot='accordion-trigger'], [data-slot='collapsible-trigger']) {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  text-align: start;
+}
 .ctl-disclosure > summary,
+.ctl-disclosure [data-slot='accordion-trigger'],
+.ctl-disclosure [data-slot='collapsible-trigger'],
 .ctl-menu > summary {
   display: flex;
   align-items: center;
@@ -130,20 +132,6 @@
 }
 
 @supports selector(::details-content) {
-  .ctl-disclosure:not(.ctl-disclosure--pop)::details-content {
-    block-size: 0;
-    overflow: clip;
-    overflow-clip-margin: 6px;
-    opacity: 0;
-    transition:
-      block-size var(--ctl-dur) var(--ctl-ease),
-      opacity var(--ctl-dur) var(--ctl-ease),
-      content-visibility var(--ctl-dur) var(--ctl-ease) allow-discrete;
-  }
-  .ctl-disclosure:not(.ctl-disclosure--pop)[open]::details-content {
-    block-size: auto;
-    opacity: 1;
-  }
   .ctl-disclosure--pop::details-content,
   .ctl-menu::details-content {
     opacity: 0;
@@ -157,7 +145,6 @@
   }
   /* Its own rule: a selector list holding an unsupported pseudo-element invalidates the whole rule. */
   @media (prefers-reduced-motion: reduce) {
-    .ctl-disclosure:not(.ctl-disclosure--pop)::details-content,
     .ctl-disclosure--pop::details-content,
     .ctl-menu::details-content {
       transition: none;

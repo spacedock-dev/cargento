@@ -1,3 +1,8 @@
+import { useLayoutEffect, type ReactNode } from 'react';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../ui/collapsible';
+import { useControls } from '../controls/kit';
+import { useControlledDisclosureState } from '../controls/useDisclosureState';
+import { useRevealFragment } from '../controls/useRevealFragment';
 import { compatSessKey } from '../api/identity';
 import { nextNumber } from '../api/bootstrap';
 import { Disclosure, disclosureKey } from '../controls';
@@ -108,6 +113,41 @@ function discardView(panel: ReturnType<typeof usePanel>): DiscardView | null {
   };
 }
 
+function ArmedDiscard({ name, children }: { readonly name: string; readonly children: ReactNode }) {
+  const { ctx, session } = usePanel();
+  const controls = useControls();
+  const open = useControlledDisclosureState(controls.disclosures, name);
+  const panelRef = useRevealFragment(name);
+  useLayoutEffect(() => {
+    controls.disclosures.set(name, true);
+    return () => controls.disclosures.set(name, false);
+  }, [controls, name]);
+  return (
+    <Collapsible
+      className="ctl-disclosure next-cockpit-held-discard-offer"
+      open={open}
+      onOpenChange={(next, detail) => {
+        if (detail.reason === 'trigger-press') controls.noteToggle();
+        controls.disclosures.set(name, next);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape' || !disarmDiscard(ctx, session)) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
+      <CollapsibleTrigger>Discard everything</CollapsibleTrigger>
+      <CollapsibleContent
+        ref={panelRef}
+        hiddenUntilFound
+        className="transition-none h-auto data-[starting-style]:h-auto data-[ending-style]:h-auto data-[starting-style]:opacity-100 data-[ending-style]:opacity-100"
+      >
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function DiscardBlock({ view }: { readonly view: DiscardView }) {
   const { ctx, session } = usePanel();
   const key = discardKey(session);
@@ -130,26 +170,15 @@ function DiscardBlock({ view }: { readonly view: DiscardView }) {
   return (
     <div className="next-cockpit-held-discard">
       {offer ? (
-        /* Armed, it is drawn open and outside the restore lane, so a redraw cannot shut the warning that
-           describes the armed control. */
+        /* Arming gives the warning its own store key, initially open; the ordinary offer keeps its reader state. */
         armed ? (
-          <details
-            key="armed"
-            className="ctl-disclosure next-cockpit-held-discard-offer"
-            open
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape' || !disarmDiscard(ctx, session)) return;
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-          >
-            <summary>Discard everything</summary>
+          <ArmedDiscard name={`${name}:armed`}>
             {why ? <p className="next-cockpit-held-absent">{why}</p> : null}
             {button}
             <p className="next-cockpit-held-absent" id="next-cockpit-discard-armed">
               {warning}
             </p>
-          </details>
+          </ArmedDiscard>
         ) : (
           <Disclosure
             disclosureKey={name}

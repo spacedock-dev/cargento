@@ -56,6 +56,14 @@ import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome
 const BUTTON_TABLE = JSON.parse(
   await readFile(new URL('./button-chrome-reference.json', import.meta.url), 'utf8'),
 );
+const disclosureKey = (key) => key.replace(/\b\d{1,2}:\d{2}\b/g, '<clock>');
+const DISCLOSURE_REFERENCE = Object.fromEntries(
+  Object.entries(
+    JSON.parse(
+      await readFile(new URL('./disclosure-chrome-reference.json', import.meta.url), 'utf8'),
+    ).instances,
+  ).map(([key, chrome]) => [disclosureKey(key), chrome]),
+);
 const BUTTON_REFERENCE = Object.fromEntries(
   Object.entries(BUTTON_TABLE.instances).map(([key, profile]) => [
     key,
@@ -96,6 +104,22 @@ const MUTATIONS = {
       'capacity/capacity.css',
       '.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-label)}',
       '.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-hero)}',
+    ],
+  ],
+  'disclosure-type-small': [
+    ['styles/controls.css', 'font: inherit;', 'font: var(--fs-label) var(--sans);'],
+  ],
+  'disclosure-cascade-colour': [
+    ['styles/controls.css', 'color: var(--ctl-ink2);', 'color: var(--ctl-ink);'],
+  ],
+  'disclosure-target-removed': [
+    ['ui/accordion.tsx', 'min-h-[44px] min-w-[44px]', 'min-h-0 min-w-0'],
+  ],
+  'disclosure-focus-removed': [
+    [
+      'ui/accordion.tsx',
+      'focus-visible:outline-2 focus-visible:outline-solid',
+      'focus-visible:outline-none',
     ],
   ],
   'button-size-removed': [['ui/button.tsx', 'text-body', 'text-label']],
@@ -187,7 +211,6 @@ const INVENTORY = {
     'main > nav.next-breadcrumb > span',
     'section.next-capacity > div.next-capacity-models > i',
     'section.next-capacity > div.next-capacity-row.next-capacity-more > i',
-    'section.next-cockpit-recovery > header > small.next-cockpit-recovery-gloss',
     'section.next-cockpit-semantic > section.pc-semantic-timeline > p.pc-substrate-empty',
     'section.next-control.next-guardrails > header.next-rail-header > span.next-rail-meta',
     'section.next-project-activity > div.next-activity-cards > p.next-activity-empty',
@@ -589,6 +612,7 @@ const measured = {
   groups: [],
   buttons: [],
   chrome: [],
+  disclosureChrome: [],
 };
 
 const SURFACES = {
@@ -656,6 +680,18 @@ async function measure(opened, view, { walk = false } = {}) {
   measured.views.push(view);
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
     measured.chrome.push({ view, ...row });
+  for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey}, true)`))
+    measured.disclosureChrome.push({ view, ...row, key: disclosureKey(row.key) });
+  const openedPanels = await page.evaluate(() => {
+    const triggers = [
+      ...document.querySelectorAll(
+        '[data-slot=accordion-trigger][aria-expanded=false],[data-slot=collapsible-trigger][aria-expanded=false]',
+      ),
+    ];
+    for (const trigger of triggers) trigger.click();
+    return triggers.length;
+  });
+  if (openedPanels) await page.waitForTimeout(patience(250));
   const { rows, registers, groups, buttons, linkColour, scheme } = await page.evaluate(measureText);
   measured.registers ??= registers;
   measured.palette = registers;
@@ -963,6 +999,31 @@ function checks() {
   const text = measured.text.filter((row) => !row.hidden);
   const regs = measured.registers;
 
+  step_('disclosures: every real-route trigger keeps its pre-adoption chrome', () => {
+    const failures = [];
+    const seen = new Set();
+    for (const row of measured.disclosureChrome) {
+      seen.add(row.key);
+      const expected = DISCLOSURE_REFERENCE[row.key];
+      if (!expected || JSON.stringify(expected) !== JSON.stringify(row.chrome)) failures.push(row);
+    }
+    assert.deepEqual(
+      failures.slice(0, 15).map((row) => ({ ...row, expected: DISCLOSURE_REFERENCE[row.key] })),
+      [],
+      `${failures.length} disclosure chrome differences`,
+    );
+    assert.ok(
+      measured.disclosureChrome.length >= 50,
+      'too few disclosure triggers reached the chrome gate',
+    );
+    if (WORLDS.length === 3)
+      assert.deepEqual(
+        Object.keys(DISCLOSURE_REFERENCE).filter((key) => !seen.has(key)),
+        [],
+        'a baseline disclosure was not reached',
+      );
+    return `${measured.disclosureChrome.length} instances against 7d4a23c3`;
+  });
   step_('buttons: every real-route instance keeps its pre-adoption chrome', () => {
     const failures = new Map();
     const seen = new Set();
@@ -1271,6 +1332,35 @@ async function checkButtonGallery(browser) {
           }));
           assert.equal(ring.width, '2px');
           assert.equal(ring.style, 'solid');
+        }
+        const triggers = opened.page.locator(
+          '[data-slot=accordion-trigger],[data-slot=collapsible-trigger]',
+        );
+        assert.equal(await triggers.count(), 3);
+        for (const trigger of await triggers.all()) {
+          const metrics = await trigger.evaluate((el) => {
+            const box = el.getBoundingClientRect();
+            return {
+              width: box.width,
+              height: box.height,
+              px: parseFloat(getComputedStyle(el).fontSize),
+            };
+          });
+          assert.ok(
+            metrics.width >= 44 && metrics.height >= 44,
+            'adopted disclosure gallery has 44 px targets',
+          );
+          assert.equal(metrics.px, 15, 'adopted disclosure gallery stays on the sentence step');
+          await trigger.focus();
+          const ring = await trigger.evaluate((el) => ({
+            width: getComputedStyle(el).outlineWidth,
+            style: getComputedStyle(el).outlineStyle,
+          }));
+          assert.deepEqual(
+            ring,
+            { width: '2px', style: 'solid' },
+            'adopted disclosure gallery has an authored focus ring',
+          );
         }
         const hover = opened.page.locator('[data-example="hover"]');
         assert.equal(

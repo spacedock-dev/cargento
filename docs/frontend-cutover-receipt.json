@@ -1369,7 +1369,7 @@
       }
     },
     "reader_state": {
-      "An open disclosure (`<details>`)": {
+      "An open disclosure": {
         "status": "proven",
         "proofs": [
           {
@@ -1382,6 +1382,18 @@
           },
           {
             "fluidity": "edited_or_open_node_replacements"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "fragment navigation reveals hidden-until-found content, survives polls and a remount, and works on a fresh load"
+          },
+          {
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "Enter and Space toggle controlled siblings independently and retain trigger focus"
+          },
+          {
+            "vitest": "frontend/src/controls/focusLane.test.tsx",
+            "test": "keeps trigger focus across a poll and restores it to a same-key replacement"
           }
         ]
       },
@@ -1731,7 +1743,7 @@
           },
           {
             "vitest": "frontend/src/intent/IntentAdoption.test.tsx",
-            "test": "reads the prompts once per opening, by the reader’s gesture, and never from a poll"
+            "test": "reads the prompts once per opening, by the reader\u2019s gesture, and never from a poll"
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
@@ -2538,7 +2550,7 @@
         "proofs": [
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, as recorded"
+            "step": "keyboard: Tab reaches a row\u2019s link, Enter opens the session, Escape returns, as recorded"
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",

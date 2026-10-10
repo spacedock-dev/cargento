@@ -56,10 +56,10 @@
 .next-cockpit-console-status{margin:0;padding:9px 12px;border-bottom:1px solid var(--rule);color:var(--ink2);font:var(--fs-label) var(--sans)}
 .next-cockpit-console-setup{margin:0;padding:9px 12px;border-top:1px solid var(--rule)}
 .next-cockpit-console-setup>ul{margin:8px 0 0;padding-left:18px}
-.next-cockpit-console-status summary{cursor:pointer}
+.next-cockpit-console-status>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"]{cursor:pointer}
 .next-cockpit-console-status ul{margin:8px 0 0;padding-left:18px}
-.next-cockpit-plan-details>summary,.next-cockpit-console-status>summary,
-.next-cockpit-console-setup>summary{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px;max-width:var(--measure)}
+.next-cockpit-plan-details>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"],.next-cockpit-console-status>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"],
+.next-cockpit-console-setup>[data-slot="accordion-item"]>div>[data-slot="accordion-trigger"]{align-content:center;padding:4px 0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px;max-width:var(--measure)}
 .next-cockpit-content .next-rail-meta--amber{color:var(--ink2)}
 @media(max-width:760px){
   .next-cockpit-panel[data-next-cockpit-panel="console"]>.next-project-detail-rail{grid-template-columns:minmax(0,1fr)}

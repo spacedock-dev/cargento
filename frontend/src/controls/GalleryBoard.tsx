@@ -1,3 +1,6 @@
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../ui/collapsible';
+import { useControlledDisclosureState } from './useDisclosureState';
+import { useRevealFragment } from './useRevealFragment';
 import { Button, buttonVariants } from '../ui/button';
 import { useState } from 'react';
 import { memoKey } from '../storage';
@@ -25,6 +28,28 @@ function ParkedControl() {
     <Button variant="bare" type="button" ref={ref}>
       Parked control
     </Button>
+  );
+}
+
+function GalleryCollapsible() {
+  const controls = useControls();
+  const key = 'gallery-collapsible';
+  const open = useControlledDisclosureState(controls.disclosures, key);
+  const panelRef = useRevealFragment(key);
+  return (
+    <Collapsible
+      className="ctl-disclosure"
+      open={open}
+      onOpenChange={(next, detail) => {
+        if (detail.reason === 'trigger-press') controls.noteToggle();
+        controls.disclosures.set(key, next);
+      }}
+    >
+      <CollapsibleTrigger>Collapsible section</CollapsibleTrigger>
+      <CollapsibleContent ref={panelRef} hiddenUntilFound>
+        <p id="collapsible-fragment">Small collapsible body</p>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -150,11 +175,21 @@ export function GalleryBoard({ world }: { world: World }) {
             <Disclosure
               disclosureKey={disclosureKey({ project, scope: null, name: 'plan' })}
               summary="Project plan"
+              focusKey="gallery-plan"
             >
-              <p data-readout="plan-body">{`Plan as of board ${String(displayedAccepted)}`}</p>
+              <p
+                id="disclosure-fragment"
+                data-readout="plan-body"
+              >{`Plan as of board ${String(displayedAccepted)}`}</p>
               <Button variant="bare" type="button">
                 Inside the plan
               </Button>
+            </Disclosure>
+            <Disclosure
+              disclosureKey={disclosureKey({ project, scope: null, name: 'other' })}
+              summary="Independent section"
+            >
+              <p>Another small section</p>
             </Disclosure>
             <Disclosure
               disclosureKey={disclosureKey({ project, scope: null, name: 'why' })}
@@ -166,6 +201,8 @@ export function GalleryBoard({ world }: { world: World }) {
           </>
         ) : null}
       </section>
+
+      <GalleryCollapsible />
 
       <section aria-label="Project menu">
         <MoreMenu

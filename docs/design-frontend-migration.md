@@ -40,6 +40,11 @@ legacy page said; they say nothing the React page was not also asserted to do. S
 port was "run next to" or "compared with" the legacy page describe how it was proved while that page
 existed.
 
+Accordion adoption keeps recorded labels, text and independent open-state observations, while
+proofs locate the new triggers and panels by their slots. A session-facts part retains its recorded
+logical part name after the former `details` tag becomes an Accordion root. The fixture files are
+unchanged. The adoption record owns the component chrome reference and the mounted-panel limits.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script

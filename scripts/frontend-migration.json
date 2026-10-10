@@ -769,14 +769,15 @@
   ],
   "reader_state": [
     {
-      "name": "An open disclosure (`<details>`)",
+      "name": "An open disclosure",
       "owner": "DRC-4823",
       "oracles": [
         "frontend/src/controls/Disclosure.test.tsx",
+        "frontend/src/controls/focusLane.test.tsx",
         "frontend/e2e/controls-continuity.mjs",
         "docs/frontend-fluidity.json"
       ],
-      "contract": "Derive open state from the subscribed keyed store and preserve summary focus. Newer writes supersede queued native toggles, native fragment revelation is retained, and remounts do not replay opening motion.",
+      "contract": "Controlled Accordion and Collapsible derive value/open from the subscribed keyed store. Independent siblings remain open together; trigger focus and the 220 ms motion hold survive polls. hiddenUntilFound publishes beforematch revelation; hashes are reapplied after panel mount for fresh-load targets. Native popovers and menus retain version precedence and dismissal; remounts replay no opening motion.",
       "disposition": "stable-identity"
     },
     {

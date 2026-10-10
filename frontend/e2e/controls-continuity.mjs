@@ -47,6 +47,45 @@ const MUTATIONS = {
   'no-select-hold': [
     ['src/controls/displayGate.ts', 'isHeld: options.isChoiceOpen,', 'isHeld: () => false,'],
   ],
+  'ignore-trigger-keys': [
+    [
+      'src/ui/accordion.tsx',
+      '<AccordionPrimitive.Trigger',
+      '<AccordionPrimitive.Trigger onKeyDown={(event) => event.preventDefault()}',
+    ],
+  ],
+  'no-hidden-until-found': [
+    ['src/controls/Disclosure.tsx', 'hiddenUntilFound', 'hiddenUntilFound={false}'],
+  ],
+  'no-fresh-fragment': [
+    [
+      'src/controls/useRevealFragment.ts',
+      "history.replaceState(history.state, '', window.location.pathname + window.location.search);\n      window.location.replace(hash);",
+      'void hash;',
+    ],
+  ],
+  'fragment-history-entry': [
+    [
+      'src/controls/useRevealFragment.ts',
+      'window.location.replace(hash);',
+      'window.location.hash = hash;',
+    ],
+  ],
+  'fragment-identity-ignored': [
+    [
+      'src/controls/useRevealFragment.ts',
+      'const mark = JSON.stringify([identity, hash]);',
+      'const mark = hash;',
+    ],
+  ],
+  'no-panel-motion': [['src/ui/accordion.tsx', 'transition-[height,opacity]', 'transition-none']],
+  'no-reduced-motion': [
+    [
+      'src/ui/accordion.tsx',
+      'motion-reduce:transition-none motion-reduce:h-auto motion-reduce:data-[starting-style]:h-auto motion-reduce:data-[ending-style]:h-auto motion-reduce:data-[starting-style]:opacity-100 motion-reduce:data-[ending-style]:opacity-100',
+      '',
+    ],
+  ],
   'no-motion-hold': [
     [
       'src/store/commit-gate.ts',
@@ -64,12 +103,16 @@ const MUTATIONS = {
   'remount-disclosure': [
     [
       'src/controls/Disclosure.tsx',
-      'return <DisclosureNode key={props.disclosureKey} {...props} />;',
-      'return <DisclosureNode key={props.disclosureKey + String(Math.random())} {...props} />;',
+      '<AccordionDisclosure key={props.disclosureKey} {...props} />',
+      '<AccordionDisclosure key={props.disclosureKey + String(Math.random())} {...props} />',
     ],
   ],
   'drop-disclosure-memory': [
-    ['src/controls/useDisclosureState.ts', 'store.set(key, pending.open);', 'void key;'],
+    [
+      'src/controls/Disclosure.tsx',
+      'controls.disclosures.set(disclosureKey, value.includes(disclosureKey));',
+      'void value;',
+    ],
   ],
   'scroll-offscreen-focus': [
     [
@@ -139,7 +182,19 @@ try {
   );
   await writeFile(
     join(copy, 'frontend/src/main.tsx'),
-    "import { mountGallery } from './controls/gallery';\nconst root = document.getElementById('root');\nif (!root) throw new Error('missing root');\nmountGallery(root);\n",
+    `import { mountGallery } from './controls/gallery';
+const root = document.getElementById('root');
+if (!root) throw new Error('missing root');
+if (new URLSearchParams(location.search).has('late')) {
+  window.addEventListener('load', () => {
+    Object.assign(window, {
+      __fragmentAbsentAtLoad: !document.getElementById(location.hash.slice(1)),
+      __fragmentHistoryLength: history.length,
+    });
+    setTimeout(() => mountGallery(root), 500);
+  }, { once: true });
+} else mountGallery(root);
+`,
   );
   for (const [file, needle, replacement] of MUTATIONS[mutation] ?? []) {
     const path = join(copy, 'frontend', file);
@@ -201,20 +256,22 @@ try {
     }, 3200);
     return () => clearInterval(timer);
   };
-  /* `transitionrun` is not dispatched for ::details-content in Chromium 153, though the transition runs
-     (measured: opacity and block-size interpolate over 200 ms with no event). So motion is read where it
-     shows: a frame whose ::details-content opacity is strictly between 0 and 1 is a frame of easing. */
-  const ACCORDION = 'details.ctl-disclosure:not(.ctl-disclosure--pop)';
+  /* Sample interpolated opacity on the adopted panel; event counts alone do not
+     prove that frames drew between the closed and open states. */
+  const ACCORDION =
+    '[data-slot=accordion]:has([data-slot=accordion-trigger]:text-is("Project plan"))';
   const startSampler = (target) =>
     target.evaluate(() => {
-      globalThis.__motion = { easing: 0, frames: 0 };
+      globalThis.__motion = { easing: 0, frames: 0, heights: [] };
       globalThis.__sampling = true;
       const tick = () => {
         if (!globalThis.__sampling) return;
-        const details = document.querySelector('details.ctl-disclosure:not(.ctl-disclosure--pop)');
+        const details = document.querySelector('[data-slot=accordion-content]');
         if (details) {
-          const opacity = Number(getComputedStyle(details, '::details-content').opacity);
+          const opacity = Number(getComputedStyle(details).opacity);
           globalThis.__motion.frames += 1;
+          if (details.hasAttribute('data-open'))
+            globalThis.__motion.heights.push(details.getBoundingClientRect().height);
           if (opacity > 0.001 && opacity < 0.999) globalThis.__motion.easing += 1;
         }
         requestAnimationFrame(tick);
@@ -236,27 +293,95 @@ try {
     page.locator(selector).evaluate((node, key) => globalThis.__marks[key] === node, name);
 
   await step(
-    'fragment navigation reveals a closed native disclosure and survives a poll and remount',
+    'fragment navigation reveals hidden-until-found content, survives polls and a remount, and works on a fresh load',
     async () => {
       await load();
-      const trigger = page.getByText('Project plan', { exact: true });
-      assert.equal(await trigger.evaluate((node) => node.parentElement.open), false);
-      await trigger.evaluate((node) => {
-        const details = node.parentElement;
-        const body = document.createElement('p');
-        body.id = 'native-disclosure-fragment';
-        body.textContent = 'Native find target';
-        details.append(body);
-        globalThis.location.hash = '#native-disclosure-fragment';
+      const trigger = page.getByRole('button', { name: 'Project plan', exact: true });
+      assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+      await page.evaluate(() => {
+        globalThis.location.hash = '#disclosure-fragment';
       });
-      await page.waitForFunction(() => globalThis.__gallery.controls.disclosures.size() > 0);
-      assert.equal(await trigger.evaluate((node) => node.parentElement.open), true);
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-slot=accordion-trigger]')?.getAttribute('aria-expanded') ===
+          'true',
+      );
       await settleRefresh(2);
-      assert.equal(await trigger.evaluate((node) => node.parentElement.open), true);
       await page.getByRole('button', { name: 'Hide disclosures' }).click();
       await page.getByRole('button', { name: 'Show disclosures' }).click();
-      assert.equal(await trigger.evaluate((node) => node.parentElement.open), true);
-      return { nativeFragment: true, remountedOpen: true };
+      assert.equal(await trigger.getAttribute('aria-expanded'), 'true');
+      // Different query strings force new documents. Mount after load, when the
+      // browser's first fragment pass has already found no target.
+      await page.goto(`${dev.origin}/?strict=1&late=accordion#disclosure-fragment`);
+      assert.equal(await page.evaluate(() => globalThis.__fragmentAbsentAtLoad), true);
+      await page.waitForFunction(
+        () =>
+          Number(document.querySelector('[data-readout="displayed-accepted"]')?.textContent) >= 1,
+      );
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-slot=accordion-trigger]')?.getAttribute('aria-expanded') ===
+          'true',
+      );
+      await page.locator('#disclosure-fragment').waitFor({ state: 'visible' });
+      assert.ok(await page.locator('#disclosure-fragment').isVisible());
+      assert.equal(
+        await page.evaluate(() => history.length === globalThis.__fragmentHistoryLength),
+        true,
+        'replaying a fragment added a Back-button stop',
+      );
+      await page.goto(`${dev.origin}/?strict=1&late=collapsible#collapsible-fragment`);
+      assert.equal(await page.evaluate(() => globalThis.__fragmentAbsentAtLoad), true);
+      await page.waitForFunction(
+        () =>
+          Number(document.querySelector('[data-readout="displayed-accepted"]')?.textContent) >= 1,
+      );
+      await page.waitForFunction(
+        () =>
+          document
+            .querySelector('[data-slot=collapsible-trigger]')
+            ?.getAttribute('aria-expanded') === 'true',
+      );
+      await page.locator('#collapsible-fragment').waitFor({ state: 'visible' });
+      assert.ok(await page.locator('#collapsible-fragment').isVisible());
+      assert.equal(
+        await page.evaluate(() => history.length === globalThis.__fragmentHistoryLength),
+        true,
+      );
+      return {
+        fragmentReveals: true,
+        freshLoadReveals: true,
+        realFindBar: 'cannot be driven by this tooling',
+      };
+    },
+  );
+
+  await step(
+    'Enter and Space toggle controlled siblings independently and retain trigger focus',
+    async () => {
+      await load();
+      for (const label of ['Project plan', 'Independent section', 'Collapsible section']) {
+        const trigger = page.getByRole('button', { name: label, exact: true });
+        await trigger.focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await trigger.getAttribute('aria-expanded'), 'true');
+        await page.keyboard.press('Space');
+        assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+        assert.equal(await trigger.evaluate((node) => document.activeElement === node), true);
+        await page.keyboard.press('Enter');
+      }
+      assert.equal(
+        await page
+          .getByRole('button', { name: 'Project plan', exact: true })
+          .getAttribute('aria-expanded'),
+        'true',
+      );
+      assert.equal(
+        await page
+          .getByRole('button', { name: 'Independent section', exact: true })
+          .getAttribute('aria-expanded'),
+        'true',
+      );
     },
   );
 
@@ -390,7 +515,7 @@ try {
       const plan = page.locator(ACCORDION);
       await mark(ACCORDION, 'plan');
       await startSampler(page.locator('body'));
-      await plan.locator('summary').click();
+      await plan.locator('[data-slot=accordion-trigger]').click();
       await pause(400);
       const eased = await readSampler(page.locator('body'));
       // One intermediate frame is the proof: the 200 ms ease is sampled once per frame, and a loaded runner draws about 35 of them a second.
@@ -402,9 +527,9 @@ try {
         globalThis.__openMutations = 0;
         new MutationObserver((records) => {
           globalThis.__openMutations += records.length;
-        }).observe(globalThis.__marks.plan, { attributes: true, attributeFilter: ['open'] });
+        }).observe(globalThis.__marks.plan, { attributes: true, attributeFilter: ['data-open'] });
       });
-      await plan.locator('summary').focus();
+      await plan.locator('[data-slot=accordion-trigger]').focus();
       await startSampler(page.locator('body'));
       const before = await accepted();
       await settleRefresh(4);
@@ -415,11 +540,11 @@ try {
       await pause(500);
       const idle = await readSampler(page.locator('body'));
       assert.equal(await same(ACCORDION, 'plan'), true, 'the node was replaced');
-      assert.equal(await plan.evaluate((node) => node.open), true);
+      assert.equal(await plan.evaluate((node) => node.hasAttribute('data-open')), true);
       assert.equal(await page.evaluate(() => globalThis.__openMutations), 0, 'open was rewritten');
       assert.equal(idle.easing, 0, `a redraw replayed the opening motion (${idle.easing} frames)`);
       assert.ok(idle.frames > 3, 'the frame sampler was not running');
-      assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'SUMMARY');
+      assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'BUTTON');
       assert.match(await readout('plan-body').textContent(), /board \d+/);
     },
   );
@@ -428,7 +553,7 @@ try {
     'a disclosure the reader opened comes back open, with no motion, after its view is left and re-entered',
     async () => {
       await load();
-      await page.locator(ACCORDION).locator('summary').click();
+      await page.locator(ACCORDION).locator('[data-slot=accordion-trigger]').click();
       await page.locator('summary:text-is("Why")').click();
       await pause(400);
       await page.locator('button:text-is("Hide disclosures")').click();
@@ -438,7 +563,7 @@ try {
       await pause(400);
       const motion = await readSampler(page.locator('body'));
       assert.equal(
-        await page.locator(ACCORDION).evaluate((node) => node.open),
+        await page.locator(ACCORDION).evaluate((node) => node.hasAttribute('data-open')),
         true,
         'the open state was lost',
       );
@@ -456,14 +581,14 @@ try {
     'a reader toggle holds the poll for the motion window (220 ms) and coalesces it',
     async () => {
       await load();
-      const plan = page.locator('details:has(> summary:text-is("Project plan"))');
+      const plan = page.locator(ACCORDION);
       const timing = async () =>
         page.evaluate(async () => {
           const read = () =>
             Number(document.querySelector('[data-readout="displayed-accepted"]').textContent);
           const before = read();
           const started = performance.now();
-          document.querySelector('details > summary').click();
+          document.querySelector('[data-slot=accordion-trigger]').click();
           const pending = globalThis.__gallery.runtime.refresh();
           let shown = null;
           for (;;) {
@@ -480,7 +605,7 @@ try {
       const held = await timing();
       assert.ok(held !== null && held >= 180, `the poll painted ${held} ms after a toggle`);
       assert.ok(held < 3000, `the poll waited ${held} ms`);
-      await plan.locator('summary').click();
+      await plan.locator('[data-slot=accordion-trigger]').click();
       await pause(300);
       return { heldMs: Math.round(held) };
     },
@@ -853,7 +978,7 @@ try {
       await load();
       await page.locator('summary[aria-label="More"]').click();
       await page.locator('summary:text-is("Why")').click();
-      await page.locator('summary:text-is("Project plan")').click();
+      await page.getByRole('button', { name: 'Project plan', exact: true }).click();
       await page.getByRole('button', { name: 'Edit FOCUS' }).click();
       const report = {};
       for (const width of widths) {
@@ -874,7 +999,7 @@ try {
             ),
           small: [
             ...document.querySelectorAll(
-              '#gallery [data-copy-kind], #gallery [data-control="raise"], #gallery [data-slot="button"], #gallery summary, #gallery .ctl-menu-items button, #gallery .ctl-memo button',
+              '#gallery [data-copy-kind], #gallery [data-control="raise"], #gallery [data-slot="button"], #gallery summary, #gallery [data-slot=accordion-trigger], #gallery [data-slot=collapsible-trigger], #gallery .ctl-menu-items button, #gallery .ctl-memo button',
             ),
           ]
             .filter((node) => {
@@ -915,16 +1040,30 @@ try {
       () => Number(document.querySelector('[data-readout="displayed-accepted"]')?.textContent) >= 1,
     );
     await startSampler(reduced.page.locator('body'));
-    await reduced.page.locator('summary:text-is("Project plan")').click();
+    await reduced.page.getByRole('button', { name: 'Project plan', exact: true }).click();
     await pause(400);
     const calm = await readSampler(reduced.page.locator('body'));
     assert.ok(calm.frames > 3, 'the frame sampler was not running');
     assert.equal(calm.easing, 0, 'the disclosure eased under reduced motion');
+    assert.ok(calm.heights.length > 3, 'open layout was not sampled');
+    assert.equal(
+      new Set(calm.heights).size,
+      1,
+      'reduced motion shifted layout after opening: ' + JSON.stringify(calm.heights),
+    );
+    const motion = await reduced.page
+      .locator('[data-slot=accordion-content]')
+      .first()
+      .evaluate((panel) => {
+        const css = getComputedStyle(panel);
+        return { transition: css.transitionProperty, animation: css.animationName };
+      });
+    assert.deepEqual(motion, { transition: 'none', animation: 'none' });
     const shown = await reduced.page.evaluate(async () => {
       const read = () =>
         Number(document.querySelector('[data-readout="displayed-accepted"]').textContent);
       const before = read();
-      document.querySelector('details > summary').click();
+      document.querySelector('[data-slot=accordion-trigger]').click();
       const started = performance.now();
       await globalThis.__gallery.runtime.refresh();
       return { changed: read() !== before, ms: performance.now() - started };

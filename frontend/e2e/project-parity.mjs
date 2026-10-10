@@ -56,11 +56,8 @@ const base = await import('../src/observed/generate.test.helper.ts');
 const { makeBoards } = await import('../test/project_boards.ts');
 const { genBoard, genContext, parityBoard } = makeBoards(base);
 
-// Captures land in the main checkout's gitignored docs/screenshots/ even when run from a worktree of it.
-const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(
-  /\/\.claude\/worktrees\/[^/]+\/?$/,
-  '/',
-);
+// A proof belongs to its worktree; sibling captures must not overwrite one another.
+const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
@@ -149,7 +146,11 @@ const summarizeProject = (tab) => {
       link.getAttribute('data-scope-kind'),
       link.hasAttribute('aria-current'),
     ]),
-    switcher: norm(article.querySelector('.next-cockpit-scope-switcher > summary')),
+    switcher: norm(
+      article.querySelector(
+        '[data-slot=accordion].next-cockpit-scope-switcher [data-slot=accordion-trigger]',
+      ),
+    ),
     strip: norm(strip),
     stripLinks: [...(strip ? strip.querySelectorAll('a') : [])].map((link) =>
       link.getAttribute('href'),
@@ -1097,9 +1098,11 @@ try {
             .querySelector('[data-next-going-on="a-lead"]')
             ?.textContent.includes('1,500'),
           focus: globalThis.document.activeElement?.getAttribute('data-next-cockpit-scope'),
-          open: [...globalThis.document.querySelectorAll('details[open] > summary')].map(
-            (summary) => summary.textContent,
-          ),
+          open: [
+            ...globalThis.document.querySelectorAll(
+              'details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
+            ),
+          ].map((summary) => summary.textContent),
         }));
         assert.equal(kept.text, true, 'the change reached the card');
         assert.equal(kept.mark, 'kept', 'the card was updated, not replaced');
@@ -1110,9 +1113,11 @@ try {
         assert.ok(
           (
             await o.page.evaluate(() =>
-              [...globalThis.document.querySelectorAll('details[open] > summary')].map(
-                (summary) => summary.textContent,
-              ),
+              [
+                ...globalThis.document.querySelectorAll(
+                  'details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
+                ),
+              ].map((summary) => summary.textContent),
             )
           ).includes('Show project plan'),
           'and a tab change',
@@ -1217,7 +1222,9 @@ try {
             await reactReady(o.page);
             await o.page.waitForTimeout(patience(250));
             if (fragment.includes('alpha')) {
-              const switcher = o.page.locator('details.next-cockpit-scope-switcher > summary');
+              const switcher = o.page.locator(
+                '[data-slot=accordion].next-cockpit-scope-switcher [data-slot=accordion-trigger]',
+              );
               // The switcher is the compact page's, so the wide page hides it and there is nothing to open.
               if (await switcher.isVisible()) await switcher.click();
             }

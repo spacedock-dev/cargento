@@ -1,7 +1,9 @@
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../ui/accordion';
+import { useRevealFragment } from './useRevealFragment';
 import { useCallback, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { useControls } from './kit';
 import { useFocusKey } from './useFocusKey';
-import { useDisclosureState } from './useDisclosureState';
+import { useDisclosureState, useControlledDisclosureState } from './useDisclosureState';
 import { registerPopoverDismissal } from './popoverDismissal';
 
 export interface DisclosureProps {
@@ -25,7 +27,49 @@ const CLASS = {
 } as const;
 
 export function Disclosure(props: DisclosureProps) {
-  return <DisclosureNode key={props.disclosureKey} {...props} />;
+  return props.variant === 'popover' || props.variant === 'menu' ? (
+    <DisclosureNode key={props.disclosureKey} {...props} />
+  ) : (
+    <AccordionDisclosure key={props.disclosureKey} {...props} />
+  );
+}
+
+function AccordionDisclosure({
+  disclosureKey,
+  summary,
+  className,
+  summaryLabel,
+  focusKey,
+  children,
+}: DisclosureProps) {
+  const controls = useControls();
+  const open = useControlledDisclosureState(controls.disclosures, disclosureKey);
+  const triggerRef = useFocusKey<HTMLButtonElement>(controls.focusLane, focusKey ?? null);
+  const panelRef = useRevealFragment(disclosureKey);
+  return (
+    <Accordion
+      className={className ? `ctl-disclosure ${className}` : 'ctl-disclosure'}
+      data-open={open ? '' : undefined}
+      multiple
+      value={open ? [disclosureKey] : []}
+      onValueChange={(value, detail) => {
+        if (detail.reason === 'trigger-press') controls.noteToggle();
+        controls.disclosures.set(disclosureKey, value.includes(disclosureKey));
+      }}
+    >
+      <AccordionItem value={disclosureKey}>
+        <AccordionTrigger
+          ref={triggerRef}
+          {...(summaryLabel ? { 'aria-label': summaryLabel } : {})}
+        >
+          {summary}
+        </AccordionTrigger>
+        <AccordionContent ref={panelRef} hiddenUntilFound>
+          {children}
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
 }
 
 function DisclosureNode({

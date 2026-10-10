@@ -1,3 +1,6 @@
+import { ControlsProvider } from './ControlsProvider';
+import { Disclosure } from './Disclosure';
+import { testControls } from './testControls';
 import { act, render } from '@testing-library/react';
 import { StrictMode, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -209,5 +212,30 @@ describe('keyboard focus follows a key, not a node', () => {
     await settle();
     expect(lane.size()).toBe(1);
     expect(document.activeElement).toBe(view.getByRole('button', { name: 'a' }));
+  });
+});
+
+describe('the adopted disclosure registers its trigger with the focus lane', () => {
+  it('keeps trigger focus across a poll and restores it to a same-key replacement', async () => {
+    const { controls } = testControls();
+    const page = (generation: number, body: string) => (
+      <ControlsProvider controls={controls}>
+        <div key={generation}>
+          <Disclosure disclosureKey="plan" summary="Plan" focusKey="plan-trigger">
+            {body}
+          </Disclosure>
+        </div>
+      </ControlsProvider>
+    );
+    const view = render(page(0, 'Before'));
+    const first = view.getByRole('button', { name: 'Plan' });
+    first.focus();
+    view.rerender(page(0, 'Poll'));
+    expect(document.activeElement).toBe(first);
+    view.rerender(page(1, 'Remount'));
+    await settle();
+    const next = view.getByRole('button', { name: 'Plan' });
+    expect(next).not.toBe(first);
+    expect(document.activeElement).toBe(next);
   });
 });

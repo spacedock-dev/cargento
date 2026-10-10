@@ -48,7 +48,7 @@ function summarize(root: ParentNode) {
     })),
     unbound: [...root.querySelectorAll('.pc-unbound-context')].map((node) => ({
       head: norm(node.querySelector(':scope > .pc-trail-top')),
-      summary: norm(node.querySelector(':scope > details > summary')),
+      summary: norm(node.querySelector('[data-slot=accordion-trigger]')),
       items: [...node.querySelectorAll('.pc-trail-event')].map((item) => [
         norm(item.querySelector(':scope > strong')),
         norm(item.querySelector(':scope > span')),

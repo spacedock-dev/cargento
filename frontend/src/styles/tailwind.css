@@ -67,6 +67,7 @@
   --foreground: var(--ink);
   --secondary: var(--raise);
   --accordion-panel-height: auto;
+  --collapsible-panel-height: auto;
   --transform-origin: center;
 }
 

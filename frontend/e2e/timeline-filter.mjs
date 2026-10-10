@@ -166,8 +166,10 @@ const headingOf = (page) =>
 const storedOf = (page) => page.evaluate((key) => globalThis.localStorage.getItem(key), KEY);
 const filterButton = (page, name) =>
   page.locator('.pc-graph-filter').getByRole('button', { name, exact: true });
-const detailsOf = (page, id) => page.locator(`article[data-event-id="${id}"] details`).first();
-const bandOf = (page) => page.locator('summary', { hasText: /^Earlier meaningful/ }).first();
+const detailsOf = (page, id) =>
+  page.locator(`article[data-event-id="${id}"] [data-slot=accordion]`).first();
+const bandOf = (page) =>
+  page.locator('[data-slot=accordion-trigger]', { hasText: /^Earlier meaningful/ }).first();
 
 const golden = goldenFor('timeline-filter');
 let world, started, browser;
@@ -196,11 +198,11 @@ async function go(side, fragment) {
 const open = (page, details) =>
   details
     .evaluate((node) => {
-      node.open = true;
+      node.querySelector('[data-slot=accordion-trigger]').click();
     })
     .then(() => pause(350))
     .then(() => page);
-const isOpen = (locator) => locator.evaluate((node) => node.open);
+const isOpen = (locator) => locator.evaluate((node) => node.hasAttribute('data-open'));
 /* A live update through the page's own refresh path. */
 const refresh = (side) => refreshReact(side.page, SHIPPED);
 
@@ -384,12 +386,14 @@ try {
       await bandOf(world.react.page).click();
       await pause(350);
       const band = await pairs((side) =>
-        bandOf(side.page).evaluate((node) => node.parentElement.open),
+        bandOf(side.page).evaluate((node) => node.getAttribute('aria-expanded') === 'true'),
       );
       assert.deepEqual(band, { recorded: true, react: true });
       await world.react.page.evaluate(() => {
         globalThis.__marks = {
-          event: globalThis.document.querySelector('article[data-event-id="dir-0"] details'),
+          event: globalThis.document.querySelector(
+            'article[data-event-id="dir-0"] [data-slot=accordion]',
+          ),
           filter: globalThis.document.querySelector('.pc-graph-filter button'),
         };
       });
@@ -399,7 +403,9 @@ try {
       await pause(500);
       const state = await pairs(async (side) => ({
         event: await isOpen(detailsOf(side.page, 'dir-0')),
-        band: await bandOf(side.page).evaluate((node) => node.parentElement.open),
+        band: await bandOf(side.page).evaluate(
+          (node) => node.getAttribute('aria-expanded') === 'true',
+        ),
       }));
       assert.deepEqual(state.react, { event: true, band: true });
       assert.deepEqual(state.react, state.recorded);
@@ -407,7 +413,9 @@ try {
         await world.react.page.evaluate(
           () =>
             globalThis.__marks.event ===
-            globalThis.document.querySelector('article[data-event-id="dir-0"] details'),
+            globalThis.document.querySelector(
+              'article[data-event-id="dir-0"] [data-slot=accordion]',
+            ),
         ),
         true,
         'the opened event was rebuilt by a live update',
@@ -466,7 +474,9 @@ try {
       assert.deepEqual(pressed.react, pressed.recorded);
       const state = await pairs(async (side) => ({
         event: await isOpen(detailsOf(side.page, 'dir-0')),
-        band: await bandOf(side.page).evaluate((node) => node.parentElement.open),
+        band: await bandOf(side.page).evaluate(
+          (node) => node.getAttribute('aria-expanded') === 'true',
+        ),
       }));
       assert.deepEqual(state.react, { event: true, band: true });
       assert.deepEqual(state.react, state.recorded);
@@ -583,7 +593,7 @@ try {
                 );
               const targets = [
                 ...document.querySelectorAll(
-                  '.pc-graph-filter button, .pc-semantic-timeline summary',
+                  '.pc-graph-filter button, .pc-semantic-timeline [data-slot=accordion-trigger]',
                 ),
               ].map((node) => {
                 const box = node.getBoundingClientRect();

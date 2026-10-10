@@ -178,8 +178,8 @@ describe('what the surface says before it can offer a terminal', () => {
     expect(view.getByText('The terminal bridge is disabled on this server.')).toBeInTheDocument();
     expect(view.queryByRole('button', { name: 'Open terminal' })).toBeNull();
     const summary = view.getByText('How to register a terminal');
-    expect(summary.tagName).toBe('SUMMARY');
-    const steps = summary.closest('details')?.querySelectorAll('ol > li');
+    expect(summary.tagName).toBe('BUTTON');
+    const steps = summary.closest('[data-slot=accordion]')?.querySelectorAll('ol > li');
     expect(steps).toHaveLength(2);
     expect(steps?.[0]?.textContent).toContain('--interaction-origin-session harness:sid');
     expect(steps?.[0]?.textContent).toContain('--interaction-origin-registration-file PATH');
@@ -215,9 +215,9 @@ describe('what the surface says before it can offer a terminal', () => {
     await settle();
     const details = first
       .getByText('How to register a terminal')
-      .closest('details') as HTMLDetailsElement;
+      .closest('[data-slot=accordion]') as HTMLElement;
     act(() => {
-      details.open = true;
+      (details.querySelector('[data-slot=accordion-trigger]') as HTMLElement).click();
     });
     await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
     fireEvent.click(first.getByRole('button', { name: 'toggle view' }));
@@ -225,14 +225,18 @@ describe('what the surface says before it can offer a terminal', () => {
     fireEvent.click(first.getByRole('button', { name: 'toggle view' }));
     const back = first
       .getByText('How to register a terminal')
-      .closest('details') as HTMLDetailsElement;
-    expect(back.open).toBe(true);
+      .closest('[data-slot=accordion]') as HTMLElement;
+    expect(back.hasAttribute('data-open')).toBe(true);
     first.unmount();
     // Another project's console, same session identity: its own state, closed.
     const other = mount(w, { project: 'beta/api' });
     await settle();
     expect(
-      (other.getByText('How to register a terminal').closest('details') as HTMLDetailsElement).open,
+      (
+        other
+          .getByText('How to register a terminal')
+          .closest('[data-slot=accordion]') as HTMLElement
+      ).hasAttribute('data-open'),
     ).toBe(false);
   });
 });

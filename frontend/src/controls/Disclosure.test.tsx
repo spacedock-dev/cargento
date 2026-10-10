@@ -21,7 +21,18 @@ function mount(ui: ReactElement, options: TestControlsOptions = {}) {
 const key = (name: string, project: string | null = 'alpha', scope: string | null = 'claude:s1') =>
   disclosureKey({ project, scope, name });
 
-function toggle(details: HTMLDetailsElement, open: boolean) {
+function isOpen(node: HTMLElement | null) {
+  return node instanceof HTMLDetailsElement
+    ? node.open
+    : (node?.hasAttribute('data-open') ?? false);
+}
+
+function toggle(details: HTMLElement, open: boolean) {
+  if (!(details instanceof HTMLDetailsElement)) {
+    if (isOpen(details) !== open)
+      fireEvent.click(details.querySelector('[data-slot=accordion-trigger]') as HTMLElement);
+    return;
+  }
   // jsdom queues its own `toggle` event; the component listens for exactly that one.
   act(() => {
     details.open = open;
@@ -46,9 +57,11 @@ describe('a disclosure keeps its open state by key, not by node', () => {
         Body
       </Disclosure>,
     );
-    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const details = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     act(() => kit.controls.disclosures.set(key('plan'), true));
-    expect(details.open).toBe(true);
+    expect(isOpen(details)).toBe(true);
     await flushToggle();
     act(() => kit.controls.disclosures.set(key('plan'), false));
     rerender(
@@ -57,8 +70,8 @@ describe('a disclosure keeps its open state by key, not by node', () => {
       </Disclosure>,
     );
     await flushToggle();
-    expect(details.open).toBe(false);
-    expect(view.getByText('Project plan').closest('details')).toBe(details);
+    expect(isOpen(details)).toBe(false);
+    expect(view.getByText('Project plan').closest('[data-slot=accordion],details')).toBe(details);
   });
 
   it('records a summary opening before a poll and its queued toggle', async () => {
@@ -75,18 +88,24 @@ describe('a disclosure keeps its open state by key, not by node', () => {
       </Disclosure>,
     );
     await flushToggle();
-    expect((view.getByText('Project plan').closest('details') as HTMLDetailsElement).open).toBe(
-      true,
-    );
+    expect(
+      isOpen(
+        view
+          .getByText('Project plan')
+          .closest('[data-slot=accordion],details') as HTMLDetailsElement,
+      ),
+    ).toBe(true);
   });
 
   it('ignores a queued native opening superseded by newer external writes', async () => {
     const { view, kit } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
         Body
       </Disclosure>,
     );
-    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const details = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(details, true);
     act(() => kit.controls.disclosures.set(key('plan'), true));
     act(() => kit.controls.disclosures.set(key('plan'), false));
@@ -95,7 +114,7 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     fireEvent(details, stale);
     expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(false);
     await flushToggle();
-    expect(details.open).toBe(false);
+    expect(isOpen(details)).toBe(false);
   });
 
   it('accepts a native opening after a write that landed before the subscription', () => {
@@ -118,32 +137,36 @@ describe('a disclosure keeps its open state by key, not by node', () => {
 
   it('lets an external close supersede a native opening while the store is still closed', async () => {
     const { view, kit } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
         Body
       </Disclosure>,
     );
-    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const details = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(details, true);
     act(() => kit.controls.disclosures.set(key('plan'), false));
     const stale = new Event('toggle');
     Object.defineProperty(stale, 'newState', { value: 'open' });
     fireEvent(details, stale);
     await flushToggle();
-    expect(details.open).toBe(false);
+    expect(isOpen(details)).toBe(false);
     expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(false);
   });
 
   it('closes a native opening on a summary press before its queued toggle', async () => {
     const { view, kit } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
         Body
       </Disclosure>,
     );
-    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const details = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(details, true);
     fireEvent.click(view.getByText('Project plan'));
     await flushToggle();
-    expect(details.open).toBe(false);
+    expect(isOpen(details)).toBe(false);
     expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(false);
   });
 
@@ -156,9 +179,13 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     const set = vi.spyOn(kit.controls.disclosures, 'set');
     act(() => kit.controls.disclosures.set(key('plan'), true));
     await flushToggle();
-    expect((view.getByText('Project plan').closest('details') as HTMLDetailsElement).open).toBe(
-      true,
-    );
+    expect(
+      isOpen(
+        view
+          .getByText('Project plan')
+          .closest('[data-slot=accordion],details') as HTMLDetailsElement,
+      ),
+    ).toBe(true);
     expect(set).toHaveBeenCalledTimes(1);
   });
 
@@ -178,26 +205,49 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     expect(kit.controls.disclosures.isOpen(key('a'))).toBe(true);
     expect(kit.controls.disclosures.isOpen(key('b'))).toBe(true);
     await flushToggle();
-    expect((view.getByText('A').closest('details') as HTMLDetailsElement).open).toBe(true);
-    expect((view.getByText('B').closest('details') as HTMLDetailsElement).open).toBe(true);
+    expect(
+      isOpen(view.getByText('A').closest('[data-slot=accordion],details') as HTMLDetailsElement),
+    ).toBe(true);
+    expect(
+      isOpen(view.getByText('B').closest('[data-slot=accordion],details') as HTMLDetailsElement),
+    ).toBe(true);
   });
 
   it('accepts a native browser opening even when a redraw precedes the queued event', async () => {
     const { view, kit, rerender } = mount(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
         Body
       </Disclosure>,
     );
-    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const details = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(details, true);
     rerender(
-      <Disclosure disclosureKey={key('plan')} summary="Project plan">
+      <Disclosure disclosureKey={key('plan')} summary="Project plan" variant="popover">
         Poll
       </Disclosure>,
     );
     await flushToggle();
-    expect(details.open).toBe(true);
+    expect(isOpen(details)).toBe(true);
     expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(true);
+  });
+
+  it('publishes a browser beforematch opening through the controlled store and retains it across a redraw', () => {
+    const { view, kit, rerender } = mount(
+      <Disclosure disclosureKey={key('find')} summary="Find">
+        <p>Target</p>
+      </Disclosure>,
+    );
+    const panel = view.getByText('Target').closest('[data-slot=accordion-content]') as HTMLElement;
+    fireEvent(panel, new Event('beforematch'));
+    expect(kit.controls.disclosures.isOpen(key('find'))).toBe(true);
+    rerender(
+      <Disclosure disclosureKey={key('find')} summary="Find">
+        <p>Target</p>
+      </Disclosure>,
+    );
+    expect(view.getByRole('button', { name: 'Find' }).getAttribute('aria-expanded')).toBe('true');
   });
 
   it('publishes only changed snapshots and releases subscriptions on unmount', async () => {
@@ -228,16 +278,23 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     expect(snapshots).toEqual([true, false]);
   });
 
-  it('draws closed until the reader opens it, and reads as a details with a named summary', () => {
+  it('draws a named controlled button and keeps closed content available to browser find', () => {
     const { view } = mount(
       <Disclosure disclosureKey={key('plan')} summary="Project plan">
         <p>Body</p>
       </Disclosure>,
     );
-    const details = view.getByText('Project plan').closest('details');
+    const details = view
+      .getByText('Project plan')
+      .closest<HTMLElement>('[data-slot=accordion],details');
     expect(details).not.toBeNull();
-    expect(details?.open).toBe(false);
-    expect(view.getByText('Project plan').tagName).toBe('SUMMARY');
+    expect(
+      view.getByText('Body').closest('[data-slot=accordion-content]')?.getAttribute('hidden'),
+    ).toBe('until-found');
+    expect(isOpen(details)).toBe(false);
+    expect(view.getByRole('button', { name: 'Project plan' }).getAttribute('aria-expanded')).toBe(
+      'false',
+    );
   });
 
   it('comes back open in the markup after a remount, so no opening motion replays', async () => {
@@ -246,7 +303,9 @@ describe('a disclosure keeps its open state by key, not by node', () => {
         <p>Body</p>
       </Disclosure>,
     );
-    const first = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const first = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(first, true);
     await flushToggle();
     expect(kit.controls.disclosures.isOpen(key('plan'))).toBe(true);
@@ -264,9 +323,11 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     );
     await flushToggle();
     observer.disconnect();
-    const second = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const second = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     expect(second).not.toBe(first);
-    expect(second.hasAttribute('open')).toBe(true);
+    expect(isOpen(second)).toBe(true);
     expect(records).toEqual([]);
   });
 
@@ -285,7 +346,9 @@ describe('a disclosure keeps its open state by key, not by node', () => {
       );
     }
     const { view } = mount(<Page />);
-    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const details = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(details, true);
     await flushToggle();
     const records: MutationRecord[] = [];
@@ -295,8 +358,8 @@ describe('a disclosure keeps its open state by key, not by node', () => {
     act(() => view.getByRole('button', { name: 'tick' }).click());
     await flushToggle();
     observer.disconnect();
-    expect(view.getByText('Project plan').closest('details')).toBe(details);
-    expect(details.open).toBe(true);
+    expect(view.getByText('Project plan').closest('[data-slot=accordion],details')).toBe(details);
+    expect(isOpen(details)).toBe(true);
     expect(records).toEqual([]);
     expect(view.getByText('Body 2')).toBeVisible();
   });
@@ -315,10 +378,21 @@ describe('a disclosure keeps its open state by key, not by node', () => {
         </Disclosure>
       </>,
     );
-    toggle(view.getByText('Plan A1').closest('details') as HTMLDetailsElement, true);
+    toggle(
+      view.getByText('Plan A1').closest('[data-slot=accordion],details') as HTMLDetailsElement,
+      true,
+    );
     await flushToggle();
-    expect((view.getByText('Plan A2').closest('details') as HTMLDetailsElement).open).toBe(false);
-    expect((view.getByText('Plan B1').closest('details') as HTMLDetailsElement).open).toBe(false);
+    expect(
+      isOpen(
+        view.getByText('Plan A2').closest('[data-slot=accordion],details') as HTMLDetailsElement,
+      ),
+    ).toBe(false);
+    expect(
+      isOpen(
+        view.getByText('Plan B1').closest('[data-slot=accordion],details') as HTMLDetailsElement,
+      ),
+    ).toBe(false);
   });
 
   it('records a reader toggle for the motion hold, and nothing else does', () => {
@@ -346,7 +420,9 @@ describe('a disclosure keeps its open state by key, not by node', () => {
         <p>Body</p>
       </Disclosure>,
     );
-    const details = view.getByText('Project plan').closest('details') as HTMLDetailsElement;
+    const details = view
+      .getByText('Project plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(details, true);
     await flushToggle();
     toggle(details, false);
@@ -380,10 +456,14 @@ describe('a popover closes on Escape, outside, and focus departure, and nothing 
   }
 
   async function openBoth(view: ReturnType<typeof mount>['view']) {
-    const why = view.getByText('Why').closest('details') as HTMLDetailsElement;
-    const plan = view.getByText('Plan').closest('details') as HTMLDetailsElement;
-    toggle(why, true);
+    const why = view
+      .getByText('Why')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
+    const plan = view
+      .getByText('Plan')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(plan, true);
+    toggle(why, true);
     await flushToggle();
     return { why, plan };
   }
@@ -396,8 +476,8 @@ describe('a popover closes on Escape, outside, and focus departure, and nothing 
     act(() => {
       view.getByText('Elsewhere').dispatchEvent(event);
     });
-    expect(why.open).toBe(false);
-    expect(plan.open).toBe(true);
+    expect(isOpen(why)).toBe(false);
+    expect(isOpen(plan)).toBe(true);
     expect(event.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(view.getByText('Why'));
   });
@@ -409,19 +489,21 @@ describe('a popover closes on Escape, outside, and focus departure, and nothing 
     expect(kit.controls.disclosures.isOpen(key('why'))).toBe(false);
     rerender(page());
     await flushToggle();
-    expect(why.open).toBe(false);
+    expect(isOpen(why)).toBe(false);
   });
 
   it('dismisses a native opening before its queued toggle reaches the store', async () => {
     const { view, kit, rerender } = mount(page());
-    const why = view.getByText('Why').closest('details') as HTMLDetailsElement;
+    const why = view
+      .getByText('Why')
+      .closest('[data-slot=accordion],details') as HTMLDetailsElement;
     toggle(why, true);
     fireEvent.keyDown(view.getByText('Elsewhere'), { key: 'Escape' });
-    expect(why.open).toBe(false);
+    expect(isOpen(why)).toBe(false);
     rerender(page());
     await flushToggle();
     expect(kit.controls.disclosures.isOpen(key('why'))).toBe(false);
-    expect(why.open).toBe(false);
+    expect(isOpen(why)).toBe(false);
   });
 
   it('does not swallow Escape when no popover is open', () => {
@@ -437,10 +519,10 @@ describe('a popover closes on Escape, outside, and focus departure, and nothing 
     const { view } = mount(page());
     const { why, plan } = await openBoth(view);
     fireEvent.click(view.getByText('Because'));
-    expect(why.open).toBe(true);
+    expect(isOpen(why)).toBe(true);
     fireEvent.click(view.getByText('Elsewhere'));
-    expect(why.open).toBe(false);
-    expect(plan.open).toBe(true);
+    expect(isOpen(why)).toBe(false);
+    expect(isOpen(plan)).toBe(true);
   });
 
   it('closes when focus moves to another control, and stays open when focus goes nowhere', async () => {
@@ -449,9 +531,9 @@ describe('a popover closes on Escape, outside, and focus departure, and nothing 
     const summary = view.getByText('Why');
     summary.focus();
     fireEvent.focusOut(summary, { relatedTarget: null });
-    expect(why.open).toBe(true);
+    expect(isOpen(why)).toBe(true);
     fireEvent.focusOut(summary, { relatedTarget: view.getByText('Elsewhere') });
-    expect(why.open).toBe(false);
+    expect(isOpen(why)).toBe(false);
   });
 
   it('scrolls an opened popover into view once, on the reader press, and not on a redraw', async () => {

@@ -42,11 +42,8 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 process.removeAllListeners('warning');
 const { genPayload } = await import('../src/observed/generate.test.helper.ts');
 
-// Captures land in the main checkout's gitignored docs/screenshots/ even when run from a worktree of it.
-const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(
-  /\/\.claude\/worktrees\/[^/]+\/?$/,
-  '/',
-);
+// A proof belongs to its worktree; sibling captures must not overwrite one another.
+const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
@@ -131,7 +128,7 @@ const summarizeDetail = () => {
     '.next-session-command-surface',
     '[data-next-session-subagents]',
     'dl.next-session-facts',
-    'details.next-session-facts-more',
+    '[data-slot=accordion].next-session-facts-more',
     '.next-session-evidence',
     '.next-session-health',
     '[data-next-session-section="tasks"]',
@@ -143,7 +140,7 @@ const summarizeDetail = () => {
   const parts = [...clone.querySelector('.next-session-activity').children]
     .map((child) => {
       const hit = own.find((selector) => child.matches(selector));
-      return hit ? [hit, norm(child)] : null;
+      return hit ? [hit.replace('[data-slot=accordion]', 'details'), norm(child)] : null;
     })
     .filter(Boolean);
   const header = clone.querySelector('.next-session-detail-header');
@@ -670,9 +667,11 @@ try {
               .getBoundingClientRect().top,
           ),
           before: globalThis.__linkTop,
-          open: [...globalThis.document.querySelectorAll('details[open] > summary')].map(
-            (summary) => summary.textContent,
-          ),
+          open: [
+            ...globalThis.document.querySelectorAll(
+              'details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
+            ),
+          ].map((summary) => summary.textContent),
           text: globalThis.document
             .querySelector('article[data-next-session="live-work"]')
             .textContent.includes('A different step'),
@@ -704,9 +703,11 @@ try {
         await o.page.getByText('What recent means').click();
         const open = () =>
           o.page.evaluate(() =>
-            [...globalThis.document.querySelectorAll('details[open] > summary')].map(
-              (summary) => summary.textContent,
-            ),
+            [
+              ...globalThis.document.querySelectorAll(
+                'details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
+              ),
+            ].map((summary) => summary.textContent),
           );
         assert.deepEqual(await open(), ['What recent means']);
         o.state.body = { ...real, generated: real.generated + 25 };
@@ -728,7 +729,9 @@ try {
     async () => {
       const o = await clocked(`#n=session:${E('alpha/app')}:claude:live-work`);
       try {
-        await o.page.locator('details.next-session-facts-more > summary').click();
+        await o.page
+          .locator('[data-slot=accordion].next-session-facts-more [data-slot=accordion-trigger]')
+          .click();
         await o.page.evaluate(() => {
           const range = globalThis.document.createRange();
           const target = globalThis.document.querySelector('.next-session-current > strong');
@@ -742,7 +745,9 @@ try {
         await o.poll();
         const after = await o.page.evaluate(() => ({
           selected: globalThis.getSelection().toString(),
-          open: globalThis.document.querySelector('details.next-session-facts-more').open,
+          open: globalThis.document
+            .querySelector('[data-slot=accordion].next-session-facts-more')
+            .hasAttribute('data-open'),
           before: globalThis.__selected,
         }));
         assert.equal(after.open, true, 'the facts disclosure stayed open');
@@ -800,12 +805,16 @@ try {
       await summary.focus();
       await react.page.keyboard.press('Enter');
       assert.equal(
-        await react.page.evaluate(() => globalThis.document.activeElement.closest('details').open),
+        await react.page.evaluate(
+          () => globalThis.document.activeElement.getAttribute('aria-expanded') === 'true',
+        ),
         true,
       );
       await react.page.keyboard.press('Space');
       assert.equal(
-        await react.page.evaluate(() => globalThis.document.activeElement.closest('details').open),
+        await react.page.evaluate(
+          () => globalThis.document.activeElement.getAttribute('aria-expanded') === 'true',
+        ),
         false,
       );
     },
