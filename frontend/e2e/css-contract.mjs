@@ -51,6 +51,17 @@ import {
 import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
+import { measureButtonChrome } from './support/button-chrome.mjs';
+
+const BUTTON_TABLE = JSON.parse(
+  await readFile(new URL('./button-chrome-reference.json', import.meta.url), 'utf8'),
+);
+const BUTTON_REFERENCE = Object.fromEntries(
+  Object.entries(BUTTON_TABLE.instances).map(([key, profile]) => [
+    key,
+    BUTTON_TABLE.profiles[profile],
+  ]),
+);
 
 /* Every fixed wait here means "give the page time to react"; a hosted runner delivers frames later, so each is
    tripled there. */
@@ -88,6 +99,20 @@ const MUTATIONS = {
     ],
   ],
   'button-size-removed': [['ui/button.tsx', 'text-body', 'text-label']],
+  'button-cascade-colour': [['ui/button.tsx', 'text-foreground', 'text-muted-foreground']],
+  'button-memo-native': [
+    ['controls/HumanContextField.tsx', 'variant="default"', 'variant="native"'],
+  ],
+  'button-raise-amber': [
+    ['ui/button.tsx', 'data-[raise-state=throttled]:border-[var(--amber)]', ''],
+  ],
+  'button-retry-dashed': [
+    [
+      'ui/button.tsx',
+      'aria-disabled:not-aria-busy:border-solid',
+      'aria-disabled:not-aria-busy:border-dashed',
+    ],
+  ],
   'button-target-removed': [['ui/button.tsx', 'min-h-[44px] min-w-[44px]', 'min-h-0 min-w-0']],
   'button-reserve-removed': [['ui/button.tsx', 'reserve ? (', 'false ? (']],
   'button-focus-removed': [
@@ -563,6 +588,7 @@ const measured = {
   lightChecked: 0,
   groups: [],
   buttons: [],
+  chrome: [],
 };
 
 const SURFACES = {
@@ -628,6 +654,8 @@ async function visit(opened, origin, fragment, options = {}) {
 async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   measured.views.push(view);
+  for (const row of await page.evaluate(measureButtonChrome))
+    measured.chrome.push({ view, ...row });
   const { rows, registers, groups, buttons, linkColour, scheme } = await page.evaluate(measureText);
   measured.registers ??= registers;
   measured.palette = registers;
@@ -935,6 +963,44 @@ function checks() {
   const text = measured.text.filter((row) => !row.hidden);
   const regs = measured.registers;
 
+  step_('buttons: every real-route instance keeps its pre-adoption chrome', () => {
+    const failures = new Map();
+    const seen = new Set();
+    for (const row of measured.chrome) {
+      const expected = BUTTON_REFERENCE[row.key];
+      seen.add(row.key);
+      if (!expected) failures.set(row.key, { view: row.view, missing: true, actual: row.chrome });
+      else {
+        const changed = Object.keys(expected).filter(
+          (property) => row.chrome[property] !== expected[property],
+        );
+        if (changed.length)
+          failures.set(
+            row.key,
+            Object.fromEntries(
+              changed.map((property) => [
+                property,
+                { expected: expected[property], actual: row.chrome[property] },
+              ]),
+            ),
+          );
+      }
+    }
+    if (failures.size)
+      console.error(
+        JSON.stringify({ buttonChromeDifferences: Object.fromEntries(failures) }, null, 2),
+      );
+    assert.equal(failures.size, 0, 'Button cascade changed; differences are printed above');
+    if (FULL)
+      assert.deepEqual(
+        Object.keys(BUTTON_REFERENCE).filter((key) => !seen.has(key)),
+        [],
+        'reference Button identities were not reached',
+      );
+    assert.ok(measured.chrome.length >= 150, 'too few Button instances reached the chrome gate');
+    return `${measured.chrome.length} instances against 30bac258`;
+  });
+
   step_('coverage: the render reaches the surfaces this proof speaks for', () => {
     assert.ok(measured.views.length >= 40, `only ${measured.views.length} views were measured`);
     assert.ok(text.length >= 4000, `only ${text.length} text elements were measured`);
@@ -1184,7 +1250,7 @@ async function checkButtonGallery(browser) {
               };
             }),
           );
-        assert.equal(buttons.length, 11);
+        assert.equal(buttons.length, 12);
         assert.deepEqual(
           buttons.filter((b) => b.width < 44 || b.height < 44),
           [],
@@ -1207,6 +1273,13 @@ async function checkButtonGallery(browser) {
           assert.equal(ring.style, 'solid');
         }
         const hover = opened.page.locator('[data-example="hover"]');
+        assert.equal(
+          await opened.page
+            .locator('[data-example="retry"]')
+            .evaluate((el) => getComputedStyle(el).borderTopStyle),
+          'solid',
+          'a refresh retry keeps the solid waiting boundary',
+        );
         await hover.hover();
         assert.equal(
           await hover.evaluate((el) => getComputedStyle(el).borderColor),
@@ -1223,6 +1296,38 @@ async function checkButtonGallery(browser) {
           { border: 'rgb(116, 114, 95)', ink: 'rgb(205, 199, 180)' },
           'primary Raise keeps its declined cue',
         );
+        for (const state of ['throttled', 'stale']) {
+          await raise.evaluate((el, value) => el.setAttribute('data-raise-state', value), state);
+          assert.equal(
+            await raise.evaluate((el) => getComputedStyle(el).borderColor),
+            'rgb(240, 185, 94)',
+            `primary Raise keeps its ${state} amber cue`,
+          );
+        }
+        const memo = opened.page.getByRole('button', {
+          name: 'Edit OUTCOME',
+          exact: true,
+        });
+        assert.equal(await memo.count(), 1, 'the gallery reaches the memo edit control');
+        assert.deepEqual(
+          await memo.evaluate((el) => {
+            const css = getComputedStyle(el);
+            return {
+              ink: css.color,
+              background: css.backgroundColor,
+              padding: css.padding,
+              font: css.fontSize,
+              border: css.borderTop,
+            };
+          }),
+          {
+            ink: 'rgb(246, 243, 234)',
+            background: 'rgba(0, 0, 0, 0)',
+            padding: '9px 14px',
+            font: '15px',
+            border: '1px solid rgb(116, 114, 95)',
+          },
+        );
         const reserved = opened.page.locator('[data-example="reserved"]');
         const before = await reserved.boundingBox();
         await reserved.click();
@@ -1237,7 +1342,7 @@ async function checkButtonGallery(browser) {
           false,
         );
       }
-      return '11 examples at 1280 and 320 px; targets, type, hover, focus, raise state, reserved width and link semantics';
+      return '12 examples at 1280 and 320 px; targets, type, hover, focus, retry, raise state, memo chrome, reserved width and link semantics';
     } finally {
       await opened.close();
     }
@@ -1274,7 +1379,7 @@ try {
   if (copy) await rm(copy, { recursive: true, force: true });
 }
 
-if (!failures.length) {
+if (!failures.some((failure) => failure.name === 'run')) {
   checks();
   for (const [name, run] of pending) await step(name, run);
 }

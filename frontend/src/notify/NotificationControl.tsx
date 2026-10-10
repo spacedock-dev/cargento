@@ -38,6 +38,7 @@ export function NotificationControl() {
     <Button
       ref={buttonRef}
       type="button"
+      tone="muted"
       className="next-notify-button"
       data-next-action="enable-notifications"
       onClick={() => owner.request()}

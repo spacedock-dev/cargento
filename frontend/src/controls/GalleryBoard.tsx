@@ -60,6 +60,9 @@ export function GalleryBoard({ world }: { world: World }) {
         <Button data-example="disabled" disabled>
           Unavailable action
         </Button>
+        <Button data-example="retry" variant="retry" aria-disabled="true">
+          Retry now
+        </Button>
         <Button data-example="long">
           Save the long intent that explains every expected outcome to the reader
         </Button>

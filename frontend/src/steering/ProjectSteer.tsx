@@ -60,7 +60,9 @@ export function ProjectSteer({
             onInput={(event) => held.setDraft(project, 'steer', event.currentTarget.value)}
           />
         </label>
-        <Button type="submit">save draft ⏎</Button>
+        <Button type="submit" tone="muted">
+          save draft ⏎
+        </Button>
       </form>
       {held.steers(project).length ? (
         <div className="next-steer-receipts">

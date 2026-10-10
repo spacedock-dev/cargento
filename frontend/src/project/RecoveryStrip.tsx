@@ -314,7 +314,11 @@ function Notes({ model, briefing }: { readonly model: ProjectModel; readonly bri
     if (briefing.task.known && briefing.coverage.state === 'complete') return null;
     return (
       <div className="next-cockpit-recovery-memos" data-next-cockpit-memo-empty="">
-        <Button variant="bare" type="button" onClick={() => controls.startMemoEdit(outcomeKey)}>
+        <Button
+          variant="context-add"
+          type="button"
+          onClick={() => controls.startMemoEdit(outcomeKey)}
+        >
           + Add human context · this browser
         </Button>
       </div>

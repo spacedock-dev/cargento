@@ -56,6 +56,8 @@ export function UsageDisclosure() {
         <Button
           ref={grantRef}
           type="button"
+          size="consent"
+          accentBorder
           data-next-usage-answer="granted"
           onClick={() => answer('granted')}
         >
@@ -64,6 +66,7 @@ export function UsageDisclosure() {
         <Button
           ref={declineRef}
           type="button"
+          size="consent"
           data-next-usage-answer="declined"
           onClick={() => answer('declined')}
         >
@@ -96,6 +99,7 @@ export function UsageSwitch() {
       <Button
         ref={buttonRef}
         type="button"
+        tone="muted"
         data-next-usage-answer={granted ? 'declined' : 'granted'}
         onClick={() => answer(granted ? 'declined' : 'granted')}
       >

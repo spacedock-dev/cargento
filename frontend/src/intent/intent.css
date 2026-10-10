@@ -95,8 +95,6 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-cockpit-held-full[hidden]{display:none}
 .next-cockpit-held-discard{display:grid;gap:4px;justify-items:start;margin-top:10px}
 .next-cockpit-held-discard-offer[open]{display:grid;gap:6px;justify-items:start}
-.next-cockpit-held-discard button{color:var(--ink2);font-family:var(--sans)}
-.next-cockpit-held-discard button[aria-describedby]{border-width:2px}
 .next-cockpit-reading-why{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-reading-why[data-absence]{padding-left:9px;border-left:2px solid var(--rule)}
 .next-cockpit-reading-why[data-absence="waiting-on-you"]{border-left-color:var(--accent-dim)}

@@ -96,6 +96,7 @@ export function ObserverControls({ projectKey, focus }: ObserverControlsProps) {
   };
   const button = (action: Action, label: string, disabled = false) => (
     <Button
+      size="consent"
       ref={action === 'allow' ? allowRef : action === 'request' ? requestRef : declineRef}
       type="button"
       data-next-observer-action={action}

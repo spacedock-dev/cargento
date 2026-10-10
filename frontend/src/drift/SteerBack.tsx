@@ -53,7 +53,7 @@ export function UpdateIntentButton({ factId }: { readonly factId: string }) {
   const { identity } = model;
   return (
     <ActionButton
-      className="next-action next-action--secondary"
+      weight="secondary"
       label="Update intent instead"
       busyLabel="Opening…"
       pendingKey={`update-intent:${model.key}`}

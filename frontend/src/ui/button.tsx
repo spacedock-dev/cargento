@@ -9,17 +9,22 @@ import type { ComponentProps, ReactNode } from 'react';
 import { cn } from '../lib/utils';
 
 const action =
-  'inline-flex items-center justify-center rounded-control border border-solid border-[var(--line)] bg-transparent text-foreground font-[family-name:var(--sans)] text-body leading-[1.55] px-3.5 py-[.5625rem] cursor-pointer hover:border-[var(--line-hi)]';
+  'inline-flex items-center justify-center rounded-control border border-solid border-[var(--line)] bg-transparent text-foreground font-[family-name:var(--sans)] text-body leading-[1.55] px-3.5 py-[.5625rem] cursor-pointer hover:border-[var(--line-hi)] [.next-rail-wait-controls_&]:px-2.5 [.next-rail-wait-controls_&]:py-[5px]';
 const refused =
   'disabled:border-dashed disabled:bg-[image:var(--hatch)] disabled:text-[color:var(--ink3)] disabled:cursor-not-allowed aria-disabled:not-aria-busy:border-dashed aria-disabled:not-aria-busy:bg-[image:var(--hatch)] aria-disabled:not-aria-busy:text-[color:var(--ink3)] aria-disabled:not-aria-busy:cursor-not-allowed aria-busy:border-solid aria-busy:bg-none aria-busy:text-foreground aria-busy:cursor-progress';
 const raiseState =
-  'data-[raise-state=sent]:border-[var(--accent)] data-[raise-state=declined]:border-[var(--line)] data-[raise-state=failed]:border-[var(--line)] data-[raise-state=declined]:text-muted-foreground data-[raise-state=failed]:text-muted-foreground data-[raise-state=throttled]:text-muted-foreground data-[raise-state=stale]:text-muted-foreground aria-disabled:not-aria-busy:bg-none aria-disabled:not-aria-busy:bg-transparent data-[raise-state=sending]:cursor-progress';
+  'data-[raise-state=sent]:border-[var(--accent)] data-[raise-state=declined]:border-[var(--line)] data-[raise-state=failed]:border-[var(--line)] data-[raise-state=throttled]:border-[var(--amber)] data-[raise-state=stale]:border-[var(--amber)] data-[raise-state=declined]:text-muted-foreground data-[raise-state=failed]:text-muted-foreground data-[raise-state=throttled]:text-muted-foreground data-[raise-state=stale]:text-muted-foreground aria-disabled:not-aria-busy:bg-none aria-disabled:not-aria-busy:bg-transparent data-[raise-state=sending]:cursor-progress';
 const buttonVariants = cva(
   'min-h-[44px] min-w-[44px] max-w-full box-border [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-[var(--accent)] focus-visible:outline-offset-1 [&[hidden]]:hidden',
   {
     variants: {
       variant: {
         default: cn(action, refused),
+        retry: cn(
+          action,
+          refused,
+          'aria-disabled:not-aria-busy:border-solid aria-disabled:not-aria-busy:cursor-wait disabled:border-solid disabled:cursor-wait',
+        ),
         answer: cn(action, refused, 'px-[11px] py-[7px] hover:border-[var(--accent)]'),
         primary: cn(
           action,
@@ -27,7 +32,22 @@ const buttonVariants = cva(
           'aria-busy:border-[var(--accent)] aria-busy:bg-primary aria-busy:text-[color:var(--bg)]',
         ),
         quiet: cn(action, refused),
-        bare: cn(action, refused, 'bg-[var(--sunk)] leading-normal'),
+        bare: cn(
+          action,
+          'bg-[var(--sunk)] [display:flow-root] [line-height:normal] justify-normal items-normal',
+        ),
+        window: cn(
+          action,
+          'bg-[var(--sunk)] block [line-height:normal] justify-normal items-normal hover:border-[var(--line)]',
+        ),
+        menu: cn(
+          action,
+          'flex justify-between border-0 border-none border-current bg-transparent p-2',
+        ),
+        'context-add': cn(
+          action,
+          'block justify-normal items-normal border-0 border-none border-current bg-transparent text-muted-foreground',
+        ),
         native: '',
         copy: cn(
           action,
@@ -51,6 +71,16 @@ const buttonVariants = cva(
           'px-2.5 py-[7px] text-muted-foreground text-label leading-normal hover:bg-[var(--panel)] hover:text-foreground focus-visible:outline-offset-3',
         ),
       },
+      tone: {
+        default: '',
+        muted: 'text-muted-foreground',
+      },
+      size: {
+        default: '',
+        consent: 'px-3.5 py-[6px]',
+      },
+      accentBorder: { true: 'border-[var(--accent)]', false: '' },
+      strongBorder: { true: 'border-2', false: '' },
     },
     defaultVariants: { variant: 'default' },
   },
@@ -88,10 +118,17 @@ function Spinner({ idle = false }: { readonly idle?: boolean }) {
 function Button({
   className,
   variant = 'default',
+  tone,
+  size,
+  accentBorder,
+  strongBorder,
   busyLabel,
   reserve,
   children,
   disabled,
+  onClick,
+  onKeyDown,
+  onKeyUp,
   ...props
 }: ButtonProps) {
   const busy = props['aria-busy'] === true || props['aria-busy'] === 'true';
@@ -100,10 +137,23 @@ function Button({
       {...props}
       data-slot="button"
       data-variant={variant ?? 'default'}
-      disabled={disabled || busy}
-      focusableWhenDisabled={busy}
+      disabled={!busy && disabled}
+      aria-disabled={busy ? true : props['aria-disabled']}
+      // Base UI's focusable disabled path cancels shell navigation keys as well as activation.
+      onKeyDown={(event) => {
+        if (busy && (event.key === 'Enter' || event.key === ' ')) event.preventDefault();
+        onKeyDown?.(event);
+      }}
+      onKeyUp={(event) => {
+        if (busy && (event.key === 'Enter' || event.key === ' ')) event.preventDefault();
+        onKeyUp?.(event);
+      }}
+      onClick={(event) => {
+        if (busy) event.preventDefault();
+        else onClick?.(event);
+      }}
       className={cn(
-        buttonVariants({ variant }),
+        buttonVariants({ variant, tone, size, accentBorder, strongBorder }),
         (busy && busyLabel !== undefined) || reserve
           ? 'relative inline-grid items-center justify-items-center [&>span]:[grid-area:1/1]'
           : '',

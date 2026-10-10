@@ -246,7 +246,7 @@ function ResultFoot() {
   return (
     <div className="next-cockpit-result-foot">
       <ActionButton
-        className="next-action next-action--quiet"
+        weight="quiet"
         label={RESULT_NOT_ACCURATE}
         busyLabel="Saving…"
         pendingKey={`not-accurate:${model.key}`}

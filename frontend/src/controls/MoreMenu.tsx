@@ -76,12 +76,12 @@ export function MoreMenu({
         <span className="ctl-menu-status">
           {`All projects · ${String(running)} running · ${String(subagents)} ${subagents === 1 ? 'subagent' : 'subagents'} observed`}
         </span>
-        <Button variant="bare" type="button" onClick={() => void copy()}>
+        <Button variant="menu" type="button" onClick={() => void copy()}>
           {label}
         </Button>
         {addHumanContext ? (
           <Button
-            variant="bare"
+            variant="menu"
             type="button"
             onClick={() => controls.startMemoEdit(addHumanContext.memoKey)}
           >

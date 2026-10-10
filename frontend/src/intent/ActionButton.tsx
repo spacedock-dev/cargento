@@ -25,6 +25,8 @@ export interface ActionButtonProps {
   readonly focusKey?: string;
   readonly fallbackKey?: string;
   readonly weight?: 'primary' | 'secondary' | 'quiet' | 'none';
+  readonly tone?: 'default' | 'muted';
+  readonly strongBorder?: boolean;
   readonly className?: string;
   readonly action?: string;
   readonly arg?: string;
@@ -45,6 +47,8 @@ export function ActionButton({
   focusKey,
   fallbackKey,
   weight = 'secondary',
+  tone,
+  strongBorder,
   className,
   action,
   arg,
@@ -61,29 +65,17 @@ export function ActionButton({
     focusKey ?? null,
     fallbackKey === undefined ? {} : { fallback: fallbackKey },
   );
-  const variant = className?.includes('next-action--primary')
-    ? 'primary'
-    : className?.includes('next-action--quiet')
-      ? 'quiet'
-      : className?.includes('next-action')
-        ? 'default'
-        : className !== undefined || weight === 'none'
-          ? 'native'
-          : weight === 'secondary'
-            ? 'default'
-            : weight;
-  const classes = className
-    ?.split(/\s+/)
-    .filter((name) => !/^next-action(?:--.*)?$/.test(name))
-    .join(' ');
+  const variant = weight === 'none' ? 'native' : weight === 'secondary' ? 'default' : weight;
   return (
     <Button
       ref={ref}
       type="button"
       variant={variant}
+      tone={tone}
+      strongBorder={strongBorder}
       busyLabel={busyLabel}
       reserve={reserve}
-      {...(classes ? { className: classes } : {})}
+      {...(className ? { className } : {})}
       {...(focusKey ? { 'data-next-focus': focusKey } : {})}
       {...(action ? { 'data-next-cockpit-action': action } : {})}
       {...(arg !== undefined ? { 'data-arg': arg } : {})}

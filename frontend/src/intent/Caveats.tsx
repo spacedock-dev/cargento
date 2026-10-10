@@ -116,6 +116,8 @@ function DiscardBlock({ view }: { readonly view: DiscardView }) {
   const button = (
     <ActionButton
       weight="secondary"
+      tone="muted"
+      strongBorder={armed}
       label={armed ? 'Confirm discard' : 'Discard everything'}
       busyLabel="Discarding…"
       pendingKey={key}

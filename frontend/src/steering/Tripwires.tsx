@@ -143,6 +143,7 @@ function AddRule({ project }: { readonly project: string }) {
     <Button
       ref={addRef}
       type="button"
+      tone="muted"
       className="next-guardrail-add"
       data-next-guardrail-add
       data-next-controls-project={project}

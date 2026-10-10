@@ -207,11 +207,7 @@
   inset-block-start: 100%;
 }
 .ctl-menu-items button {
-  display: flex;
-  justify-content: space-between;
   inline-size: 100%;
-  padding: 8px;
-  border: 0;
   text-align: start;
 }
 .ctl-menu-status {

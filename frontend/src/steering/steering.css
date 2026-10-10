@@ -16,8 +16,7 @@
 .next-steer--bar{padding:0 0 12px;border-top:0;border-bottom:1px solid var(--rule)}
 .next-steer--bar>header{padding-top:12px}
 .next-steer--bar form{padding-bottom:0}
-.next-steer button,.next-guardrail-add,.next-guardrail-add-input button{color:var(--ink2);font-family:var(--sans)}
-.next-guardrail-add{align-self:flex-start;color:var(--ink2)}
+.next-guardrail-add{align-self:flex-start}
 .next-steer-receipts,.next-guardrail-rows{display:grid;gap:8px}
 .next-steer-receipt{padding:10px;border-left:2px solid var(--amber);background:var(--panel)}
 .next-steer-receipt strong{display:block;overflow-wrap:anywhere;font-size:var(--fs-label);font-weight:500}
@@ -31,7 +30,7 @@
 .next-guardrail-copy small{margin:0;color:var(--ink2);font-size:var(--fs-label);line-height:1.5}
 .next-guardrail-empty{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-guardrail-add-input{display:flex;align-items:center;gap:9px}
-.next-guardrail-add-input button{flex-shrink:0;color:var(--ink)}
+.next-guardrail-add-input button{flex-shrink:0}
 .next-project-detail-rail :is(a,button,input):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .next-cockpit-decision-summary{margin:0;padding:9px 12px;border-bottom:1px solid var(--rule);color:var(--ink2);font:var(--fs-label) var(--sans)}
 .next-stage-conditions { margin: 1rem 0; }
@@ -45,6 +44,5 @@
    control keeps the quiet ink against the primitive's. */
 .next-control>header{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-steer input,.next-guardrail-add-input input{min-block-size:44px}
-.next-guardrails .next-guardrail-add{color:var(--ink2)}
 .next-cockpit-decision-summary{font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 }

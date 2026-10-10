@@ -169,7 +169,7 @@ export function DirectionQuestion({
         <WholeList pending={pending} numbers={numbers} />
         <div className="next-cockpit-reading-ask">
           <ActionButton
-            className={`next-action${primary ? ' next-action--primary' : ''}`}
+            weight={primary ? 'primary' : 'secondary'}
             label={analyze ? KEEP_ANALYZE : KEEP}
             busyLabel="Keeping…"
             pendingKey={`direction-keep:${key}`}
@@ -181,7 +181,7 @@ export function DirectionQuestion({
             onPress={() => void keepIntent(ctx, session, projectKey, reading)}
           />
           <ActionButton
-            className="next-action"
+            weight="secondary"
             label={ADD_DIRECTION}
             busyLabel="Opening…"
             pendingKey={`direction-add:${key}`}

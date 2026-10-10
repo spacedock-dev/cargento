@@ -135,7 +135,7 @@ function WindowRow({
     >
       <div className="next-capacity-window">
         <Button
-          variant="bare"
+          variant="window"
           ref={buttonRef}
           type="button"
           data-next-capacity-pick={key}

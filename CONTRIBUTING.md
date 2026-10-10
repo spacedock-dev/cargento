@@ -167,7 +167,10 @@ The [adoption record](docs/design-shadcn-adoption.md#toolchain-layer) owns the s
 CSS byte ratchet. Button and the local `cn` are the first shared consumers; `cn` knows the
 entry's type steps and radii. A new step or radius must update that configuration and its theme
 inventory test. The CSS browser proof measures the Button gallery's type, target size and rings
-at desktop and 320 px. Update the exact count when deleting rules; a PR cannot raise its own allowance.
+at desktop and 320 px, and compares real-route Button chrome with the pre-adoption reference.
+Utilities beat `legacy` regardless of specificity: express surface chrome in variants or props
+and leave layout in the surface sheet. Update the exact count when deleting rules; a PR cannot
+raise its own allowance.
 
 ## Before you open a PR
 

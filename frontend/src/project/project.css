@@ -277,7 +277,6 @@
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]>button{border:0;background:none;color:var(--ink2);font:inherit;cursor:pointer}
 .next-cockpit-recovery-memos[data-next-cockpit-memo-empty]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px 8px}
 .next-cockpit-recovery-memos[data-next-cockpit-memo-empty]>span{grid-column:1/-1;margin:0}
-.next-cockpit-recovery-memos[data-next-cockpit-memo-empty]>button{border:0;background:none;color:var(--ink2);font:inherit;cursor:pointer}
 .next-cockpit-recovery-memos textarea{grid-column:1/-1;width:100%;min-height:54px;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit}
 .next-cockpit-recovery span,.next-cockpit-recovery strong,.next-cockpit-recovery small{display:block}
 .next-cockpit-recovery span{margin-bottom:5px;color:var(--ink-label);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}

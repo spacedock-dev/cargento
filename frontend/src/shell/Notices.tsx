@@ -63,6 +63,7 @@ function StalledNotice({
       <strong>{`Live refresh failed ${times} in a row.`}</strong>
       <span>{`${state} Retrying automatically every ${seconds}s.`}</span>
       <Button
+        variant="retry"
         ref={retryRef}
         type="button"
         data-next-action="retry-refresh"

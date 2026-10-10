@@ -48,7 +48,7 @@ function Reading({ memoKey, kind, label }: HumanContextFieldProps) {
       <span>{label}</span>
       <strong>{value || 'Not set'}</strong>
       <Button
-        variant="native"
+        variant="default"
         type="button"
         className="ctl-memo-edit"
         aria-label={`Edit ${label}`}
@@ -122,7 +122,7 @@ function Editor({
       <small id={cueId} data-memo-cue={kind}>
         {cueText(state)}
       </small>
-      <Button variant="bare" type="button" onClick={() => close(false)}>
+      <Button variant="default" type="button" onClick={() => close(false)}>
         Done
       </Button>
     </div>

@@ -298,15 +298,6 @@ body {
   margin-left: auto;
 }
 
-/* Solid, against the primitive's dashed: dashed is the register for a control refusing a press, and this
-   one is waiting for a retry it will make itself. */
-.next-stalled button:disabled,
-.next-stalled button[aria-disabled='true'] {
-  cursor: wait;
-  color: var(--ink3);
-  border-style: solid;
-}
-
 .next-why-body {
   margin: 0;
   color: var(--ink2);
