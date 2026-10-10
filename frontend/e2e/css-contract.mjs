@@ -53,7 +53,7 @@ import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
 import { startConsoleWorld, fragmentFor } from './console-board.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
-import { measureSessionChrome } from './support/session-chrome.mjs';
+import { measureSessionChrome, sessionChromeDifferences } from './support/session-chrome.mjs';
 const SESSION_TABLE = JSON.parse(
   await readFile(new URL('./session-chrome-reference.json', import.meta.url), 'utf8'),
 );
@@ -768,12 +768,47 @@ async function measureDisclosureInlineSizes(page, view) {
     });
 }
 
+let collapsedSessionProved = false;
+async function proveCollapsedSession(page) {
+  if (!collapsedSessionProved && (await page.locator('[data-next-delivery]').count())) {
+    const parent = page.locator('[data-next-delivery]').first().locator('..');
+    const style = await parent.getAttribute('style');
+    try {
+      await parent.evaluate((el) => el.style.setProperty('display', 'none', 'important'));
+      const collapsed = (await page.evaluate(measureSessionChrome)).filter((row) =>
+        row.key.startsWith('delivery-rule|'),
+      );
+      assert.ok(
+        collapsed.length > 0 && collapsed.every((row) => !Number.isFinite(row.inlineSize.ratio)),
+        'collapsed delivery must produce a non-finite ratio',
+      );
+      const differences = sessionChromeDifferences(collapsed, SESSION_TABLE.instances);
+      assert.equal(
+        differences.length,
+        collapsed.length,
+        'collapsed delivery must fail the Sessions chrome gate',
+      );
+      assert.ok(
+        differences.every((row) => row.reason.startsWith('non-finite')),
+        'collapsed delivery must fail for its ratio',
+      );
+      collapsedSessionProved = true;
+    } finally {
+      await parent.evaluate(
+        (el, previous) =>
+          previous === null ? el.removeAttribute('style') : el.setAttribute('style', previous),
+        style,
+      );
+    }
+  }
+}
 async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   await page.evaluate(() => document.fonts.ready);
   measured.views.push(view);
   for (const row of await page.evaluate(measureSessionChrome))
     measured.sessionChrome.push({ view, ...row });
+  await proveCollapsedSession(page);
   for (const row of await page.evaluate(measureFieldChrome))
     measured.fieldChrome.push({ view, ...row });
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
@@ -914,6 +949,7 @@ async function measureSessionNotices(opened, world) {
     await opened.page.evaluate(() => document.fonts.ready);
     for (const value of await opened.page.evaluate(measureSessionChrome))
       measured.sessionChrome.push({ view: 'Sessions notices', ...value });
+    await proveCollapsedSession(opened.page);
     break;
   }
 }
@@ -1178,19 +1214,8 @@ const STEPS_PX = [13, 15, 18, 24, 34];
 function checks() {
   step_('sessions: every adopted surface keeps its measured chrome and inline size', () => {
     const seen = new Set();
-    const differences = [];
-    for (const row of measured.sessionChrome) {
-      seen.add(row.key);
-      const expected = SESSION_TABLE.instances[row.key];
-      const tolerance = row.inlineSize.kind === 'text' ? 0.15 : 0.015;
-      if (
-        !expected ||
-        JSON.stringify(expected.chrome) !== JSON.stringify(row.chrome) ||
-        expected.inlineSize.kind !== row.inlineSize.kind ||
-        Math.abs(expected.inlineSize.ratio - row.inlineSize.ratio) > tolerance
-      )
-        differences.push({ ...row, expected });
-    }
+    const differences = sessionChromeDifferences(measured.sessionChrome, SESSION_TABLE.instances);
+    for (const row of measured.sessionChrome) seen.add(row.key);
     assert.deepEqual(
       differences.slice(0, 8),
       [],
@@ -1203,6 +1228,7 @@ function checks() {
         'unreached Sessions surface identities',
       );
     assert.ok(measured.sessionChrome.length >= 100, 'too few Sessions surfaces reached');
+    assert.ok(collapsedSessionProved, 'collapsed delivery mutation was not reached');
     return `${measured.sessionChrome.length} instances against ${SESSION_TABLE.commit}`;
   });
   const text = measured.text.filter((row) => !row.hidden);

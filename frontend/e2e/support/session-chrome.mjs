@@ -26,7 +26,7 @@ export function measureSessionChrome() {
       const key = `${surface}|${innerWidth <= 620 ? 'small' : innerWidth <= 1100 ? 'medium' : 'wide'}|${surface === 'current' ? tone : rowTone}`;
       const width = el.getBoundingClientRect().width;
       // A pill is content-sized: compare its excess over the actual text rather than absolute font width.
-      let inlineSize = { kind: 'row', ratio: parentWidth ? width / parentWidth : 0 };
+      let inlineSize = { kind: 'row', ratio: width / parentWidth };
       if (surface === 'state') {
         const range = document.createRange();
         range.selectNodeContents(el.lastChild);
@@ -83,4 +83,30 @@ export function measureSessionChrome() {
     });
   }
   return rows;
+}
+
+export function sessionChromeDifferences(rows, instances) {
+  const differences = [];
+  for (const row of rows) {
+    const expected = instances[row.key];
+    const tolerance = row.inlineSize.kind === 'text' ? 0.15 : 0.015;
+    const nonFinite =
+      expected &&
+      (!Number.isFinite(expected.inlineSize.ratio) || !Number.isFinite(row.inlineSize.ratio));
+    if (
+      !expected ||
+      nonFinite ||
+      JSON.stringify(expected.chrome) !== JSON.stringify(row.chrome) ||
+      expected.inlineSize.kind !== row.inlineSize.kind ||
+      !(Math.abs(expected.inlineSize.ratio - row.inlineSize.ratio) <= tolerance)
+    )
+      differences.push({
+        ...row,
+        expected,
+        reason: nonFinite
+          ? `non-finite inline-size ratio: measured ${row.inlineSize.ratio}, expected ${expected.inlineSize.ratio}`
+          : 'chrome or inline size changed',
+      });
+  }
+  return differences;
 }

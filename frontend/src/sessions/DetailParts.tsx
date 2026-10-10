@@ -244,7 +244,7 @@ export function DeliveryView({ delivery }: { readonly delivery: Delivery }) {
       data-next-delivery={delivery.outcome}
       {...(delivery.mixed ? { 'data-next-delivery-mixed': 'true' } : {})}
     >
-      <Separator aria-hidden="true" />
+      <Separator aria-hidden="true" className="mb-[10px]" />
       <h2>NOTIFICATIONS</h2>
       <p className="next-session-delivery-count">{delivery.count}</p>
       {delivery.why ? <p className="next-session-delivery-why">{delivery.why}</p> : null}
