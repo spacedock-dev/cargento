@@ -25,6 +25,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { nativeFieldContinuity } from './support/native-field.mjs';
 import { visitFieldStates } from './support/field-worlds.mjs';
+import { proveFieldPoll } from './field-poll-proof.mjs';
 import { REPOSITORY } from './support/browser.mjs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
@@ -1050,6 +1051,7 @@ await step(
     }
   },
 );
+await step('field refresh waits for rendered data and detects a controlled editor', proveFieldPoll);
 if (copy) await rm(copy, { recursive: true, force: true });
 
 try {

@@ -14,19 +14,70 @@ import {
   installScript,
 } from '../drift-board.mjs';
 
-async function forcePoll(page) {
-  const fetched = page.waitForResponse(
-    (response) => response.url().endsWith('/api/data') && response.request().method() === 'GET',
-  );
-  await page.evaluate(() =>
-    globalThis.dispatchEvent(
-      new StorageEvent('storage', { key: 'cargento.next.revision', newValue: String(Date.now()) }),
-    ),
-  );
-  await (await fetched).finished();
+const patience = (ms) => (process.env.CI ? ms * 3 : ms);
+let polls = 0;
+
+export async function forcePoll(page) {
+  const sequence = ++polls;
+  const marker = `[poll:${sequence}]`;
+  // Like the fluidity driver's fixture title: a completed GET can be discarded, and store acceptance
+  // can precede display. Stamp after the scripted backend so correction fixtures keep their overlays.
   await page.evaluate(
-    () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    ({ marker }) => {
+      const original = globalThis.fetch;
+      globalThis.__fieldPollFetch = original;
+      globalThis.fetch = async (input, init) => {
+        const response = await original(input, init);
+        const url = input instanceof Request ? input.url : String(input);
+        if (new URL(url, globalThis.location.href).pathname !== '/api/data' || !response.ok)
+          return response;
+        const body = await response.json();
+        body.sessions = (body.sessions || []).map((row) => ({
+          ...row,
+          title: `${row.title || 'Session'} ${marker}`,
+        }));
+        return new Response(JSON.stringify(body), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+      };
+      globalThis.__fieldPollWake = (globalThis.__fieldPollWake || 0) + 1;
+      globalThis.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'cargento.next.revision',
+          newValue: `${Date.now()}.${globalThis.__fieldPollWake}`,
+        }),
+      );
+    },
+    { marker, sequence },
   );
+  try {
+    await page
+      .waitForFunction(
+        (marker) =>
+          [
+            ...globalThis.document.querySelectorAll(
+              '.next-cockpit-scope-title, nav[aria-label=Breadcrumb] [aria-current=page]',
+            ),
+          ].some((node) => node.textContent.includes(marker)),
+        marker,
+        { timeout: patience(6000) },
+      )
+      .catch((cause) => {
+        throw new Error(`forcePoll: no rendered revision ${marker} within ${patience(6000)} ms`, {
+          cause,
+        });
+      });
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
+  } finally {
+    await page.evaluate(() => {
+      globalThis.fetch = globalThis.__fieldPollFetch;
+      delete globalThis.__fieldPollFetch;
+    });
+  }
 }
 
 /* States the route census does not reach: editable memos, an added tripwire and later directions. */
