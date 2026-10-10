@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1464760,
+    "bytes": 1464768,
     "file": "react.html",
-    "sha256": "ee3dd7c8cd5ee0aa60bf9db37bfb56d849b4928f18da1d271d1d9c821df04581"
+    "sha256": "59121e6701aca60f63b21bbedc32ae3059d637ac522f8b6cf36b61fd863693da"
   },
   "format": 1,
   "frontend": "react",
@@ -1324,7 +1324,7 @@
       },
       {
         "file": "frontend/src/ui/disclosureChevron.tsx",
-        "sha256": "389a084bb4021022b5e175087718922381236e7aa7550b8ed1c55151e28f4516"
+        "sha256": "510481b2294b05191f2f8adaf7204830c27512a4bf5019afe683eac7d94be616"
       },
       {
         "file": "frontend/src/workstream/ChangesPanel.tsx",
