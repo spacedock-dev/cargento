@@ -64,9 +64,9 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-held-field button:not(.next-action){border:0;background:none;color:var(--ink2);font:var(--fs-label) var(--sans);cursor:pointer}
+.next-cockpit-held-field button[data-variant="native"]{border:0;background:none;color:var(--ink2);font:var(--fs-label) var(--sans);cursor:pointer}
 .next-cockpit-held-field button[hidden]{display:none}
-.next-cockpit-held-field button:not(.next-action)[aria-disabled="true"]{color:var(--ink3);cursor:not-allowed}
+.next-cockpit-held-field button[data-variant="native"][aria-disabled="true"]{color:var(--ink3);cursor:not-allowed}
 .next-cockpit-held-absent{grid-column:1/-1;margin:0;color:var(--ink-absence);font-size:var(--fs-body);line-height:1.5}
 .next-cockpit-held-cue{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
 .next-cockpit-held-list{grid-column:1/-1;display:grid;gap:6px;margin:0;padding:0;list-style:none}
@@ -80,7 +80,7 @@ details.next-cockpit-held-stamp[open]>span{display:block}
 .next-cockpit-held-source[data-next-cockpit-held-line-source-stale]{visibility:hidden}
 .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{background:var(--sunk)}
 .next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under{flex-wrap:nowrap;justify-content:flex-start;min-block-size:44px}
-.next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under>.next-action{flex:none;margin-inline-start:auto}
+.next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under>[data-slot="button"]{flex:none;margin-inline-start:auto}
 .next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
 .next-intent-draft-marks[hidden]{display:none}
 .next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}

@@ -747,7 +747,26 @@ try {
       await react.page.locator(GOAL).click();
       await react.page.keyboard.press(`${MOD}+a`);
       await react.page.keyboard.type('saved while leaving');
-      await react.page.locator('[data-next-cockpit-action="held-save"]').click();
+      const save = react.page.locator('[data-next-cockpit-action="held-save"]');
+      const before = await save.boundingBox();
+      await save.click();
+      await react.page
+        .locator('[data-next-cockpit-action="held-save"][aria-busy="true"]')
+        .waitFor();
+      await save.dispatchEvent('click');
+      await react.page.keyboard.press('Enter');
+      await react.page.keyboard.press('Space');
+      assert.equal(await save.getAttribute('aria-disabled'), 'true');
+      assert.equal(await save.getAttribute('disabled'), null);
+      assert.equal(await save.evaluate((el) => document.activeElement === el), true);
+      const during = await save.boundingBox();
+      assert.equal(during.width, before.width, 'pending Save keeps its width');
+      assert.equal(during.height, before.height, 'pending Save keeps its height');
+      assert.equal(
+        react.log.nonGet.length,
+        1,
+        'repeated click, Enter and Space send no second save',
+      );
       await react.page.locator('nav[aria-label="Primary"] a', { hasText: 'Sessions' }).click();
       await react.page.waitForSelector('[data-next-view-body="sessions"]');
       await react.page.waitForTimeout(patience(2500));

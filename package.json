@@ -41,10 +41,12 @@
     "test:styles": "node frontend/build/style-policy.mjs"
   },
   "dependencies": {
+    "@base-ui/react": "1.8.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "tailwind-merge": "3.7.0",
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {

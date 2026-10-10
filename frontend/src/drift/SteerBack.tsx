@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useFocusKey } from '../controls';
 import { openPendingDirection } from '../intent/api';
@@ -28,10 +29,10 @@ export function SteerButton({ primary }: { readonly primary: boolean }) {
   const held = ctx.drift.corrections.get(model.key);
   const { identity } = model;
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
-      className={`next-action${primary ? ' next-action--primary' : ''}`}
+      variant={primary ? 'primary' : 'default'}
       data-next-cockpit-action="steer-back"
       aria-expanded={Boolean(held?.open)}
       data-next-focus={`steer-back:${model.key}`}
@@ -41,7 +42,7 @@ export function SteerButton({ primary }: { readonly primary: boolean }) {
       }}
     >
       Steer back
-    </button>
+    </Button>
   );
 }
 
@@ -130,9 +131,8 @@ function CorrectionBox({ held }: { readonly held: HeldCorrection }) {
         aria-describedby="next-cockpit-correction-hint"
       />
       <div className="next-cockpit-steer-tools">
-        <button
+        <Button
           type="button"
-          className="next-action"
           data-next-cockpit-action="correction-copy"
           data-next-copy-correction={key}
           data-next-focus={`correction-copy:${key}`}
@@ -143,7 +143,7 @@ function CorrectionBox({ held }: { readonly held: HeldCorrection }) {
           }}
         >
           {label}
-        </button>
+        </Button>
         <span className="next-cockpit-held-count" data-next-correction-count>
           {`${String(count)}/${String(CORRECTION_CAP)}`}
         </span>
@@ -152,9 +152,8 @@ function CorrectionBox({ held }: { readonly held: HeldCorrection }) {
             <p className="next-cockpit-reading-why" data-next-correction-older>
               {CORRECTION_OLDER}
             </p>
-            <button
+            <Button
               type="button"
-              className="next-action"
               data-next-cockpit-action="correction-recompose"
               data-next-focus={`correction-recompose:${key}`}
               onClick={(event) => {
@@ -163,7 +162,7 @@ function CorrectionBox({ held }: { readonly held: HeldCorrection }) {
               }}
             >
               Recompose
-            </button>
+            </Button>
           </>
         ) : null}
         <p

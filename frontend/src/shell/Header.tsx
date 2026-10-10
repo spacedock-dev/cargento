@@ -1,3 +1,5 @@
+import { buttonVariants } from '../ui/button';
+import { Button } from '../ui/button';
 import { AttentionAnnouncer } from '../attention';
 import { MoreMenu } from '../controls/MoreMenu';
 import { NotificationControl } from '../notify';
@@ -35,11 +37,23 @@ function PrimaryNavigation({ route }: { readonly route: Route }) {
     <nav aria-label="Primary">
       {PRIMARY.map(([view, label]) =>
         view === here ? (
-          <a key={view} ref={currentRef} href={`#n=${view}`} aria-current="page">
+          <a
+            data-slot="button-link"
+            className={buttonVariants({ variant: 'native' })}
+            key={view}
+            ref={currentRef}
+            href={`#n=${view}`}
+            aria-current="page"
+          >
             {label}
           </a>
         ) : (
-          <a key={view} href={`#n=${view}`}>
+          <a
+            data-slot="button-link"
+            className={buttonVariants({ variant: 'native' })}
+            key={view}
+            href={`#n=${view}`}
+          >
             {label}
           </a>
         ),
@@ -104,14 +118,15 @@ export function Header({ route }: { readonly route: Route }) {
       <div className="next-header-right">
         {detail ? null : <RunningCounts counts={counts} />}
         {counts.state === 'measured' && counts.gates > 0 ? (
-          <button
+          <Button
+            variant="native"
             type="button"
             className="next-gate"
             data-next-action="needs-input"
             onClick={() => navigate({ view: 'attention', project: null, session: null })}
           >
             {`${String(counts.gates)} ${counts.gates === 1 ? 'reported block' : 'reported blocks'}`}
-          </button>
+          </Button>
         ) : null}
         <NotificationControl />
         {route.view === 'project' ? <ProjectMore route={route} counts={counts} /> : null}

@@ -6,29 +6,6 @@
    fields (Intent). Selectors are copied as written, `#app` included, because the React page draws the
    same `<main id="app">` and the cascade has to resolve the same way. */
 
-/* ===== Busy controls ===== */
-/* The one cell holds any busy control, so a button without `next-action` (the direction Save)
-   keeps max(idle, busy) too rather than laying its ghost beside the busy label (verifier R3). */
-[data-next-pending]{display:inline-grid;align-items:center;justify-items:center;cursor:progress}
-[data-next-pending]>span{grid-area:1/1}
-.next-action[data-next-pending]{display:inline-grid;align-items:center;justify-items:center;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:progress}
-.next-action.next-action--primary[data-next-pending]{border-color:var(--accent);background:var(--accent);color:#14140f}
-/* A quiet control is drawn with its bottom rule alone, busy as at rest, so it does not grow 2px. */
-.next-action.next-action--quiet[data-next-pending]{border:0;border-bottom:1px solid var(--line)}
-.next-action[data-next-pending]>span{grid-area:1/1}
-.next-action-ghost{visibility:hidden}
-/* At rest the reserving control takes the busy state's own cell, so it is the same box idle and
-   busy: 89.4 by 21px both ways for the direction Save in Chrome 156. */
-[data-next-reserve]{display:inline-grid;align-items:center;justify-items:center}
-.next-action-reserve{display:contents}
-.next-action-reserve>span{grid-area:1/1}
-.next-action-reserve>.next-action-ghost{display:flex}
-.next-action-reserve .next-spinner{animation:none}
-.next-action-busy{display:inline-flex;align-items:center;gap:6px}
-@keyframes next-spin{to{transform:rotate(360deg)}}
-.next-spinner{display:inline-block;inline-size:1em;block-size:1em;box-sizing:border-box;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:next-spin .8s linear infinite}
-@media(prefers-reduced-motion:reduce){.next-spinner{animation:none;border-right-color:currentColor;opacity:.55}}
-
 /* ===== Row dots and tones ===== */
 .next-project-tone--ok{--project-tone:var(--accent)}
 .next-project-tone--want{--project-tone:var(--amber)}
@@ -235,8 +212,6 @@
 .next-session-ask+.next-session-ask{border-top:1px solid var(--rule)}
 .next-session-ask-question{margin:0 0 14px;font-size:var(--fs-body);line-height:1.6}
 .next-session-answer-options{display:flex;flex-wrap:wrap;gap:9px}
-.next-session-answer-options button{padding:7px 11px}
-.next-session-answer-options button:hover{border-color:var(--accent)}
 .next-session-answer-empty,.next-session-answer-failure{margin:10px 0 0;color:var(--ink2);font-size:var(--fs-label)}
 .next-session-answer-failure{color:var(--ink)}
 .next-session-task,.next-session-subagent{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;min-height:44px;padding:9px 8px;border-top:1px solid var(--rule)}
@@ -401,11 +376,11 @@
 /* ===== The shared controls and disclosure, where the legacy rules name their old elements ===== */
 .next-operations-header>.ctl-disclosure{grid-column:-2 / -1}
 /* Above the row's link overlay, or a press on Copy would open the session instead. */
-.next-operation-identity .ctl-copy{position:relative;z-index:1;margin-top:8px}
-.next-session-controls .ctl-copy,.next-session-controls .ctl-raise{margin:0}
-.next-session-controls .ctl-raise{font-weight:700}
-.next-departure-reentry .ctl-copy,.next-departure-reentry .ctl-raise{margin:0}
-.next-session-controls .ctl-copy:focus-visible,.next-session-controls .ctl-raise:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.next-operation-identity [data-copy-kind]{position:relative;z-index:1;margin-top:8px}
+.next-session-controls [data-copy-kind],.next-session-controls [data-control="raise"]{margin:0}
+.next-session-controls [data-control="raise"]{font-weight:700}
+.next-departure-reentry [data-copy-kind],.next-departure-reentry [data-control="raise"]{margin:0}
+.next-session-controls [data-copy-kind]:focus-visible,.next-session-controls [data-control="raise"]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 /* The unreadable-source note this page adds above the fleet facts: a stated absence, not a list. */
 .next-sessions-sources{margin:14px 0 0;padding:0;list-style:none;color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}

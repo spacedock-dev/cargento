@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { nextFiniteNumber } from '../api/bootstrap';
 import { compatSessKey, exactIdentity } from '../api/identity';
@@ -122,18 +123,18 @@ function OpenTerminal({
       <div className="pc-terminal-bar">
         <Title lookup={lookup} />
         <span>read-only</span>
-        <button
+        <Button
           type="button"
           id="pc-terminal-jump"
-          className="quiet"
+          variant="terminal"
           hidden={follow}
           onClick={() => owner.jump()}
         >
           Jump to live
-        </button>
-        <button type="button" className="quiet" onClick={() => owner.close()}>
+        </Button>
+        <Button type="button" variant="terminal" onClick={() => owner.close()}>
           Close
-        </button>
+        </Button>
       </div>
       {/* No React children: the retained screen is put in here by the owner, and React must never reconcile it away. */}
       <div id="pc-terminal-viewport" className="pc-terminal-viewport" ref={viewport} />
@@ -175,9 +176,14 @@ export function TerminalSurface({ project, identity }: TerminalSurfaceProps) {
     body = <Absence lookup={lookup} project={project} scope={key} />;
   else if (snapshot.openKey !== key) {
     body = (
-      <button type="button" className="pc-terminal-open" onClick={() => owner.open(key)}>
+      <Button
+        type="button"
+        variant="terminal"
+        className="my-[8px] mb-3"
+        onClick={() => owner.open(key)}
+      >
         Open terminal
-      </button>
+      </Button>
     );
   } else
     body = (

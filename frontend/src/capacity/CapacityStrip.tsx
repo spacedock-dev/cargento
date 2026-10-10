@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { Fragment, useEffect, useMemo, type ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
 import { useFocusKey } from '../controls/useFocusKey';
@@ -133,7 +134,8 @@ function WindowRow({
       onClick={() => onPick(key)}
     >
       <div className="next-capacity-window">
-        <button
+        <Button
+          variant="bare"
           ref={buttonRef}
           type="button"
           data-next-capacity-pick={key}
@@ -150,7 +152,7 @@ function WindowRow({
               duration(row.windowSec)
             )}
           </i>
-        </button>
+        </Button>
       </div>
       <div className={`next-capacity-pct${usedInk}`}>
         <small>USED</small>

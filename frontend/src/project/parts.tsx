@@ -1,3 +1,5 @@
+import { buttonVariants } from '../ui/button';
+import { cn } from '../lib/utils';
 import type { ReactNode, Ref } from 'react';
 import { sessionDot } from '../observed';
 import type { ObservedSession } from '../observed';
@@ -57,10 +59,11 @@ export function ProjectAnchor({
   const fragment = fragmentForRoute(route);
   return (
     <a
+      data-slot="button-link"
       ref={linkRef}
       href={fragment}
       data-next-route={fragment.slice(3)}
-      {...(className ? { className } : {})}
+      className={cn(className, buttonVariants({ variant: 'native' }))}
       {...extra}
       onClick={(event) => {
         if (

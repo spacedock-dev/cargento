@@ -350,3 +350,49 @@ an extra production drift run. Five deliberate mutations fail: default type scal
 size, an unused vendored module, CSS growth and a rule hidden in the excluded entry. Native Windows
 was not run here; the separator normalization is tested, and the unit-test step now allows six
 minutes against the spike's measured 159 seconds.
+
+## Button layer
+
+The first component layer vendors Base UI Button with the pinned registry procedure, adds Base UI
+1.8.0 and tailwind-merge 3.7.0, and introduces `frontend/src/lib/utils.ts`. Its merger knows the five
+type steps and four radii. Tests compare those names with the entry stylesheet, so an added theme
+step requires an explicit merger update.
+
+All 46 button elements use Button. The ten anchor elements stay plain links with `buttonVariants`;
+no link is rendered through Base UI. Surface-specific tabs, switches, filters and row layouts keep
+their own rules through the native variant. ActionButton keeps its public props and call sites.
+Its old class-name props are translated to variants at the wrapper boundary and are never emitted.
+The default and quiet resting appearance, and the primary pending appearance, follow the old sheet.
+
+A pending button passes `disabled` plus `focusableWhenDisabled` to Base UI, which emits
+`aria-disabled` without the native disabled attribute and suppresses click, Enter and Space.
+The app supplies `aria-busy`. An inert action that must explain a refusal still delivers its press
+to the handler. The busy label sits over a hidden idle label in an absolute overlay, so the old
+answer button's measured growth from 94.23 to 114.63 px is gone. A caller's explicit reserve still
+holds a wider busy label at rest and while pending. This verifies exposed ARIA state, not screen-reader announcement.
+
+The shared chrome, copy and raise states, terminal button chrome, answer padding and busy rules
+are removed from the sheets. The CSS record falls from 161,464 to 154,929 bytes. The component
+gallery includes default, hover, keyboard focus, pending, disabled, long text, primary, quiet and
+linked actions, plus an explicit width reservation. Its own build is measured by `css-contract.mjs` at 1280 and 320 px in both bundle
+modes, alongside the real-route type and ring checks and existing route target checks.
+
+The target floor stays at 44 CSS px, as in the replaced rule. A first attempt using Tailwind's
+rem-based spacing step made the Console tab at least 88 px wide at 200% text size and overflowed
+the 320 px shell by one pixel. The shell layout proof caught it; the fixed pixel floor lets text
+and padding grow without doubling the minimum width of a tab.
+
+Recorded-answer normalization ignores the shared utility classes and Base UI's redundant native
+button role and default tab index. It still compares semantic surface classes, explicit roles,
+nondefault tab order, text, targets and action attributes. The recorded fixtures are unchanged.
+
+Chrome captures of the Sessions list and a session page show the same resting buttons. Computed
+primary and quiet resting styles and primary pending styles match their predecessor. The quiet
+pending border now stays solid on all four sides, preserving its 118.38 px resting width instead
+of shrinking to 116.38 px with a bottom border only. The spinner is an inline SVG arc in place of
+the CSS border spinner. Both changes are deliberate; neither changes the request or its label.
+
+The fluidity receipt records three runs on 2026-10-10 that pass the unchanged budgets. Core HTML
+is 1,435,024 bytes against the 2,000,000-byte ceiling. For 5, 50 and 250 sessions, first-render
+medians are 128.0, 94.6 and 127.4 ms, and poll-to-paint medians are 45.3, 46.2 and 63.6 ms. The
+receipt retains the historical legacy control; no timing allowance changed.

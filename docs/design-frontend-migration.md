@@ -91,6 +91,11 @@ the `legacy` layer. Its source boundary, scale reset and CSS ratchet are owned b
 `components.json`, the entry stylesheet and vendored source in provenance, and ships the upstream
 MIT text for copied shadcn code alongside bundled package licenses.
 
+The shared Button owns the 46 button elements and the styling recipe used by ten plain anchors.
+ActionButton keeps its caller props, focus registration and pending-store subscription. The Button
+owns the ghost label, spinner and suppression of repeated pending activation. Tabs and switches keep
+their explicit roles. See [the Button adoption](design-shadcn-adoption.md#button-layer).
+
 In development Python owns the document and API origin. The explicitly enabled page imports
 Vite modules and the React-refresh preamble from a validated loopback child. Strict ports,
 an owned-child handshake and exact origin checks prevent accidentally loading a different local
@@ -481,7 +486,7 @@ frame-boundary proxy rather than proof of compositor presentation.
 
 The baseline receipt bound the runtime page and both measurement scripts by digest. On the same recorded
 machine/browser/method, the timing budget is the baseline median multiplied by 1.5 plus 50 ms.
-Core HTML allows 25% growth; packaging accounts separately for the optional terminal. These are
+The historical core HTML budget allowed 25% growth; packaging accounts separately for the optional terminal. These are
 comparison budgets, not cross-platform CI deadlines. Native goal typing kept words, caret and
 focus in every run, while its node was replaced. Correction undo and composition remain separate
 browser obligations. TCP, EventSource resource counts and retained detached nodes were not measured.

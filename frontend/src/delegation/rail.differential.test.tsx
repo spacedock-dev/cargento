@@ -63,7 +63,7 @@ describe('the Console rail agrees with the legacy page', () => {
         seen.rate += mine.querySelector('[data-next-delegation-rate]') ? 1 : 0;
         seen.waiting += mine.querySelectorAll('[data-next-wait-session]').length;
         seen.windows += mine.querySelectorAll('[data-next-rail-window]').length;
-        seen.raise += mine.querySelectorAll('.ctl-raise').length;
+        seen.raise += mine.querySelectorAll('[data-control="raise"]').length;
       }
       page.unmount();
     }

@@ -25,6 +25,7 @@ import { replaceRuntime } from '../src/transport/runtime';
 import { startWorkstream } from '../src/workstream';
 import '../src/styles/shell.css';
 import '../src/styles/controls.css';
+import '../src/styles/tailwind.css';
 import '../src/project/project.css';
 
 // A test entry module that mounts itself and exports nothing, so fast refresh has no component to track.

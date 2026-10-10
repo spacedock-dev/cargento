@@ -79,7 +79,8 @@ types, Biome lints (JavaScript, TypeScript and React rules) and checks formattin
 `pnpm lint`, with `pnpm format` rewriting what it reports, Vitest with Testing Library checks visible
 behavior, and Playwright checks the built page in Chromium. The rule set and what it deliberately
 does not cover are in the [migration contract](docs/design-frontend-migration.md#lint-and-format). Vite and its React plugin own the build and hot
-refresh; no router, state library or UI kit is installed. Node and pnpm are build tools: the shipped
+refresh. Shared controls use vendored shadcn components backed by Base UI; routing and state remain
+owned by the page. Node and pnpm are build tools: the shipped
 Python dashboard still requires neither.
 
 The typed client is tested against fixtures captured from the real server. After changing a route's
@@ -163,7 +164,10 @@ The packager ships the full upstream MIT text from `frontend/build/shadcn-LICENS
 package notices. The vendored directory has a Biome export-rule override; formatting still applies.
 
 The [adoption record](docs/design-shadcn-adoption.md#toolchain-layer) owns the source boundaries and
-CSS byte ratchet. Update the exact count when deleting rules; a PR cannot raise its own allowance.
+CSS byte ratchet. Button and the local `cn` are the first shared consumers; `cn` knows the
+entry's type steps and radii. A new step or radius must update that configuration and its theme
+inventory test. The CSS browser proof measures the Button gallery's type, target size and rings
+at desktop and 320 px. Update the exact count when deleting rules; a PR cannot raise its own allowance.
 
 ## Before you open a PR
 

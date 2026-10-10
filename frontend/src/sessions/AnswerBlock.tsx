@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useFocusKey } from '../controls';
 import { useDisplayed, useShell } from '../shell/context';
 import type { ObservedSession, Row } from '../observed';
@@ -57,30 +58,19 @@ function AnswerButton({
   };
 
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
-      className="next-action"
+      variant="answer"
+      busyLabel="Sending…"
       data-next-answer={id}
       data-next-answer-index={index}
       data-next-focus={control}
       {...(busy ? { 'aria-disabled': true, 'aria-busy': true, 'data-next-pending': '' } : {})}
       onClick={() => void press()}
     >
-      {busy ? (
-        <>
-          <span className="next-action-ghost" aria-hidden="true">
-            {label}
-          </span>
-          <span className="next-action-busy">
-            <span className="next-spinner" aria-hidden="true" />
-            Sending…
-          </span>
-        </>
-      ) : (
-        label
-      )}
-    </button>
+      {label}
+    </Button>
   );
 }
 

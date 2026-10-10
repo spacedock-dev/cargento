@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useFocusKey } from '../controls';
 import { useDisplayed, useShell } from '../shell/context';
 
@@ -60,25 +61,28 @@ export function ActionButton({
     focusKey ?? null,
     fallbackKey === undefined ? {} : { fallback: fallbackKey },
   );
-  const classes =
-    className ?? (weight === 'none' ? undefined : `next-action next-action--${weight}`);
-  const idle = reserve ? (
-    <span className="next-action-reserve">
-      <span>{label}</span>
-      <span className="next-action-ghost" aria-hidden="true">
-        <span className="next-action-busy">
-          <span className="next-spinner" aria-hidden="true" />
-          {reserve}
-        </span>
-      </span>
-    </span>
-  ) : (
-    label
-  );
+  const variant = className?.includes('next-action--primary')
+    ? 'primary'
+    : className?.includes('next-action--quiet')
+      ? 'quiet'
+      : className?.includes('next-action')
+        ? 'default'
+        : className !== undefined || weight === 'none'
+          ? 'native'
+          : weight === 'secondary'
+            ? 'default'
+            : weight;
+  const classes = className
+    ?.split(/\s+/)
+    .filter((name) => !/^next-action(?:--.*)?$/.test(name))
+    .join(' ');
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
+      variant={variant}
+      busyLabel={busyLabel}
+      reserve={reserve}
       {...(classes ? { className: classes } : {})}
       {...(focusKey ? { 'data-next-focus': focusKey } : {})}
       {...(action ? { 'data-next-cockpit-action': action } : {})}
@@ -99,19 +103,7 @@ export function ActionButton({
         onPress(event.detail);
       }}
     >
-      {busy ? (
-        <>
-          <span className="next-action-ghost" aria-hidden="true">
-            {label}
-          </span>
-          <span className="next-action-busy">
-            <span className="next-spinner" aria-hidden="true" />
-            {busyLabel}
-          </span>
-        </>
-      ) : (
-        idle
-      )}
-    </button>
+      {label}
+    </Button>
   );
 }

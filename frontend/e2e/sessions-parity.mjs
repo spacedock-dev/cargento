@@ -478,6 +478,53 @@ try {
     },
   );
 
+  await step(
+    'pending answer: click, Enter and Space send one request and keep focus and width',
+    async () => {
+      const live = await newPage();
+      let release;
+      try {
+        const gate = real.sessions.find((row) => row.sid === 'gate-open');
+        await live.page.goto(board.react.origin + '/' + sessionFragment(gate));
+        await reactReady(live.page);
+        const answer = live.page.locator('[data-next-answer-index="0"]');
+        const before = await answer.boundingBox();
+        const held = new Promise((resolve) => {
+          release = resolve;
+        });
+        await live.page.route('**/api/answer', async (route) => {
+          await held;
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ answered: false }),
+          });
+        });
+        await answer.click();
+        await live.page.locator('[data-next-answer][aria-busy="true"]').waitFor();
+        // dispatchEvent reaches the control even though automation regards aria-disabled as unclickable.
+        await answer.dispatchEvent('click');
+        await live.page.keyboard.press('Enter');
+        await live.page.keyboard.press('Space');
+        assert.equal(await answer.getAttribute('aria-disabled'), 'true');
+        assert.equal(await answer.getAttribute('disabled'), null);
+        assert.equal(await answer.evaluate((el) => document.activeElement === el), true);
+        const after = await answer.boundingBox();
+        assert.equal(after.width, before.width);
+        assert.equal(after.height, before.height);
+        assert.equal(live.log.nonGet.filter((request) => request.path === '/api/answer').length, 1);
+        release();
+        await live.page
+          .locator('[data-next-answer][aria-busy="true"]')
+          .waitFor({ state: 'detached' });
+        return { requests: 1, width: after.width, height: after.height };
+      } finally {
+        release?.();
+        await live.close();
+      }
+    },
+  );
+
   /* ===================== BEHAVIOUR: answering a held request ===================== */
   await step(
     'answer: one numeric index goes to the real route by keyboard, the request leaves the board, and no model is called',

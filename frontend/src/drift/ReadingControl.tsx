@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useEffect, type ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
 import { useFocusKey } from '../controls';
@@ -521,10 +522,9 @@ function ConsentCard({
       {partsList}
       <div className="next-cockpit-reading-ask">
         {press}
-        <button
+        <Button
           ref={notNowRef}
           type="button"
-          className="next-action"
           data-next-cockpit-action="reading-not-now"
           data-next-focus={`reading-not-now:${model.key}`}
           {...(allowBusy ? { 'aria-disabled': true } : {})}
@@ -534,7 +534,7 @@ function ConsentCard({
           }}
         >
           Not now
-        </button>
+        </Button>
       </div>
     </div>
   );

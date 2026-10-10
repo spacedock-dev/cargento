@@ -1,3 +1,5 @@
+import { buttonVariants } from '../ui/button';
+import { cn } from '../lib/utils';
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
 import { CapacityStrip } from '../capacity';
 import { Disclosure, disclosureKey, CopyControl } from '../controls';
@@ -81,7 +83,8 @@ export function RouteAnchor({
   };
   return (
     <a
-      className={className}
+      data-slot="button-link"
+      className={cn(className, buttonVariants({ variant: 'native' }))}
       href={fragment}
       data-next-route={fragment.slice(3)}
       {...(label ? { 'aria-label': label } : {})}

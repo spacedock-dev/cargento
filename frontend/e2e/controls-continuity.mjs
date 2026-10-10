@@ -787,7 +787,9 @@ try {
       assert.equal(await raise.nth(1).evaluate((node) => node.disabled), false);
       // Playwright treats aria-disabled as not actionable and would wait the press out; a reader's click does not.
       await raise.nth(1).evaluate((node) => node.click());
-      await page.waitForFunction(() => !document.querySelector('.ctl-raise[aria-disabled="true"]'));
+      await page.waitForFunction(
+        () => !document.querySelector('[data-control="raise"][aria-disabled="true"]'),
+      );
       assert.equal(raises.length, 1, 'a second press while one was in flight sent another request');
       assert.equal(await raise.nth(1).getAttribute('data-raise-state'), 'throttled');
       assert.equal(await raise.nth(0).getAttribute('data-raise-state'), 'declined');
@@ -851,7 +853,7 @@ try {
             ),
           small: [
             ...document.querySelectorAll(
-              '#gallery .ctl-copy, #gallery .ctl-raise, #gallery .ctl-action, #gallery summary, #gallery .ctl-menu-items button, #gallery .ctl-memo button',
+              '#gallery [data-copy-kind], #gallery [data-control="raise"], #gallery [data-slot="button"], #gallery summary, #gallery .ctl-menu-items button, #gallery .ctl-memo button',
             ),
           ]
             .filter((node) => {

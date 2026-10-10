@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { compatSessKey } from '../api/identity';
 import { useFocusKey } from '../controls';
 import { useShell } from '../shell/context';
@@ -24,7 +25,8 @@ export function LiveMonitorSwitch() {
   return (
     <div className="next-session-drift-monitor">
       <span id="next-session-drift-monitor-label">{LIVE_MONITOR}</span>
-      <button
+      <Button
+        variant="native"
         ref={ref}
         type="button"
         className="next-session-drift-switch"
@@ -41,7 +43,7 @@ export function LiveMonitorSwitch() {
         <span className="next-session-drift-track" aria-hidden="true">
           <span />
         </span>
-      </button>
+      </Button>
     </div>
   );
 }

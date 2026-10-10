@@ -87,7 +87,6 @@ body {
 }
 
 #app a,
-#app button,
 #app summary,
 #app [role='link'] {
   min-block-size: 44px;
@@ -142,53 +141,6 @@ body {
     animation: none !important;
     transition: none !important;
   }
-}
-
-/* A bare control otherwise keeps user-agent chrome, the brightest thing on the board. `:where()` keeps
-   this a floor at (0,0,1): any component rule wins the tie. */
-:where(#app) button:not([class]) {
-  min-block-size: 44px;
-  padding: var(--control-pad);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  background: var(--sunk);
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: var(--fs-body);
-  cursor: pointer;
-}
-
-.next-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-block-size: 44px;
-  padding: var(--control-pad);
-  border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  background: transparent;
-  color: var(--ink);
-  font: var(--fs-body) / 1.55 var(--sans);
-  cursor: pointer;
-}
-
-/* Hover raises the boundary rather than lighting it: --accent is reserved for an observation. */
-.next-action:hover {
-  border-color: var(--line-hi);
-}
-
-.next-action:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-/* Hatch and dash against solid, so the state survives greyscale, which no ink choice can carry alone. */
-.next-action:disabled,
-.next-action[aria-disabled='true'] {
-  border: 1px dashed var(--line);
-  background: var(--hatch);
-  color: var(--ink3);
-  cursor: not-allowed;
 }
 
 .next-absence {

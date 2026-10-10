@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useFocusKey } from '../controls/useFocusKey';
 import { fragmentForRoute } from '../router/grammar';
 import { useShell } from '../shell/context';
@@ -23,7 +24,8 @@ export function ChangesPanel({ project }: { readonly project: string }) {
       {...(collapsed ? { 'data-next-workstream-collapsed': '' } : {})}
     >
       <header className="next-workstream-header">
-        <button
+        <Button
+          variant="native"
           ref={toggleRef}
           type="button"
           data-next-workstream-toggle=""
@@ -33,7 +35,7 @@ export function ChangesPanel({ project }: { readonly project: string }) {
         >
           <span>{`${collapsed ? '▸' : '▾'} OBSERVED STATE CHANGES`}</span>
           <small>{note}</small>
-        </button>
+        </Button>
       </header>
       {collapsed ? null : (
         <div id="next-project-changes">

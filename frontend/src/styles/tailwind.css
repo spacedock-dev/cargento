@@ -1,5 +1,5 @@
-/* The one Tailwind entry. Nothing here draws the page: the thirteen hand-written sheets keep every rule they
-   had, now inside `@layer legacy`, and this file only decides what the utilities may say.
+/* The one Tailwind entry. The hand-written sheets stay inside `@layer legacy`; adopted components draw
+   through the utilities this file permits.
    docs/design-shadcn-adoption.md owns the measurements behind each line.
 
    Layer order is `legacy, theme, utilities`: the utilities win over the sheets, and the sheets win over
@@ -14,6 +14,7 @@
    code; a layer introducing utility classes elsewhere adds that caller's path explicitly. */
 @source '../ui/**/*.{ts,tsx}';
 @source '../lib/**/*.{ts,tsx}';
+@source '../terminal/TerminalSurface.tsx';
 @source not '../**/*.test.*';
 @source not '../controls/{gallery,GalleryBoard,galleryWorld}.*';
 @source not '../**/*.css';

@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useEffect, useSyncExternalStore } from 'react';
 import { useFocusKey } from '../controls/useFocusKey';
 import { useDisplayed, useShell } from '../shell/context';
@@ -34,14 +35,14 @@ export function NotificationControl() {
   }
   if (state !== 'enable') return null;
   return (
-    <button
+    <Button
       ref={buttonRef}
       type="button"
-      className="next-action next-notify-button"
+      className="next-notify-button"
       data-next-action="enable-notifications"
       onClick={() => owner.request()}
     >
       Enable notifications
-    </button>
+    </Button>
   );
 }

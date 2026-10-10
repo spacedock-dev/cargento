@@ -1,3 +1,5 @@
+import { buttonVariants } from '../ui/button';
+import { cn } from '../lib/utils';
 import { fragmentForRoute, sessionHome, type Route, type TopLevelView } from '../router/grammar';
 import { findSession, sessionTitle } from './derive';
 import { useDisplayed } from './context';
@@ -17,7 +19,11 @@ export function Breadcrumb({ route }: { readonly route: Route }) {
   const data = useDisplayed((snapshot) => snapshot.data);
   if (route.view !== 'project' && route.view !== 'session') return null;
   const projects = (
-    <a className="next-crumb" href="#n=projects">
+    <a
+      data-slot="button-link"
+      className={cn('next-crumb', buttonVariants({ variant: 'native' }))}
+      href="#n=projects"
+    >
       Projects
     </a>
   );
@@ -48,7 +54,11 @@ export function Breadcrumb({ route }: { readonly route: Route }) {
     if (home !== 'projects') {
       trail = (
         <>
-          <a className="next-crumb" href={`#n=${home}`}>
+          <a
+            data-slot="button-link"
+            className={cn('next-crumb', buttonVariants({ variant: 'native' }))}
+            href={`#n=${home}`}
+          >
             {HOME_LABEL[home]}
           </a>
           {current}
@@ -67,7 +77,8 @@ export function Breadcrumb({ route }: { readonly route: Route }) {
           {projects}
           <span aria-hidden="true">{' › '}</span>
           <a
-            className="next-crumb"
+            data-slot="button-link"
+            className={cn('next-crumb', buttonVariants({ variant: 'native' }))}
             href={fragmentForRoute({ view: 'project', project: route.project })}
           >
             {route.project}
