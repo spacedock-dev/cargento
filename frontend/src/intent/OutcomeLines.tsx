@@ -35,8 +35,7 @@ export function DirectionGoalButton({
   const key = compatSessKey(session);
   return (
     <ActionButton
-      weight="none"
-      className="next-action"
+      weight="secondary"
       label="Use this as my goal"
       pendingKey={`direction-goal:${key}`}
       busyLabel="Opening…"
@@ -190,7 +189,8 @@ function LineRow({ index, text }: { readonly index: number; readonly text: strin
           </span>
         ) : null}
         <ActionButton
-          className="next-action next-action--secondary next-cockpit-held-remove"
+          weight="secondary"
+          className="next-cockpit-held-remove"
           label="Remove"
           action="held-line-remove"
           arg={String(index)}

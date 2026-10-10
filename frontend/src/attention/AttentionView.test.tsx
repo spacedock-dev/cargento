@@ -220,14 +220,16 @@ describe('the way back into a waiting session', () => {
       node.getAttribute('aria-label'),
     );
     expect(labels).toContain('Copy re-entry command claude --resume gate-1');
-    expect(needs.querySelectorAll('.ctl-raise').length).toBe(2);
-    expect(section('close').querySelector('.ctl-raise, [data-copy-kind]')).toBeNull();
-    expect(section('next')?.querySelector('.ctl-raise, [data-copy-kind]') ?? null).toBeNull();
+    expect(needs.querySelectorAll('[data-control="raise"]').length).toBe(2);
+    expect(section('close').querySelector('[data-control="raise"], [data-copy-kind]')).toBeNull();
+    expect(
+      section('next')?.querySelector('[data-control="raise"], [data-copy-kind]') ?? null,
+    ).toBeNull();
   });
 
   it('draws no raise without the run’s capability, and says so once in the coverage', async () => {
     await open(attentionBoard({ terminals: true }));
-    expect(section('needs').querySelector('.ctl-raise')).toBeNull();
+    expect(section('needs').querySelector('[data-control="raise"]')).toBeNull();
     expect(document.querySelector('.next-attention-caveats')?.textContent).toContain(
       'Terminal raise: off for this run.',
     );

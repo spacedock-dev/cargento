@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { DraftInput } from '../controls/DraftField';
 import { useShell } from '../shell/context';
@@ -36,7 +37,8 @@ export function Tripwires({ project }: { readonly project: string }) {
           <p className="next-guardrail-empty">No tripwires saved in this browser.</p>
         ) : (
           rules.map((rule, index) => (
-            <button
+            <Button
+              variant="native"
               // The rules carry no identity of their own and only ever append or drop from the front, so
               // a toggle is addressed by the position it was drawn at, as the stored list is.
               key={index}
@@ -58,7 +60,7 @@ export function Tripwires({ project }: { readonly project: string }) {
                 <strong>{rule.text}</strong>
                 {rule.enabled ? null : <small>Disabled in this browser.</small>}
               </span>
-            </button>
+            </Button>
           ))
         )}
       </div>
@@ -133,17 +135,16 @@ function AddRule({ project }: { readonly project: string }) {
             onInput={(event) => held.setDraft(project, 'guardrail', event.currentTarget.value)}
           />
         </label>
-        <button type="submit" className="next-action">
-          add ↵
-        </button>
+        <Button type="submit">add ↵</Button>
       </form>
     );
   }
   return (
-    <button
+    <Button
       ref={addRef}
       type="button"
-      className="next-action next-guardrail-add"
+      tone="muted"
+      className="next-guardrail-add"
       data-next-guardrail-add
       data-next-controls-project={project}
       onClick={() => {
@@ -154,6 +155,6 @@ function AddRule({ project }: { readonly project: string }) {
       }}
     >
       + set a tripwire
-    </button>
+    </Button>
   );
 }

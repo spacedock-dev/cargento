@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useFocusKey } from '../controls';
 import { useDisplayed, useShell } from '../shell/context';
 
@@ -24,6 +25,8 @@ export interface ActionButtonProps {
   readonly focusKey?: string;
   readonly fallbackKey?: string;
   readonly weight?: 'primary' | 'secondary' | 'quiet' | 'none';
+  readonly tone?: 'default' | 'muted';
+  readonly strongBorder?: boolean;
   readonly className?: string;
   readonly action?: string;
   readonly arg?: string;
@@ -44,6 +47,8 @@ export function ActionButton({
   focusKey,
   fallbackKey,
   weight = 'secondary',
+  tone,
+  strongBorder,
   className,
   action,
   arg,
@@ -60,26 +65,17 @@ export function ActionButton({
     focusKey ?? null,
     fallbackKey === undefined ? {} : { fallback: fallbackKey },
   );
-  const classes =
-    className ?? (weight === 'none' ? undefined : `next-action next-action--${weight}`);
-  const idle = reserve ? (
-    <span className="next-action-reserve">
-      <span>{label}</span>
-      <span className="next-action-ghost" aria-hidden="true">
-        <span className="next-action-busy">
-          <span className="next-spinner" aria-hidden="true" />
-          {reserve}
-        </span>
-      </span>
-    </span>
-  ) : (
-    label
-  );
+  const variant = weight === 'none' ? 'native' : weight === 'secondary' ? 'default' : weight;
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
-      {...(classes ? { className: classes } : {})}
+      variant={variant}
+      tone={tone}
+      strongBorder={strongBorder}
+      busyLabel={busyLabel}
+      reserve={reserve}
+      {...(className ? { className } : {})}
       {...(focusKey ? { 'data-next-focus': focusKey } : {})}
       {...(action ? { 'data-next-cockpit-action': action } : {})}
       {...(arg !== undefined ? { 'data-arg': arg } : {})}
@@ -99,19 +95,7 @@ export function ActionButton({
         onPress(event.detail);
       }}
     >
-      {busy ? (
-        <>
-          <span className="next-action-ghost" aria-hidden="true">
-            {label}
-          </span>
-          <span className="next-action-busy">
-            <span className="next-spinner" aria-hidden="true" />
-            {busyLabel}
-          </span>
-        </>
-      ) : (
-        idle
-      )}
-    </button>
+      {label}
+    </Button>
   );
 }

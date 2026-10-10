@@ -277,7 +277,6 @@
 .next-cockpit-recovery-memos>[data-next-cockpit-memo-field]>button{border:0;background:none;color:var(--ink2);font:inherit;cursor:pointer}
 .next-cockpit-recovery-memos[data-next-cockpit-memo-empty]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px 8px}
 .next-cockpit-recovery-memos[data-next-cockpit-memo-empty]>span{grid-column:1/-1;margin:0}
-.next-cockpit-recovery-memos[data-next-cockpit-memo-empty]>button{border:0;background:none;color:var(--ink2);font:inherit;cursor:pointer}
 .next-cockpit-recovery-memos textarea{grid-column:1/-1;width:100%;min-height:54px;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit}
 .next-cockpit-recovery span,.next-cockpit-recovery strong,.next-cockpit-recovery small{display:block}
 .next-cockpit-recovery span{margin-bottom:5px;color:var(--ink-label);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
@@ -374,9 +373,7 @@
    Each is held to the legacy page's computed value by `project-parity.mjs`.
    - The panel sits inside the tab strip's `div[role=tabpanel]`, so the legacy child combinator
      (.next-cockpit-content>.next-cockpit-panel) matches nothing; the 12 px side inset is restated for it.
-   - The shell sheet gives the tab strip a 24 px top margin; the legacy strip has none.
-   - The workstream toggle is a bare `button`, which the shell's `:where(#app) button:not([class])` floor ties
-     on specificity and beats on order; its rules above carry one more class to win outright. */
+   - The shell sheet gives the tab strip a 24 px top margin; the legacy strip has none. */
 .next-cockpit-content>[role="tabpanel"]>.next-cockpit-panel{padding-left:12px;padding-right:12px}
 .next-cockpit-content>.next-cockpit-tabs{margin-top:0}
 }

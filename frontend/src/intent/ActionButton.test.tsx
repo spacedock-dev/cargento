@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BoardSnapshot } from '../store/board';
 import { ShellContext, type Shell } from '../shell/context';
@@ -53,12 +53,28 @@ function mount(props: Partial<Parameters<typeof ActionButton>[0]> = {}) {
 }
 
 describe('a control whose request is in flight', () => {
+  it('refuses repeated presses while pending and keeps the pressed node focusable', () => {
+    const { button, setPending, onPress } = mount();
+    button().focus();
+    fireEvent.click(button());
+    expect(onPress).toHaveBeenCalledTimes(1);
+    setPending(['save']);
+    for (const detail of [1, 0, 0]) fireEvent.click(button(), { detail });
+    expect(onPress).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(button());
+    expect(button().hasAttribute('disabled')).toBe(false);
+    expect(button().tabIndex).toBe(0);
+    setPending([]);
+    fireEvent.click(button());
+    expect(onPress).toHaveBeenCalledTimes(2);
+  });
+
   it('draws idle until its key is pending: labelled, enabled, not busy', () => {
     const { button } = mount();
     expect(button().textContent).toBe('Save intent');
     expect(button().hasAttribute('aria-busy')).toBe(false);
     expect(button().hasAttribute('aria-disabled')).toBe(false);
-    expect(button().querySelector('.next-spinner')).toBeNull();
+    expect(button().querySelector('[data-slot="spinner"]')).toBeNull();
   });
 
   it('is inert, busy, spinning and reading its busy label', () => {
@@ -69,17 +85,17 @@ describe('a control whose request is in flight', () => {
     expect(button().hasAttribute('data-next-pending')).toBe(true);
     // `aria-disabled` and never `disabled`: the control just pressed keeps keyboard focus.
     expect((button() as HTMLButtonElement).disabled).toBe(false);
-    const busy = button().querySelector('.next-action-busy');
+    const busy = button().querySelector('[data-slot="button-busy"]');
     expect(busy).not.toBeNull();
-    expect(busy?.querySelector('.next-spinner')).not.toBeNull();
-    expect(busy?.querySelector('.next-spinner')?.getAttribute('aria-hidden')).toBe('true');
+    expect(busy?.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    expect(busy?.querySelector('[data-slot="spinner"]')?.getAttribute('aria-hidden')).toBe('true');
     expect(busy?.textContent).toBe('Saving…');
   });
 
   it('holds the idle label as an invisible ghost, so the control keeps its width', () => {
     const { button, setPending } = mount();
     setPending(['save']);
-    const ghost = button().querySelector('.next-action-ghost');
+    const ghost = button().querySelector('[data-slot="button-ghost"]');
     expect(ghost?.getAttribute('aria-hidden')).toBe('true');
     expect(ghost?.textContent).toBe('Save intent');
   });
@@ -91,7 +107,7 @@ describe('a control whose request is in flight', () => {
     expect(button().textContent).toBe('Save intent');
     for (const name of ['aria-busy', 'aria-disabled', 'data-next-pending'])
       expect(button().hasAttribute(name)).toBe(false);
-    expect(button().querySelector('.next-spinner')).toBeNull();
+    expect(button().querySelector('[data-slot="spinner"]')).toBeNull();
   });
 
   it('is busy only for its own key', () => {
@@ -103,12 +119,16 @@ describe('a control whose request is in flight', () => {
 
   it('reserves the busy label at rest when asked to, and swaps it for the spinner when busy', () => {
     const { button, setPending } = mount({ reserve: 'Saving the intent…' });
-    expect(button().querySelector('.next-action-reserve .next-action-ghost')?.textContent).toBe(
+    expect(
+      button().querySelector('[data-slot="button-reserve"] [data-slot="button-ghost"]')
+        ?.textContent,
+    ).toBe('Saving the intent…');
+    setPending(['save']);
+    expect(button().querySelector('[data-slot="button-reserve"]')).toBeNull();
+    expect(button().querySelector('[data-slot="button-ghost"]')?.textContent).toContain(
       'Saving the intent…',
     );
-    setPending(['save']);
-    expect(button().querySelector('.next-action-reserve')).toBeNull();
-    expect(button().querySelector('.next-action-busy')?.textContent).toBe('Saving…');
+    expect(button().querySelector('[data-slot="button-busy"]')?.textContent).toBe('Saving…');
   });
 });
 
@@ -118,6 +138,6 @@ describe('an inert control that is not busy', () => {
     expect(button().getAttribute('aria-disabled')).toBe('true');
     expect(button().hasAttribute('aria-busy')).toBe(false);
     expect(button().getAttribute('aria-describedby')).toBe('why-inert');
-    expect(button().querySelector('.next-spinner')).toBeNull();
+    expect(button().querySelector('[data-slot="spinner"]')).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useMemo } from 'react';
 import { payloadSessions } from '../api/bootstrap';
 import { useControls } from '../controls';
@@ -80,7 +81,8 @@ function QueueSection({
         ))}
       </ol>
       {remainder ? (
-        <button
+        <Button
+          variant="native"
           ref={toggleRef}
           type="button"
           className="next-attention-disclosure"
@@ -90,7 +92,7 @@ function QueueSection({
           onClick={() => expansion.toggle(section)}
         >
           {expanded ? `Show fewer (hide ${String(remainder)})` : `Show ${String(remainder)} more`}
-        </button>
+        </Button>
       ) : null}
     </section>
   );

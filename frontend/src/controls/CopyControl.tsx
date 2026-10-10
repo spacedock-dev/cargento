@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useId } from 'react';
 import { laneKey } from './keyedState';
 import { useControls, useKeyedValue } from './kit';
@@ -70,9 +71,9 @@ export function CopyControl({ kind, harness, sid, value }: CopyControlProps) {
 
   return (
     <>
-      <button
+      <Button
         type="button"
-        className="ctl-action ctl-copy"
+        variant="copy"
         data-copy-kind={kind}
         {...(cue ? { 'data-copy-state': cue, 'aria-describedby': cueId } : {})}
         aria-label={accessibleName(kind, sid, value)}
@@ -80,7 +81,7 @@ export function CopyControl({ kind, harness, sid, value }: CopyControlProps) {
         onClick={() => void press()}
       >
         <span aria-hidden="true">{LABEL[kind]}</span>
-      </button>
+      </Button>
       {cue ? (
         <span id={cueId} className="ctl-visually-hidden">
           {cue === 'copied' ? 'Copied' : 'Copy failed'}

@@ -3,7 +3,17 @@
    are sorted, text is collapsed, and attributes that belong to one renderer's own bookkeeping (the legacy
    focus keys and route delegation) are left out. Buttons and links are compared by their name and target, not
    by the markup of the shared controls inside them, which their own tests hold. */
-const DROPPED = new Set(['data-next-focus', 'data-next-route', 'data-arg', 'class', 'style', 'id']);
+const DROPPED = new Set([
+  'data-next-focus',
+  'data-next-route',
+  'data-arg',
+  'class',
+  'style',
+  'id',
+  'data-slot',
+  'data-variant',
+  'data-disabled',
+]);
 const SHARED_CONTROL = (element: Element): boolean =>
   element.matches('button,a') && element.closest('.next-rail-wait-controls') !== null;
 
@@ -20,8 +30,18 @@ const squash = (text: string | null): string => (text ?? '').replace(/\s+/g, ' '
 export function shape(element: Element): Shape {
   const attrs: Record<string, string> = {};
   for (const name of element.getAttributeNames().sort()) {
-    if (DROPPED.has(name)) continue;
+    if (
+      DROPPED.has(name) ||
+      (element.tagName === 'BUTTON' && name === 'role' && element.getAttribute(name) === 'button')
+    )
+      continue;
     const value = element.getAttribute(name) ?? '';
+    if (
+      element.tagName === 'BUTTON' &&
+      name === 'tabindex' &&
+      value === (element.hasAttribute('disabled') ? '-1' : '0')
+    )
+      continue;
     // A bare marker in the markup is `data-x`; React prints the same marker as `data-x="true"`. Both mean
     // "present" to every selector, so they are one thing here.
     attrs[name] = name.startsWith('data-') && value === 'true' ? '' : value;
@@ -31,7 +51,14 @@ export function shape(element: Element): Shape {
   if (style) attrs['style'] = style;
   const base = {
     tag: element.tagName.toLowerCase(),
-    classes: [...element.classList].sort(),
+    // Utilities replace the shared chrome; semantic surface classes still distinguish these trees.
+    classes: [...element.classList]
+      .filter(
+        (name) =>
+          !element.matches('button,a') ||
+          (/^(next-|ctl-|pc-|selected$)/.test(name) && !/^next-action(?:--.*)?$/.test(name)),
+      )
+      .sort(),
     attrs,
   };
   if (SHARED_CONTROL(element)) {

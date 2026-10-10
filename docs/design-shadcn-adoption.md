@@ -350,3 +350,55 @@ an extra production drift run. Five deliberate mutations fail: default type scal
 size, an unused vendored module, CSS growth and a rule hidden in the excluded entry. Native Windows
 was not run here; the separator normalization is tested, and the unit-test step now allows six
 minutes against the spike's measured 159 seconds.
+
+## Button layer
+
+The first component layer vendors Base UI Button with the pinned registry procedure, adds Base UI
+1.8.0 and tailwind-merge 3.7.0, and introduces `frontend/src/lib/utils.ts`. Its merger knows the five
+type steps and four radii. Tests compare those names with the entry stylesheet, so an added theme
+step requires an explicit merger update.
+
+All 46 button elements use Button. The ten anchor elements stay plain links with `buttonVariants`;
+no link is rendered through Base UI. Surface-specific tabs, switches, filters and row layouts keep
+their own rules through the native variant. ActionButton keeps its public props. Call sites name
+their weight explicitly; the wrapper no longer translates deleted shared class names. Surface chrome is expressed by variants and props.
+
+A pending button owns its keyboard and click handling. Base UI's focusable-disabled path cancelled
+Escape and the shell shortcuts as well as activation, so Button keeps the native node enabled,
+emits `aria-disabled` and `aria-busy`, and suppresses only clicks, Enter and Space. Escape, Tab and
+the shell shortcuts remain uncancelled. The unit test checks both halves. An inert action that
+must explain a refusal still delivers its press to the handler. The busy label sits over a hidden idle label in an absolute overlay, so the old
+answer button's measured growth from 94.23 to 114.63 px is gone. A caller's explicit reserve still
+holds a wider busy label at rest and while pending. This verifies exposed ARIA state, not screen-reader announcement.
+
+The shared chrome, copy and raise states, terminal button chrome, answer padding and busy rules
+are removed from the sheets. The CSS record falls from 161,464 to 153,203 bytes. The component
+gallery includes default, hover, keyboard focus, pending, disabled, retry, long text, primary, quiet
+and linked actions, plus an explicit width reservation. The initial adoption measured the gallery at
+1280 and 320 px in both bundle modes, alongside real-route type, ring and target checks. The
+correction is checked in development; production verification follows the stack-head rebuild.
+
+The target floor stays at 44 CSS px, as in the replaced rule. A first attempt using Tailwind's
+rem-based spacing step made the Console tab at least 88 px wide at 200% text size and overflowed
+the 320 px shell by one pixel. The shell layout proof caught it; the fixed pixel floor lets text
+and padding grow without doubling the minimum width of a tab.
+
+Recorded-answer normalization ignores the shared utility classes and Base UI's redundant native
+button role and default tab index. It still compares semantic surface classes, explicit roles,
+nondefault tab order, text, targets and action attributes. The recorded fixtures are unchanged.
+
+The utilities layer beats `legacy` regardless of selector specificity. The correction audit moved
+conflicting surface chrome into Button variants and props, including menu rows, capacity windows,
+memo controls, consent, muted actions, waiting-card padding and Raise refusal borders. The
+[call-site audit](design-shadcn-button-audit.md) lists the ownership decisions.
+`css-contract.mjs` compares every button instance on its real routes with a computed-style table
+from `30bac258`: colour, background, four borders, display, padding, alignment and font. Mutating
+the shared ink makes this gate fail. The gallery separately checks memo chrome, the solid retry boundary and both amber Raise
+refusal states. The quiet pending border now stays solid on all four sides, preserving its 118.38 px resting width instead
+of shrinking to 116.38 px with a bottom border only. The spinner is an inline SVG arc in place of
+the CSS border spinner. Both changes are deliberate; neither changes the request or its label.
+
+The fluidity receipt records three runs on 2026-10-10 that pass the unchanged budgets. Core HTML
+is 1,436,780 bytes against the 2,000,000-byte ceiling. For 5, 50 and 250 sessions, first-render
+medians are 143.7, 93.8 and 126.1 ms, and poll-to-paint medians are 43.1, 44.8 and 59.7 ms. The
+receipt retains the historical legacy control; no timing allowance changed.

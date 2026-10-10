@@ -392,6 +392,6 @@ describe('terminal raise', () => {
 
   it('draws the primary variant for a session waiting on the reader', () => {
     const { view } = mount(<RaiseControl harness="claude" sid="s-1" focusable primary />);
-    expect(view.getByRole('button').className).toContain('ctl-action--primary');
+    expect(view.getByRole('button').getAttribute('data-variant')).toBe('raise-primary');
   });
 });

@@ -260,7 +260,7 @@ pnpm test:project:browser
 pnpm test:console:browser
 pnpm test:attention:browser
 pnpm test:capacity:browser
-pnpm test:css:browser         # computed-style readability contract: type floor, absences, inks, controls, variables, focus rings
+pnpm test:css:browser         # computed-style readability contract: type floor, absences, inks, controls, variables, focus rings, Button gallery targets
 pnpm test:production:browser   # the same parity proofs against the shipped bundle: CARGENTO_E2E_BUNDLE=production, two shards in CI
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .

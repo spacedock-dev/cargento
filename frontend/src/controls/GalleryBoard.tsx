@@ -1,3 +1,4 @@
+import { Button, buttonVariants } from '../ui/button';
 import { useState } from 'react';
 import { memoKey } from '../storage';
 import { selectSessions } from '../store/selectors';
@@ -21,9 +22,9 @@ function ParkedControl() {
   const { focusLane } = useControls();
   const ref = useFocusKey<HTMLButtonElement>(focusLane, 'parked');
   return (
-    <button type="button" ref={ref}>
+    <Button variant="bare" type="button" ref={ref}>
       Parked control
-    </button>
+    </Button>
   );
 }
 
@@ -37,6 +38,7 @@ export function GalleryBoard({ world }: { world: World }) {
     (snapshot) => snapshot.data?.generated ?? 0,
   );
   const [choice, setChoice] = useState('');
+  const [reservedBusy, setReservedBusy] = useState(false);
   const [draftShown, setDraftShown] = useState(true);
   // The words belong to the caller (here, this state); the field keeps only caret, scroll and size.
   const [draftText, setDraftText] = useState('');
@@ -48,6 +50,44 @@ export function GalleryBoard({ world }: { world: World }) {
   return (
     <main id="gallery">
       <h1>Shared controls</h1>
+      <section aria-label="Button gallery" data-button-gallery style={{ maxWidth: '100%' }}>
+        <Button data-example="default">Default action</Button>
+        <Button data-example="hover">Hover action</Button>
+        <Button data-example="focus">Focus action</Button>
+        <Button data-example="pending" aria-busy="true" aria-disabled="true" busyLabel="Saving…">
+          Save intent
+        </Button>
+        <Button data-example="disabled" disabled>
+          Unavailable action
+        </Button>
+        <Button data-example="retry" variant="retry" aria-disabled="true">
+          Retry now
+        </Button>
+        <Button data-example="long">
+          Save the long intent that explains every expected outcome to the reader
+        </Button>
+        <Button data-example="primary" variant="primary">
+          Primary action
+        </Button>
+        <Button data-example="quiet" variant="quiet">
+          Quiet action
+        </Button>
+        <Button data-example="raise-primary" variant="raise-primary">
+          RAISE
+        </Button>
+        <Button
+          data-example="reserved"
+          reserve="Saving the intent…"
+          busyLabel="Saving…"
+          {...(reservedBusy ? { 'aria-busy': true, 'aria-disabled': true } : {})}
+          onClick={() => setReservedBusy(true)}
+        >
+          Save
+        </Button>
+        <a href="#gallery" data-example="link" data-slot="button-link" className={buttonVariants()}>
+          Linked action
+        </a>
+      </section>
       <p>
         Displayed board revision{' '}
         <output data-readout="displayed-accepted">{displayedAccepted}</output>, generated{' '}
@@ -102,9 +142,9 @@ export function GalleryBoard({ world }: { world: World }) {
       </section>
 
       <section aria-label="Disclosures">
-        <button type="button" onClick={() => setDisclosuresShown(!disclosuresShown)}>
+        <Button variant="bare" type="button" onClick={() => setDisclosuresShown(!disclosuresShown)}>
           {disclosuresShown ? 'Hide disclosures' : 'Show disclosures'}
-        </button>
+        </Button>
         {disclosuresShown ? (
           <>
             <Disclosure
@@ -112,7 +152,9 @@ export function GalleryBoard({ world }: { world: World }) {
               summary="Project plan"
             >
               <p data-readout="plan-body">{`Plan as of board ${String(displayedAccepted)}`}</p>
-              <button type="button">Inside the plan</button>
+              <Button variant="bare" type="button">
+                Inside the plan
+              </Button>
             </Disclosure>
             <Disclosure
               disclosureKey={disclosureKey({ project, scope: null, name: 'why' })}
@@ -152,9 +194,9 @@ export function GalleryBoard({ world }: { world: World }) {
       </section>
 
       <section aria-label="Draft">
-        <button type="button" onClick={() => setDraftShown(!draftShown)}>
+        <Button variant="bare" type="button" onClick={() => setDraftShown(!draftShown)}>
           {draftShown ? 'Hide draft' : 'Show draft'}
-        </button>
+        </Button>
         {draftShown ? (
           <>
             <label htmlFor="gallery-draft">Draft note</label>

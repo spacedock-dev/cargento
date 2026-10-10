@@ -60,8 +60,8 @@ const MUTATIONS = {
   'open-pointer-only': [
     [
       'src/terminal/TerminalSurface.tsx',
-      'className="pc-terminal-open" onClick={() => owner.open(key)}',
-      'className="pc-terminal-open" onMouseDown={() => owner.open(key)}',
+      'onClick={() => owner.open(key)}',
+      'onMouseDown={() => owner.open(key)}',
     ],
   ],
   // The socket gains a way to send, and a key press uses it: the zero-input proof must catch it.

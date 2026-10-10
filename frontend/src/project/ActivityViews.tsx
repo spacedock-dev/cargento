@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { Fragment } from 'react';
 import { durationSince, isRecord, promptCopied, sessionKey, type Row } from '../observed/values';
 import type { ObservedSession } from '../observed';
@@ -98,7 +99,8 @@ function ActivityCard({
   const key = sessionKey(session as unknown as Row);
   const source = model.group.sessions.find((candidate) => sessionKey(candidate) === key);
   return (
-    <button
+    <Button
+      variant="native"
       type="button"
       className={`next-activity-card next-project-tone--${session.tone}`}
       data-next-going-on={session.sid}
@@ -133,7 +135,7 @@ function ActivityCard({
         <Value text={session.rateText} known={session.rateKnown} className="next-activity-metric" />
       )}
       <Subagents session={session} generated={model.generated} />
-    </button>
+    </Button>
   );
 }
 
@@ -179,7 +181,8 @@ function Ending({
   } as const;
   const target = useRouteTarget(route);
   return (
-    <button
+    <Button
+      variant="native"
       type="button"
       className={`next-project-ending next-project-tone--${session.tone}`}
       data-next-outcome={session.sid}
@@ -202,7 +205,7 @@ function Ending({
         {`${session.harness} · git: `}
         <Value text={session.gitText} known={session.gitKnown} />
       </span>
-    </button>
+    </Button>
   );
 }
 

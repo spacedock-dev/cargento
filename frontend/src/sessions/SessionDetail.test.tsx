@@ -332,18 +332,18 @@ describe('the raise control', () => {
 
   it('draws only with a minted capability and a terminal the session reported, and as the primary control while a request waits', async () => {
     await open(data);
-    expect(document.querySelector('.ctl-raise')).toBeNull();
+    expect(document.querySelector('[data-control="raise"]')).toBeNull();
     expect(document.querySelector('.next-session-reentry-clause')?.textContent).toContain(
       'Terminal raise off',
     );
     document.body.innerHTML = '';
     await open(data, { focusCapability: 'minted' });
-    const raise = document.querySelector('.ctl-raise');
+    const raise = document.querySelector('[data-control="raise"]');
     expect(raise).not.toBeNull();
-    expect(raise?.classList.contains('ctl-action--primary')).toBe(true);
+    expect(raise?.getAttribute('data-variant') === 'raise-primary').toBe(true);
     document.body.innerHTML = '';
     await open(board([{ ...ONE, focusable: false }]), { focusCapability: 'minted' });
-    expect(document.querySelector('.ctl-raise')).toBeNull();
+    expect(document.querySelector('[data-control="raise"]')).toBeNull();
     expect(document.querySelector('.next-session-reentry-clause')?.textContent).toContain(
       'No terminal to raise',
     );
@@ -351,7 +351,7 @@ describe('the raise control', () => {
 
   it('is not drawn for a session that is not waiting, where the header offers copy controls alone', async () => {
     await open(board([{ ...ONE, state: 'idle', focusable: true }]), { focusCapability: 'minted' });
-    expect(document.querySelector('.ctl-raise')).toBeNull();
+    expect(document.querySelector('[data-control="raise"]')).toBeNull();
   });
 });
 

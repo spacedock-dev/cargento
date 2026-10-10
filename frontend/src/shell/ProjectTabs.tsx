@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { useFocusKey } from '../controls/useFocusKey';
 import { cockpitTabs, type ProjectRoute, type ProjectTab } from '../router/grammar';
@@ -21,7 +22,8 @@ function Tab({
   const { controls } = useShell();
   const ref = useFocusKey<HTMLButtonElement>(controls.focusLane, `cockpit-tab:${tab}`);
   return (
-    <button
+    <Button
+      variant="native"
       ref={ref}
       type="button"
       role="tab"
@@ -36,7 +38,7 @@ function Tab({
     >
       {label(tab)}
       {cue}
-    </button>
+    </Button>
   );
 }
 

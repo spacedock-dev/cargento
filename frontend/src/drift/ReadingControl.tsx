@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useEffect, type ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
 import { useFocusKey } from '../controls';
@@ -50,7 +51,7 @@ export function TurnOff() {
   if (!anyConsent(model.payload)) return null;
   return (
     <ActionButton
-      className="next-action"
+      weight="secondary"
       label="Turn off readings"
       busyLabel="Turning off…"
       pendingKey={`reading-off:${model.key}`}
@@ -90,7 +91,7 @@ export function JobBox({ job, running }: { readonly job: Row; readonly running: 
           {JOB_TITLE}
         </span>
         <ActionButton
-          className="next-action"
+          weight="secondary"
           label="Cancel"
           busyLabel="Cancelling…"
           pendingKey={`reading-cancel:${key}`}
@@ -287,16 +288,9 @@ export function ReadingControl({
   }
   const described = reason ? REFUSED_ID : disclosure ? DISCLOSURE_ID : '';
   const label = confirming ? 'Allow and analyze' : again ? 'Analyze again' : 'Analyze drift';
-  const classes = `next-action${
-    primary && provider && !inert
-      ? ' next-action--primary'
-      : again && !confirming
-        ? ' next-action--secondary'
-        : ''
-  }`;
   const press = (
     <ActionButton
-      className={classes}
+      weight={primary && provider && !inert ? 'primary' : 'secondary'}
       label={label}
       busyLabel="Starting…"
       pendingKey={busyKey}
@@ -521,10 +515,9 @@ function ConsentCard({
       {partsList}
       <div className="next-cockpit-reading-ask">
         {press}
-        <button
+        <Button
           ref={notNowRef}
           type="button"
-          className="next-action"
           data-next-cockpit-action="reading-not-now"
           data-next-focus={`reading-not-now:${model.key}`}
           {...(allowBusy ? { 'aria-disabled': true } : {})}
@@ -534,7 +527,7 @@ function ConsentCard({
           }}
         >
           Not now
-        </button>
+        </Button>
       </div>
     </div>
   );

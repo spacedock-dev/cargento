@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import type { ObservedProject } from '../observed';
@@ -30,7 +31,8 @@ function MemberLine({
   } as const;
   const target = useRouteTarget(route);
   return (
-    <button
+    <Button
+      variant="native"
       type="button"
       className="next-project-session"
       data-next-project-session=""
@@ -53,7 +55,7 @@ function MemberLine({
         known={session.nextKnown}
         className="next-project-session-next"
       />
-    </button>
+    </Button>
   );
 }
 
@@ -105,7 +107,8 @@ function ProjectRow({
               />
             ))}
             {members.hidden ? (
-              <button
+              <Button
+                variant="native"
                 type="button"
                 className="next-project-more"
                 data-next-project-more=""
@@ -114,7 +117,7 @@ function ProjectRow({
                 onClick={target.onClick}
               >
                 {`${String(members.hidden)} other ${members.hidden === 1 ? 'session' : 'sessions'}`}
-              </button>
+              </Button>
             ) : null}
           </div>
         </>

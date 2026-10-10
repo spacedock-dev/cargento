@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import {
   CopyControl,
@@ -313,9 +314,13 @@ function Notes({ model, briefing }: { readonly model: ProjectModel; readonly bri
     if (briefing.task.known && briefing.coverage.state === 'complete') return null;
     return (
       <div className="next-cockpit-recovery-memos" data-next-cockpit-memo-empty="">
-        <button type="button" onClick={() => controls.startMemoEdit(outcomeKey)}>
+        <Button
+          variant="context-add"
+          type="button"
+          onClick={() => controls.startMemoEdit(outcomeKey)}
+        >
           + Add human context · this browser
-        </button>
+        </Button>
       </div>
     );
   }

@@ -1,3 +1,5 @@
+import { buttonVariants } from '../ui/button';
+import { cn } from '../lib/utils';
 import type { MouseEvent, ReactNode } from 'react';
 import { fragmentForRoute, type RouteInput } from '../router/grammar';
 import { useNavigate } from './context';
@@ -27,7 +29,12 @@ export function RouteLink({ route, className, children }: RouteLinkProps) {
     navigate(route);
   };
   return (
-    <a href={fragmentForRoute(route)} {...(className ? { className } : {})} onClick={onClick}>
+    <a
+      data-slot="button-link"
+      href={fragmentForRoute(route)}
+      className={cn(className, buttonVariants({ variant: 'native' }))}
+      onClick={onClick}
+    >
       {children}
     </a>
   );

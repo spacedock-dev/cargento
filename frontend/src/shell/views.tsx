@@ -1,3 +1,4 @@
+import { buttonVariants } from '../ui/button';
 import { payloadSessions } from '../api/bootstrap';
 import { compatSessKey } from '../api/identity';
 import {
@@ -194,6 +195,8 @@ function ProjectView({ route }: { readonly route: ProjectRoute }) {
         <h1>Session filter is outside this payload window</h1>
         <p>{route.focus}</p>
         <a
+          data-slot="button-link"
+          className={buttonVariants({ variant: 'native' })}
           href={fragmentForRoute({
             view: 'project',
             project: route.project,

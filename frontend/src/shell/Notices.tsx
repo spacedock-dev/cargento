@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { Disclosure } from '../controls/Disclosure';
 import { disclosureKey } from '../controls/disclosureStore';
 import { useControls } from '../controls/kit';
@@ -61,16 +62,16 @@ function StalledNotice({
     <div className="next-stalled" data-next-state="stalled" role="status">
       <strong>{`Live refresh failed ${times} in a row.`}</strong>
       <span>{`${state} Retrying automatically every ${seconds}s.`}</span>
-      <button
+      <Button
+        variant="retry"
         ref={retryRef}
         type="button"
-        className="next-action"
         data-next-action="retry-refresh"
         aria-disabled={snapshot.manualRefreshing || undefined}
         onClick={snapshot.manualRefreshing ? undefined : onRetry}
       >
         Retry now
-      </button>
+      </Button>
     </div>
   );
 }
@@ -96,14 +97,9 @@ function BuildNotice({
   return (
     <div className="next-stalled" data-next-state="build-changed" role="status">
       <strong>Reload to use the new version.</strong>
-      <button
-        type="button"
-        className="next-action"
-        data-next-action="reload-page"
-        onClick={onReload}
-      >
+      <Button type="button" data-next-action="reload-page" onClick={onReload}>
         Reload
-      </button>
+      </Button>
       <Disclosure
         disclosureKey={disclosureKey({ ...disclosureScope, name: 'build-changed' })}
         summary="Why reload"

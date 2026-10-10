@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useState, type ReactNode } from 'react';
 import { contextKey, exactIdentity } from '../api/identity';
 import type { ProjectContext, SessionIdentity } from '../api/types';
@@ -94,17 +95,17 @@ export function ObserverControls({ projectKey, focus }: ObserverControlsProps) {
     else summarize();
   };
   const button = (action: Action, label: string, disabled = false) => (
-    <button
+    <Button
+      size="consent"
       ref={action === 'allow' ? allowRef : action === 'request' ? requestRef : declineRef}
       type="button"
-      className="next-action"
       data-next-observer-action={action}
       data-next-focus={`observer:${action}`}
       disabled={disabled}
       onClick={() => act(action)}
     >
       {label}
-    </button>
+    </Button>
   );
   let actions: ReactNode;
   if (consent === null) {

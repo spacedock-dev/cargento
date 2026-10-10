@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { contextKey } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
 import { Disclosure } from './Disclosure';
@@ -75,13 +76,17 @@ export function MoreMenu({
         <span className="ctl-menu-status">
           {`All projects · ${String(running)} running · ${String(subagents)} ${subagents === 1 ? 'subagent' : 'subagents'} observed`}
         </span>
-        <button type="button" onClick={() => void copy()}>
+        <Button variant="menu" type="button" onClick={() => void copy()}>
           {label}
-        </button>
+        </Button>
         {addHumanContext ? (
-          <button type="button" onClick={() => controls.startMemoEdit(addHumanContext.memoKey)}>
+          <Button
+            variant="menu"
+            type="button"
+            onClick={() => controls.startMemoEdit(addHumanContext.memoKey)}
+          >
             Add human context
-          </button>
+          </Button>
         ) : null}
       </div>
     </Disclosure>

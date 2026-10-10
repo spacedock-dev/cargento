@@ -1,3 +1,4 @@
+import { buttonVariants } from '../ui/button';
 import type { MouseEvent, ReactNode } from 'react';
 import { useControls } from '../controls';
 import { useFocusKey } from '../controls/useFocusKey';
@@ -38,7 +39,14 @@ export function AttentionLink({
     navigate(route);
   };
   return (
-    <a ref={ref} href={fragment} data-next-route={fragment.slice(3)} onClick={onClick}>
+    <a
+      data-slot="button-link"
+      className={buttonVariants({ variant: 'native' })}
+      ref={ref}
+      href={fragment}
+      data-next-route={fragment.slice(3)}
+      onClick={onClick}
+    >
       {children}
     </a>
   );

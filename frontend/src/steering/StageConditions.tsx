@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react';
 import { isRecord, type Row } from '../observed';
 import { useControls } from '../controls/kit';
@@ -241,7 +242,8 @@ function CardView({
                 ))}
               </select>
             </label>
-            <button
+            <Button
+              variant="bare"
               ref={save}
               type="button"
               data-stage-id={id}
@@ -250,12 +252,13 @@ function CardView({
               onClick={(event) => void press('save', event)}
             >
               Save
-            </button>
+            </Button>
           </>
         ) : null}
         {model.rearmDisabled === null ? null : (
           <>
-            <button
+            <Button
+              variant="bare"
               ref={rearm}
               type="button"
               data-stage-id={id}
@@ -264,8 +267,9 @@ function CardView({
               onClick={(event) => void press('rearm', event)}
             >
               Rearm
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="bare"
               ref={remove}
               type="button"
               data-stage-id={id}
@@ -274,7 +278,7 @@ function CardView({
               onClick={(event) => void press('remove', event)}
             >
               Remove
-            </button>
+            </Button>
           </>
         )}
       </div>

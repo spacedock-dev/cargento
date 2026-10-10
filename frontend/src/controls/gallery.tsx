@@ -8,6 +8,8 @@ import { createRoot } from 'react-dom/client';
 import { ControlsProvider } from './ControlsProvider';
 import { GalleryBoard } from './GalleryBoard';
 import { createWorld, type Hooks, type World } from './galleryWorld';
+import '../styles/tailwind.css';
+import '../styles/shell.css';
 import '../styles/controls.css';
 
 export interface GalleryHandle {

@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import type { FormEvent } from 'react';
 import { DraftInput } from '../controls/DraftField';
 import { useHeldVersion, useSteeringHeld, TEXT_LIMIT } from './held';
@@ -59,9 +60,9 @@ export function ProjectSteer({
             onInput={(event) => held.setDraft(project, 'steer', event.currentTarget.value)}
           />
         </label>
-        <button type="submit" className="next-action">
+        <Button type="submit" tone="muted">
           save draft ⏎
-        </button>
+        </Button>
       </form>
       {held.steers(project).length ? (
         <div className="next-steer-receipts">

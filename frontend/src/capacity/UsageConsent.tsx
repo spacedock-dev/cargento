@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useFocusKey } from '../controls/useFocusKey';
 import { useShell } from '../shell/context';
 import { heldFor, useConsent, useUsageOffered } from './held';
@@ -52,24 +53,25 @@ export function UsageDisclosure() {
         session content is sent.
       </p>
       <div className="next-usage-consent-actions">
-        <button
+        <Button
           ref={grantRef}
           type="button"
-          className="next-action"
+          size="consent"
+          accentBorder
           data-next-usage-answer="granted"
           onClick={() => answer('granted')}
         >
           Read my quota
-        </button>
-        <button
+        </Button>
+        <Button
           ref={declineRef}
           type="button"
-          className="next-action"
+          size="consent"
           data-next-usage-answer="declined"
           onClick={() => answer('declined')}
         >
           No thanks
-        </button>
+        </Button>
       </div>
       <p className="next-usage-consent-note">
         Changeable later from this strip. <code>--no-usage</code> refuses it for a whole run
@@ -94,15 +96,15 @@ export function UsageSwitch() {
       <span>
         Vendor quota fetch: <strong>{granted ? 'on' : 'off'}</strong>
       </span>
-      <button
+      <Button
         ref={buttonRef}
         type="button"
-        className="next-action"
+        tone="muted"
         data-next-usage-answer={granted ? 'declined' : 'granted'}
         onClick={() => answer(granted ? 'declined' : 'granted')}
       >
         {`Turn ${granted ? 'off' : 'on'}`}
-      </button>
+      </Button>
       {granted ? null : (
         <span className="next-usage-lapse">
           Windows above are the last cached read and will lapse.

@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useId, useLayoutEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { boundMemo, MEMO_LIMIT, type MemoKind, type MemoState } from '../storage';
 import { DraftTextarea } from './DraftField';
@@ -46,7 +47,8 @@ function Reading({ memoKey, kind, label }: HumanContextFieldProps) {
     <div className="ctl-memo" data-memo-field={kind}>
       <span>{label}</span>
       <strong>{value || 'Not set'}</strong>
-      <button
+      <Button
+        variant="default"
         type="button"
         className="ctl-memo-edit"
         aria-label={`Edit ${label}`}
@@ -54,7 +56,7 @@ function Reading({ memoKey, kind, label }: HumanContextFieldProps) {
         onClick={() => controls.startMemoEdit(memoKey)}
       >
         Edit
-      </button>
+      </Button>
     </div>
   );
 }
@@ -120,9 +122,9 @@ function Editor({
       <small id={cueId} data-memo-cue={kind}>
         {cueText(state)}
       </small>
-      <button type="button" onClick={() => close(false)}>
+      <Button variant="default" type="button" onClick={() => close(false)}>
         Done
-      </button>
+      </Button>
     </div>
   );
 }

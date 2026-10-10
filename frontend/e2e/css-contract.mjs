@@ -14,7 +14,7 @@
  *               the element it sits in (an absence that outranks the value it replaces reads as the fact);
  *   ink         the four ink registers are the only text colours the page spends on its label, value,
  *               absence and caption roles, and no text spends the retired third ink;
- *   controls    every control is at least at the label step, `.next-action` is at the sentence step, and
+ *   controls    every control is at least at the label step, `[data-slot="button"]` is at the sentence step, and
  *               controls that touch agree on a size;
  *   variables   every `var(--x)` any rule uses resolves to a declared custom property;
  *   palette     the page is dark only: no `prefers-color-scheme` rule, and a light-scheme browser draws the
@@ -51,6 +51,17 @@ import {
 import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
+import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
+
+const BUTTON_TABLE = JSON.parse(
+  await readFile(new URL('./button-chrome-reference.json', import.meta.url), 'utf8'),
+);
+const BUTTON_REFERENCE = Object.fromEntries(
+  Object.entries(BUTTON_TABLE.instances).map(([key, profile]) => [
+    key,
+    BUTTON_TABLE.profiles[profile],
+  ]),
+);
 
 /* Every fixed wait here means "give the page time to react"; a hosted runner delivers frames later, so each is
    tripled there. */
@@ -85,6 +96,30 @@ const MUTATIONS = {
       'capacity/capacity.css',
       '.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-label)}',
       '.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-hero)}',
+    ],
+  ],
+  'button-size-removed': [['ui/button.tsx', 'text-body', 'text-label']],
+  'button-cascade-colour': [['ui/button.tsx', 'text-foreground', 'text-muted-foreground']],
+  'button-memo-native': [
+    ['controls/HumanContextField.tsx', 'variant="default"', 'variant="native"'],
+  ],
+  'button-raise-amber': [
+    ['ui/button.tsx', 'data-[raise-state=throttled]:border-[var(--amber)]', ''],
+  ],
+  'button-retry-dashed': [
+    [
+      'ui/button.tsx',
+      'aria-disabled:not-aria-busy:border-solid',
+      'aria-disabled:not-aria-busy:border-dashed',
+    ],
+  ],
+  'button-target-removed': [['ui/button.tsx', 'min-h-[44px] min-w-[44px]', 'min-h-0 min-w-0']],
+  'button-reserve-removed': [['ui/button.tsx', 'reserve ? (', 'false ? (']],
+  'button-focus-removed': [
+    [
+      'ui/button.tsx',
+      'focus-visible:outline-2 focus-visible:outline-solid',
+      'focus-visible:outline-none',
     ],
   ],
   'focus-removed': [
@@ -167,18 +202,10 @@ const INVENTORY = {
     'section.next-delegation.next-rail-panel > div.next-delegation-withheld > strong',
   ],
   uaFocusRing: [
-    'div > div.next-cockpit-waiting > a',
     'div.next-cockpit-held-fields > div.next-cockpit-held-field > textarea',
     'div.next-cockpit-held-heading > label.next-intent-prompt-pick > select.next-intent-prompt-select',
-    'div.next-intent-row > span.next-intent-key > a',
-    'div.next-session-activity > div.next-cockpit-departures-kept > a',
-    'div.next-session-detail-title > p.next-session-identity > a',
     'form > label > input',
-    'main > nav.next-breadcrumb > a.next-crumb',
-    'main > section.next-session-detail-empty > a',
     'ol.next-cockpit-held-list > li.next-cockpit-held-line > textarea',
-    'section.next-cockpit-panel > p.next-cockpit-empty > a',
-    'section.next-cockpit-recovery > div.next-cockpit-recovery-memos > button',
   ],
   uaLinks: [
     'div.next-session-detail-title > p.next-session-identity > a',
@@ -228,7 +255,10 @@ const measureText = () => {
   const label = (el) => {
     const parts = [];
     for (let node = el; node && node !== doc.body && parts.length < 4; node = node.parentElement) {
-      const classes = [...node.classList].slice(0, 2).join('.');
+      const classes = [...node.classList]
+        .filter((name) => /^(next-|ctl-|pc-)/.test(name))
+        .slice(0, 2)
+        .join('.');
       parts.unshift(node.localName + (classes ? `.${classes}` : ''));
     }
     return parts.join(' > ');
@@ -274,7 +304,7 @@ const measureText = () => {
         el.matches(ABSENCE) ||
         Boolean(el.parentElement?.matches('[data-next-absent],[data-next-withheld]')),
       control: Boolean(el.closest(CONTROL)),
-      action: el.classList.contains('next-action'),
+      action: el.dataset.slot === 'button' && el.dataset.variant !== 'native',
       hidden: el.matches('.next-visually-hidden') || Boolean(el.closest('.next-visually-hidden')),
       twinPx: twinOf(el),
       disabled: Boolean(
@@ -358,6 +388,7 @@ const measureText = () => {
       px: parseFloat(getComputedStyle(el).fontSize),
       color: getComputedStyle(el).color,
       disabled: Boolean(el.disabled),
+      action: el.dataset.slot === 'button' && !['native', 'terminal'].includes(el.dataset.variant),
     }));
   // The colour a link with no authored colour draws in, in this page's colour scheme.
   const link = doc.createElement('a');
@@ -450,7 +481,10 @@ const ringOf = (el) => {
         node && node !== document.body && parts.length < 3;
         node = node.parentElement
       ) {
-        const classes = [...node.classList].slice(0, 2).join('.');
+        const classes = [...node.classList]
+          .filter((name) => /^(next-|ctl-|pc-)/.test(name))
+          .slice(0, 2)
+          .join('.');
         parts.unshift(node.localName + (classes ? `.${classes}` : ''));
       }
       return parts.join(' > ');
@@ -491,7 +525,7 @@ async function scratchCopy() {
     join(copy, 'node_modules'),
     process.platform === 'win32' ? 'junction' : 'dir',
   );
-  for (const [file, needle, replacement] of MUTATIONS[MUTATION]) {
+  for (const [file, needle, replacement] of MUTATIONS[MUTATION] ?? []) {
     const path = join(copy, 'frontend/src', file);
     const text = await readFile(path, 'utf8');
     assert.ok(text.includes(needle), `mutation ${MUTATION}: the text to break is not in ${file}`);
@@ -554,6 +588,7 @@ const measured = {
   lightChecked: 0,
   groups: [],
   buttons: [],
+  chrome: [],
 };
 
 const SURFACES = {
@@ -619,6 +654,8 @@ async function visit(opened, origin, fragment, options = {}) {
 async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   measured.views.push(view);
+  for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
+    measured.chrome.push({ view, ...row });
   const { rows, registers, groups, buttons, linkColour, scheme } = await page.evaluate(measureText);
   measured.registers ??= registers;
   measured.palette = registers;
@@ -926,6 +963,44 @@ function checks() {
   const text = measured.text.filter((row) => !row.hidden);
   const regs = measured.registers;
 
+  step_('buttons: every real-route instance keeps its pre-adoption chrome', () => {
+    const failures = new Map();
+    const seen = new Set();
+    for (const row of measured.chrome) {
+      const expected = BUTTON_REFERENCE[row.key];
+      seen.add(row.key);
+      if (!expected) failures.set(row.key, { view: row.view, missing: true, actual: row.chrome });
+      else {
+        const changed = Object.keys(expected).filter(
+          (property) => row.chrome[property] !== expected[property],
+        );
+        if (changed.length)
+          failures.set(
+            row.key,
+            Object.fromEntries(
+              changed.map((property) => [
+                property,
+                { expected: expected[property], actual: row.chrome[property] },
+              ]),
+            ),
+          );
+      }
+    }
+    if (failures.size)
+      console.error(
+        JSON.stringify({ buttonChromeDifferences: Object.fromEntries(failures) }, null, 2),
+      );
+    assert.equal(failures.size, 0, 'Button cascade changed; differences are printed above');
+    if (FULL)
+      assert.deepEqual(
+        Object.keys(BUTTON_REFERENCE).filter((key) => !seen.has(key)),
+        [],
+        'reference Button identities were not reached',
+      );
+    assert.ok(measured.chrome.length >= 150, 'too few Button instances reached the chrome gate');
+    return `${measured.chrome.length} instances against 30bac258`;
+  });
+
   step_('coverage: the render reaches the surfaces this proof speaks for', () => {
     assert.ok(measured.views.length >= 40, `only ${measured.views.length} views were measured`);
     assert.ok(text.length >= 4000, `only ${text.length} text elements were measured`);
@@ -1061,9 +1136,7 @@ function checks() {
     () => {
       const small = measured.buttons.filter((b) => b.px > 0 && b.px < LABEL_PX - 0.01 && b.text);
       assert.deepEqual([...new Set(small.map((b) => `${key(b)} ${b.px}px`))], []);
-      const actions = measured.buttons.filter((b) =>
-        /\.(next-action|ctl-action)(\.|$| )/.test(b.at.split(' > ').at(-1) || ''),
-      );
+      const actions = measured.buttons.filter((b) => b.action);
       assert.ok(actions.length >= 40, `only ${actions.length} actions were drawn`);
       const off = actions.filter((b) => !near(b.px, SENTENCE_PX));
       assert.deepEqual(
@@ -1141,6 +1214,144 @@ function step_(name, run) {
 }
 const pending = [];
 
+async function checkButtonGallery(browser) {
+  const gallery = await scratchCopy();
+  let world;
+  try {
+    await writeFile(
+      join(gallery, 'frontend/src/main.tsx'),
+      "import { mountGallery } from './controls/gallery';\nconst root = document.getElementById('root');\nif (!root) throw new Error('missing root');\nmountGallery(root);\n",
+    );
+    const [port, vitePort] = await freePorts(2);
+    world = await startReactWorld({
+      root: gallery,
+      port,
+      vitePort,
+      backendHelper: join(gallery, 'frontend/e2e/controls-backend.py'),
+    });
+    const opened = await openPage(browser, [world.origin, world.viteOrigin]);
+    try {
+      for (const width of [1280, 320]) {
+        await opened.page.setViewportSize({ width, height: 900 });
+        await opened.page.goto(world.origin);
+        await opened.page.locator('[data-button-gallery]').waitFor();
+        await opened.page.evaluate(() => document.fonts.ready);
+        const buttons = await opened.page
+          .locator('[data-button-gallery] [data-example]')
+          .evaluateAll((elements) =>
+            elements.map((el) => {
+              const box = el.getBoundingClientRect(),
+                css = getComputedStyle(el);
+              return {
+                example: el.dataset.example,
+                width: box.width,
+                height: box.height,
+                px: parseFloat(css.fontSize),
+              };
+            }),
+          );
+        assert.equal(buttons.length, 12);
+        assert.deepEqual(
+          buttons.filter((b) => b.width < 44 || b.height < 44),
+          [],
+          'gallery controls have 44 px targets',
+        );
+        assert.deepEqual(
+          buttons.filter((b) => b.px !== 15),
+          [],
+          'gallery controls agree on the control tier',
+        );
+        await opened.page.keyboard.press('Tab');
+        for (const example of ['focus', 'pending', 'link']) {
+          const control = opened.page.locator(`[data-example="${example}"]`);
+          await control.focus();
+          const ring = await control.evaluate((el) => ({
+            width: getComputedStyle(el).outlineWidth,
+            style: getComputedStyle(el).outlineStyle,
+          }));
+          assert.equal(ring.width, '2px');
+          assert.equal(ring.style, 'solid');
+        }
+        const hover = opened.page.locator('[data-example="hover"]');
+        assert.equal(
+          await opened.page
+            .locator('[data-example="retry"]')
+            .evaluate((el) => getComputedStyle(el).borderTopStyle),
+          'solid',
+          'a refresh retry keeps the solid waiting boundary',
+        );
+        await hover.hover();
+        assert.equal(
+          await hover.evaluate((el) => getComputedStyle(el).borderColor),
+          'rgb(138, 136, 116)',
+        );
+        assert.equal(await opened.page.getByRole('link', { name: 'Linked action' }).count(), 1);
+        const raise = opened.page.locator('[data-example="raise-primary"]');
+        await raise.evaluate((el) => el.setAttribute('data-raise-state', 'declined'));
+        assert.deepEqual(
+          await raise.evaluate((el) => ({
+            border: getComputedStyle(el).borderColor,
+            ink: getComputedStyle(el).color,
+          })),
+          { border: 'rgb(116, 114, 95)', ink: 'rgb(205, 199, 180)' },
+          'primary Raise keeps its declined cue',
+        );
+        for (const state of ['throttled', 'stale']) {
+          await raise.evaluate((el, value) => el.setAttribute('data-raise-state', value), state);
+          assert.equal(
+            await raise.evaluate((el) => getComputedStyle(el).borderColor),
+            'rgb(240, 185, 94)',
+            `primary Raise keeps its ${state} amber cue`,
+          );
+        }
+        const memo = opened.page.getByRole('button', {
+          name: 'Edit OUTCOME',
+          exact: true,
+        });
+        assert.equal(await memo.count(), 1, 'the gallery reaches the memo edit control');
+        assert.deepEqual(
+          await memo.evaluate((el) => {
+            const css = getComputedStyle(el);
+            return {
+              ink: css.color,
+              background: css.backgroundColor,
+              padding: css.padding,
+              font: css.fontSize,
+              border: css.borderTop,
+            };
+          }),
+          {
+            ink: 'rgb(246, 243, 234)',
+            background: 'rgba(0, 0, 0, 0)',
+            padding: '9px 14px',
+            font: '15px',
+            border: '1px solid rgb(116, 114, 95)',
+          },
+        );
+        const reserved = opened.page.locator('[data-example="reserved"]');
+        const before = await reserved.boundingBox();
+        await reserved.click();
+        await opened.page.locator('[data-example="reserved"][aria-busy="true"]').waitFor();
+        assert.deepEqual(
+          await reserved.boundingBox(),
+          before,
+          'pending keeps an explicit reservation',
+        );
+        assert.equal(
+          await opened.page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+          false,
+        );
+      }
+      return '12 examples at 1280 and 320 px; targets, type, hover, focus, retry, raise state, memo chrome, reserved width and link semantics';
+    } finally {
+      await opened.close();
+    }
+  } finally {
+    await world?.close();
+    await rm(gallery, { recursive: true, force: true });
+  }
+}
+
 /* ---- main ---- */
 const browser = await chromium.launch();
 let copy = null;
@@ -1149,6 +1360,7 @@ try {
     assert.ok(MUTATIONS[MUTATION], `unknown mutation ${MUTATION}`);
     copy = await scratchCopy();
   }
+  await step('gallery: shared buttons at desktop and 320 px', () => checkButtonGallery(browser));
   const root = copy || REPOSITORY;
   for (const name of WORLDS) {
     const started = Date.now();
@@ -1167,7 +1379,7 @@ try {
   if (copy) await rm(copy, { recursive: true, force: true });
 }
 
-if (!failures.length) {
+if (!failures.some((failure) => failure.name === 'run')) {
   checks();
   for (const [name, run] of pending) await step(name, run);
 }

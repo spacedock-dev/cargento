@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { useId } from 'react';
 import { exactIdentity } from '../api/identity';
 import type { FocusOutcome } from '../api/types';
@@ -79,16 +80,17 @@ export function RaiseControl({ harness, sid, focusable, primary = false }: Raise
 
   return (
     <>
-      <button
+      <Button
         type="button"
-        className={`ctl-raise ctl-attention-raise${primary ? ' ctl-action ctl-action--primary' : ''}`}
+        variant={primary ? 'raise-primary' : 'raise'}
+        data-control="raise"
         aria-label="Raise the terminal this session is running in"
         {...(state ? { 'data-raise-state': state, 'aria-describedby': cueId } : {})}
         {...(busy ? { 'aria-disabled': true } : {})}
         onClick={() => void press()}
       >
         <span aria-hidden="true">RAISE</span>
-      </button>
+      </Button>
       {state ? (
         <span id={cueId} className="ctl-visually-hidden">
           {SAID[state]}

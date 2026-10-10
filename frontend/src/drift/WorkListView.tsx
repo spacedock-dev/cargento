@@ -1,3 +1,4 @@
+import { Button } from '../ui/button';
 import { openDirection } from '../intent/directions';
 import { useDrift } from './context';
 import { WORK_AS_REPORTED } from './sentences';
@@ -97,7 +98,8 @@ export function WorkListView() {
                     <span className="next-cockpit-work-turn">from the last turn</span>
                   ) : null}
                   {row.add ? (
-                    <button
+                    <Button
+                      variant="bare"
                       type="button"
                       data-next-cockpit-action="direction-add"
                       data-arg={entry.id}
@@ -109,7 +111,7 @@ export function WorkListView() {
                       }}
                     >
                       Add to my intent
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </div>

@@ -22,7 +22,7 @@ describe('Keep my intent and analyze', () => {
     await page.settle();
     const keep = byAction('direction-keep') as HTMLElement;
     expect(keep.textContent).toBe('Keep my intent and analyze');
-    expect(keep.classList.contains('next-action--primary')).toBe(true);
+    expect(keep.getAttribute('data-variant') === 'primary').toBe(true);
     await press(keep);
     await press(byAction('direction-keep'));
     await page.settle();
