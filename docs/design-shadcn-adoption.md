@@ -32,9 +32,10 @@ The ten, in the order they are met:
    written into them separately.
 10. Biome rejects the vendored files' formatting and their export shape.
 
-Owner rulings made before the measurement: popovers use the shadcn Popover; tailwind-merge is kept; the page
-is served from the reader's own machine, so growth in size is accepted and the guard against slowness is
-time, not bytes. This record adds one ruling for the owner to confirm: the component flavour is Base UI.
+Owner rulings: popovers use the shadcn Popover; tailwind-merge is kept; the page is served from the reader's
+own machine, so growth in size is accepted and the guard against slowness is time, not bytes. After the
+measurement the owner confirmed (2026-10-10) that the component flavour is Base UI and that the fluidity
+receipt's byte ceiling is re-based to 2,000,000 bytes, to be raised again if a layer needs it.
 
 ## What was measured, and how
 
@@ -179,8 +180,9 @@ Three fresh fluidity runs per page on the same machine, base page against the pa
 
 The page grew by 233 KB and first render moved by at most 3.6 ms, inside the run-to-run spread. The byte
 ceiling in the fluidity receipt (1.25 times the replaced page, 1,816,276 bytes) was a proxy for that cost; the
-time budgets are the guard. The record proposes a ceiling of 2,000,000 bytes, which keeps the proxy as a
-tripwire and leaves room for the display components that may still be adopted.
+time budgets are the guard. The owner re-based the ceiling to 2,000,000 bytes, which keeps the proxy as a
+tripwire and leaves room for the display components that may still be adopted. A layer that would cross it
+raises it in its own pull request, with its measured times.
 
 ### Tooling
 
