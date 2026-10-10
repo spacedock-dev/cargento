@@ -74,3 +74,39 @@ test('served embedded modules preserve hostile literals without changing the HTM
     if (server.listening) await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('embedded module callback stacks have bounded source names as the bundle grows', {
+  timeout: 20000,
+}, async () => {
+  // Each captured location used the entire data URL before the packager named the
+  // module. In the production drift proof those native copies reached 8 GiB.
+  const javascript = `/*${'x'.repeat(858426)}*/
+    const lengths = [];
+    function frame() {
+      lengths.push(new Error('callback location').stack.length);
+      if (lengths.length < 32) requestAnimationFrame(frame);
+      else globalThis.callbackLocations = { count: lengths.length, bytes: lengths.reduce((a, b) => a + b, 0) };
+    }
+    requestAnimationFrame(frame);`;
+  const document = createDocument(javascript, '');
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(document);
+  });
+  let browser;
+  try {
+    server.listen(4586, '127.0.0.1');
+    await once(server, 'listening');
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    await page.goto('http://127.0.0.1:4586/');
+    await page.waitForFunction(() => globalThis.callbackLocations);
+    const actual = await page.evaluate(() => globalThis.callbackLocations);
+    assert.equal(actual.count, 32);
+    assert.ok(actual.bytes < 16384, `32 callback locations produced ${actual.bytes} bytes`);
+  } finally {
+    if (browser) await browser.close();
+    server.closeAllConnections();
+    if (server.listening) await new Promise((resolve) => server.close(resolve));
+  }
+});

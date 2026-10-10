@@ -64,7 +64,11 @@ export function createDocument(
     const script = scripts[0];
     for (const attribute of [...script.attributes]) script.removeAttribute(attribute.name);
     script.type = 'module';
-    script.src = 'data:text/javascript;base64,' + Buffer.from(javascript).toString('base64');
+    // Chromium copied the full data URL into callback source locations; repeated
+    // production drift loads reached 8 GiB RSS. A short name bounds those copies.
+    script.src =
+      'data:text/javascript;base64,' +
+      Buffer.from(javascript + '\n//# sourceURL=cargento-bundle.js\n').toString('base64');
     script.textContent = '';
     const result = dom.serialize() + '\n';
     if ((result.match(/<\/head>/g) || []).length !== 1) fail('head injection point must be unique');

@@ -177,6 +177,13 @@ without allowing their text to change the HTML parser's state. A global replacem
 break operators; replacing only script end tags would miss HTML comment and script parser states.
 The browser tests must execute hostile literals, rather than infer safety from a string check.
 
+The JavaScript resource ends with a fixed `sourceURL=cargento-bundle.js` comment. Without
+that short name, Chromium captured the full 1.1 MB data URL in callback source locations;
+repeated production drift loads reached 8.3 GiB renderer RSS while the JavaScript heap
+stayed below 65 MiB. The short name kept the same proof below 478 MiB. The callback-stack
+check in `frontend/e2e/parser.test.mjs` bounds those names with a production-sized module.
+The comment changes no fetch URL or executable bytes.
+
 A data module has its own `import.meta.url`. The build must therefore refuse residual imports,
 chunk-relative resource construction and unexpected emitted assets instead of silently resolving
 them against that URL. API requests must use the document's Python origin; the typed client layer
