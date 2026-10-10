@@ -575,6 +575,8 @@ instances. Logs, screenshots and the accessibility-tree capture stay under this 
 ignored `docs/screenshots/popover-layer/` directory. The dev lifecycle tests pass (17), as do
 lint, typecheck and the CSS ratchet against `origin/main`.
 
-The builder leaves the production bundle and fluidity receipt untouched. The stack lead rebuilds
-and remeasures at the stack head and qualifies the production drift crash condition on hosted
-Linux runners before merging this layer.
+Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,589,840 bytes, 125,072 more than the
+accordion layer and 410,160 under the 2,000,000-byte ceiling; the popover primitive and its positioning
+code are the growth the owner accepted. First-render medians are 144.8, 95.1 and 127.3 ms and
+poll-to-paint medians are 44.2, 45.2 and 61.1 ms; every budget passes. The production drift crash condition
+is qualified on hosted Linux runners before this layer merges.
