@@ -25,11 +25,17 @@ export function measureButtonChrome(normaliseKey, disclosures = false) {
       .sort()
       .join('.');
   const selector = disclosures
-    ? '.ctl-disclosure:not(.ctl-disclosure--pop) > summary,[data-slot=accordion-trigger],[data-slot=collapsible-trigger]'
-    : 'button:not([data-slot=accordion-trigger]):not([data-slot=collapsible-trigger])';
+    ? '[data-slot=accordion-trigger],[data-slot=collapsible-trigger],[data-slot=popover-trigger]'
+    : 'button:not([data-slot=accordion-trigger]):not([data-slot=collapsible-trigger]):not([data-slot=popover-trigger])';
   return [...document.querySelectorAll(selector)].map((el) => {
     const path = [];
     for (let node = el.parentElement; node && node.id !== 'app'; node = node.parentElement) {
+      // The portal changes ancestry, not the surface identity held by the reference.
+      if (node.dataset.slot === 'popover-content') {
+        path.unshift('ctl-disclosure-body');
+        const trigger = document.getElementById(node.getAttribute('aria-labelledby'));
+        if (trigger?.parentElement) node = trigger.parentElement;
+      }
       const classes = semantic(node);
       if (classes) path.unshift(classes);
     }

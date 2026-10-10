@@ -73,7 +73,7 @@ export function GalleryBoard({ world }: { world: World }) {
   const project = first?.project_key ?? first?.project ?? 'alpha/app';
 
   return (
-    <main id="gallery">
+    <main id="gallery" data-gallery-project={project}>
       <h1>Shared controls</h1>
       <section aria-label="Button gallery" data-button-gallery style={{ maxWidth: '100%' }}>
         <Button data-example="default">Default action</Button>
@@ -191,13 +191,24 @@ export function GalleryBoard({ world }: { world: World }) {
             >
               <p>Another small section</p>
             </Disclosure>
-            <Disclosure
-              disclosureKey={disclosureKey({ project, scope: null, name: 'why' })}
-              summary="Why"
-              variant="popover"
-            >
-              <p>{`Because of board ${String(displayedAccepted)}`}</p>
-            </Disclosure>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <Disclosure
+                disclosureKey={disclosureKey({ project, scope: null, name: 'why' })}
+                summary="Why"
+                variant="popover"
+              >
+                <p>{`Because of board ${String(displayedAccepted)}`}</p>
+                <Button variant="bare">Inside why</Button>
+                <a href="#gallery">Popup link</a>
+              </Disclosure>
+              <Disclosure
+                disclosureKey={disclosureKey({ project, scope: null, name: 'another-why' })}
+                summary="Another why"
+                variant="popover"
+              >
+                <Button variant="bare">Inside another why</Button>
+              </Disclosure>
+            </div>
           </>
         ) : null}
       </section>

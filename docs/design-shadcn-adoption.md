@@ -507,3 +507,74 @@ mutations fail at their intended gates, including delayed replay, loading-scope 
 keyboard, revelation, motion, store memory, remounts, target floor and focus. Hand-written CSS falls
 from 153,203 to 149,833 bytes, with the path inventory unchanged. Lint, typecheck and style policy
 pass. These measurements do not certify the unbuilt production bundle or its fluidity receipt.
+
+
+## Popover layer
+
+The popover variant of `Disclosure` vendors shadcn Popover through the pinned Base UI registry
+procedure. Base UI remains at 1.8.0; the temporary npm `cn` dependency is removed and the local
+merger is used. No icon-library import or animation package is added. Menus retain native details.
+The keyed store supplies `open` and receives every `onOpenChange`; Popover owns no competing
+open state. The [reader-state record](design-reader-state.md#disclosure-write-precedence) owns the
+close paths and their focus destinations.
+
+The popup uses Base UI's default non-modal mode and disables initial and final focus. Its portal
+receives the app root through `container`, and waits for that container before mounting, so no
+popup link falls outside the existing 44 px rules. Opening scrolls the body once after two frames;
+a poll or restored-open mount does not scroll it. Positioning flips and shifts against the
+viewport with a 16 px collision inset. The body keeps the old reading measure and maximum window
+width, and can scroll internally when larger text leaves less vertical space.
+
+Base UI's Escape callback closes one popup, while Cargento closes all and chooses one trigger.
+`popoverEscape.ts` keeps only that document-level compatibility rule. In the browser proof, Base UI
+left a popup open when focus moved to another page control after window blur. A blur handler on
+the trigger and portalled popup closes those departures and ignores a missing related target. Outside presses remain with Base UI and deliver the destination's click without
+returning focus. The former `popoverDismissal.ts` is deleted.
+
+### Popover cascade audit
+
+Utilities outrank every legacy selector, so the trigger receives only target and focus utilities.
+Its native button defaults are reset alongside Accordion and Collapsible; the surface still owns
+its font and chrome. No rule leaves the legacy layer and no `!important` is added.
+
+| Instance or rule | Ownership after the swap |
+|---|---|
+| Sessions group caveat and session reentry Why | Existing transparent background, zero border and padding, flex display and inherited font stay in legacy. |
+| Drift What is sent and its caveats | `next-cockpit-why` targets the Popover trigger too, retaining the 500-weight, 15 px, 1.55-line-height recipe. |
+| Popup body | The vendored utilities keep 10 px vertical and 12 px horizontal padding, line border, control radius, raise background and the existing shadow. |
+| Absolute end anchor and narrow-screen start anchor | Replaced by Base UI collision positioning; both old positioning rules and the obsolete Sessions selector are deleted. |
+| Native popup marker and details-content fade | Replaced by the shared inline chevron and a 160 ms opacity transition; reduced motion suppresses the transition. Menu rules remain. |
+
+Six native popover trigger identities were measured on `47ed3654` before the swap, across the
+CSS proof's same 87 views. They extend `disclosure-chrome-reference.json`; the existing trigger
+reference and the retired page's golden fixtures remain unchanged. Popover triggers are excluded
+from the Button chrome table and checked in the disclosure table. Popup bodies stay mounted, as the native bodies did. Buttons inside a popup
+keep their pre-swap reference identity through the popup's labelled trigger, with computed chrome
+still read from their actual portalled nodes. Popup prose is measured with
+each popup open separately, because an outside press correctly closes a sibling. The runtime
+positioning variable `--available-height` has a default in the token bridge, like the existing
+panel-height variables. Hand-written CSS falls from 149,833 to 147,587 bytes, with the counted
+path inventory unchanged.
+
+`popover-continuity.mjs` runs with the controls proof in development and production modes. It
+checks every close path, document-order fallback, an outside click's delivery and destination
+focus, window blur, simultaneous external openings, one opening scroll, a forced poll, popup
+chrome, app-root targets and containment at 320 and 375 px and at 200 percent zoom. It reads a
+new polite announcement through CDP `Accessibility.getFullAXTree`. Base UI exposes live regions
+in modal modes too, as the original measurement found; the modal mutation therefore also checks
+that ordinary outside page content remains exposed. That mutation renders Close inside Popup,
+as Base UI requires for modal focus handling; the actual non-modal variant has no Close part.
+
+Measured locally on 2026-10-10: the controls unit tests pass (114), and the controls, Sessions,
+Intent, Project and CSS browser proofs pass. The CSS gate reaches 449 disclosure triggers and
+1,387 Button instances over 87 views, with the existing exception inventory unchanged. Twenty-one
+behavioural mutations fail at their intended gates, including destination focus theft, window
+blur, all-open Escape, event ownership, document order, menu exemption, store memory, polling,
+viewport containment, link targets, polite announcements and modal hiding. A separate cascade mutation fails on 46 popover trigger
+instances. Logs, screenshots and the accessibility-tree capture stay under this worktree's
+ignored `docs/screenshots/popover-layer/` directory. The dev lifecycle tests pass (17), as do
+lint, typecheck and the CSS ratchet against `origin/main`.
+
+The builder leaves the production bundle and fluidity receipt untouched. The stack lead rebuilds
+and remeasures at the stack head and qualifies the production drift crash condition on hosted
+Linux runners before merging this layer.

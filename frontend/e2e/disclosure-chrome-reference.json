@@ -728,6 +728,90 @@
       "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
       "font-size": "15px",
       "line-height": "23.25px"
+    },
+    "next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "normal"
+    },
+    "next-session-detail.next-session-detail--blocked > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "normal"
+    },
+    "next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "normal"
+    },
+    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "23.25px"
+    },
+    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-result.next-session-drift-check > next-cockpit-result-press > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "23.25px"
+    },
+    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent to Claude Code |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "23.25px"
     }
   },
   "inlineSizes": {
@@ -4002,6 +4086,317 @@
         "fillsRow": false,
         "width": 79.5
       }
+    ],
+    "#n=sessions | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions [expanded] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=bogus | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=bogus [expanded] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open | next-session-detail.next-session-detail--blocked > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open [expanded] | next-session-detail.next-session-detail--blocked > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:ended-still-working | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:ended-still-working [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:live-work | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:live-work [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:long-turn | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:long-turn [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:colon%3Asid | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:colon%3Asid [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:delegated | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:delegated [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:idle-recent | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:idle-recent [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session::codex:no-project | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session::codex:no-project [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:scan-only | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:scan-only [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:shared-sid | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:shared-sid [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:shared-sid | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:shared-sid [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:source-gap | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:source-gap [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:claude:spacedock-asked | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:claude:spacedock-asked [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:stopped-dirty | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:stopped-dirty [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions @375 | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions @375 [expanded] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open @375 | next-session-detail.next-session-detail--blocked > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open @375 [expanded] | next-session-detail.next-session-detail--blocked > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-result.next-session-drift-check > next-cockpit-result-press > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-result.next-session-drift-check > next-cockpit-result-press > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent to Claude Code |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.ctl-disclosure--pop.next-cockpit-why |  | What is sent to Claude Code |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-1 | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-1 [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions [.next-capacity-window button #0] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions [.next-capacity-window button #0] [expanded] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions [.next-capacity-window button #1] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions [.next-capacity-window button #1] [expanded] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions [.next-capacity-window button #2] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=sessions [.next-capacity-window button #2] [expanded] | next-operations > next-operation-group.next-operation-group--history > ctl-disclosure.ctl-disclosure--pop |  | What recent means |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:beta-codex | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:beta-codex [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:beta-idle | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:beta-idle [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:workflow-run | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:workflow-run [expanded] | next-session-detail > next-session-detail-header > next-session-detail-bar > next-session-reentry-none > ctl-disclosure.ctl-disclosure--pop |  | Why |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
     ]
-  }
+  },
+  "popoverSource": "47ed3654, native popover triggers measured over the same 87 route views on 2026-10-10; inline sizes measured from 7d4a23c3 over 87 route views on 2026-10-11"
 }

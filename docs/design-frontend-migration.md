@@ -707,3 +707,16 @@ the owner lifts it in a reviewed pull request.
 The Intent and drift study remains paused. Controlled reading fixtures prove frontend parity,
 not model accuracy. Earlier failed measurements stay failed. A future study resume must bind the
 final runtime again rather than reuse a pre-migration source binding.
+
+
+### Popover snapshot ancestry
+
+Popover bodies move through a portal inside the app root, retaining their mounted content while
+closed. Sessions' recorded text snapshots included closed native bodies. The proof rejoins a
+cloned popup body to its labelled trigger in a virtual snapshot; it never moves the live nodes.
+Popover triggers are now native buttons, so the snapshot's existing action-button list excludes
+those triggers just as it excluded native summaries. The controls and popover proofs check their
+new button role, focus and target floor directly. The computed Button reference uses the same
+trigger identity for portalled descendants and reads their actual computed styles. The recorded
+fixtures are unchanged. [The adoption record](design-shadcn-adoption.md#popover-layer) owns the
+component and cascade decisions.

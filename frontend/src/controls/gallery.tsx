@@ -34,7 +34,9 @@ export function mountGallery(root: HTMLElement): GalleryHandle {
   const world = createWorld(hooks);
   const page = (
     <ControlsProvider controls={world.controls}>
-      <GalleryBoard world={world} />
+      <div id="app">
+        <GalleryBoard world={world} />
+      </div>
     </ControlsProvider>
   );
   const strict = new URLSearchParams(location.search).get('strict') !== '0';

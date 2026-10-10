@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { ControlsContext, type Controls } from './kit';
-import { installPopoverDismissal } from './popoverDismissal';
+import { installPopoverEscape } from './popoverEscape';
 
 /* The shell builds `controls` once (`createControls`) and mounts this near the
    root. The effects arm the cue timers and the document-level popover handlers;
@@ -14,6 +14,6 @@ export function ControlsProvider({
   readonly children: ReactNode;
 }) {
   useEffect(() => controls.activate(), [controls]);
-  useEffect(() => installPopoverDismissal(document), []);
+  useEffect(() => installPopoverEscape(document), []);
   return <ControlsContext value={controls}>{children}</ControlsContext>;
 }

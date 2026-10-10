@@ -554,7 +554,7 @@ if (new URLSearchParams(location.search).has('late')) {
     async () => {
       await load();
       await page.locator(ACCORDION).locator('[data-slot=accordion-trigger]').click();
-      await page.locator('summary:text-is("Why")').click();
+      await page.getByRole('button', { name: 'Why', exact: true }).click();
       await pause(400);
       await page.locator('button:text-is("Hide disclosures")').click();
       assert.equal(await page.locator(ACCORDION).count(), 0);
@@ -569,7 +569,9 @@ if (new URLSearchParams(location.search).has('late')) {
       );
       // The click that left the view was outside the popover, so it closed it, and the closed state is what comes back.
       assert.equal(
-        await page.locator('details.ctl-disclosure--pop').evaluate((node) => node.open),
+        await page
+          .getByRole('button', { name: 'Why', exact: true })
+          .evaluate((node) => node.getAttribute('aria-expanded') === 'true'),
         false,
         'a popover stayed open past an outside click',
       );
@@ -977,7 +979,7 @@ if (new URLSearchParams(location.search).has('late')) {
     async () => {
       await load();
       await page.locator('summary[aria-label="More"]').click();
-      await page.locator('summary:text-is("Why")').click();
+      await page.getByRole('button', { name: 'Why', exact: true }).click();
       await page.getByRole('button', { name: 'Project plan', exact: true }).click();
       await page.getByRole('button', { name: 'Edit FOCUS' }).click();
       const report = {};
@@ -999,7 +1001,7 @@ if (new URLSearchParams(location.search).has('late')) {
             ),
           small: [
             ...document.querySelectorAll(
-              '#gallery [data-copy-kind], #gallery [data-control="raise"], #gallery [data-slot="button"], #gallery summary, #gallery [data-slot=accordion-trigger], #gallery [data-slot=collapsible-trigger], #gallery .ctl-menu-items button, #gallery .ctl-memo button',
+              '#gallery [data-copy-kind], #gallery [data-control="raise"], #gallery [data-slot="button"], #gallery summary, #gallery [data-slot=accordion-trigger], #gallery [data-slot=collapsible-trigger], #gallery [data-slot=popover-trigger], #gallery .ctl-menu-items button, #gallery .ctl-memo button',
             ),
           ]
             .filter((node) => {

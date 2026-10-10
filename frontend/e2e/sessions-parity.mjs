@@ -67,7 +67,19 @@ async function step(name, run) {
 
 /* ---- what a reader can read, reduced to data. These run IN the page, so they are self-contained. ---- */
 const summarizeList = () => {
-  const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
+  const norm = (node) => {
+    if (!node) return '';
+    const clone = node.cloneNode(true);
+    // Recorded snapshots included closed native bodies. Rejoin the retained
+    // portal content by its labelled trigger without rewriting the live tree.
+    for (const trigger of clone.querySelectorAll('[data-slot=popover-trigger]')) {
+      const popup = [...document.querySelectorAll('[data-slot=popover-content]')].find(
+        (popup) => popup.getAttribute('aria-labelledby') === trigger.id,
+      );
+      if (popup) trigger.parentElement.append(popup.cloneNode(true));
+    }
+    return clone.textContent.replace(/\s+/g, ' ').trim();
+  };
   const { document } = globalThis;
   const root = document.querySelector('[data-next-view-body="sessions"]');
   if (!root) return { missing: true, text: norm(document.body).slice(0, 200) };
@@ -103,7 +115,19 @@ const summarizeList = () => {
 };
 
 const summarizeDetail = () => {
-  const norm = (node) => (node ? node.textContent.replace(/\s+/g, ' ').trim() : '');
+  const norm = (node) => {
+    if (!node) return '';
+    const clone = node.cloneNode(true);
+    // Recorded snapshots included closed native bodies. Rejoin the retained
+    // portal content by its labelled trigger without rewriting the live tree.
+    for (const trigger of clone.querySelectorAll('[data-slot=popover-trigger]')) {
+      const popup = [...document.querySelectorAll('[data-slot=popover-content]')].find(
+        (popup) => popup.getAttribute('aria-labelledby') === trigger.id,
+      );
+      if (popup) trigger.parentElement.append(popup.cloneNode(true));
+    }
+    return clone.textContent.replace(/\s+/g, ' ').trim();
+  };
   const { document } = globalThis;
   const empty = document.querySelector('.next-session-detail-empty');
   const article = document.querySelector('article.next-session-detail');
@@ -157,8 +181,8 @@ const summarizeDetail = () => {
     ],
     header: norm(header),
     headerLinks: [...header.querySelectorAll('a')].map((a) => a.getAttribute('href')),
-    headerButtons: [...header.querySelectorAll('button')].map((button) =>
-      button.getAttribute('aria-label'),
+    headerButtons: [...header.querySelectorAll('button:not([data-slot=popover-trigger])')].map(
+      (button) => button.getAttribute('aria-label'),
     ),
     // The age after "ASKED YOU" is the wait between the board and the draw, a second more or less from run to run.
     ask: ask ? norm(ask).replace(/(ASKED YOU · )\d+[smhd]/, '$1Ns') : null,
@@ -669,7 +693,7 @@ try {
           before: globalThis.__linkTop,
           open: [
             ...globalThis.document.querySelectorAll(
-              'details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
+              '[data-slot=popover-trigger][aria-expanded=true],details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
             ),
           ].map((summary) => summary.textContent),
           text: globalThis.document
@@ -705,7 +729,7 @@ try {
           o.page.evaluate(() =>
             [
               ...globalThis.document.querySelectorAll(
-                'details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
+                '[data-slot=popover-trigger][aria-expanded=true],details[open] > summary,[data-slot=accordion][data-open] [data-slot=accordion-trigger]',
               ),
             ].map((summary) => summary.textContent),
           );

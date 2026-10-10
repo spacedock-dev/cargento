@@ -604,7 +604,8 @@
         "frontend/src/controls/Disclosure.test.tsx",
         "frontend/src/controls/displayGate.test.ts",
         "frontend/e2e/controls-continuity.mjs",
-        "docs/frontend-fluidity.json"
+        "docs/frontend-fluidity.json",
+        "frontend/e2e/popover-continuity.mjs"
       ],
       "contract": "Disclosure open state, popover position, focus, IME, native SELECT lifetime and input drafts survive source refresh; actual browser checks supplement VM assertions."
     }
@@ -775,9 +776,10 @@
         "frontend/src/controls/Disclosure.test.tsx",
         "frontend/src/controls/focusLane.test.tsx",
         "frontend/e2e/controls-continuity.mjs",
-        "docs/frontend-fluidity.json"
+        "docs/frontend-fluidity.json",
+        "frontend/e2e/popover-continuity.mjs"
       ],
-      "contract": "Controlled Accordion and Collapsible derive value/open from the subscribed keyed store. Independent siblings remain open together; trigger focus and the 220 ms motion hold survive polls. hiddenUntilFound publishes beforematch revelation; hashes are reapplied after panel mount for fresh-load targets. Native popovers and menus retain version precedence and dismissal; remounts replay no opening motion.",
+      "contract": "Controlled Accordion and Collapsible derive value/open from the subscribed keyed store. Independent siblings remain open together; trigger focus and the 220 ms motion hold survive polls. hiddenUntilFound publishes beforematch revelation; hashes are reapplied after panel mount for fresh-load targets. Controlled Popover derives open from the same store and mounts inside the app root with automatic focus disabled. Only native menus retain toggle version precedence; remounts replay no opening motion.",
       "disposition": "stable-identity"
     },
     {
@@ -1150,9 +1152,10 @@
         "frontend/src/controls/Disclosure.test.tsx",
         "frontend/src/project/ProjectDetail.test.tsx",
         "frontend/e2e/sessions-parity.mjs",
-        "frontend/e2e/project-parity.mjs"
+        "frontend/e2e/project-parity.mjs",
+        "frontend/e2e/popover-continuity.mjs"
       ],
-      "contract": "Per project/scope/session disclosures subscribe independently to versioned snapshots; multiple siblings may open together. Sessions caveats have no project. Escape/outside/focus departure write the store and close only popovers; menus keep their no-Escape contract.",
+      "contract": "Per project/scope/session disclosures subscribe independently to versioned snapshots; multiple siblings may open together. Sessions caveats have no project. Controlled Popover callbacks write the store. Escape closes all popovers and returns focus to the event owner or the first trigger in document order. Outside press and focus departure close without returning focus; window blur leaves open. The portal stays in the app root; polls preserve popup identity and focus. Menus keep their no-Escape contract.",
       "disposition": "stable-identity"
     },
     {

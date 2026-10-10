@@ -106,6 +106,13 @@ const MUTATIONS = {
       '.next-capacity-absent{color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-hero)}',
     ],
   ],
+  'popover-cascade-colour': [
+    [
+      'ui/popover.tsx',
+      'className={cn(disclosureTrigger, className)}',
+      "className={cn(disclosureTrigger, 'text-foreground', className)}",
+    ],
+  ],
   'disclosure-type-small': [
     ['styles/controls.css', 'font: inherit;', 'font: var(--fs-label) var(--sans);'],
   ],
@@ -289,7 +296,14 @@ const measureText = () => {
         .filter((name) => /^(next-|ctl-|pc-)/.test(name))
         .slice(0, 2)
         .join('.');
-      parts.unshift(node.localName + (classes ? `.${classes}` : ''));
+      parts.unshift(
+        node.localName +
+          (classes
+            ? `.${classes}`
+            : node.dataset.slot === 'popover-content'
+              ? '[data-slot=popover-content]'
+              : ''),
+      );
     }
     return parts.join(' > ');
   };
@@ -515,7 +529,14 @@ const ringOf = (el) => {
           .filter((name) => /^(next-|ctl-|pc-)/.test(name))
           .slice(0, 2)
           .join('.');
-        parts.unshift(node.localName + (classes ? `.${classes}` : ''));
+        parts.unshift(
+          node.localName +
+            (classes
+              ? `.${classes}`
+              : node.dataset.slot === 'popover-content'
+                ? '[data-slot=popover-content]'
+                : ''),
+        );
       }
       return parts.join(' > ');
     })(),
@@ -712,7 +733,19 @@ async function measure(opened, view, { walk = false } = {}) {
     return triggers.length;
   });
   if (openedPanels) await page.waitForTimeout(patience(250));
+  // Keep trigger widths comparable with the closed pre-swap summaries before opening portals.
   await measureDisclosureInlineSizes(page, `${view} [expanded]`);
+  for (const trigger of await page.locator('[data-slot=popover-trigger]').all()) {
+    if (!(await trigger.isVisible())) continue;
+    await trigger.click();
+    await page.waitForTimeout(patience(200));
+    for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
+      measured.chrome.push({ view, ...row });
+    const popupText = await page.evaluate(measureText);
+    for (const row of popupText.rows.filter((row) => row.at.includes('popover')))
+      measured.text.push({ view, ...row });
+    await page.keyboard.press('Escape');
+  }
   const { rows, registers, groups, buttons, linkColour, scheme } = await page.evaluate(measureText);
   measured.registers ??= registers;
   measured.palette = registers;
@@ -1423,9 +1456,9 @@ async function checkButtonGallery(browser) {
           assert.equal(ring.style, 'solid');
         }
         const triggers = opened.page.locator(
-          '[data-slot=accordion-trigger],[data-slot=collapsible-trigger]',
+          '[data-slot=accordion-trigger],[data-slot=collapsible-trigger],[data-slot=popover-trigger]',
         );
-        assert.equal(await triggers.count(), 3);
+        assert.equal(await triggers.count(), 5);
         for (const trigger of await triggers.all()) {
           const metrics = await trigger.evaluate((el) => {
             const box = el.getBoundingClientRect();
