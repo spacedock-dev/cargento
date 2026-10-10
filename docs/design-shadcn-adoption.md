@@ -638,7 +638,9 @@ The scoped controls, intent and steering unit run passes 287 tests in 32 files w
 The 17 development lifecycle tests and development-mode Controls, Intent, Sessions, Project and
 CSS proofs pass. The CSS sweep reaches 87 views and compares 128 fields with the pre-swap table.
 
-Hand-written CSS falls from 147,587 to 143,657 bytes with the path inventory unchanged. The stack
-head builder owns the bundle rebuild and fluidity receipt. This layer's local checks exercise the
-development page and do not certify unbuilt production bytes, a native autofill popup, screen readers,
-Firefox or WebKit.
+Hand-written CSS falls from 147,587 to 143,657 bytes with the path inventory unchanged. Measured on
+2026-10-10 in three fresh fluidity runs: the page is 1,592,388 bytes, 2,024 more than the popover layer.
+First-render medians are 142.5, 93.0 and 126.0 ms and poll-to-paint medians are 44.8, 46.6 and 61.6 ms;
+every budget passes, and in all three runs the edited textarea and the focused select keep their nodes and
+the select keeps its choice. Local checks do not certify a native autofill popup, screen readers, Firefox
+or WebKit.
