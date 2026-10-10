@@ -51,6 +51,7 @@ def check_inventory(root: Path, data: dict[str, Any]) -> list[str]:
         if row.get("disposition") not in DISPOSITIONS
     )
     gaps.extend(owner_gaps(root, document))
+    gaps.extend(native_field_gaps(root, data))
     literals = re.compile(r"""["'`](cargento\.[^"'`\s$]+)""")
     storage_names = set(literals.findall((root / STORAGE_KEYS).read_text(encoding="utf-8")))
     _coverage("storage", storage_names, groups["storage"], gaps)
@@ -93,6 +94,56 @@ def owner_gaps(root: Path, document: str) -> list[str]:
                 gaps.append(
                     f"owner {path}: {symbol} is not in the file the reader-state record cites"
                 )
+    return gaps
+
+
+def _native_component_gap(root: Path, tag: str, row: dict[str, Any]) -> str | None:
+    component = row.get("component", "")
+    path = root / component if isinstance(component, str) else root
+    if (
+        not component
+        or not isinstance(component, str)
+        or not path.is_file()
+        or not path.resolve().is_relative_to(root)
+    ):
+        return f"native_fields {tag}: missing component"
+    if not re.search(rf"<{tag}\b", path.read_text(encoding="utf-8")):
+        return f"native_fields {tag}: the component no longer renders its native element"
+    return None
+
+
+def _native_listed_gaps(root: Path, tag: str, row: dict[str, Any], kind: str) -> list[str]:
+    listed = row.get(kind)
+    if not isinstance(listed, list) or not listed:
+        return [f"native_fields {tag}: missing {kind}"]
+    gaps = []
+    for name in listed:
+        if not isinstance(name, str):
+            gaps.append(f"native_fields {tag}: invalid {kind} path")
+            continue
+        target = (root / name).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            gaps.append(f"native_fields {tag}: missing or outside {kind} {name}")
+    return gaps
+
+
+def native_field_gaps(root: Path, data: dict[str, Any]) -> list[str]:
+    """Keep adopted chrome attached to native owners and their browser proofs."""
+    if "native_fields" not in data and not (root / "frontend/src/ui/native-select.tsx").is_file():
+        return []
+    fields = data.get("native_fields")
+    if not isinstance(fields, dict) or set(fields) != {"select", "input", "textarea"}:
+        return ["native_fields: select, input and textarea need owners and proofs"]
+    gaps: list[str] = []
+    for tag, row in fields.items():
+        if not isinstance(row, dict):
+            gaps.append(f"native_fields {tag}: invalid row")
+            continue
+        component_gap = _native_component_gap(root, tag, row)
+        if component_gap:
+            gaps.append(component_gap)
+        for kind in ("owners", "oracles"):
+            gaps += _native_listed_gaps(root, tag, row, kind)
     return gaps
 
 

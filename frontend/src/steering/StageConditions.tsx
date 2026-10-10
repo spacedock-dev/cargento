@@ -1,3 +1,5 @@
+import { NativeSelect } from '../ui/native-select';
+import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react';
 import { isRecord, type Row } from '../observed';
@@ -221,9 +223,9 @@ function CardView({
       <div className="next-stage-editor">
         {model.editor ? (
           <>
-            <label>
+            <Label>
               Alert once when an observed entity enters{' '}
-              <select
+              <NativeSelect
                 ref={choice}
                 data-stage-choice={id}
                 value={model.editor.choice}
@@ -240,8 +242,8 @@ function CardView({
                     {option.label}
                   </option>
                 ))}
-              </select>
-            </label>
+              </NativeSelect>
+            </Label>
             <Button
               variant="bare"
               ref={save}

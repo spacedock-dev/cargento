@@ -7,12 +7,6 @@
 .next-session-panel .next-cockpit-held{gap:6px;padding:0}
 .next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:22px}
 .next-session-panel .next-cockpit-held-list{gap:2px}
-.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{field-sizing:content;height:auto;min-height:calc(var(--fs-body)*1.55*3 + 16px)}
-.next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{field-sizing:content;height:auto;white-space:pre-wrap;text-overflow:clip}
-@supports not (field-sizing: content){
-.next-session-panel .next-cockpit-held-field[data-next-cockpit-drafted]>textarea{height:calc(var(--fs-body)*1.55*3 + 16px)}
-.next-session-panel .next-cockpit-held-line.next-cockpit-direction-line>textarea{height:calc(var(--fs-body)*1.55*4 + 16px)}
-}
 .next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}
 .next-session-panel .next-cockpit-held-lines>.next-cockpit-held-heading>.next-cockpit-held-label{min-height:0}
 .next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
@@ -58,11 +52,9 @@
 .next-cockpit-held-remove{min-inline-size:44px}
 .next-cockpit-held-tools{display:flex;align-items:center;gap:4px 8px;margin-left:auto}
 .next-intent-prompt-pick{margin-left:auto;display:flex;min-width:0;max-inline-size:min(18rem,100%)}
-.next-intent-prompt-select{inline-size:auto;max-inline-size:100%;min-width:0;padding:0 28px 0 12px;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans);text-overflow:ellipsis}
 .next-direction-select{display:grid;gap:4px;min-inline-size:0;max-inline-size:100%}
-.next-direction-select select{inline-size:100%;max-inline-size:100%;min-inline-size:0;text-overflow:ellipsis}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
-.next-cockpit-held-field textarea{grid-column:1/-1;width:100%;min-height:56px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
+.next-cockpit-held-field textarea{grid-column:1/-1}
 .next-cockpit-held-count{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-held-field button[data-variant="native"]{border:0;background:none;color:var(--ink2);font:var(--fs-label) var(--sans);cursor:pointer}
 .next-cockpit-held-field button[hidden]{display:none}
@@ -74,11 +66,9 @@
 .next-cockpit-held-line>.next-cockpit-held-under{justify-content:flex-start}
 .next-cockpit-held-line>.next-cockpit-held-under>:last-child{margin-inline-start:auto}
 .next-cockpit-held-lines>.next-cockpit-held-under{justify-content:flex-end}
-.next-cockpit-held-field .next-cockpit-held-line textarea{min-height:34px}
 .next-cockpit-held-source{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-cockpit-held-source[hidden]{display:none}
 .next-cockpit-held-source[data-next-cockpit-held-line-source-stale]{visibility:hidden}
-.next-cockpit-held-field[data-next-cockpit-drafted]>textarea{background:var(--sunk)}
 .next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under{flex-wrap:nowrap;justify-content:flex-start;min-block-size:44px}
 .next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under>[data-slot="button"]{flex:none;margin-inline-start:auto}
 .next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}

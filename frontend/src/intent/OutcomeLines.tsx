@@ -1,3 +1,5 @@
+import { useId } from 'react';
+import { Label } from '../ui/label';
 import { compatSessKey } from '../api/identity';
 import { annotationLines, storeUnreadable, OUTCOME_LINES_MAX } from './annotation';
 import { heldSentence } from './cues';
@@ -50,6 +52,7 @@ export function DirectionGoalButton({
 /* A later direction, opened for review as one pending outcome line, and saved only by the `add_direction`
    arm of `/api/annotate`. Per session, beside the lines draft. */
 function DirectionLineView() {
+  const boxId = useId();
   const { ctx, input, session, source, cap, payload } = usePanel();
   const key = compatSessKey(session);
   const held = ctx.held.directions.get(key);
@@ -72,6 +75,7 @@ function DirectionLineView() {
       data-next-cockpit-direction-line
     >
       <HeldTextarea
+        id={boxId}
         rows={1}
         memoryKey={focus}
         focusKey={focus}
@@ -87,7 +91,9 @@ function DirectionLineView() {
         <span className="next-cockpit-held-count" data-next-cockpit-direction-count>
           {`${String(text.length)}/${String(cap)}`}
         </span>
-        <span className="next-cockpit-held-source">{from}</span>
+        <Label className="next-cockpit-held-source" htmlFor={boxId}>
+          {from}
+        </Label>
         <span className="next-cockpit-direction-tools">
           <ActionButton
             weight="none"
@@ -144,7 +150,15 @@ function DirectionLineView() {
   );
 }
 
-function LineRow({ index, text }: { readonly index: number; readonly text: string }) {
+function LineRow({
+  index,
+  text,
+  boxId,
+}: {
+  readonly index: number;
+  readonly text: string;
+  readonly boxId: string | undefined;
+}) {
   const { ctx, input, session, cap, source, payload } = usePanel();
   const key = linesKey(session);
   const saved = annotationLines(input.annotation);
@@ -157,6 +171,8 @@ function LineRow({ index, text }: { readonly index: number; readonly text: strin
   return (
     <li className="next-cockpit-held-line" data-next-cockpit-held-line={index}>
       <HeldTextarea
+        id={boxId}
+        aria-label={`Expected outcome line ${String(index + 1)}`}
         rows={2}
         maxLength={cap}
         memoryKey={`${key}:${String(index)}`}
@@ -204,6 +220,7 @@ function LineRow({ index, text }: { readonly index: number; readonly text: strin
 }
 
 export function OutcomeLines() {
+  const firstBoxId = useId();
   const { ctx, input, session, payload, cap } = usePanel();
   const { held } = ctx;
   const key = linesKey(session);
@@ -228,12 +245,19 @@ export function OutcomeLines() {
       data-next-cockpit-held-field="lines"
     >
       <div className="next-cockpit-held-heading">
-        <span className="next-cockpit-held-label">Expected outcome</span>
+        <Label className="next-cockpit-held-label" htmlFor={firstBoxId}>
+          Expected outcome
+        </Label>
       </div>
       <ol className="next-cockpit-held-list">
         {boxes.map((text, index) => (
           // A line is its position: the list holds no ids, and an index is what the store sends.
-          <LineRow key={index} index={index} text={text} />
+          <LineRow
+            key={index}
+            index={index}
+            text={text}
+            boxId={index === 0 ? firstBoxId : undefined}
+          />
         ))}
         <DirectionLineView />
       </ol>

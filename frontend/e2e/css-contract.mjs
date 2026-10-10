@@ -53,6 +53,31 @@ import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
 import { startConsoleWorld, fragmentFor } from './console-board.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
+import { measureFieldChrome } from './support/field-chrome.mjs';
+import { visitFieldStates } from './support/field-worlds.mjs';
+const FIELD_TABLE = JSON.parse(
+  await readFile(new URL('./field-chrome-reference.json', import.meta.url), 'utf8'),
+);
+
+/* Native UA select chrome is deliberately replaced by the token recipe, including the formerly
+   13.3333px Arial direction field. Other field chrome is held to the measured reference. */
+function expectedFieldChrome(key) {
+  const baseline = FIELD_TABLE.instances[key];
+  if (!baseline || !key.includes(' | select.')) return baseline;
+  const chrome = {
+    ...baseline,
+    color: 'rgb(246, 243, 234)',
+    'background-color': 'rgb(15, 15, 10)',
+    'font-family': '"Space Grotesk", system-ui, -apple-system, sans-serif',
+    'font-size': '15px',
+    'line-height': '23.25px',
+  };
+  for (const side of ['top', 'right', 'bottom', 'left'])
+    chrome[`border-${side}`] = '1px solid rgb(116, 114, 95)';
+  if (key.includes('data-stage-choice=')) chrome.padding = '6.4px 28px 6.4px 6.4px';
+  if (key.includes('data-next-direction-select=')) chrome.padding = '6px 28px 6px 8px';
+  return chrome;
+}
 
 const BUTTON_TABLE = JSON.parse(
   await readFile(new URL('./button-chrome-reference.json', import.meta.url), 'utf8'),
@@ -77,6 +102,7 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const E = encodeURIComponent;
 const WORLDS = (process.env.CSS_CONTRACT_WORLDS || 'sessions,intent,console').split(',');
 const MUTATION = process.env.CARGENTO_MUTATION || '';
+const GALLERY_ONLY = process.env.CSS_CONTRACT_GALLERY_ONLY === '1';
 
 const LABEL_PX = 13;
 const SENTENCE_PX = 15;
@@ -85,6 +111,22 @@ const TABS = ['now', 'course', 'decisions', 'console'];
 /* One deliberate break per name, in the SHIPPED sheets of a scratch copy: [file under frontend/src, the text to
    replace, what replaces it]. The run is expected to fail, and to fail on the check the name says. */
 const MUTATIONS = {
+  'field-cascade-colour': [['ui/input.tsx', 'text-foreground', 'text-muted-foreground']],
+  'field-type-small': [['ui/input.tsx', 'text-body', 'text-label']],
+  'field-target-removed': [['ui/input.tsx', 'min-h-[44px]', 'min-h-0']],
+  'field-focus-removed': [
+    [
+      'ui/input.tsx',
+      'focus-visible:outline-2 focus-visible:outline-solid',
+      'focus-visible:outline-none',
+    ],
+  ],
+  'field-content-size': [
+    ['ui/textarea.tsx', 'block w-full resize-y', 'block w-full resize-y field-sizing-content'],
+  ],
+  'field-chevron-overlap': [
+    ['ui/native-select.tsx', 'pe-[28px] leading-[1.5]', 'pe-0 leading-[1.5]'],
+  ],
   'absence-mono': [
     [
       'capacity/capacity.css',
@@ -238,12 +280,7 @@ const INVENTORY = {
     'header.next-session-detail-header > div.next-session-detail-title > h1.next-session-absent',
     'section.next-delegation.next-rail-panel > div.next-delegation-withheld > strong',
   ],
-  uaFocusRing: [
-    'div.next-cockpit-held-fields > div.next-cockpit-held-field > textarea',
-    'div.next-cockpit-held-heading > label.next-intent-prompt-pick > select.next-intent-prompt-select',
-    'form > label > input',
-    'ol.next-cockpit-held-list > li.next-cockpit-held-line > textarea',
-  ],
+  uaFocusRing: [],
   uaLinks: [
     'div.next-session-detail-title > p.next-session-identity > a',
     'main > section.next-session-detail-empty > a',
@@ -642,6 +679,7 @@ const measured = {
   chrome: [],
   disclosureChrome: [],
   disclosureInlineSizes: [],
+  fieldChrome: [],
 };
 
 const SURFACES = {
@@ -718,6 +756,8 @@ async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   await page.evaluate(() => document.fonts.ready);
   measured.views.push(view);
+  for (const row of await page.evaluate(measureFieldChrome))
+    measured.fieldChrome.push({ view, ...row });
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
     measured.chrome.push({ view, ...row });
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey}, true)`))
@@ -1083,6 +1123,30 @@ function checks() {
   const text = measured.text.filter((row) => !row.hidden);
   const regs = measured.registers;
 
+  step_('fields: every reached native editor keeps its measured surface chrome', () => {
+    const seen = new Set();
+    const differences = [];
+    for (const row of measured.fieldChrome) {
+      seen.add(row.key);
+      const expected = expectedFieldChrome(row.key);
+      if (!expected || JSON.stringify(expected) !== JSON.stringify(row.chrome))
+        differences.push({ ...row, expected });
+    }
+    assert.deepEqual(
+      differences.slice(0, 15),
+      [],
+      `${differences.length} field chrome differences`,
+    );
+    assert.ok(measured.fieldChrome.length >= 25, 'too few fields reached the chrome gate');
+    if (FULL)
+      assert.deepEqual(
+        Object.keys(FIELD_TABLE.instances).filter((key) => !seen.has(key)),
+        [],
+        'a reference field was not reached',
+      );
+    return `${measured.fieldChrome.length} instances against ${FIELD_TABLE.baseline}, with explicit select tuning`;
+  });
+
   step_('disclosures: every real-route trigger keeps its pre-adoption chrome', () => {
     const failures = [];
     const seen = new Set();
@@ -1414,7 +1478,7 @@ async function checkButtonGallery(browser) {
     });
     const opened = await openPage(browser, [world.origin, world.viteOrigin]);
     try {
-      for (const width of [1280, 320]) {
+      for (const width of [1280, 375, 320]) {
         await opened.page.setViewportSize({ width, height: 900 });
         await opened.page.goto(world.origin);
         await opened.page.locator('[data-button-gallery]').waitFor();
@@ -1484,6 +1548,61 @@ async function checkButtonGallery(browser) {
             'adopted disclosure gallery has an authored focus ring',
           );
         }
+        const page = opened.page;
+        await page.getByRole('button', { name: 'Edit OUTCOME', exact: true }).click();
+        const fields = page.locator(
+          '[data-slot=native-select],[data-slot=input],[data-slot=textarea]',
+        );
+        assert.equal(await fields.count(), 11, 'the gallery reaches every field recipe');
+        await page.keyboard.press('Tab');
+        for (const field of await fields.all()) {
+          const metrics = await field.evaluate((el) => {
+            const css = getComputedStyle(el),
+              box = el.getBoundingClientRect();
+            const icon =
+              el.tagName === 'SELECT'
+                ? el.parentElement.querySelector('[data-slot=native-select-icon]')
+                : null;
+            return {
+              id: el.id,
+              width: box.width,
+              height: box.height,
+              padding: css.padding,
+              iconLeft: icon?.getBoundingClientRect().left,
+              right: box.right,
+              px: parseFloat(css.fontSize),
+              sizing: css.fieldSizing,
+              chevronClear:
+                !icon ||
+                box.right - parseFloat(css.paddingRight) <= icon.getBoundingClientRect().left,
+              pointer: icon ? getComputedStyle(icon).pointerEvents : null,
+            };
+          });
+          assert.ok(metrics.width >= 44 && metrics.height >= 44, 'field gallery has 44 px targets');
+          assert.equal(metrics.px, 15, 'fields draw at the control tier');
+          assert.notEqual(metrics.sizing, 'content', 'field memory owns dragged size');
+          assert.equal(
+            metrics.chevronClear,
+            true,
+            `select chevron leaves room for text: ${JSON.stringify(metrics)}`,
+          );
+          if (metrics.pointer) assert.equal(metrics.pointer, 'none');
+          if (await field.isDisabled()) continue;
+          for (const forcedColors of ['none', 'active']) {
+            await page.emulateMedia({ forcedColors });
+            await field.focus();
+            assert.deepEqual(
+              await field.evaluate((el) => ({
+                width: getComputedStyle(el).outlineWidth,
+                style: getComputedStyle(el).outlineStyle,
+              })),
+              { width: '2px', style: 'solid' },
+              'native fields keep a ring, including forced colours',
+            );
+          }
+          await page.emulateMedia({ forcedColors: 'none' });
+        }
+        await page.getByRole('button', { name: 'Done', exact: true }).click();
         const hover = opened.page.locator('[data-example="hover"]');
         assert.equal(
           await opened.page
@@ -1554,7 +1673,7 @@ async function checkButtonGallery(browser) {
           false,
         );
       }
-      return '12 examples at 1280 and 320 px; targets, type, hover, focus, retry, raise state, memo chrome, reserved width and link semantics';
+      return '12 buttons and 11 fields at 1280, 375 and 320 px; targets, type, focus, forced colours, fixed sizing, chevron clearance, hover, retry, raise state, memo chrome and link semantics';
     } finally {
       await opened.close();
     }
@@ -1572,9 +1691,18 @@ try {
     assert.ok(MUTATIONS[MUTATION], `unknown mutation ${MUTATION}`);
     copy = await scratchCopy();
   }
-  await step('gallery: shared buttons at desktop and 320 px', () => checkButtonGallery(browser));
+  await step('gallery: shared buttons and native fields at desktop, 375 and 320 px', () =>
+    checkButtonGallery(browser),
+  );
   const root = copy || REPOSITORY;
-  for (const name of WORLDS) {
+  if (!GALLERY_ONLY)
+    await step('fields: stage, tripwire, context, direction and correction states', () =>
+      visitFieldStates(browser, root, async (page, view) => {
+        for (const row of await page.evaluate(measureFieldChrome))
+          measured.fieldChrome.push({ view, ...row });
+      }),
+    );
+  for (const name of GALLERY_ONLY ? [] : WORLDS) {
     const started = Date.now();
     const world = await startWorld(name, root);
     try {
@@ -1592,7 +1720,7 @@ try {
   if (copy) await rm(copy, { recursive: true, force: true });
 }
 
-if (!failures.some((failure) => failure.name === 'run')) {
+if (!GALLERY_ONLY && !failures.some((failure) => failure.name === 'run')) {
   checks();
   for (const [name, run] of pending) await step(name, run);
 }

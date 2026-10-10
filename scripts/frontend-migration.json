@@ -840,7 +840,9 @@
       "owner": "DRC-4826",
       "oracles": [
         "frontend/src/steering/ProjectSteer.test.tsx",
-        "frontend/e2e/console-parity.mjs"
+        "frontend/e2e/console-parity.mjs",
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/e2e/css-contract.mjs"
       ],
       "contract": "Unsent steer/tripwire drafts remain per project in memory; submit clears both live node and draft before a new snapshot.",
       "disposition": "store-held"
@@ -850,7 +852,9 @@
       "owner": "DRC-4826",
       "oracles": [
         "frontend/src/controls/fieldMemory.test.tsx",
-        "frontend/e2e/console-parity.mjs"
+        "frontend/e2e/console-parity.mjs",
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/e2e/css-contract.mjs"
       ],
       "contract": "Draft caret/selection offsets stay with the exact editor/project; clamp offsets only against that editor's text.",
       "disposition": "stable-identity"
@@ -882,9 +886,11 @@
       "oracles": [
         "frontend/src/controls/choiceProbe.test.ts",
         "frontend/src/controls/displayGate.test.ts",
-        "frontend/e2e/controls-continuity.mjs"
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/e2e/css-contract.mjs"
       ],
-      "contract": "Retain native select and poll commit deferral: at most12 consecutive holds, change/blur catch up once; manual/action paint remains explicit.",
+      "contract": "Retain native select and poll commit deferral: at most 12 consecutive holds, change/blur catch up once; manual/action paint remains explicit.",
       "disposition": "retained-deferral"
     },
     {
@@ -1109,7 +1115,9 @@
       "owner": "DRC-4823",
       "oracles": [
         "frontend/src/controls/HumanContext.test.tsx",
-        "frontend/e2e/controls-continuity.mjs"
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/e2e/css-contract.mjs"
       ],
       "contract": "Context editor keeps focus,selection,inner scroll; Escape from field or Done restores entry value and closes without another persistence meaning.",
       "disposition": "stable-identity"
@@ -1120,9 +1128,11 @@
       "oracles": [
         "frontend/src/controls/fieldMemory.test.tsx",
         "frontend/src/intent/IntentIdentity.test.tsx",
-        "frontend/e2e/controls-continuity.mjs"
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/e2e/css-contract.mjs"
       ],
-      "contract": "Exact-key input retains unfocused caret,inner scroll,width/height; line resize follows index after deletion, never transfers to another session.",
+      "contract": "Exact-key native input retains unfocused caret,inner scroll,width/height; textarea sizing stays fixed to respect a remembered drag; line resize follows index after deletion, never transfers to another session.",
       "disposition": "stable-identity"
     },
     {
@@ -1394,5 +1404,43 @@
       "contract": "Dormant legacy project-use ordering remains compatibility data, not observed activity or React sort authority.",
       "format": "Fixed key JSON object label=>count; loader takes first200 entries,Math.floor(Number(value)),positive only,each<=999999; writes increment/clamp but do not bound total key count; no TTL; malformed/blocked storage yields in-memory fallback."
     }
-  ]
+  ],
+  "native_fields": {
+    "select": {
+      "component": "frontend/src/ui/native-select.tsx",
+      "owners": [
+        "frontend/src/steering/StageConditions.tsx",
+        "frontend/src/intent/PromptSelect.tsx",
+        "frontend/src/intent/DirectionQuestion.tsx"
+      ],
+      "oracles": [
+        "frontend/src/controls/displayGate.test.ts",
+        "frontend/e2e/controls-continuity.mjs",
+        "frontend/e2e/css-contract.mjs"
+      ]
+    },
+    "input": {
+      "component": "frontend/src/ui/input.tsx",
+      "owners": [
+        "frontend/src/controls/DraftField.tsx"
+      ],
+      "oracles": [
+        "frontend/src/controls/fieldMemory.test.tsx",
+        "frontend/e2e/controls-continuity.mjs"
+      ]
+    },
+    "textarea": {
+      "component": "frontend/src/ui/textarea.tsx",
+      "owners": [
+        "frontend/src/controls/DraftField.tsx",
+        "frontend/src/intent/HeldTextarea.tsx",
+        "frontend/src/drift/SteerBack.tsx"
+      ],
+      "oracles": [
+        "frontend/src/intent/HeldTextarea.test.tsx",
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/e2e/css-contract.mjs"
+      ]
+    }
+  }
 }

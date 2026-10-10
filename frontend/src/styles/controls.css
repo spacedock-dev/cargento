@@ -156,57 +156,10 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
-.ctl-memo textarea {
-  box-sizing: border-box;
-  inline-size: 100%;
-  max-inline-size: 100%;
-  min-block-size: 5rem;
-  padding: 0.5rem;
-  border: 1px solid var(--ctl-line);
-  border-radius: var(--ctl-radius);
-  background: var(--ctl-sunk);
-  color: var(--ctl-ink);
-  font: 0.9375rem/1.5 var(--ctl-sans);
-  resize: vertical;
-}
-.ctl-memo textarea:focus-visible {
-  outline: 2px solid var(--ctl-accent);
-  outline-offset: 1px;
-}
 .ctl-memo small {
   color: var(--ctl-ink2);
 }
 
-/* ===== Native fields ===== 
-   A select sizes itself to its longest option and a textarea to its `cols`, either of which can be
-   wider than a 320px screen or a 200% zoom. They shrink to the column instead, and a long value wraps. */
-.ctl-select,
-.ctl-draft {
-  box-sizing: border-box;
-  max-inline-size: 100%;
-  min-block-size: 44px;
-  border: 1px solid var(--ctl-line);
-  border-radius: var(--ctl-radius);
-  background: var(--ctl-sunk);
-  color: var(--ctl-ink);
-  font: 0.9375rem/1.5 var(--ctl-sans);
-}
-.ctl-select {
-  inline-size: 100%;
-  padding: 0.25rem 0.5rem;
-  color-scheme: dark;
-}
-.ctl-draft {
-  display: block;
-  inline-size: 100%;
-  padding: 0.5rem;
-  resize: vertical;
-}
-.ctl-select:focus-visible,
-.ctl-draft:focus-visible {
-  outline: 2px solid var(--ctl-accent);
-  outline-offset: 1px;
-}
 .ctl-wrap {
   overflow-wrap: anywhere;
 }

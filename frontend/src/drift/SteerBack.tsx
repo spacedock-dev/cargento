@@ -1,3 +1,5 @@
+import { Textarea } from '../ui/textarea';
+import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useFocusKey } from '../controls';
@@ -115,12 +117,13 @@ function CorrectionBox({ held }: { readonly held: HeldCorrection }) {
   const stale = Boolean(held.stale);
   return (
     <div className="next-cockpit-steer-box" data-next-steer-box>
-      <label className="next-cockpit-held-label" htmlFor="next-cockpit-correction">
+      <Label className="next-cockpit-held-label" htmlFor="next-cockpit-correction">
         Correction to copy
-      </label>
+      </Label>
       {/* No `maxlength`: it counts UTF-16 units, and the cap is in characters. The editor holds the cap and
           the count says where it stands. */}
-      <textarea
+      <Textarea
+        appearance="correction"
         key={`${String(held.id)}\n${initial}`}
         ref={ref}
         id="next-cockpit-correction"

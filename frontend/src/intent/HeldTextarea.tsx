@@ -6,6 +6,7 @@ import {
   type ComponentPropsWithoutRef,
   type MutableRefObject,
 } from 'react';
+import { Textarea } from '../ui/textarea';
 import { useFieldMemory } from '../controls/useFieldMemory';
 
 /* A native editor the reader types into, held by the page and not by the node.
@@ -59,7 +60,7 @@ function Node({
     [memoryRef, nodeRef],
   );
   return (
-    <textarea
+    <Textarea
       ref={ref}
       defaultValue={initial}
       onInput={(event) => {

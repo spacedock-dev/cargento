@@ -74,6 +74,33 @@ describe('the held native editor', () => {
     },
   );
 
+  it('keeps the textarea viewport and dragged size through a typed redraw', () => {
+    const page = mount('start');
+    const node = page.box();
+    node.value = 'typed';
+    node.setSelectionRange(1, 3, 'backward');
+    node.scrollTop = 17;
+    node.scrollLeft = 5;
+    node.style.height = '160px';
+    node.style.width = '270px';
+    fireEvent.compositionStart(node);
+    fireEvent.input(node);
+    expect(page.box()).toBe(node);
+    expect(node.value).toBe('typed');
+    expect([node.selectionStart, node.selectionEnd, node.selectionDirection]).toEqual([
+      1,
+      3,
+      'backward',
+    ]);
+    expect([node.scrollTop, node.scrollLeft, node.style.height, node.style.width]).toEqual([
+      17,
+      5,
+      '160px',
+      '270px',
+    ]);
+    fireEvent.compositionEnd(node);
+  });
+
   it('puts back what it cut or scrubbed, which is the one write to the node', () => {
     const page = mount('');
     fireEvent.input(page.box(), { target: { value: 'abcdefghijklmnop' } });

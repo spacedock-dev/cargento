@@ -1,3 +1,5 @@
+import { useId } from 'react';
+import { Label } from '../ui/label';
 import { nextNumber } from '../api/bootstrap';
 import { clock } from '../observed';
 import { PROMPT_CHOSEN, PROMPT_SOURCES } from '../sessions/intent';
@@ -80,6 +82,7 @@ function LinesQuestion() {
 }
 
 export function GoalField() {
+  const boxId = useId();
   const { ctx, input, session, cap } = usePanel();
   const { held } = ctx;
   const key = goalKey(session);
@@ -96,10 +99,13 @@ export function GoalField() {
       {...(untouched ? { 'data-next-cockpit-drafted': '' } : {})}
     >
       <div className="next-cockpit-held-heading">
-        <span className="next-cockpit-held-label">Goal</span>
+        <Label className="next-cockpit-held-label" htmlFor={boxId}>
+          Goal
+        </Label>
         <PromptSelect />
       </div>
       <HeldTextarea
+        id={boxId}
         rows={3}
         maxLength={cap}
         memoryKey={key}

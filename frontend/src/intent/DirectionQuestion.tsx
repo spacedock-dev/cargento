@@ -1,3 +1,5 @@
+import { NativeSelect } from '../ui/native-select';
+import { Label } from '../ui/label';
 import { useEffect, type ReactNode } from 'react';
 import { compatSessKey } from '../api/identity';
 import { useFocusKey } from '../controls';
@@ -143,9 +145,10 @@ export function DirectionQuestion({
       {before}
       <div className="next-cockpit-direction-question" data-next-cockpit-direction-question>
         {count > 1 ? (
-          <label className="next-direction-select">
+          <Label className="next-direction-select">
             {'Direction '}
-            <select
+            <NativeSelect
+              appearance="direction"
               ref={pickRef}
               data-next-direction-select
               data-next-focus={`direction-pick:${key}`}
@@ -160,8 +163,8 @@ export function DirectionQuestion({
                   </option>
                 );
               })}
-            </select>
-          </label>
+            </NativeSelect>
+          </Label>
         ) : null}
         <p className="next-cockpit-direction-said">
           {directionSentence(earliest, count, n, since)}

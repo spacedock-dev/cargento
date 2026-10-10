@@ -20,7 +20,13 @@
  * only the steps whose name matches.
  */
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { nativeFieldContinuity } from './support/native-field.mjs';
+import { visitFieldStates } from './support/field-worlds.mjs';
+import { proveFieldPoll } from './field-poll-proof.mjs';
+import { REPOSITORY } from './support/browser.mjs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { call, startIntentBoard } from './intent-board.mjs';
@@ -170,7 +176,50 @@ async function settled(read, { deadline = patience(6000), every = 100 } = {}) {
   }
 }
 
-const board = await startIntentBoard();
+const mutation = process.env.INTENT_MUTATION || '';
+let copy = null;
+if (mutation) {
+  const mutations = {
+    'controlled-held': [
+      'intent/HeldTextarea.tsx',
+      'defaultValue={initial}',
+      'value={initial} onChange={() => undefined}',
+    ],
+    'controlled-correction': [
+      'drift/SteerBack.tsx',
+      'defaultValue={initial}',
+      'value={initial} onChange={() => undefined}',
+    ],
+    'wide-select': [
+      'ui/native-select.tsx',
+      'relative min-w-0 max-w-full',
+      'relative min-w-[400px] max-w-full',
+    ],
+    'reset-held-viewport': [
+      'intent/HeldTextarea.tsx',
+      'if (!element) return;',
+      'if (!element) return; if (element.selectionStart !== element.selectionEnd) { element.setSelectionRange(0, 0); element.scrollTop = 0; element.scrollLeft = 0; element.style.height = ""; element.style.width = ""; }',
+    ],
+  };
+  assert.ok(mutations[mutation], `unknown intent mutation ${mutation}`);
+  copy = await mkdtemp(join(tmpdir(), 'cargento-intent-field-'));
+  for (const folder of ['frontend', 'cargento'])
+    await cp(join(REPOSITORY, folder), join(copy, folder), {
+      recursive: true,
+      filter: (path) => !path.includes('/test-results') && !path.includes('__pycache__'),
+    });
+  await symlink(
+    join(REPOSITORY, 'node_modules'),
+    join(copy, 'node_modules'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+  const [file, needle, replacement] = mutations[mutation];
+  const target = join(copy, 'frontend/src', file);
+  const source = await readFile(target, 'utf8');
+  assert.ok(source.includes(needle), `missing mutation needle in ${file}`);
+  await writeFile(target, source.replace(needle, replacement));
+}
+const board = await startIntentBoard({ root: copy || REPOSITORY });
 const browser = await chromium.launch();
 const origins = [board.react.origin, board.react.viteOrigin];
 const opened = [];
@@ -937,6 +986,73 @@ try {
   await browser.close().catch(() => undefined);
   await board.close();
 }
+
+await step(
+  'every native field recipe keeps editing state and 44 px targets in its real surface',
+  async () => {
+    const browser = await chromium.launch();
+    try {
+      await visitFieldStates(browser, copy || REPOSITORY, async (page, view, context, redraw) => {
+        await page.setViewportSize({ width: 320, height: 900 });
+        const selector = view.includes('direction draft')
+          ? '[data-next-cockpit-direction-key]'
+          : view.includes('correction')
+            ? '[data-next-cockpit-correction-key]'
+            : view.includes('memo')
+              ? '[data-slot=textarea]'
+              : view.includes('console')
+                ? '[data-next-guardrail-input]'
+                : view.includes('now')
+                  ? '[data-next-draft=steer]'
+                  : null;
+        if (selector)
+          await nativeFieldContinuity({ page, context }, page.locator(selector), redraw);
+        if (view.includes('direction choice')) {
+          for (const field of [
+            '[data-next-cockpit-held-kind=goal]',
+            '[data-next-cockpit-held-line-index="0"]',
+          ])
+            await nativeFieldContinuity({ page, context }, page.locator(field), redraw);
+        }
+        for (const width of [320, 375]) {
+          await page.setViewportSize({ width, height: 900 });
+          const fields = await page
+            .locator('main select,main input,main textarea')
+            .evaluateAll((elements) =>
+              elements
+                .map((el) => {
+                  const box = el.getBoundingClientRect(),
+                    css = getComputedStyle(el);
+                  return {
+                    tag: el.tagName,
+                    width: box.width,
+                    height: box.height,
+                    px: parseFloat(css.fontSize),
+                    visible: el.checkVisibility({ visibilityProperty: true }),
+                  };
+                })
+                .filter((field) => field.visible),
+            );
+          assert.deepEqual(
+            fields.filter((field) => field.width < 44 || field.height < 44 || field.px !== 15),
+            [],
+            `${view}: native fields draw at the control tier with 44 px targets at ${width}`,
+          );
+          assert.equal(
+            await page.evaluate(() => document.documentElement.scrollWidth > innerWidth),
+            false,
+            `${view}: no narrow-screen overflow`,
+          );
+        }
+        await page.setViewportSize({ width: 1280, height: 900 });
+      });
+    } finally {
+      await browser.close();
+    }
+  },
+);
+await step('field refresh waits for rendered data and detects a controlled editor', proveFieldPoll);
+if (copy) await rm(copy, { recursive: true, force: true });
 
 try {
   golden.finish({ complete: !only && failures.length === 0 });

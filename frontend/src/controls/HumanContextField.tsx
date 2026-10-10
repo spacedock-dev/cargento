@@ -1,3 +1,4 @@
+import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useId, useLayoutEffect, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { boundMemo, MEMO_LIMIT, type MemoKind, type MemoState } from '../storage';
@@ -108,8 +109,9 @@ function Editor({
 
   return (
     <div className="ctl-memo ctl-memo--editing" data-memo-field={kind} onKeyDown={onKeyDown}>
-      <label htmlFor={boxId}>{label}</label>
+      <Label htmlFor={boxId}>{label}</Label>
       <DraftTextarea
+        appearance="memo"
         id={boxId}
         memoryKey={`memo:${memoKey}`}
         focusKey={focusKey}

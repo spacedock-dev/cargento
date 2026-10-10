@@ -31,7 +31,6 @@
 .next-session-drift-limit{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-cockpit-reading-count{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.4 var(--sans)}
 .next-cockpit-steer-box{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.next-cockpit-steer-box textarea{width:100%;min-height:120px;box-sizing:border-box;resize:vertical;padding:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink-value);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-steer-tools{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .next-cockpit-steer-tools>p{flex:1 1 12em;margin:0}
 .next-cockpit-work{display:flex;flex-direction:column;gap:8px;padding:12px 16px 14px}
