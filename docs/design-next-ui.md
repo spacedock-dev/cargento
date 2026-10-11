@@ -95,13 +95,14 @@ asset paths make bundle ownership unambiguous.
 ## NUI-2: one stylesheet owns the interface
 
 During preview, copying the token block kept the two stylesheets byte-independent. Promotion made
-that copy the canonical `web/styles.css` and removed the legacy stylesheet. The v2 refactor drops
-light mode and the `prefers-color-scheme` override. One dark root now owns the palette: `--amber`
-replaces `--warn`, `--clay` replaces `--alert`, and `--ink` replaces `--accent-ink` and
-`--warnink`. Selection still uses `--sel-bg` and `--sel-bd`, and reduced motion disables pulses.
+that copy the canonical `web/styles.css` and removed the legacy stylesheet. The v2 refactor dropped
+light mode and the `prefers-color-scheme` override. That dark root replaced `--warn` with `--amber`,
+`--alert` with `--clay`, and `--accent-ink` and `--warnink` with `--ink`. Those replacement names
+survive in the React theme. The old selection aliases `--sel-bg` and `--sel-bd` are gone;
+the current selection rules read the palette tokens directly. Reduced motion disables pulses.
 
-The stylesheet stays one file because splitting it would change the loader, linter and asset
-contracts. Nine banner-delimited regions divide ownership instead:
+The promoted stylesheet stayed one file because splitting it would change the loader, linter and asset
+contracts. Nine banner-delimited regions divided ownership:
 
 | Banner | Owns |
 |---|---|
@@ -115,19 +116,46 @@ contracts. Nine banner-delimited regions divide ownership instead:
 | `COCKPIT` | Scope rail, briefing, tab bar and cockpit panels |
 | `SUBSTRATE` | Semantic timeline and terminal substrate in `project.js` |
 
-Assign one owner to each region during parallel work. Keep media queries at the end of their own
-region; a shared responsive block would make every view edit the same tail. Moving a rule between
-regions is an ownership change, not incidental cleanup.
+The React page now splits those surfaces into their own sheets under `frontend/src`, each in the
+`legacy` cascade layer. Media queries stay with their surface; moving a rule between sheets is an
+ownership change. The [adoption record](design-shadcn-adoption.md#end-state) owns the final component
+inventory and stylesheet cleanup.
+
+### Current Tailwind tokens and type scale
+
+`frontend/src/styles/tailwind.css` owns the 42 page tokens in `@theme static`, preserving their
+names and values even when no utility names them. They cover surfaces, boundaries, inks and role
+registers, observed colours, five type steps, reading measure, fonts, radii, control padding,
+elevation, hatch, spacing and disclosure motion. The same block declares six bridge and Base UI
+defaults: `--foreground`, `--secondary`, the two panel heights, `--transform-origin` and
+`--available-height`. All eighteen `--ctl-*` aliases are removed; components read the page tokens
+directly. `shell.css` retains the native dark colour scheme and the `100%` root font size.
+
+| Page token | Rem value | Pixels at a 16px root | Tailwind type utility |
+|---|---|---|---|
+| `--fs-label` | 0.8125rem | 13 | `text-label` |
+| `--fs-body` | 0.9375rem | 15 | `text-body` |
+| `--fs-value` | 1.125rem | 18 | `text-value` |
+| `--fs-head` | 1.5rem | 24 | `text-head` |
+| `--fs-hero` | 2.125rem | 34 | `text-hero` |
+
+The ordinary `@theme` block resets Tailwind's default text, radius and colour vocabularies and
+maps its permitted utility names onto these page tokens. The entry imports theme and utilities,
+with no Preflight. Layer order is `legacy, theme, utilities`, so component utilities win over
+surface rules regardless of specificity. Explicit source globs keep Tailwind's text scan confined
+to the adopted callers.
 
 Board sentences have a 15px floor (`--fs-body`), at weight 500 and line-height 1.55. Labels
 identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 13px. That
 tier was 11px until v3 raised it, and the five steps are now the whole scale: no literal px size
 and no unused step survives, which a test enforced against that sheet.
-`frontend/src/styles/css.test.ts` holds the first half against the compiled React stylesheet (no pixel size, no step below
-13px, no `@import`, no remote or relative `url()`, no `prefers-color-scheme` rule, no undeclared `var()`);
-nothing checks for an unused step there. It reads declarations, so a rule that reaches an element through ancestors a
-selector never names is `frontend/e2e/css-contract.mjs`'s to catch, on computed styles over every route and tab the fixture
-boards draw.
+`frontend/src/styles/css.test.ts` compiles the actual Vite entry in memory and checks its emitted CSS.
+It pins the exact five token values and inventory, checks sizes in both `font-size` and `font`
+shorthands after resolving variables, and requires body type and absence ink. It also rejects
+retired control aliases, unresolved or cyclic variables, remaining imports, external assets and
+colour-scheme queries, and requires the dark scheme. It does not check whether each type step has
+a caller. `frontend/e2e/css-contract.mjs` checks the browser's computed styles on the routes and
+tabs the fixtures draw, including styles assembled through ancestors.
 
 The steps are declared in rem against a `100%` root, so the board follows the reader's own
 font-size setting. The rem figures are computed against 16px, which is why a reader who has not
@@ -152,7 +180,8 @@ the band held seven tokens: `--fs-column` 9px, `--fs-label` 9.5px, `--fs-meta` 1
 `--fs-meta-detail` 10.5px, `--fs-machine` 11px, `--fs-2xs` 11.5px and `--fs-breadcrumb` 12px. Three
 of the seven had no callers anywhere and were deleted: `--fs-column`, `--fs-meta` and
 `--fs-breadcrumb`. `--fs-meta-detail` had four callers and was folded into `--fs-label`; `--fs-2xs`
-has forty-one and stays. The issue said six because it omitted `--fs-2xs`.
+had forty-one and was retained at that stage. It too was removed before the final five-step scale.
+The issue said six because it omitted `--fs-2xs`.
 
 The floor left 12.5px on the strength of an APCA reading that put `--ink`, the brightest colour in
 the palette, below the body-text requirement there. **Those figures are audit-only: no APCA
@@ -174,11 +203,11 @@ with, so both branches resolve identically whatever the tier is.
 `AnAbsenceNeverOutranksTheValueItReplacesTest` asserts exactly those two and nothing wider.
 **Every other absence keeps the size it had**, and DRC-4602 owns the audit that can raise them
 safely, because doing so needs a census of the emitters that this stylesheet cannot supply. The
-stylesheet
-retains scale tokens and literal sizes. The asset test pins the dark palette and checks text inks
-above 4.5:1 on the ground, panel and inset surfaces. Since DRC-4596 it also enforces size, and the
-census below is its output rather than a hand count: every `--fs-*` token resolves at or above 11px
-with `--fs-body` pinned to 15px, the px literals below the label floor are an exact registry, and
+historical stylesheet
+retained scale tokens and literal sizes. Its asset test pinned the dark palette and checked text inks
+above 4.5:1 on the ground, panel and inset surfaces. Since DRC-4596 it also enforced size, and the
+census below records that stage rather than the current compiled check: every `--fs-*` token resolved at or above 11px
+with `--fs-body` pinned to 15px, the px literals below the label floor were an exact registry, and
 every rule passing the membership test resolves at or above a literal 15.0 except an exact recorded
 inventory. **What it still cannot see is a sentence composed across several rules.** Where one rule
 sets the size, a second the family and a third the line-height, no single-rule census can join them,
@@ -1155,7 +1184,7 @@ no session title (measured on 2.1.261).
 The obvious objection is that a reader copies this command while the session is still running and
 puts a second process on one conversation. Both harnesses refuse, and both say so rather than doing
 it quietly. Claude Code declines interactively with
-`Can't open — this session is running in another terminal`, and its background variant starts a copy
+words saying the session is running in another terminal, and its background variant starts a copy
 and reports that the original conversation is unchanged. Codex declines with `thread-store conflict: thread <id> already has an active writer`,
 observed by running two `codex exec resume` calls against one id. Both were measured on the
 installed CLIs, not inferred.
@@ -1208,6 +1237,10 @@ produced before any of this.
 
 Two rulings, taken together because the second is only safe given the first.
 
+The shared class implementation below is historical. The [Button layer](design-shadcn-adoption.md#button-layer)
+replaced `.next-action` and its modifiers with vendored Button recipes; the cleanup removed the
+control aliases. The action hierarchy and inert-control decisions still bind those recipes.
+
 **The stylesheet had no way to say "this one."** There was no shared control class and no radius
 token: 43 literal `border-radius` declarations and zero `--radius` anywhere. A sweep of the resting
 control rules (a selector naming a `button`, a `summary`, or a class the JS puts on one, excluding
@@ -1216,7 +1249,7 @@ six corner treatments**: none, 3px, 4px, 6px, 9px and 999px. Because every one w
 "faint outlined box" or "bare text", the whole range was spent on the secondary tier and nothing was
 left to mark the one control to press. `--accent` never appeared at rest on a control at all.
 
-`.next-action` is that primitive, with `--r-control`, `--line` and `--control-pad`. It is
+`.next-action` was that primitive, with `--r-control`, `--line` and `--control-pad`. It was
 a class a control opts into by writing it, **not** a selector group in the stylesheet. The group was
 tried on paper and rejected: it touches one file instead of seven and satisfies the same grep, but it
 means every new control must be appended to a growing list in the sheet, which is precisely the

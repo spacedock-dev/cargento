@@ -158,15 +158,23 @@ needed and refuse any `minimumReleaseAgeExclude` change. Remove the registry's `
 rewrite its imports to `@/lib/utils`, tune the scale and format the vendored files as described in
 [the adoption procedure](docs/design-shadcn-adoption.md#the-pull-request-procedure-for-a-component).
 
+To update an existing component, preview the pinned CLI's registry diff with
+`pnpm dlx shadcn@4.21.4 add <component> --dry-run --diff`, as described in the
+[CLI reference](https://ui.shadcn.com/docs/cli#add). Compare the fetched upstream content with the local file
+before applying changes; preserve the local recipes and reader-state contracts, and refresh the
+upstream digest in the header when taking new upstream content. Repeat the import, scale and
+formatting steps above, then run the affected component and browser proofs.
+
 Each copied component starts with an upstream header naming the component, CLI version, registry URL
 and SHA-256 of the fetched registry item's `content` before edits. Record why local changes were made.
 The packager ships the full upstream MIT text from `frontend/build/shadcn-LICENSE.txt` alongside the
 package notices. The vendored directory has a Biome export-rule override; formatting still applies.
 
 The [adoption record](docs/design-shadcn-adoption.md#toolchain-layer) owns the source boundaries and
-CSS byte ratchet. Button, Accordion, Collapsible, Popover and the local `cn` are shared consumers; `cn` knows the
-entry's type steps and radii. A new step or radius must update that configuration and its theme
-inventory test. The CSS browser proof measures the Button gallery's type, target size and rings
+CSS byte ratchet. Button, Accordion, Collapsible, Popover and the local `cn` are shared consumers;
+`frontend/src/lib/utils.ts` configures `extendTailwindMerge` with the entry's five type steps and
+four radii, so type utilities survive alongside text-colour utilities. A new step or radius must update
+that configuration and its theme inventory test. The CSS browser proof measures the Button gallery's type, target size and rings
 at desktop and 320 px, and compares real-route Button and disclosure trigger chrome with their pre-adoption references.
 Accordion and Collapsible stay controlled by the disclosure store, use `hiddenUntilFound`, and
 re-apply a matching target hash after mount. Keep their panel bodies small; content stays mounted
@@ -214,6 +222,13 @@ owns the cascade audit, hover and rail contexts, and width reference.
 Utilities beat `legacy` regardless of specificity: express surface chrome in variants or props
 and leave layout in the surface sheet. Update the exact count when deleting rules; a PR cannot
 raise its own allowance.
+
+`pnpm test` includes the CSS coverage tests in `frontend/build/css-coverage.test.mjs`, which compare
+the current sheets with the recorded proof union. A retained rule outside that union needs an exact
+`file|context|selector` entry in `frontend/css-coverage.json`'s `exceptions`, with a reason explaining
+why it belongs despite the missing fixture coverage. Delete exceptions when their rules disappear or
+become covered, and check the record with `pnpm test:css:coverage`. The
+[cleanup record](docs/design-shadcn-adoption.md#stylesheet-cleanup) owns collection and the method's limits.
 
 ## Before you open a PR
 
