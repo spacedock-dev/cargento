@@ -9,7 +9,7 @@ drift study binds their digest. The React frontend's own record is
 [design-frontend-migration.md](design-frontend-migration.md). The rationale below still binds the React
 page wherever it kept the behaviour: the route grammar and the retained browser namespace, the cockpit
 information architecture, the absence rules, and the palette and type tokens that
-`frontend/src/styles/shell.css` carries. The runtime module map remains in
+`frontend/src/styles/tailwind.css` carries in its static theme. The runtime module map remains in
 [design-runtime-architecture.md](design-runtime-architecture.md).
 
 It is a record of rationale, including the direction that was rejected, and it is written for
@@ -123,7 +123,7 @@ Board sentences have a 15px floor (`--fs-body`), at weight 500 and line-height 1
 identifiers, timestamps, rates and compact controls sit on one tier, `--fs-label` at 13px. That
 tier was 11px until v3 raised it, and the five steps are now the whole scale: no literal px size
 and no unused step survives, which a test enforced against that sheet.
-`frontend/src/styles/css.test.ts` holds the first half against the React sheets (no pixel size, no step below
+`frontend/src/styles/css.test.ts` holds the first half against the compiled React stylesheet (no pixel size, no step below
 13px, no `@import`, no remote or relative `url()`, no `prefers-color-scheme` rule, no undeclared `var()`);
 nothing checks for an unused step there. It reads declarations, so a rule that reaches an element through ancestors a
 selector never names is `frontend/e2e/css-contract.mjs`'s to catch, on computed styles over every route and tab the fixture

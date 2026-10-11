@@ -882,3 +882,73 @@ paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page i
 Project and Console layer; first-render medians are 146, 94.3 and 126.4 ms and poll-to-paint medians are 44.5, 45.8 and 62.5 ms;
 every budget passes. This
 layer's local development checks do not certify native Windows or Linux, screen readers, Firefox or WebKit.
+
+## Stylesheet cleanup
+
+The cleanup starts at `b86823fc`, with every component family present and 136,243 counted
+bytes. Coverage was collected before deleting any rule, over the existing CSS, controls,
+Sessions, Intent, Drift, Project, Console, Attention, Capacity, Terminal, shell and storage
+proofs in both development and production modes. Controls also reaches popovers; Terminal
+also reaches timeline filtering. That is 28 proof/mode pairs, 425 pages and 12,117 stylesheet
+observations, including the 87-view CSS sweep, narrow layouts and reduced motion.
+
+`frontend/e2e/support/css-coverage-hook.mjs` starts Playwright CSS coverage on each page.
+Vite injects anonymous styles that Playwright drops from its result, so a second CDP rule
+usage reader retains those styles without changing them. It drains usage before navigation
+and after proof reads, then unions the counts. A used layer container cannot certify its
+children: a count must intersect a declaration inside the individual style rule. Selector,
+conditional context and declaration values identify retained rules. Hover, focus, active,
+disabled and pseudo-element rules are retained conservatively when their base selector
+matches. No class grep substitutes for this measurement.
+
+The deletion groups were verified separately against the CSS proof and all seven chrome
+tables. Group one removes 66 retired control, layout, memo and native-popover rules for
+7,514 bytes. Group two removes 13 obsolete Drift, Intent and subject rules for 1,510 bytes.
+Group three removes the alias block, two duplicate keyframe steps and a redundant Raise
+weight rule; folding the tokens and shortening their consumers lowers the counted total
+by another 2,584 bytes. The working dot still uses the animation in `sessions.css`.
+
+The 42 page properties now live in `@theme static` in `tailwind.css`, with their original
+names and values. Controls and Popover read them directly; all 18 `--ctl-*` aliases are gone.
+Native dark colour scheme stays in the legacy root rule. Font rows and the xterm host are
+unchanged. The ratchet remains 13 sheets under its existing counting rule, which excludes
+the directive and theme entry; the token movement is therefore part of the counted saving,
+not a claim that those properties disappeared. It records 124,635 bytes, 11,608 fewer than
+this layer started with and 36,829 fewer than the milestone start of 161,464.
+
+`frontend/css-coverage.json` holds the measured union and exact exceptions with their
+reasons. Optional published evidence, transient settling, browser-specific progress and
+individual animation steps remain when the proof fixtures do not exercise them. The
+coverage tests check the current sheets, require every baseline proof/mode pair, reject
+stale or unexplained exception identities and fail an added dead-rule mutation.
+`pnpm test:css:coverage` runs that inventory directly. To collect a new run, set
+`CARGENTO_CSS_COVERAGE` to a directory under this worktree and preload the hook with
+`NODE_OPTIONS=--import=<absolute hook path>`. Run the proofs sequentially in each bundle
+mode, then use `node frontend/build/css-coverage.mjs collect <directory>` to produce the
+local union under `docs/screenshots/css-cleanup/` before reviewing it for the tracked record.
+
+`css.test.ts` now compiles the actual Vite entry in memory instead of opening a list of
+source sheets. It checks the emitted stylesheet for the five type steps, root body type,
+dark-only scheme, local assets and resolved custom-property chains. Deliberate mutations
+remove type, body, absence ink, scheme and variable declarations or add off-scale type,
+external assets, imports, a light-scheme query and a variable cycle. The browser contract
+continues to measure links, controls, rings and every rendered ink. Its exact exception
+sets and all locating hooks stay unchanged; mutation needles use direct tokens.
+
+The final CSS sweep passes across 87 views and 9,233 text elements, comparing 3,090
+component instances and 918 disclosure widths with the existing reference tables. Before
+and after fixture captures retain the unreadable-source sentences, narrow wrapping and
+amber stale-reading warning. The seven chrome gates and exact contract exception sets
+are unchanged.
+
+All 16 development proof commands pass, including preview, parser, installed-plugin,
+controls, Sessions, Intent, Drift, Project, Console, Attention, Capacity, Terminal, shell,
+storage, development supervisor and CSS. The whole Vitest suite passes 1,483 tests; the
+build and coverage tests pass 29, and supervisor unit tests pass 17. Twelve compiled
+mutations and six browser mutations fail at their intended guarantees, covering type,
+body type, dark scheme, variables, absence ink, control colour, target floors and focus.
+The current-shell dead-rule mutation also fails the coverage inventory.
+
+The tracked bundle and fluidity receipt are deliberately left for the lead. Production
+coverage is the pre-deletion baseline; final application parity on a rebuilt production
+bundle and native Windows or Linux verification have not been run in this layer.

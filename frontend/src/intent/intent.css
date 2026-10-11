@@ -28,7 +28,7 @@
 .next-session-drift-sub{margin:4px 0 0;color:var(--ink2);font-size:var(--fs-label)}
 .next-session-drift>.next-cockpit-conflict{margin:0 16px 14px}
 .next-session-drift-check,.next-session-drift-caveats{display:flex;flex-direction:column;gap:8px;padding:0 16px 14px}
-.next-session-drift>.next-cockpit-held-lede,.next-session-drift>.next-session-drift-about{margin:0 16px 14px}
+
 .next-cockpit-reading-ask{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .next-cockpit-reading-ask>p{flex:1 1 100%;margin:0}
 @media(max-width:760px){
@@ -64,12 +64,12 @@
 .next-cockpit-held-line>.next-cockpit-held-under>:last-child{margin-inline-start:auto}
 .next-cockpit-held-lines>.next-cockpit-held-under{justify-content:flex-end}
 .next-cockpit-held-source{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
-.next-cockpit-held-source[hidden]{display:none}
+
 .next-cockpit-held-source[data-next-cockpit-held-line-source-stale]{visibility:hidden}
 .next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under{flex-wrap:nowrap;justify-content:flex-start;min-block-size:44px}
 .next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under>[data-slot="button"]{flex:none;margin-inline-start:auto}
 .next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
-.next-intent-draft-marks[hidden]{display:none}
+
 .next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}
 .next-cockpit-direction-tools,.next-cockpit-direction-replace{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .next-cockpit-direction-replace{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
@@ -80,7 +80,7 @@
 .next-cockpit-held-full{grid-column:1/-1;margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-cockpit-held-full[hidden]{display:none}
 .next-cockpit-held-discard{display:grid;gap:4px;justify-items:start;margin-top:10px}
-.next-cockpit-held-discard-offer[open]{display:grid;gap:6px;justify-items:start}
+
 .next-cockpit-reading-why{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-reading-why[data-absence]{padding-left:9px;border-left:2px solid var(--rule)}
 .next-cockpit-reading-why[data-absence="waiting-on-you"]{border-left-color:var(--accent-dim)}
@@ -94,7 +94,7 @@
 .next-intent-words{font:var(--fs-body)/1.5 var(--sans);color:var(--ink2);overflow-wrap:anywhere}
 .next-intent-revision,.next-intent-why{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-conflict{display:flex;flex-direction:column;gap:8px}
-.next-cockpit-conflict>.next-cockpit-why[open]{display:flex;flex-direction:column;gap:8px}
+
 .next-cockpit-conflict-why,.next-cockpit-conflict-settled{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 @media(max-width:760px){
 .next-cockpit-held-fields{grid-template-columns:1fr}

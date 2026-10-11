@@ -1,5 +1,5 @@
 @layer legacy {
-/* The React page's chrome: tokens, the page frame, primary navigation, breadcrumb, notices, the header
+/* The React page's chrome: the page frame, primary navigation, breadcrumb, notices, the header
    counts and the visually hidden live regions. Ported from the legacy sheet's FOUNDATION and CHROME
    sections, rule for rule where the page still draws the same thing, so the two renderers look alike
    and a reader who switches does not see the board move. The fifteen font faces are not here: the build
@@ -8,54 +8,8 @@
    Layout is checked at 320 and 375 CSS px and at 200% zoom with no horizontal page scroll: every row
    that can be long wraps (`overflow-wrap:anywhere`) and every flex row can wrap. */
 :root {
-  /* surfaces: sunk only inside panel, panel only on bg, raise only above bg */
-  --sunk: #0f0f0a;
-  --bg: #14140f;
-  --panel: #24231b;
-  --raise: #323025;
-  /* boundaries: --line bounds controls, --rule divides rows and may not bound one */
-  --line: #74725f;
-  --line-hi: #8a8874;
-  --rule: #35342a;
-  --ink: #f6f3ea;
-  --ink2: #cdc7b4;
-  --ink3: #a39c88;
-  --ink-label: var(--ink2);
-  --ink-value: var(--ink);
-  --ink-absence: var(--ink2);
-  --ink-caption: var(--ink2);
-  /* colour is observation; absence has none */
-  --accent: #cfe884;
-  --accent-dim: #93a757;
-  --amber: #f0b95e;
-  --clay: #e4886a;
-  /* type: five steps, floor 13px, sentences 15px */
-  --fs-label: 0.8125rem;
-  --fs-body: 0.9375rem;
-  --fs-value: 1.125rem;
-  --fs-head: 1.5rem;
-  --fs-hero: 2.125rem;
-  --measure: 33.75rem;
-  --sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --r-control: 0.25rem;
-  --r-card: 0.625rem;
-  --r-shell: 1rem;
-  --r-pill: 999px;
-  --control-pad: 0.5625rem 0.875rem;
-  --e-raise: 0 18px 44px -22px #000, inset 0 1px 0 rgba(246, 243, 234, 0.07);
-  --hatch: repeating-linear-gradient(135deg, transparent 0 5px, rgba(163, 156, 136, 0.26) 5px 6px);
-  --sp-1: 0.25rem;
-  --sp-2: 0.5rem;
-  --sp-3: 0.75rem;
-  --sp-4: 1rem;
-  --sp-5: 1.5rem;
-  --sp-6: 2rem;
-  /* Native select menus use the same dark palette as the page. */
+  /* Native select menus use the page palette. */
   color-scheme: dark;
-  --disclose-dur: 200ms;
-  --disclose-pop-dur: 160ms;
-  --disclose-ease: ease-in-out;
 }
 
 * {

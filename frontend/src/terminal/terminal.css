@@ -1,7 +1,7 @@
 @layer legacy {
 /* The exact-session terminal and its registration recipe. Ported rule for rule from the legacy sheet's
    SUBSTRATE section so the two renderers look alike; the tokens are the React page's own (see
-   styles/shell.css). xterm's own stylesheet is not here: it is a vendored same-origin file the loader
+   styles/tailwind.css). xterm's own stylesheet is not here: it is a vendored same-origin file the loader
    requests the first time a reader opens a terminal. */
 .next-cockpit-terminal{border-top:1px solid var(--rule)}
 .next-cockpit-terminal>h2{margin:0;padding:12px 10px;border-bottom:1px solid var(--rule);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
