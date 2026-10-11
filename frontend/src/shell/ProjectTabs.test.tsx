@@ -43,21 +43,21 @@ describe('the project tab strip', () => {
   it('wraps over the strip with the arrow keys and puts focus on the tab it selects', async () => {
     const page = await open('#n=project:alpha%2Fapp');
     act(() => tab('Now').focus());
-    fireEvent.keyDown(tab('Now'), { key: 'ArrowLeft' });
+    await act(async () => fireEvent.keyDown(tab('Now'), { key: 'ArrowLeft' }));
     expect(hash(page)).toBe('#n=project:alpha%2Fapp:console');
     expect(document.activeElement).toBe(tab('Console'));
-    fireEvent.keyDown(tab('Console'), { key: 'ArrowRight' });
+    await act(async () => fireEvent.keyDown(tab('Console'), { key: 'ArrowRight' }));
     expect(hash(page)).toBe('#n=project:alpha%2Fapp');
     expect(document.activeElement).toBe(tab('Now'));
-    fireEvent.keyDown(tab('Now'), { key: 'ArrowRight' });
+    await act(async () => fireEvent.keyDown(tab('Now'), { key: 'ArrowRight' }));
     expect(hash(page)).toBe('#n=project:alpha%2Fapp:course');
   });
 
   it('jumps to the ends with Home and End', async () => {
     const page = await open('#n=project:alpha%2Fapp:decisions');
-    fireEvent.keyDown(tab('Decisions'), { key: 'End' });
+    await act(async () => fireEvent.keyDown(tab('Decisions'), { key: 'End' }));
     expect(hash(page)).toBe('#n=project:alpha%2Fapp:console');
-    fireEvent.keyDown(tab('Console'), { key: 'Home' });
+    await act(async () => fireEvent.keyDown(tab('Console'), { key: 'Home' }));
     expect(hash(page)).toBe('#n=project:alpha%2Fapp');
   });
 

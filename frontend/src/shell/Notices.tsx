@@ -1,3 +1,4 @@
+import { Alert } from '../ui/alert';
 import { Button } from '../ui/button';
 import { Disclosure } from '../controls/Disclosure';
 import { disclosureKey } from '../controls/disclosureStore';
@@ -59,7 +60,7 @@ function StalledNotice({
   }
   const seconds = Math.max(1, Math.round(retryMs / 1000));
   return (
-    <div className="next-stalled" data-next-state="stalled" role="status">
+    <Alert variant="shell-notice" className="next-stalled" data-next-state="stalled" role="status">
       <strong>{`Live refresh failed ${times} in a row.`}</strong>
       <span>{`${state} Retrying automatically every ${seconds}s.`}</span>
       <Button
@@ -72,7 +73,7 @@ function StalledNotice({
       >
         Retry now
       </Button>
-    </div>
+    </Alert>
   );
 }
 
@@ -81,10 +82,15 @@ function StalledNotice({
    tell them apart by. */
 function HistoryResetNotice({ reason }: { readonly reason: HistoryResetReason }) {
   return (
-    <div className="next-stalled" data-next-state="history-reset" role="status">
+    <Alert
+      variant="shell-notice"
+      className="next-stalled"
+      data-next-state="history-reset"
+      role="status"
+    >
       <strong>The saved history was reset.</strong>
       <span>{`${RESET_DETAIL[reason]} The rail and the delegation figure start from this tab.`}</span>
-    </div>
+    </Alert>
   );
 }
 
@@ -95,7 +101,12 @@ function BuildNotice({
   disclosureScope,
 }: Pick<NoticesProps, 'onReload' | 'disclosureScope'>) {
   return (
-    <div className="next-stalled" data-next-state="build-changed" role="status">
+    <Alert
+      variant="shell-notice"
+      className="next-stalled"
+      data-next-state="build-changed"
+      role="status"
+    >
       <strong>Reload to use the new version.</strong>
       <Button type="button" data-next-action="reload-page" onClick={onReload}>
         Reload
@@ -107,7 +118,7 @@ function BuildNotice({
       >
         <p className="next-why-body">{BUILD_WHY}</p>
       </Disclosure>
-    </div>
+    </Alert>
   );
 }
 

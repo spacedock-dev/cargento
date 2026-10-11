@@ -796,6 +796,69 @@ try {
   );
 
   await step(
+    'keyboard: project arrows activate their route and modified keys keep browser ownership',
+    async () => {
+      const o = await openPage(browser, reactOrigins);
+      try {
+        await o.page.goto(board.react.origin + `/#n=project:${A}`);
+        await reactReady(o.page);
+        const tabs = o.page.getByRole('tab');
+        await tabs.nth(0).focus();
+        for (const [key, index, fragment] of [
+          ['ArrowLeft', 3, `:console`],
+          ['ArrowRight', 0, ''],
+          ['ArrowRight', 1, ':course'],
+          ['End', 3, ':console'],
+          ['Home', 0, ''],
+        ]) {
+          await o.page.keyboard.press(key);
+          await o.page.waitForFunction(
+            ({ index, hash }) =>
+              location.hash === hash &&
+              document.querySelectorAll('[role=tab]')[index] === document.activeElement &&
+              document.activeElement.getAttribute('aria-selected') === 'true',
+            { index, hash: `#n=project:${A}${fragment}` },
+            { timeout: patience(5000) },
+          );
+          assert.deepEqual(
+            await tabs.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('tabindex'))),
+            [0, 1, 2, 3].map((i) => (i === index ? '0' : '-1')),
+          );
+        }
+        const result = await tabs.nth(0).evaluate(async (node) => {
+          const before = location.hash;
+          const presses = [];
+          for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+            for (const modifier of ['altKey', 'ctrlKey', 'metaKey']) {
+              const event = new KeyboardEvent('keydown', {
+                key,
+                [modifier]: true,
+                bubbles: true,
+                cancelable: true,
+              });
+              presses.push({ key, modifier, uncancelled: node.dispatchEvent(event) });
+            }
+          }
+          await Promise.resolve();
+          return {
+            presses,
+            routeHeld: location.hash === before,
+            focusHeld: document.activeElement === node,
+          };
+        });
+        assert.ok(
+          result.presses.every((press) => press.uncancelled),
+          JSON.stringify(result),
+        );
+        assert.ok(result.routeHeld && result.focusHeld, JSON.stringify(result));
+        return 'five route activations and twelve uncancelled modified keys';
+      } finally {
+        await o.close();
+      }
+    },
+  );
+
+  await step(
     'absence: a board that never answers is stated as absent, never as an empty healthy board',
     async () => {
       const o = await openPage(browser, reactOrigins);

@@ -268,28 +268,12 @@ body {
 }
 
 .next-stalled {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
   margin-top: 18px;
-  padding: 10px 12px;
-  border-left: 3px solid var(--clay);
-  background: var(--panel);
-  color: var(--ink2);
-  font-size: var(--fs-body);
-  font-weight: 500;
-  line-height: 1.55;
 }
 
 .next-stalled strong {
   color: var(--ink);
   font-weight: 500;
-}
-
-.next-stalled[data-next-state='history-reset'],
-.next-stalled[data-next-state='build-changed'] {
-  border-left-color: var(--ink2);
 }
 
 .next-stalled button {
@@ -372,28 +356,7 @@ body {
 }
 
 .next-cockpit-tabs {
-  display: flex;
-  gap: 24px;
   margin-top: 24px;
-  border-bottom: 1px solid var(--rule);
-  padding: 0 12px;
-}
-
-.next-cockpit-tabs button {
-  margin-bottom: -1px;
-  padding: 12px 1px 10px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink2);
-  font: var(--fs-body) var(--sans);
-  cursor: pointer;
-}
-
-.next-cockpit-tabs button[aria-selected='true'] {
-  border-bottom-color: var(--ink2);
-  color: var(--ink);
 }
 
 .next-cockpit-tabs button:focus-visible {
@@ -437,17 +400,11 @@ body {
 
 @media (max-width: 420px) {
   .next-cockpit-tabs {
-    display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0;
-    padding: 0 6px;
   }
 
   .next-cockpit-tabs button {
     min-width: 0;
-    padding-right: 0;
-    padding-left: 0;
-    font-size: var(--fs-label);
   }
 }
 

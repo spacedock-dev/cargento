@@ -51,11 +51,16 @@ import {
 import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
-import { startConsoleWorld, fragmentFor } from './console-board.mjs';
+import { startConsoleWorld, fragmentFor, BOARD } from './console-board.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
 import { measureSessionChrome, sessionChromeDifferences } from './support/session-chrome.mjs';
 import { measureIntentChrome, intentChromeDifferences } from './support/intent-chrome.mjs';
 import { visitIntentDisplayStates } from './support/intent-worlds.mjs';
+import { measureProjectChrome, projectChromeDifferences } from './support/project-chrome.mjs';
+const PROJECT_RECORD = process.env.CSS_CONTRACT_PROJECT_RECORD;
+const PROJECT_TABLE = PROJECT_RECORD
+  ? null
+  : JSON.parse(await readFile(new URL('./project-chrome-reference.json', import.meta.url), 'utf8'));
 const INTENT_TABLE = JSON.parse(
   await readFile(new URL('./intent-chrome-reference.json', import.meta.url), 'utf8'),
 );
@@ -112,6 +117,8 @@ const E = encodeURIComponent;
 const WORLDS = (process.env.CSS_CONTRACT_WORLDS || 'sessions,intent,console').split(',');
 const MUTATION = process.env.CARGENTO_MUTATION || '';
 const INTENT_CHROME_ONLY = process.env.CSS_CONTRACT_INTENT_CHROME_ONLY === '1';
+const PROJECT_ONLY = process.env.CSS_CONTRACT_PROJECT_CHROME_ONLY === '1';
+const PROJECT_SUPPLEMENT = process.env.CSS_CONTRACT_PROJECT_SUPPLEMENT === '1';
 const GALLERY_ONLY = process.env.CSS_CONTRACT_GALLERY_ONLY === '1';
 
 const LABEL_PX = 13;
@@ -121,6 +128,14 @@ const TABS = ['now', 'course', 'decisions', 'console'];
 /* One deliberate break per name, in the SHIPPED sheets of a scratch copy: [file under frontend/src, the text to
    replace, what replaces it]. The run is expected to fail, and to fail on the check the name says. */
 const MUTATIONS = {
+  'project-card-padding': [['ui/card.tsx', 'grid w-full px-[18px]', 'grid w-full px-[8px]']],
+  'project-row-shrinks': [['ui/card.tsx', 'grid w-full px-[18px]', 'grid w-1/2 px-[18px]']],
+  'project-badge-ink': [['ui/badge.tsx', 'text-[var(--ink-label)]', 'text-foreground']],
+  'project-alert-padding': [
+    ['ui/alert.tsx', 'gap-[10px] px-[12px] py-[10px]', 'gap-[10px] px-[2px] py-[10px]'],
+  ],
+  'project-alert-announces': [['timeline/Timeline.tsx', 'announce={false}', 'announce={true}']],
+  'project-tabs-shrink': [['ui/tabs.tsx', 'flex gap-[24px]', 'flex w-1/2 gap-[24px]']],
   'intent-card-padding': [['ui/card.tsx', 'pt-0 px-0 pb-[4px]', 'pt-0 px-[10px] pb-[4px]']],
   'intent-card-shrinks': [
     ['ui/card.tsx', 'block m-0 pt-0 px-0 pb-[4px]', 'block w-1/2 m-0 pt-0 px-0 pb-[4px]'],
@@ -717,6 +732,7 @@ const measured = {
   fieldChrome: [],
   sessionChrome: [],
   intentChrome: [],
+  projectChrome: [],
 };
 
 const SURFACES = {
@@ -827,6 +843,8 @@ async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   await page.evaluate(() => document.fonts.ready);
   measured.views.push(view);
+  for (const row of await page.evaluate(measureProjectChrome, Boolean(PROJECT_RECORD)))
+    measured.projectChrome.push({ view, ...row });
   for (const row of await page.evaluate(measureSessionChrome))
     measured.sessionChrome.push({ view, ...row });
   for (const row of await page.evaluate(measureIntentChrome))
@@ -1160,9 +1178,10 @@ async function runConsole(browser, world) {
 
 /* The capacity worlds have no timeline rows. The populated Console board catches an auto-width
    button shrinking where the pre-swap block summary filled its row. */
-async function runTimelineInlineSizes(browser) {
+async function runTimelineInlineSizes(browser, root) {
   const world = await startConsoleWorld({
     harness: false,
+    sourceRoot: root,
     mutation: MUTATION === 'disclosure-row-shrinks' ? MUTATION : '',
     mutations: {
       'disclosure-row-shrinks': MUTATIONS['disclosure-row-shrinks'].map(
@@ -1174,11 +1193,74 @@ async function runTimelineInlineSizes(browser) {
     for (const width of [1280, 375]) {
       const opened = await openWorldPage(browser, world.react, { width, height: 900 });
       try {
+        for (const route of ['#n=projects', fragmentFor('now'), fragmentFor('course')]) {
+          await opened.page.goto(`${world.react.origin}/${route}`);
+          await settle(opened.page);
+          await opened.page.evaluate(() => document.fonts.ready);
+          for (const row of await opened.page.evaluate(
+            measureProjectChrome,
+            Boolean(PROJECT_RECORD),
+          ))
+            measured.projectChrome.push({ view: `${route} @${width}`, ...row });
+        }
+        if (
+          PROJECT_ONLY &&
+          !['project-alert-padding', 'project-alert-announces'].includes(MUTATION)
+        )
+          continue;
         await opened.page.goto(`${world.react.origin}/${fragmentFor('decisions')}`);
         await opened.page.waitForSelector('.pc-graph-row');
         await settle(opened.page);
         await opened.page.evaluate(() => document.fonts.ready);
         await measureDisclosureInlineSizes(opened.page, `timeline @${width}`);
+        await opened.page.route('**/api/project-context*', (route) => route.abort('failed'));
+        await opened.page
+          .locator('[data-next-cockpit-stale-read]')
+          .waitFor({ timeout: patience(15000) });
+        for (const row of await opened.page.evaluate(measureProjectChrome, Boolean(PROJECT_RECORD)))
+          measured.projectChrome.push({ view: `stale timeline @${width}`, ...row });
+        await opened.page.unroute('**/api/project-context*');
+        if (PROJECT_ONLY && MUTATION === 'project-alert-announces') continue;
+        for (const trigger of await opened.page.locator('[data-slot="accordion-trigger"]').all()) {
+          if (
+            (await trigger.isVisible()) &&
+            (await trigger.getAttribute('aria-expanded')) === 'false'
+          )
+            await trigger.click();
+        }
+        for (const row of await opened.page.evaluate(measureProjectChrome, Boolean(PROJECT_RECORD)))
+          measured.projectChrome.push({ view: `timeline @${width}`, ...row });
+        await opened.page.goto(`${world.react.origin}/${fragmentFor('console', BOARD.terminal)}`);
+        await settle(opened.page);
+        const open = opened.page.getByRole('button', { name: 'Open terminal', exact: true });
+        await open.waitFor();
+        await open.click();
+        await opened.page.locator('.pc-terminal-screen .xterm').waitFor();
+        for (const row of await opened.page.evaluate(measureProjectChrome, Boolean(PROJECT_RECORD)))
+          measured.projectChrome.push({ view: `terminal @${width}`, ...row });
+        let buildReads = 0;
+        await opened.page.route('**/api/data*', async (route) => {
+          const response = await route.fetch();
+          const body = await response.json();
+          body.history_reset = 'version';
+          if (++buildReads > 1) body.build = 'project-chrome-new-build';
+          await route.fulfill({ response, json: body });
+        });
+        await opened.page.reload();
+        await opened.page
+          .locator('[data-next-state="build-changed"]')
+          .waitFor({ timeout: patience(15000) });
+        for (const row of await opened.page.evaluate(measureProjectChrome, Boolean(PROJECT_RECORD)))
+          measured.projectChrome.push({ view: `neutral notices @${width}`, ...row });
+        await opened.page.unroute('**/api/data*');
+        await opened.page.route('**/api/data*', (route) => route.abort('failed'));
+        await opened.page.route('**/api/stream*', (route) => route.abort('failed'));
+        await opened.page.reload();
+        await opened.page
+          .locator('[data-next-state="stalled"]')
+          .waitFor({ timeout: patience(25000) });
+        for (const row of await opened.page.evaluate(measureProjectChrome, Boolean(PROJECT_RECORD)))
+          measured.projectChrome.push({ view: `notices @${width}`, ...row });
       } finally {
         await opened.close();
       }
@@ -1241,6 +1323,56 @@ const UNRESOLVED_VARIABLES = new Set(INVENTORY.unresolved);
 const STEPS_PX = [13, 15, 18, 24, 34];
 
 function checks() {
+  if (PROJECT_TABLE)
+    step_('project: every adopted surface keeps measured chrome and inline size', () => {
+      const differences = projectChromeDifferences(measured.projectChrome, PROJECT_TABLE.instances);
+      if (differences.length)
+        console.error(
+          JSON.stringify(
+            {
+              projectChromeDifferences: Object.fromEntries(
+                differences.map((row) => [
+                  row.key,
+                  {
+                    chrome: Object.fromEntries(
+                      Object.entries(row.chrome)
+                        .filter(([name, value]) => row.expected?.chrome[name] !== value)
+                        .map(([name, value]) => [
+                          name,
+                          { actual: value, expected: row.expected?.chrome[name] },
+                        ]),
+                    ),
+                    inlineSize: row.inlineSize,
+                    expectedSize: row.expected?.inlineSize,
+                    role: row.role,
+                    expectedRole: row.expected?.role,
+                  },
+                ]),
+              ),
+            },
+            null,
+            2,
+          ),
+        );
+      assert.deepEqual(
+        differences,
+        [],
+        `${differences.length} Project/Console chrome or width differences`,
+      );
+      assert.ok(
+        measured.projectChrome.length >= (PROJECT_ONLY ? 5 : 100),
+        'too few Project/Console instances reached',
+      );
+      const seen = new Set(measured.projectChrome.map((row) => row.key));
+      if (FULL && !PROJECT_ONLY)
+        assert.deepEqual(
+          Object.keys(PROJECT_TABLE.instances).filter((key) => !seen.has(key)),
+          [],
+          'unreached Project/Console identities',
+        );
+      return `${measured.projectChrome.length} instances against ${PROJECT_TABLE.commit}`;
+    });
+  if (PROJECT_ONLY) return;
   if (INTENT_TABLE)
     step_('intent: every adopted surface keeps its measured chrome and inline size', () => {
       const differences = intentChromeDifferences(measured.intentChrome, INTENT_TABLE.instances);
@@ -1859,12 +1991,12 @@ try {
     assert.ok(MUTATIONS[MUTATION], `unknown mutation ${MUTATION}`);
     copy = await scratchCopy();
   }
-  if (!INTENT_CHROME_ONLY)
+  if (!INTENT_CHROME_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY)
     await step('gallery: shared buttons and native fields at desktop, 375 and 320 px', () =>
       checkButtonGallery(browser),
     );
-  const root = copy || REPOSITORY;
-  if (!GALLERY_ONLY)
+  const root = copy || process.env.CSS_CONTRACT_ROOT || REPOSITORY;
+  if (!GALLERY_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY)
     await step('fields: stage, tripwire, context, direction and correction states', () =>
       visitFieldStates(browser, root, async (page, view) => {
         const steer = page.locator('[data-next-draft="steer"]');
@@ -1879,14 +2011,16 @@ try {
           measured.intentChrome.push({ view, ...row });
       }),
     );
-  if (!GALLERY_ONLY && WORLDS.includes('intent'))
+  if (!GALLERY_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY && WORLDS.includes('intent'))
     await step('intent: live level and superseded result at desktop and narrow widths', () =>
       visitIntentDisplayStates(browser, root, async (page, view) => {
         for (const row of await page.evaluate(measureIntentChrome))
           measured.intentChrome.push({ view, ...row });
       }),
     );
-  for (const name of GALLERY_ONLY || INTENT_CHROME_ONLY ? [] : WORLDS) {
+  for (const name of GALLERY_ONLY || INTENT_CHROME_ONLY || PROJECT_SUPPLEMENT || PROJECT_ONLY
+    ? []
+    : WORLDS) {
     const started = Date.now();
     const world = await startWorld(name, root);
     try {
@@ -1896,7 +2030,8 @@ try {
     }
     receipts[`world ${name}`] = `${Math.round((Date.now() - started) / 1000)}s`;
   }
-  if (!INTENT_CHROME_ONLY && WORLDS.includes('console')) await runTimelineInlineSizes(browser);
+  if (!INTENT_CHROME_ONLY && WORLDS.includes('console'))
+    await runTimelineInlineSizes(browser, root);
 } catch (error) {
   failures.push({ name: 'run', message: String(error.stack || error).slice(0, 4000) });
 } finally {
@@ -1904,7 +2039,7 @@ try {
   if (copy) await rm(copy, { recursive: true, force: true });
 }
 
-if (!GALLERY_ONLY && !failures.some((failure) => failure.name === 'run')) {
+if (!PROJECT_RECORD && !GALLERY_ONLY && !failures.some((failure) => failure.name === 'run')) {
   checks();
   for (const [name, run] of pending) await step(name, run);
 }
@@ -1912,4 +2047,30 @@ console.log(JSON.stringify({ css: receipts }, null, 2));
 if (failures.length) {
   console.error(JSON.stringify({ failures }, null, 2));
   process.exitCode = 1;
+}
+
+if (PROJECT_RECORD) {
+  const instances = PROJECT_SUPPLEMENT
+    ? JSON.parse(await readFile(PROJECT_RECORD, 'utf8')).instances
+    : {};
+  for (const { key, chrome, inlineSize, role } of measured.projectChrome) {
+    const next = { chrome, inlineSize, role };
+    if (
+      instances[key] &&
+      (JSON.stringify(instances[key].chrome) !== JSON.stringify(chrome) ||
+        Math.abs(instances[key].inlineSize.ratio - inlineSize.ratio) > 0.015)
+    )
+      throw new Error(
+        `Conflicting chrome: ${key}\n${JSON.stringify({ previous: instances[key], next }, null, 2)}`,
+      );
+    instances[key] = next;
+  }
+  await writeFile(
+    PROJECT_RECORD,
+    JSON.stringify({ commit: 'f7b7f11fce3d137d2a30db0736974dae66a65c16', instances }, null, 2) +
+      '\n',
+  );
+  console.log(
+    `Recorded ${measured.projectChrome.length} Project instances, ${Object.keys(instances).length} identities`,
+  );
 }

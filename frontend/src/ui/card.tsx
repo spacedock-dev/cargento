@@ -29,6 +29,21 @@ const cardVariants = cva('min-w-0', {
         'flex flex-col gap-[6px] px-[12px] py-[10px] border border-solid border-[var(--amber)] rounded-control',
       'steer-box': 'flex flex-col gap-[8px]',
       'steer-receipt': 'block p-[10px] [border-left:2px_solid_var(--amber)] bg-card',
+      'project-row':
+        'grid w-full px-[18px] py-[16px] border border-solid border-border border-l-2 border-l-[var(--project-tone)] rounded-card bg-card hover:[border-color:var(--line-hi)] hover:[border-left-color:var(--project-tone)] focus-within:[border-color:var(--line-hi)] focus-within:[border-left-color:var(--project-tone)] [&.next-project-row--history]:py-[12px] [&.next-project-row--history]:border-l [&.next-project-row--history]:border-l-border [&.next-project-row--history]:bg-transparent',
+      'project-goal':
+        'flex flex-col gap-[9px] px-0 py-[10px] [border-right:0] [border-bottom:0] [border-left:0] [border-top:1px_solid_var(--rule)] rounded-none bg-transparent',
+      'project-recovery': 'grid [border-bottom:1px_solid_var(--rule)]',
+      'course-row': 'block px-0 py-[13px] [border-bottom:1px_solid_var(--rule)]',
+      'stage-rule': 'block p-4 [border:1px_solid_var(--rule)] rounded-card',
+      'rail-panel':
+        'flex flex-col gap-[12px] px-[22px] py-[18px] [border-bottom:1px_solid_var(--rule)] first:pt-[20px] last:[border-bottom:0]',
+      'rail-wait':
+        'flex flex-col gap-[8px] px-[13px] py-[12px] border border-solid border-[var(--rule)] border-l-2 border-l-[var(--amber)] rounded-card bg-card',
+      'timeline-details':
+        'grid gap-[7px] px-[12px] py-[10px] [border-left:2px_solid_var(--rule)] bg-[var(--sunk)] text-muted-foreground [font-family:var(--sans)] text-body font-medium leading-[1.55]',
+      'terminal-frame':
+        'flex flex-col [border:1px_solid_var(--rule)] rounded-card bg-[var(--sunk)] text-foreground overflow-hidden [font-family:var(--sans)] text-body leading-[1.5]',
       'work-panel': 'flex flex-col gap-[8px] pt-[12px] px-[16px] pb-[14px]',
     },
     tone: {
@@ -47,7 +62,7 @@ function Card({
   as: Tag = 'div',
   ...props
 }: ComponentProps<'div'> &
-  VariantProps<typeof cardVariants> & { readonly as?: 'div' | 'section' | 'article' }) {
+  VariantProps<typeof cardVariants> & { readonly as?: 'div' | 'section' | 'article' | 'aside' }) {
   return (
     <Tag
       data-slot="card"

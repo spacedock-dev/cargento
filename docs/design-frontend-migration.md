@@ -79,6 +79,17 @@ unchanged recordings still compare consent, drafts and the first Copy press. The
 [family adoption](design-shadcn-adoption.md#intent-drift-and-steering-layer) owns the computed chrome
 reference and keep-native decisions.
 
+Project, Console, Timeline, shell and terminal display components retain their semantic roots,
+evidence and action order. The delegation DOM differential drops utility classes only on shared
+Card, Badge and Alert roots, retaining semantic surface classes, attributes, text and children.
+A mounted comparison rejects changed evidence, session identity, surface classes and live roles;
+removing the normalization fails at its class comparison. ProjectTabs adds a display:contents
+Root around the original nav and panel. The route still owns selection, ids and panel content.
+The Button chrome summary ignores Base UI Tabs' redundant aria-disabled=false, while true
+remains compared. Recorded fixtures and frozen legacy sources are unchanged. The
+[family adoption](design-shadcn-adoption.md#project-console-timeline-shell-and-terminal-layer)
+owns the keyboard contract, measured reference and native decisions.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script

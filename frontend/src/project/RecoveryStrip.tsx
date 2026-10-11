@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import {
@@ -283,7 +284,7 @@ function Goal({ model }: { readonly model: ProjectModel }) {
     </div>
   );
   return (
-    <section className="next-project-goal">
+    <Card as="section" variant="project-goal" className="next-project-goal">
       <header>
         <h2>STATED GOAL</h2>
         {!goal.typed.length && goal.scope.known ? (
@@ -298,7 +299,7 @@ function Goal({ model }: { readonly model: ProjectModel }) {
       )}
       {goal.binding ? <p className="next-project-goal-gap">{goal.binding}</p> : null}
       {goal.gap ? <p className="next-project-goal-gap">{goal.gap}</p> : null}
-    </section>
+    </Card>
   );
 }
 
@@ -398,7 +399,12 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
   ].filter(Boolean);
   const waiting = group.observed.needs[0];
   return (
-    <section className="next-cockpit-recovery" aria-label="Recovery summary">
+    <Card
+      as="section"
+      variant="project-recovery"
+      className="next-cockpit-recovery"
+      aria-label="Recovery summary"
+    >
       <header>
         <strong>PROJECT RECOVERY BRIEFING</strong>
         <small className="next-cockpit-recovery-gloss">{AUTHORITY_GLOSS}</small>
@@ -480,6 +486,6 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
         )}
       </div>
       <Notes model={model} briefing={briefing} />
-    </section>
+    </Card>
   );
 }

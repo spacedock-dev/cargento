@@ -5,17 +5,14 @@
    requests the first time a reader opens a terminal. */
 .next-cockpit-terminal{border-top:1px solid var(--rule)}
 .next-cockpit-terminal>h2{margin:0;padding:12px 10px;border-bottom:1px solid var(--rule);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
-.pc-terminal{display:flex;min-width:0;flex-direction:column;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--sunk);color:var(--ink);overflow:hidden;font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}
 .pc-terminal-absence .pc-substrate-empty,.pc-terminal-absence .pc-substrate-reason,.pc-terminal-identity p{color:var(--ink2);font:var(--fs-body)/1.55 var(--sans);overflow-wrap:anywhere}
 .pc-substrate-empty{margin:8px 0}
 .pc-substrate-steps{margin:6px 0;padding-left:20px;color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
 .pc-substrate-steps li+li{margin-top:4px}
-.pc-terminal-absence{padding:4px 0 10px;max-width:70ch}
 .pc-terminal-absence .pc-substrate-empty:first-child{color:var(--ink2)}
 .pc-terminal-absence code,.pc-terminal-identity code{font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere}
 .pc-terminal-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--rule);font:var(--fs-label)/1.5 var(--mono);flex-wrap:wrap}
 .pc-terminal-bar strong{min-width:0;overflow-wrap:anywhere}
-.pc-terminal-bar>span{margin-left:auto;color:var(--ink2)}
 .pc-terminal-identity{flex-basis:100%;min-width:0}
 .pc-terminal-identity p{margin:3px 0}
 .pc-terminal-identity code{margin-right:10px}

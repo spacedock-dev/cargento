@@ -1,3 +1,4 @@
+import { Alert } from '../ui/alert';
 import { useEffect, useMemo } from 'react';
 import { nextFiniteNumber } from '../api/bootstrap';
 import { exactIdentity } from '../api/identity';
@@ -196,11 +197,17 @@ export function Timeline({
   return (
     <section className="next-cockpit-semantic" data-next-cockpit-semantic>
       {read.state === 'stale' ? (
-        <p className="next-cockpit-stale-read" data-next-cockpit-stale-read>
+        <Alert
+          as="p"
+          variant="timeline-stale"
+          announce={false}
+          className="next-cockpit-stale-read"
+          data-next-cockpit-stale-read
+        >
           {entry?.revision
             ? `Last read ${clock(entry.revision)}. Refresh has failed since; these are the rows from that read.`
             : 'Refresh has failed since the last successful read; these are the rows from it.'}
-        </p>
+        </Alert>
       ) : null}
       <h2>{heading}</h2>
       <section

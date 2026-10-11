@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { RailHeader } from '../steering/RailHeader';
 import type { DelegationFigure } from './metric';
 import './delegation.css';
@@ -51,13 +52,15 @@ export function DelegationPanel({ figure }: { readonly figure: DelegationFigure 
     );
   }
   return (
-    <section
+    <Card
+      as="section"
+      variant="rail-panel"
       className="next-delegation next-rail-panel"
       data-next-delegation
       data-next-rail-panel="delegation"
     >
       <RailHeader label="DELEGATION" note={figure.windowText} />
       {body}
-    </section>
+    </Card>
   );
 }

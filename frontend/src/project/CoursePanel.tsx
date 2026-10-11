@@ -1,3 +1,5 @@
+import { Badge } from '../ui/badge';
+import { Card } from '../ui/card';
 import type { ReactNode } from 'react';
 import { Disclosure, disclosureKey } from '../controls';
 import { readSemantic, historyEmptyText } from '../timeline/semantic';
@@ -94,14 +96,16 @@ function EpisodeRow({
 }) {
   const scope = courseScope(episode, model.harnesses);
   return (
-    <article
+    <Card
+      as="article"
+      variant="course-row"
       className="next-course-episode"
       data-epistemic-kind={episode.epistemic}
       data-scope-kind={scope.kind}
     >
       <header>
         <ScopeCue scope={scope} detail={scope.detail} />
-        <span>{episode.badge}</span>
+        <Badge variant="course-tag">{episode.badge}</Badge>
       </header>
       <strong>{`${episode.task} · ${episode.label}`}</strong>
       {episode.directionFact ? (
@@ -128,21 +132,26 @@ function EpisodeRow({
           model={model}
         />
       ) : null}
-    </article>
+    </Card>
   );
 }
 
 function DirectionRow({ fact, model }: { readonly fact: Row; readonly model: ProjectModel }) {
   const scope = factScope(fact, model.harnesses);
   return (
-    <article className="next-course-direction" data-scope-kind={scope.kind}>
+    <Card
+      as="article"
+      variant="course-row"
+      className="next-course-direction"
+      data-scope-kind={scope.kind}
+    >
       <header>
         <ScopeCue scope={scope} detail={scope.detail} />
-        <span>EXACT DIRECTION</span>
+        <Badge variant="course-tag">EXACT DIRECTION</Badge>
       </header>
       <p>{String(fact['summary'] || 'Direction unavailable')}</p>
       <Evidence fact={fact} contributors={[]} model={model} />
-    </article>
+    </Card>
   );
 }
 

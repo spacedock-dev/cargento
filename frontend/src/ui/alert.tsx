@@ -15,6 +15,11 @@ const alertVariants = cva('block', {
       'answer-failure': 'p-0 text-foreground text-label leading-[normal]',
       'intent-note':
         'm-0 max-w-[var(--measure)] text-muted-foreground [font-family:var(--sans)] text-body font-medium leading-[1.55]',
+      'shell-notice':
+        'flex flex-wrap items-center gap-[10px] px-[12px] py-[10px] [border-left:3px_solid_var(--clay)] bg-card text-muted-foreground text-body font-medium leading-[1.55] [&[data-next-state=history-reset]]:border-l-[var(--ink2)] [&[data-next-state=build-changed]]:border-l-[var(--ink2)]',
+      'terminal-absence': 'pt-[4px] px-0 pb-[10px] max-w-[70ch]',
+      'timeline-stale':
+        'max-w-[var(--measure)] text-muted-foreground [font-family:var(--sans)] text-body font-normal leading-[1.55]',
       'drift-nudge':
         'px-[12px] py-[10px] border border-solid border-[var(--amber)] rounded-control text-foreground text-body leading-[1.5]',
     },
