@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1608412,
+    "bytes": 1608668,
     "file": "react.html",
-    "sha256": "c0a135863f8cad1e1942aa8e177c49ef5eb9b05b4cc93b42dfe28d4309b7440b"
+    "sha256": "4e10ef9fbd8fedebf9cb1d84dc88cdeec6d5f3b7c2354db75fac06ef4cdcfd3b"
   },
   "format": 1,
   "frontend": "react",
@@ -676,7 +676,7 @@
       },
       {
         "file": "frontend/src/intent/PromptSelect.tsx",
-        "sha256": "76e933a779417844c8d7238edcbf61b38998866df1b3d5cb66c8569bee59d5ab"
+        "sha256": "aa9f75a09e1d99456f3ca2b027a483dcef917bc763e3358437fb67c2818ec8f9"
       },
       {
         "file": "frontend/src/intent/annotation.ts",
@@ -696,7 +696,7 @@
       },
       {
         "file": "frontend/src/intent/derive.ts",
-        "sha256": "56eef83a566e7f8f0e7e5c57fd741763dccbbf642729098381973033e71777b9"
+        "sha256": "537230045e701faf7b251b36d7bf60c845e2018fe1c08b2910ec0a22ee41e797"
       },
       {
         "file": "frontend/src/intent/directions.ts",
@@ -1376,7 +1376,7 @@
       },
       {
         "file": "frontend/src/ui/native-select.tsx",
-        "sha256": "6b4eea77966dae512cefb43f7c26aaf447511c7c013ae53760e24b615ade5161"
+        "sha256": "94775fc9688116acba81da7eb64e0ac361c2af9b38fe4e27f8437a1ee16d9aed"
       },
       {
         "file": "frontend/src/ui/popover.tsx",
