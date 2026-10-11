@@ -69,7 +69,7 @@ at `http://127.0.0.1:4578/`. These preview ports are fixed too.
 
 `pnpm build` writes the tracked self-contained React page, integrity metadata and bundled licenses
 inside the plugin. `pnpm build:check` rebuilds without writing and refuses stale output. Linux is
-the canonical builder; native platforms test the same tracked artifact. API origins and optional
+the canonical builder; macOS CI tests the same tracked artifact. API origins and optional
 terminal assets remain local. The packaging boundaries are in the
 [migration contract](docs/design-frontend-migration.md#candidate-packaging).
 
@@ -255,13 +255,18 @@ same directories through the relative symlinks under `.agents/skills/`.
 - The full unittest suite under `coverage`, against the `fail_under` threshold in `pyproject.toml`.
   That threshold only ratchets up. A PR that must merge below it needs the `coverage-exception`
   label, which is visible in the PR timeline.
-- `platform-tests`, the unit suite re-run natively on macOS and Windows, with the dashboard and script suites as
-  parallel legs. Ubuntu is covered by the coverage job and the runtime floor, which both run the whole suite there.
-- The frontend matrix, with exact Node and pnpm pins, lint, strict types, unit tests and clean
-  preview builds on Linux, macOS and Windows. Linux compares the
-  canonical build with tracked assets. Every platform runs browser checks against an installed
-  Python-only copy, plus owned development lifecycle, real Python/Vite hot-refresh, storage
-  conformance, React shell routing and shared-controls continuity checks.
+- `platform-tests`, the unit suite re-run natively on macOS, with one dashboard leg and three script
+  shards. Ubuntu is covered by the coverage job and the runtime floor, which both run the whole suite there.
+- `Frontend (macos-latest)`, with exact Node and pnpm pins, lint, strict types, unit tests and a clean
+  preview build. It runs browser checks against an installed Python-only copy, plus owned development
+  lifecycle, real Python/Vite hot-refresh, storage conformance, React shell routing, shared-controls
+  continuity and session checks.
+- `Frontend production bundle`, which rebuilds and compares the tracked artifact on Linux, then runs
+  all twelve production parity proofs in two shards. The separate `Frontend proofs` job has been retired;
+  its development-server proofs remain runnable locally through the pre-PR suite.
+
+CI exercises macOS and Linux. Windows is no longer exercised by CI for the dashboard unit suite or
+frontend. The local pre-PR command list remains unchanged.
 
 Those checks run when the diff contains something they can measure. A change to prose
 documentation alone skips them, because none of them reads it. The `quality-gate` check itself

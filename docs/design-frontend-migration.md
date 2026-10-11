@@ -663,8 +663,12 @@ bundled minified in a browser, not a served page. Three harness-only readings ar
 page by what a reader can observe (the terminal owner's counters become the renderer count and the open
 sockets, the console's accepted-board count becomes the count of board answers, and a manual refresh
 becomes another tab's revision announcement), and the proofs say so where they do it. StrictMode double
-effects exist only in development, so the development run of every proof stays in CI beside the
-production one.
+effects exist only in development, so every development proof remains runnable locally. Since
+2026-10-11, CI keeps the macOS frontend checks, including hot refresh, storage, shell, controls and
+sessions, and the Linux production job's two shards. The separate `Frontend proofs` job and the
+Linux and Windows development matrix legs have been retired after the major refactor. Windows is
+also no longer exercised by the dashboard unit suite in CI; macOS and Linux still are. The local
+pre-PR command list is unchanged.
 
 The legacy compatibility seam `next-cockpit-compat.js` has no React twin by design. The React timeline and
 terminal are native components, so nothing lends them globals.
