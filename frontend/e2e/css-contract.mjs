@@ -1223,6 +1223,14 @@ async function runAttentionChromeStates(browser, root) {
     for (const width of [1280, 800, 375]) {
       const opened = await openWorldPage(browser, world, { width, height: 900 });
       try {
+        // Production on macOS publishes the native lane; this world needs the browser lane,
+        // which development already supplies, to reach the refused-permission headers.
+        await opened.page.route('**/api/data*', async (route) => {
+          const response = await route.fetch();
+          const body = await response.json();
+          body.native_notify = '';
+          await route.fulfill({ response, json: body });
+        });
         await opened.context.addInitScript(() => {
           globalThis.Notification = Object.assign(
             function Notification() {
