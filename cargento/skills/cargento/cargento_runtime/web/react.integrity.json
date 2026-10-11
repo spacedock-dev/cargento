@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1621296,
+    "bytes": 1608412,
     "file": "react.html",
-    "sha256": "dd5c05aeee031fccc76b7dd7d7b7e77bcb42fd7f8951cc2a2fd1563510ece59b"
+    "sha256": "c0a135863f8cad1e1942aa8e177c49ef5eb9b05b4cc93b42dfe28d4309b7440b"
   },
   "format": 1,
   "frontend": "react",
@@ -304,7 +304,7 @@
       },
       {
         "file": "frontend/src/attention/attention.css",
-        "sha256": "2558170f20659b174f38716c9a236482448e2cf2dd7dce27b2a47c2a6dcd4fd5"
+        "sha256": "946d8f7c16c32068b911707cb914692d482a1fee3484750011aaa4923dc95fb2"
       },
       {
         "file": "frontend/src/attention/expansion.ts",
@@ -492,7 +492,7 @@
       },
       {
         "file": "frontend/src/delegation/delegation.css",
-        "sha256": "349a4b129df7a8561d366cea3ff0e5c736722ee9934ab0e703e79f33d5b122a7"
+        "sha256": "10581b95ce9d07459e7f070c0cd44ca17eaf6029735354e9c998fd1d594ddd28"
       },
       {
         "file": "frontend/src/delegation/evidence.ts",
@@ -564,7 +564,7 @@
       },
       {
         "file": "frontend/src/drift/drift.css",
-        "sha256": "80750e6f100cb6b9ba6110d567ceed9b9c9476e2ec92ed926d80a1e89c909feb"
+        "sha256": "e06da3fad0a98124254dc9b386104ba33c5050d4372b010f20cbcc63b28acf1c"
       },
       {
         "file": "frontend/src/drift/editor.ts",
@@ -716,7 +716,7 @@
       },
       {
         "file": "frontend/src/intent/intent.css",
-        "sha256": "d4ff2636b8d431c20888724e72fe98f2fc3bca453d4cd94ac33a5a9402281fbb"
+        "sha256": "9373aade0ce3798b5c48481324f15d6fb9ca3930a6403d06994b4d11fe2fb14c"
       },
       {
         "file": "frontend/src/intent/liveMonitor.ts",
@@ -904,7 +904,7 @@
       },
       {
         "file": "frontend/src/project/project.css",
-        "sha256": "ce82cdb23a949fb9fbf29ba0bc09b5fafd4b46530a37aadb8e3fd012d9e16c94"
+        "sha256": "6a72bac4d40f9e3073661d9586290293c11d3e5cc751108ccb5635b55e8df335"
       },
       {
         "file": "frontend/src/project/raw.ts",
@@ -1000,7 +1000,7 @@
       },
       {
         "file": "frontend/src/sessions/sessions.css",
-        "sha256": "057da7654eabd9ae5132add7c6f434f252f3dce414a05a099fb8c0bd5800fb67"
+        "sha256": "206d5c1f0c98bbcc040dc3586f93e8b842d109e28f07f3353c1bf78af2aabce9"
       },
       {
         "file": "frontend/src/sessions/testing.tsx",
@@ -1192,15 +1192,15 @@
       },
       {
         "file": "frontend/src/styles/controls.css",
-        "sha256": "80661ece613157b641fb7e298c560929eb51fe76495e362c5ab50d7e46d91174"
+        "sha256": "2ff5f1c311eb085c4bc8ab9b9b82d1964e9e12fe99b1d3e7d40d0e02d0e2df9f"
       },
       {
         "file": "frontend/src/styles/shell.css",
-        "sha256": "c0b11af05cf9d566148c9a5ec9c152ef6f714a83c4ba70800573db371f8703e6"
+        "sha256": "5e130bff4d5da53fa72f5abff9a30ae677c695c6b3b6357f253c18361b469a32"
       },
       {
         "file": "frontend/src/styles/tailwind.css",
-        "sha256": "0c85f5ec2e7fbc92c344f593e9807e371037174b2464a1e3fcf6a25250124008"
+        "sha256": "23cd94a8e4ebb1220ce442d862ee400a71ff707bbd47e60e8ac3638d9e75be45"
       },
       {
         "file": "frontend/src/terminal/TerminalSurface.tsx",
@@ -1224,7 +1224,7 @@
       },
       {
         "file": "frontend/src/terminal/terminal.css",
-        "sha256": "ab8ea36a25b30519985758848f3d88d8eec89b045992b436c207aea7dcc66822"
+        "sha256": "55f298c72381f63f6562e35bc3d0c4c81be49696c977cf3797e0a4147ed2456f"
       },
       {
         "file": "frontend/src/terminal/testing.ts",
@@ -1380,7 +1380,7 @@
       },
       {
         "file": "frontend/src/ui/popover.tsx",
-        "sha256": "8e73bee1293d1c1fd3663dbd38562e12e903a2fb942da6cad8d009e6c726c1e6"
+        "sha256": "bcdded94dff809b62e32fb0251f38a6961ef9cd4a13139285c57464db9bf73ce"
       },
       {
         "file": "frontend/src/ui/separator.tsx",
@@ -1424,7 +1424,7 @@
       },
       {
         "file": "package.json",
-        "sha256": "9c82b37ad3e4c50a9d4a733b2edc00e22e339e166f14febe334e4100d2cca7eb"
+        "sha256": "7a5395758bd61305976760179386ad16c0ae2675f792bc00a5c1bd7eb1b01afe"
       },
       {
         "file": "pnpm-lock.yaml",
