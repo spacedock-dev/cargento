@@ -189,6 +189,11 @@ Controls and Intent proofs exercise native undo/redo, IME, caret, scroll and dra
 [form record](docs/design-shadcn-adoption.md#form-controls-layer) owns the cascade audit and the
 explicit UA-select departures.
 
+Sessions uses Badge, Card, Separator and Alert with explicit surface recipes. Preserve article and
+section roots when composing Card, keep health notes as notes, and keep answer failures polite.
+The CSS proof compares their chrome and rendered width ratios with the pre-swap page. The
+[Sessions record](docs/design-shadcn-adoption.md#sessions-layer) owns the native decisions and audit.
+
 Utilities beat `legacy` regardless of specificity: express surface chrome in variants or props
 and leave layout in the surface sheet. Update the exact count when deleting rules; a PR cannot
 raise its own allowance.

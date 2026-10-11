@@ -2,6 +2,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { CUE_TTL_MS } from '../controls';
 import { mountSessions, type AnswerScript } from './testing';
+import { answerNotesFor } from './heldState';
 
 const NOW = 5000;
 const ASK = {
@@ -43,6 +44,11 @@ async function open(
 }
 
 const failure = () => document.querySelector('.next-session-answer-failure');
+const expectPoliteFailure = (notice: Element | null) => {
+  expect(notice).not.toBeNull();
+  expect(notice?.getAttribute('role')).toBe('status');
+  expect([null, 'polite']).toContain(notice?.getAttribute('aria-live'));
+};
 
 describe('answering a held request', () => {
   const asked = () => board([ONE], { ask: true, asks: [ASK] });
@@ -149,6 +155,97 @@ describe('answering a held request', () => {
       expect(document.querySelector('[data-next-session-ask="ask-1"]')).not.toBeNull();
       page.unmount();
     }
+  });
+
+  it('exposes one polite failure notice and retains it silently through polls', async () => {
+    const page = await open(asked(), { answer: { kind: 'refuse' } });
+    const additions: Element[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches('[data-slot="alert"]')) additions.push(node);
+          additions.push(...node.querySelectorAll('[data-slot="alert"]'));
+        }
+      }
+    });
+    observer.observe(page.container, { childList: true, subtree: true });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /^Yes$/ }));
+      await page.settle();
+      const notice = failure();
+      expectPoliteFailure(notice);
+      // The existing notice mounts with text present; this guards retention, not an initial announcement.
+      expect(additions).toEqual([notice]);
+      await page.poll(asked());
+      await page.poll(asked());
+      expect(failure()).toBe(notice);
+      expect(additions).toEqual([notice]);
+      expect(notice?.textContent).toBe(
+        'no confirmation came back — it may already have been answered',
+      );
+    } finally {
+      observer.disconnect();
+    }
+  });
+
+  it('updates an already-mounted polite failure region once, without repeating it on polls or rerenders', async () => {
+    const page = await open(asked(), { answer: { kind: 'refuse' } });
+    const notes = answerNotesFor(page.shell.runtime);
+    await act(async () => {
+      notes.set('ask-1', 'Earlier failure');
+    });
+    const notice = failure();
+    expectPoliteFailure(notice);
+    const textNode = notice?.firstChild;
+    const changes: MutationRecord[] = [];
+    const observer = new MutationObserver((records) => changes.push(...records));
+    observer.observe(notice as Element, {
+      characterData: true,
+      characterDataOldValue: true,
+      childList: true,
+      subtree: true,
+    });
+    try {
+      fireEvent.click(screen.getByRole('button', { name: /^Yes$/ }));
+      await page.settle();
+      expect(failure()).toBe(notice);
+      expect(notice?.firstChild).toBe(textNode);
+      expect(notice?.textContent).toBe(
+        'no confirmation came back — it may already have been answered',
+      );
+      expect(changes).toHaveLength(1);
+      expect(changes[0]).toMatchObject({
+        type: 'characterData',
+        target: textNode,
+        oldValue: 'Earlier failure',
+      });
+      await page.poll(asked());
+      await page.poll(asked());
+      await act(async () => {
+        notes.set('ask-1', 'no confirmation came back — it may already have been answered');
+      });
+      await page.settle();
+      expectPoliteFailure(failure());
+      expect(failure()).toBe(notice);
+      expect(notice?.firstChild).toBe(textNode);
+      expect(changes).toHaveLength(1);
+    } finally {
+      observer.disconnect();
+    }
+  });
+
+  it.each([
+    ['aria-live', 'off'],
+    ['role', 'alert'],
+  ])('rejects the failure-region mutation %s="%s"', async (attribute, value) => {
+    const page = await open(asked(), { answer: { kind: 'refuse' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Yes$/ }));
+    await page.settle();
+    const notice = failure();
+    expectPoliteFailure(notice);
+    notice?.setAttribute(attribute, value);
+    expect(() => expectPoliteFailure(notice)).toThrow();
   });
 
   it('clears the failure sentence when a later press is confirmed, and retires the question only when the board stops carrying it', async () => {

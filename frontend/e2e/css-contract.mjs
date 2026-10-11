@@ -53,6 +53,10 @@ import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
 import { startConsoleWorld, fragmentFor } from './console-board.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
+import { measureSessionChrome, sessionChromeDifferences } from './support/session-chrome.mjs';
+const SESSION_TABLE = JSON.parse(
+  await readFile(new URL('./session-chrome-reference.json', import.meta.url), 'utf8'),
+);
 import { measureFieldChrome } from './support/field-chrome.mjs';
 import { visitFieldStates } from './support/field-worlds.mjs';
 const FIELD_TABLE = JSON.parse(
@@ -111,6 +115,17 @@ const TABS = ['now', 'course', 'decisions', 'console'];
 /* One deliberate break per name, in the SHIPPED sheets of a scratch copy: [file under frontend/src, the text to
    replace, what replaces it]. The run is expected to fail, and to fail on the check the name says. */
 const MUTATIONS = {
+  'session-card-padding': [['ui/card.tsx', 'px-[17px]', 'px-[7px]']],
+  'session-row-shrinks': [['ui/card.tsx', 'grid w-full p-0', 'grid w-fit p-0']],
+  'session-badge-colour': [['ui/badge.tsx', 'text-muted-foreground', 'text-foreground']],
+  'session-alert-chrome': [['ui/alert.tsx', 'px-[16px]', 'px-[6px]']],
+  'session-separator-rule': [
+    [
+      'ui/separator.tsx',
+      'data-[orientation=horizontal]:h-px',
+      'data-[orientation=horizontal]:h-[3px]',
+    ],
+  ],
   'field-cascade-colour': [['ui/input.tsx', 'text-foreground', 'text-muted-foreground']],
   'field-type-small': [['ui/input.tsx', 'text-body', 'text-label']],
   'field-target-removed': [['ui/input.tsx', 'min-h-[44px]', 'min-h-0']],
@@ -680,6 +695,7 @@ const measured = {
   disclosureChrome: [],
   disclosureInlineSizes: [],
   fieldChrome: [],
+  sessionChrome: [],
 };
 
 const SURFACES = {
@@ -752,10 +768,47 @@ async function measureDisclosureInlineSizes(page, view) {
     });
 }
 
+let collapsedSessionProved = false;
+async function proveCollapsedSession(page) {
+  if (!collapsedSessionProved && (await page.locator('[data-next-delivery]').count())) {
+    const parent = page.locator('[data-next-delivery]').first().locator('..');
+    const style = await parent.getAttribute('style');
+    try {
+      await parent.evaluate((el) => el.style.setProperty('display', 'none', 'important'));
+      const collapsed = (await page.evaluate(measureSessionChrome)).filter((row) =>
+        row.key.startsWith('delivery-rule|'),
+      );
+      assert.ok(
+        collapsed.length > 0 && collapsed.every((row) => !Number.isFinite(row.inlineSize.ratio)),
+        'collapsed delivery must produce a non-finite ratio',
+      );
+      const differences = sessionChromeDifferences(collapsed, SESSION_TABLE.instances);
+      assert.equal(
+        differences.length,
+        collapsed.length,
+        'collapsed delivery must fail the Sessions chrome gate',
+      );
+      assert.ok(
+        differences.every((row) => row.reason.startsWith('non-finite')),
+        'collapsed delivery must fail for its ratio',
+      );
+      collapsedSessionProved = true;
+    } finally {
+      await parent.evaluate(
+        (el, previous) =>
+          previous === null ? el.removeAttribute('style') : el.setAttribute('style', previous),
+        style,
+      );
+    }
+  }
+}
 async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   await page.evaluate(() => document.fonts.ready);
   measured.views.push(view);
+  for (const row of await page.evaluate(measureSessionChrome))
+    measured.sessionChrome.push({ view, ...row });
+  await proveCollapsedSession(page);
   for (const row of await page.evaluate(measureFieldChrome))
     measured.fieldChrome.push({ view, ...row });
   for (const row of await page.evaluate(`(${measureButtonChrome})(${normaliseButtonKey})`))
@@ -864,6 +917,43 @@ async function openWorldPage(browser, world, viewport) {
 const rowsOf = async (origin) => (await (await fetch(`${origin}/api/data`)).json()).sessions || [];
 const sessionRoute = (row) => `#n=session:${E(row.project || '')}:${row.harness}:${E(row.sid)}`;
 
+async function measureSessionNotices(opened, world) {
+  const data = await (await fetch(world.origin + '/api/data')).json();
+  await opened.page.route('**/api/data*', (route) =>
+    route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...data,
+        sessions: data.sessions.map((row) => ({
+          ...row,
+          delivery_raises: 1,
+          delivery_outcome: 'refused',
+          delivery_why: 'It was refused',
+        })),
+      }),
+    }),
+  );
+  for (const row of data.sessions) {
+    await opened.page.goto('about:blank');
+    await opened.page.goto(world.origin + '/' + sessionRoute(row));
+    await settle(opened.page);
+    if (!(await opened.page.locator('[data-next-answer]').count())) continue;
+    await opened.page.route('**/api/answer', (route) =>
+      route.fulfill({ status: 409, contentType: 'application/json', body: '{}' }),
+    );
+    await opened.page.locator('[data-next-answer]').first().click();
+    await opened.page
+      .getByRole('status')
+      .filter({ hasText: 'no confirmation came back' })
+      .waitFor();
+    await opened.page.evaluate(() => document.fonts.ready);
+    for (const value of await opened.page.evaluate(measureSessionChrome))
+      measured.sessionChrome.push({ view: 'Sessions notices', ...value });
+    await proveCollapsedSession(opened.page);
+    break;
+  }
+}
+
 async function runSessions(browser, world) {
   const opened = await openWorldPage(browser, world, { width: 1280, height: 900 });
   try {
@@ -886,6 +976,7 @@ async function runSessions(browser, world) {
     }
     for (const row of rows.slice(0, 16))
       await visit(opened, world.origin, sessionRoute(row), { walk: row === rows[0] });
+    await measureSessionNotices(opened, world);
   } finally {
     await opened.close();
   }
@@ -896,6 +987,7 @@ async function runSessions(browser, world) {
     await visit(narrow, world.origin, '#n=attention', { narrow: true });
     await visit(narrow, world.origin, '#n=projects', { narrow: true });
     await visit(narrow, world.origin, sessionRoute(rows[0]), { narrow: true });
+    await measureSessionNotices(narrow, world);
   } finally {
     await narrow.close();
   }
@@ -1120,6 +1212,25 @@ const UNRESOLVED_VARIABLES = new Set(INVENTORY.unresolved);
 const STEPS_PX = [13, 15, 18, 24, 34];
 
 function checks() {
+  step_('sessions: every adopted surface keeps its measured chrome and inline size', () => {
+    const seen = new Set();
+    const differences = sessionChromeDifferences(measured.sessionChrome, SESSION_TABLE.instances);
+    for (const row of measured.sessionChrome) seen.add(row.key);
+    assert.deepEqual(
+      differences.slice(0, 8),
+      [],
+      `${differences.length} Sessions chrome or width differences`,
+    );
+    if (WORLDS.length === 3)
+      assert.deepEqual(
+        Object.keys(SESSION_TABLE.instances).filter((key) => !seen.has(key)),
+        [],
+        'unreached Sessions surface identities',
+      );
+    assert.ok(measured.sessionChrome.length >= 100, 'too few Sessions surfaces reached');
+    assert.ok(collapsedSessionProved, 'collapsed delivery mutation was not reached');
+    return `${measured.sessionChrome.length} instances against ${SESSION_TABLE.commit}`;
+  });
   const text = measured.text.filter((row) => !row.hidden);
   const regs = measured.registers;
 

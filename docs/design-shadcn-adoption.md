@@ -644,3 +644,64 @@ First-render medians are 139.7, 93.5 and 126.6 ms and poll-to-paint medians are 
 every budget passes, and in all three runs the edited textarea and the focused select keep their nodes and
 the select keeps its choice. Local checks do not certify a native autofill popup, screen readers, Firefox
 or WebKit.
+
+## Sessions layer
+
+Badge, Card, Separator and Alert are copied through the pinned Base UI registry procedure.
+The temporary npm `cn` dependency is removed; the package and lockfile are unchanged. Each copied
+file names its upstream content digest. Unused Card and Alert subcomponents are not retained.
+
+Session rows, current activity, the held request and the two landing panels use Card. Their
+original article, section and div roots remain. The header state pill uses Badge. Health uses
+Alert with its original aside and note role; the answer failure uses Alert with a polite status
+role. A failure retains its node and text through polls, so the same notice is not inserted again.
+The notification boundary uses a decorative Separator. The registry's orientation variants
+expected attributes the pinned Base UI does not emit. They now read `data-orientation`, which
+preserves the measured one-pixel rule.
+
+### Sessions cascade audit
+
+| Surface | Component chrome and retained layout |
+|---|---|
+| Session row | Card owns grid display, full row width, ink, lower rule, hover surface and the small-screen border, radius and panel background. The sheet keeps column layouts, overlay positioning, lifecycle shadows and semantic children. |
+| Current activity | Card owns the 14 by 17 px padding, rule border, two-pixel tone edge, panel background and card radius. Tone is passed explicitly from the observed session. |
+| Held request | Card owns the 13 by 16 px padding, rule border, amber edge, panel background and card radius. The existing question, option order and answer owner stay in place. |
+| Landing panels | Card owns flex display, four-pixel gap, nine-pixel inset and the left rule. The sheet keeps the two-column arrangement, sentence registers and wrapping. |
+| State pill | Badge owns the two by eight px padding, line border, pill radius, muted ink and mono label type. The visually hidden State prefix stays. |
+| Health and failure | Alert owns their measured padding, ink, type and borders. Margins remain with the surface sheet. Health keeps note semantics; only the answer failure is a live status. |
+| Notification rule | Separator replaces the section's top border. Its one-pixel height and ten-pixel lower space retain the old boundary and heading position. |
+
+Facts retain native dl, dt and dd grouping. Their row rules, task and worker boundaries and the
+left rules grouping departure evidence remain part of those semantic rows. Fleet fact cells,
+plain lifecycle labels and collision sentences are not independent panels or pills. Lifecycle
+dots keep their filled, quiet and ended shapes. Source-gap lists, native title tooltips and
+progress elements retain their contracts. The separately owned Intent and Drift panels are
+outside this family. No reader-state owner moves, and no legacy rule leaves its layer.
+
+`session-chrome-reference.json` records 24 identities from `a5aae027` before the swap. An archive
+of `origin/main` under this worktree's ignored screenshots directory was built once. The existing
+87-view sweep recorded 232 instances; additional notification fixtures recorded the old rule.
+Transient answer failures were measured at wide and narrow widths. Keys name surfaces, viewport
+bands and semantic tones, never clocks, counts or absolute widths. The gate compares ink,
+background, four borders, display, padding, radius and type on each adopted instance. Row widths
+are fractions of parent content width, with a 0.015 rounding allowance. The pill's width is
+compared with its actual rendered text plus chrome, with a 15 percent allowance for font metrics.
+This catches a panel or row shrinking to its text without pinning macOS pixel widths on Linux.
+The notification rule compares the old border's ink and thickness with the Separator's background
+and height, plus the rendered width ratio. This projection compares the visible rule across its
+change from a section border to a decorative child.
+
+The Sessions browser comparison locates adopted surfaces by slot and retains the original logical
+health-part name in its recorded summary. Text, evidence order, disclosure state and action lists
+remain compared. No recorded fixture changes. Hand-written CSS falls from 143,898 to 142,131 bytes,
+with the counted paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,597,124 bytes, 4,468 more than the
+form controls layer; first-render medians are 141, 94.3 and 127.6 ms and poll-to-paint medians are 43.4, 44.7 and 61.2 ms;
+every budget passes.
+
+The dev CSS sweep passes with 234 adopted instances across 87 views. Scoped mutations fail the
+Sessions comparison for Card padding (18 differences), row width (3), Badge ink (18), Alert padding
+(1) and Separator thickness (2). The scoped sweeps also report their expected coverage omissions;
+those omissions are not the mutation verdict. An assertive failure role fails the live-region
+test, changed health evidence fails the recorded text differential, and a wrong logical health-part
+name fails the browser differential at seed 2. The unmutated Sessions browser proof passes all
+18 steps without a new departure.

@@ -65,6 +65,13 @@ chrome. Missing or ambiguously labelled panels refuse normalization. Sessions an
 comparisons use that snapshot and compare ordered summary, open state and body readings;
 mutation proofs reject changes to each. The recorded fixtures and shipped bundle are unchanged.
 
+Sessions display components keep the original semantic roots and text. The decorative notification
+Separator adds no recorded text. Browser comparisons locate Card and Alert slots and map the
+health slot back to its recorded logical part name; the health sentence is still compared.
+The Vitest text summaries need no broader normalization. Goldens, disclosure readings, option
+order and action lists remain unchanged. The [Sessions adoption](design-shadcn-adoption.md#sessions-layer)
+owns the computed chrome reference and native decisions.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script

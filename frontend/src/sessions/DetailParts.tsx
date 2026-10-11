@@ -1,3 +1,6 @@
+import { Alert } from '../ui/alert';
+import { Card } from '../ui/card';
+import { Separator } from '../ui/separator';
 import { Disclosure } from '../controls';
 import type { Landing } from '../observed';
 import { RouteAnchor } from './SessionsView';
@@ -86,7 +89,9 @@ export function FactsView({
 
 export function HealthView({ health }: { readonly health: Health }) {
   return (
-    <aside
+    <Alert
+      as="aside"
+      variant="session-health"
       className="next-session-health"
       role="note"
       aria-label={health.label}
@@ -97,7 +102,7 @@ export function HealthView({ health }: { readonly health: Health }) {
         {' — '}
       </span>
       <span>{health.why}</span>
-    </aside>
+    </Alert>
   );
 }
 
@@ -239,6 +244,7 @@ export function DeliveryView({ delivery }: { readonly delivery: Delivery }) {
       data-next-delivery={delivery.outcome}
       {...(delivery.mixed ? { 'data-next-delivery-mixed': 'true' } : {})}
     >
+      <Separator aria-hidden="true" className="mb-[10px]" />
       <h2>NOTIFICATIONS</h2>
       <p className="next-session-delivery-count">{delivery.count}</p>
       {delivery.why ? <p className="next-session-delivery-why">{delivery.why}</p> : null}
@@ -265,7 +271,7 @@ export function LandedView({
   readonly disclosureKey: string;
 }) {
   const card = (title: string, text: string, known: boolean, note: string) => (
-    <div className="next-cockpit-landed-card">
+    <Card variant="session-landed" className="next-cockpit-landed-card">
       <span className="next-cockpit-landed-label">{title}</span>
       <span
         className={
@@ -277,7 +283,7 @@ export function LandedView({
         {text}
       </span>
       {note ? <span className="next-cockpit-landed-note">{note}</span> : null}
-    </div>
+    </Card>
   );
   return (
     <section className="next-cockpit-landed">

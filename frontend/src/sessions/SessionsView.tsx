@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { buttonVariants } from '../ui/button';
 import { cn } from '../lib/utils';
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
@@ -275,7 +276,9 @@ function RowView({ row }: { readonly row: SessionRow }) {
     />
   );
   return (
-    <article
+    <Card
+      as="article"
+      variant="session-row"
       className={`next-operation-row next-operation-row--${session.tone}`}
       data-next-harness={session.harness}
       data-next-session={session.sid}
@@ -324,7 +327,7 @@ function RowView({ row }: { readonly row: SessionRow }) {
         </>
       )}
       <DriftMarkView row={row} />
-    </article>
+    </Card>
   );
 }
 
