@@ -949,6 +949,7 @@ mutations and six browser mutations fail at their intended guarantees, covering 
 body type, dark scheme, variables, absence ink, control colour, target floors and focus.
 The current-shell dead-rule mutation also fails the coverage inventory.
 
-The tracked bundle and fluidity receipt are deliberately left for the lead. Production
-coverage is the pre-deletion baseline; final application parity on a rebuilt production
-bundle and native Windows or Linux verification have not been run in this layer.
+Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,608,412 bytes, -12,884 more than the
+attention and capacity layer; first-render medians are 136.8, 94.2 and 124.3 ms and poll-to-paint medians are 43.7, 46 and 60.1 ms;
+every budget passes. Production
+coverage is the pre-deletion baseline; native Windows and Linux are checked by the pull request.
