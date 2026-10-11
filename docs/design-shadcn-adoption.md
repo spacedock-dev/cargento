@@ -67,7 +67,7 @@ their existing groups and roles. Unused Card and Alert parts and TabsContent wer
 because a second panel lifecycle would duplicate route ownership. Icon-library imports, the npm `cn`
 package, Preflight and animation-package imports were also omitted for the reasons in the findings.
 
-The final page is 1,608,412 bytes against a 2,000,000-byte ceiling. Hand-written CSS is 124,635 bytes
+The final page is 1,608,668 bytes against a 2,000,000-byte ceiling. Hand-written CSS is 124,635 bytes
 across the same thirteen counted sheets. The cleanup's rough starting estimate was about 135,500 bytes;
 its recorded start was 136,243, a reduction of 11,608 bytes. The whole migration started at 161,464
 counted bytes. The [cleanup](#stylesheet-cleanup) removed 83 rule entries, including the alias block,
@@ -80,10 +80,10 @@ optional evidence, transient states, browser-specific progress and individual an
 readability exception; the form layer removed four native focus-ring exceptions. The coverage method's
 five limits are recorded in [Stylesheet cleanup](#stylesheet-cleanup).
 
-The final three-run fluidity measurement on 2026-10-11 passes every budget. For 5, 50 and 250 sessions,
-first-render medians are 136.8, 94.2 and 124.3 ms; poll-to-paint medians are 43.7, 46 and 60.1 ms.
-The [cleanup measurement](#stylesheet-cleanup) owns those figures; the earlier layer measurements below
-remain the history of how the page reached this state.
+The final three-run fluidity measurement on 2026-10-11, after the prompt menu fix, passes every budget. For 5, 50
+and 250 sessions, first-render medians are 148.6, 94.3 and 127.6 ms; poll-to-paint medians are 44.7, 44.5 and 61.4
+ms. The earlier layer measurements below remain the history of how the page reached this state; the cleanup
+measurement in [Stylesheet cleanup](#stylesheet-cleanup) records the page before the fix (1,608,412 bytes).
 
 ## What was measured, and how
 
