@@ -332,6 +332,9 @@ not fold them into one total.
 
 ## React shell, routes and controls
 
+Deviation (DEC-27, 2026-10-12): Sessions precedes Projects in the primary tab order. The
+shell proof normalizes that recorded array swap and still compares every route, label and origin.
+
 The shell is a React page, not a layer over the legacy one. One tree holds the page and
 five live regions as siblings, and the regions are never inside the subtree a route replaces, because
 a node that arrives carrying its text is the one a reader's software skips. Announcements are
@@ -369,6 +372,18 @@ select's popup outside the DOM, so the browser proof covers the focus, deferral 
 programmatically rather than reading the popup.
 
 ## Sessions, session detail, the timeline and the terminal
+
+Deviations (DEC-27, 2026-10-12): Sessions precedes Projects in primary navigation and retains
+its landing route. Every goal cell, including saved words, opens the session with the existing
+Intent focus rule. The header keeps its orientation and shared how-to on checked and unchecked
+boards; the row-splitting and goal-source sentences move intact into that popover. Exact requests
+and reported blocks move to Attention, while the two active/working counters and all row facts
+stay. Assignment labels on Sessions and session detail become Current task, and the Sessions
+command-surface eyebrow goes. The single-column header places the title, orientation, optional
+unchecked clause and how-to in reading order. The disclosure chrome reference replaces the two
+retired triggers with the measured row-filling how-to; its fonts, inks and borders remain unchanged. Recorded-side
+normalizers account for labels and counter placement; the proof asserts the first-step controls
+and counts one click on each of four active/recent, saved/drafted fixtures. Goldens stay unchanged.
 
 The observed model that Sessions, the header counts and session detail all stand on is a full port of
 the legacy `next-observed.js`, checked by executing the real legacy file next to it over hundreds of
@@ -478,6 +493,17 @@ the web assets calls the dismiss route), so none was built.
 
 ## Project views, steering and the Console
 
+Deviations (2026-10-12): The recovery strip uses Where this project stands, Current task,
+Running now, Needs you, Latest result and Latest instruction. Its source and absence labels say
+instruction rather than goal; the session's own words remain intact. The steering bar is A note
+to yourself, kept in this browser tab. The authority gloss is conditional on a first-officer
+session or an enabled stage source, and Workflow stage conditions becomes Stage alerts with
+its enabled-source gate retained. Needs you still names a waiting session above the tabs.
+Member rows request the Sessions goal link's Intent focus in one click. Project parity changes
+only the recorded labels and conditional gloss; chrome references retain measured styles and
+note the renamed instruction surface. The no-workflow fixture rejects old labels and counts
+member clicks. Goldens stay unchanged.
+
 The Projects list and history, project detail with its workflow plans, the scope tree and switcher, the
 recovery briefing, the human-context notes, Now and Course, the workstream panel, the steering bar, local
 and workflow-stage tripwires, the Decisions timeline with its lanes and the Console operating rail
@@ -511,6 +537,10 @@ calls them: `nextCockpitNowState`, `ActiveDelegation`, `NeedsYou`, `SystemDetail
 `MemoFields`, `ProjectStatus`, `RecoveryOutcome` and `nextProjectWorkstream`.
 
 ## Attention, notifications, capacity and the consent controls
+
+Deviation (DEC-27, 2026-10-12): Exact requests and reported blocks move here from Sessions,
+with their wording, figures and notes unchanged. Mounted and browser assertions check them
+beside the existing Attention evidence; the recorded queues and notification comparisons remain.
 
 The Attention view (exact-owner asks and checkpoints, gates, risks, outcomes and coverage), the
 notification control and owner, the capacity strip, the usage consent and the observer-model consent

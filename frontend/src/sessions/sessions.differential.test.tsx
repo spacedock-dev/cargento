@@ -45,7 +45,18 @@ const norm = (node: Element | null): string =>
 function summarize(source: Element | DocumentFragment): Summary {
   const root = normalizeDisclosures(source);
   return {
-    header: norm(root.querySelector('.next-operations-header')),
+    header: (() => {
+      const header = root.querySelector('.next-operations-header');
+      header?.querySelector('[data-next-sessions-orientation]')?.remove();
+      const howto = [...(header?.querySelectorAll('details') ?? [])].find(
+        (node) => node.querySelector('summary')?.textContent === 'How Intent and drift works',
+      );
+      if (howto) {
+        const bodies = [...howto.querySelectorAll('.next-why-body')];
+        howto.replaceWith(...bodies);
+      }
+      return norm(header);
+    })(),
     fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map(
       (node) => [(node as HTMLElement).dataset['nextFleetFact'] ?? '', norm(node)] as const,
     ),
@@ -80,6 +91,15 @@ function legacySummary(payload: unknown): Summary {
   const template = document.createElement('template');
   template.innerHTML = legacy.sessionsHtml(payload);
   retractSessionCopies(template.content);
+  const header = template.content.querySelector('.next-operations-header');
+  header?.querySelector(':scope > span')?.remove();
+  header?.querySelectorAll('summary').forEach((node) => node.remove());
+  template.content
+    .querySelectorAll('[data-next-fleet-fact="requests"],[data-next-fleet-fact="reported-blocks"]')
+    .forEach((node) => node.remove());
+  template.content.querySelectorAll('.next-operation-assignment').forEach((node) => {
+    node.textContent = node.textContent?.replace('ASSIGNMENT · ', 'Current task · ') ?? '';
+  });
   return summarize(template.content);
 }
 
@@ -93,7 +113,8 @@ async function reactSummary(payload: unknown): Promise<Summary> {
   return result;
 }
 
-/* Named differences, each with its reason. Empty today: every compared field agrees. */
+/* The header explanations now share the how-to and two counters live on Attention.
+   Their words and every row fact still compare; the first-step controls are asserted in SessionsView.test. */
 const DEVIATIONS: readonly {
   readonly seed: number;
   readonly path: string;

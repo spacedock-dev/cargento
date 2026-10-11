@@ -431,6 +431,10 @@ try {
       const arms = {};
       const mine = await settled(react.page, readAttention);
       assert.ok(!mine.missing, `the React screen did not draw: ${JSON.stringify(mine)}`);
+      const counters = await react.page.locator('[data-next-fleet-fact]').allTextContents();
+      assert.equal(counters.length, 2);
+      assert.ok(counters[0].includes('EXACT REQUESTS'));
+      assert.ok(counters[1].includes('REPORTED BLOCKS'));
       golden.observe('the screen, collapsed');
       golden.verify('the screen, collapsed', clockless(mine));
       arms.collapsed = mine.sections.map((section) => [section.name, section.items.length]);

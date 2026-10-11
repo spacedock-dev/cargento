@@ -446,3 +446,95 @@ describe('disclosures keep their state by project and scope', () => {
     ).toBe(true);
   });
 });
+
+describe('plain project words', () => {
+  it('keeps the waiting session above the tabs and omits workflow language without a workflow', async () => {
+    const board = WAITING?.board as { sessions: Record<string, unknown>[] };
+    const page = open({
+      ...(WAITING as NonNullable<typeof WAITING>),
+      board: { ...board, sessions: board.sessions.map(({ spacedock: _workflow, ...row }) => row) },
+    });
+    await page.settle();
+    const strip = screen.getByLabelText('Recovery summary');
+    for (const label of [
+      'PROJECT RECOVERY BRIEFING',
+      'ASSIGNMENT',
+      'EXECUTION',
+      'COMMAND',
+      'LATEST EVIDENCE',
+      'STATED GOAL',
+      'STEER · LOCAL ONLY',
+      'FO is the first officer, the agent driving this workflow; Captain is you.',
+      'Workflow stage conditions',
+    ]) {
+      expect(document.querySelector('[data-next-view-body="project"]')?.textContent).not.toContain(
+        label,
+      );
+    }
+    expect(within(strip).getByText('Where this project stands')).toBeInTheDocument();
+    expect(within(strip).getByText('Current task')).toBeInTheDocument();
+    expect(within(strip).getByText('Running now')).toBeInTheDocument();
+    expect(within(strip).getByText('Needs you')).toBeInTheDocument();
+    expect(within(strip).getByText('Latest result')).toBeInTheDocument();
+    expect(within(strip).getByText('Latest instruction')).toBeInTheDocument();
+    const waiting = strip.querySelector('[data-next-cockpit-waiting]');
+    expect(waiting?.textContent).toContain('Approve the plan?');
+    expect(
+      (waiting?.compareDocumentPosition(screen.getByRole('tablist')) ?? 0) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+  it('opens each project member at its Intent heading in one press', async () => {
+    const page = mountProject({
+      hash: '#n=projects',
+      data: {
+        generated: 1000,
+        annotate: true,
+        sessions: [
+          {
+            harness: 'claude',
+            sid: 'a',
+            project: 'p',
+            state: 'working',
+            first_prompt: 'Ship the queue',
+            first_prompt_at: 100,
+          },
+        ],
+      },
+    });
+    await page.settle();
+    fireEvent.click(document.querySelector('[data-next-project-session]') as Element);
+    await page.settle();
+    expect(page.router.getRoute()).toMatchObject({
+      view: 'session',
+      session: 'a',
+      from: 'projects',
+    });
+    expect(document.activeElement?.id).toBe('next-session-intent-heading');
+  });
+});
+
+describe('workflow vocabulary has a source', () => {
+  it.each(['first-officer', 'stage-source'])('shows the authority gloss with %s', async (kind) => {
+    const page = mountProject({
+      hash: '#n=project:p',
+      data: {
+        generated: 1000,
+        tripwires: { enabled: kind === 'stage-source' },
+        sessions: [
+          {
+            harness: 'claude',
+            sid: 'a',
+            project: 'p',
+            state: 'idle',
+            ...(kind === 'first-officer' ? { spacedock: { role: 'first-officer' } } : {}),
+          },
+        ],
+      },
+    });
+    await page.settle();
+    expect(
+      screen.getByText('FO is the first officer, the agent driving this workflow; Captain is you.'),
+    ).toBeInTheDocument();
+  });
+});

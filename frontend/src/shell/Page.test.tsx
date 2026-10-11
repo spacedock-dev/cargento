@@ -22,14 +22,14 @@ describe('the primary navigation', () => {
     await page.settle();
     const links = primary().getAllByRole('link');
     expect(links.map((link) => link.textContent)).toEqual([
-      'Projects',
       'Sessions',
+      'Projects',
       'Attention',
       'Intent log',
     ]);
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '#n=projects',
       '#n=sessions',
+      '#n=projects',
       '#n=attention',
       '#n=intent',
     ]);

@@ -8,7 +8,7 @@ import type { ObservedProject, ObservedSession } from '../observed';
 import { durationSince } from '../observed/values';
 import { PROMPT_SOURCES } from '../sessions/intent';
 
-/* STATED GOAL is a list, not a field: zero to n rows, each with its own tag and its own source line. The
+/* Latest instruction is a list, not a field: zero to n rows, each with its own tag and its own source line. The
    reader's typed words are rows above the harness's, never merged with them, because "what I asked for"
    and "what the harness published" are different claims and one string cannot carry both. Ported from
    `nextProjectGoal` and the helpers around it. */
@@ -26,15 +26,15 @@ export interface GoalScope {
 export function goalScope(project: ObservedProject, focus: ObservedSession | null): GoalScope {
   return focus
     ? {
-        text: focus.ownGoalText,
+        text: focus.ownGoalKnown ? focus.ownGoalText : 'This session published no instruction',
         known: focus.ownGoalKnown,
-        src: focus.ownGoalSrcText,
+        src: focus.ownGoalSrcText.replace('workflow goal', 'workflow instruction'),
         at: focus.ownGoalAt,
       }
     : {
-        text: project.goalText,
+        text: project.goalKnown ? project.goalText : 'No task or workflow instruction published',
         known: project.goalKnown,
-        src: project.goalSrcText,
+        src: project.goalSrcText.replace('workflow goal', 'workflow instruction'),
         at: project.goalAt,
       };
 }
@@ -76,8 +76,8 @@ export function projectGoal(
   if (annotation?.['goal']) {
     typed.push({
       tag: PROMPT_SOURCES.includes(annotation['goal_source'] as string)
-        ? 'FROM YOUR PROMPT · GOAL'
-        : 'YOUR WORDS · GOAL',
+        ? 'FROM YOUR PROMPT'
+        : 'YOUR WORDS',
       text: String(annotation['goal']),
       source: revision,
       known: true,
@@ -98,6 +98,9 @@ export function projectGoal(
     typed,
     derivedSource: derivedSource(scope, generated),
     binding: why && (annotation?.['goal'] || lines.length) ? String(why) : '',
-    gap: !focus && project.goalGapKnown ? project.goalGapText : '',
+    gap:
+      !focus && project.goalGapKnown
+        ? project.goalGapText.replace('no goal.', 'no instruction.')
+        : '',
   };
 }

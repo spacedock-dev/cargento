@@ -62,8 +62,9 @@ title, with its harness, state and age as a caption beneath; a row whose title w
 so in place of the title rather than falling back to an id. Where two sessions of one harness would
 otherwise render identically, the row carries the session key so you are not picking blind. A
 persistent briefing shows
-**ASSIGNMENT / EXECUTION / COMMAND**, latest evidence, and direction. Assignment retains the
-stated goal, its source, and the reason when no goal is available. Command keeps a project session
+**Where this project stands**, with **Current task**, **Running now**, **Needs you** and
+**Latest result**. **Latest instruction** retains the harness instruction, its source and the
+reason when no instruction is available. Needs you keeps a project session
 waiting on you visible above the tabs, with raise and copy-resume controls where supported.
 
 **Now** pairs current activity with observed session endings, their outcome glyphs and git readings,
@@ -75,8 +76,9 @@ session's optional read-only terminal, the observer-model controls and the statu
 names the state of both capabilities. A capability that is on renders expanded and outside the
 disclosure, so nothing you can act on is behind a click. What you typed for a session, and
 everything read against it, lives on that session's own page (below), not on a tab here.
-Browser-local
-human context and old tripwire notes do not instruct an agent and remain inert.
+The **A note to yourself, kept in this browser tab** box, browser-local human context and old
+tripwire notes do not instruct an agent and remain inert. The first-officer gloss appears with a
+first-officer session or enabled stage source; stage alerts require an enabled stage source.
 
 Each tab names its own panel in a line beneath the strip, because two of the four open onto a
 heading that does not repeat the label. Course and Decisions also carry a cue on the tab

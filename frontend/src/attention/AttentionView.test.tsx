@@ -54,6 +54,7 @@ describe('before a board, and without one', () => {
   it('says a board with no session collection published none, not that no session needs the reader', async () => {
     await open({ generated: 1, harnesses: [] });
     expect(screen.getByText('The board published no session collection.')).toBeInTheDocument();
+    expect(document.querySelector('[data-next-fleet-fact]')).toBeNull();
     expect(document.querySelector('.next-attention-empty')).toBeNull();
     expect(document.body.textContent).not.toContain('sessions carry a subject');
   });
@@ -334,5 +335,17 @@ describe('what a payload can say about itself', () => {
     await page.settle();
     expect(document.querySelectorAll('[data-next-view-body="attention"]')).toHaveLength(1);
     expect(document.querySelectorAll('#next-attention-status')).toHaveLength(1);
+  });
+});
+
+describe('the counters moved from Sessions', () => {
+  it('shows exact requests and reported blocks beside their counts', async () => {
+    await open(attentionBoard());
+    expect(document.querySelector('[data-next-fleet-fact="requests"]')?.textContent).toContain(
+      'EXACT REQUESTS',
+    );
+    expect(
+      document.querySelector('[data-next-fleet-fact="reported-blocks"]')?.textContent,
+    ).toContain('REPORTED BLOCKS');
   });
 });

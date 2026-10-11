@@ -29,6 +29,7 @@
  * Timing: every fixed wait here means "give the page time to react", and a hosted runner has a few shared cores,
  * so each is tripled under CI and every comparison reads until two reads agree (`settled`) rather than once.
  */
+import { projectWordDeviation, projectGlossEnabled } from '../test/projectWordDeviation.ts';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -245,7 +246,17 @@ const digestOf = (value) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 10);
 
 /* A difference found by the comparison is a failure unless it is named here with its reason. */
-const DEVIATIONS = [];
+const DEVIATIONS = [
+  {
+    scope: 'recovery strip',
+    reason:
+      'Plain project labels distinguish instructions from a session goal; workflow gloss is conditional.',
+  },
+  {
+    scope: 'member row',
+    reason: 'Opening requests Intent focus under the same rule as a Sessions goal link.',
+  },
+];
 
 const proof = parityBoard();
 const contextsFor = (contexts) => {
@@ -287,8 +298,107 @@ try {
     await load(react, board.react.origin, fragment);
     const mine = await settled(react.page, read, ...args);
     const key = `${name} | ${fragment} | ${digestOf([holder.body, holder.contexts, args])}`;
-    return { mine, old: golden.observe(key) };
+    const project = decodeURIComponent(fragment.split(':')[1] || '');
+    return {
+      mine,
+      old: projectWordDeviation(golden.observe(key), projectGlossEnabled(holder.body, project)),
+    };
   }
+
+  await step(
+    'plain projects: no workflow labels and one click from each member into Intent',
+    async () => {
+      const o = await newPage();
+      const rows = [
+        {
+          harness: 'claude',
+          sid: 'waiting',
+          project: 'plain/app',
+          state: 'needs_input',
+          title: 'Waiting task',
+          first_prompt: 'Ship the queue',
+          first_prompt_at: 100,
+        },
+        {
+          harness: 'claude',
+          sid: 'working',
+          project: 'plain/app',
+          state: 'working',
+          title: 'Working task',
+          annotation_goal: 'Land the result',
+          annotation_revision: 1,
+        },
+      ];
+      await freeze(o, {
+        body: { ...proof.board, annotate: true, tripwires: { enabled: false }, sessions: rows },
+        contexts: {},
+      });
+      try {
+        await load(o, board.react.origin, '#n=project:plain%2Fapp');
+        const text = await o.page.locator('[data-next-view-body="project"]').innerText();
+        for (const old of [
+          'PROJECT RECOVERY BRIEFING',
+          'ASSIGNMENT',
+          'EXECUTION',
+          'COMMAND',
+          'LATEST EVIDENCE',
+          'STATED GOAL',
+          'STEER · LOCAL ONLY',
+          'FO is the first officer, the agent driving this workflow; Captain is you.',
+          'Workflow stage conditions',
+        ])
+          assert.ok(!text.includes(old), old);
+        assert.equal(
+          await o.page
+            .locator('[data-next-cockpit-waiting]')
+            .getByText('Waiting task', { exact: true })
+            .count(),
+          1,
+        );
+        assert.ok(
+          await o.page
+            .locator('[data-next-cockpit-waiting]')
+            .evaluate((node) =>
+              Boolean(
+                node.compareDocumentPosition(document.querySelector('[role=tablist]')) &
+                  Node.DOCUMENT_POSITION_FOLLOWING,
+              ),
+            ),
+        );
+        const clicks = [];
+        for (const row of rows) {
+          await load(o, board.react.origin, '#n=projects');
+          await o.page.evaluate(() => {
+            globalThis.__memberClicks = 0;
+            document.addEventListener(
+              'click',
+              (event) => {
+                if (event.target.closest('[data-next-project-session]'))
+                  globalThis.__memberClicks += 1;
+              },
+              true,
+            );
+          });
+          await o.page
+            .locator(`[data-next-project-session][data-next-session="${row.sid}"]`)
+            .click();
+          await o.page.waitForFunction(
+            ({ typed, sid }) =>
+              typed
+                ? document.activeElement?.getAttribute('data-next-focus') ===
+                  `held:claude:${sid}:goal`
+                : document.activeElement?.id === 'next-session-intent-heading',
+            { typed: Boolean(row.annotation_goal), sid: row.sid },
+          );
+          assert.equal(await o.page.evaluate(() => globalThis.__memberClicks), 1);
+          clicks.push({ sid: row.sid, clicks: 1 });
+        }
+        return clicks;
+      } finally {
+        await o.close();
+      }
+    },
+  );
 
   /* ===================== DIFFERENTIAL: the proof board ===================== */
   await step(

@@ -76,8 +76,8 @@ export function StageConditions({ sessions, notifyLane = browserLane }: StageCon
   const cards = stagePairs(data, sessions);
   const lane = notifyLane((payload ?? {}) as Row);
   return (
-    <section className="next-stage-conditions" aria-label="Workflow stage conditions">
-      <h2>Workflow stage conditions</h2>
+    <section className="next-stage-conditions" aria-label="Stage alerts">
+      <h2>Stage alerts</h2>
       <p>{stageIntro(data)}</p>
       {cards.length ? (
         cards.map(({ source, rule }) => (

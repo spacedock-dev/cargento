@@ -49,7 +49,7 @@ describe('what the screen says when it has nothing to draw', () => {
       [...document.querySelectorAll('[data-next-fleet-fact] strong')].map(
         (node) => node.textContent,
       ),
-    ).toEqual(['0', '0', '0', '0']);
+    ).toEqual(['0', '0']);
   });
 
   it('names a harness whose store could not be read, so its absence is not read as no sessions', async () => {
@@ -158,6 +158,9 @@ describe('the groups', () => {
         `article[data-next-session="${sid}"] [data-next-operation-fact="goal"]`,
       );
     expect(goal('typed')?.textContent).toBe('GOAL · YOUR WORDSShip the queue');
+    expect(goal('typed')?.querySelector('a')?.getAttribute('href')).toBe(
+      '#n=session:p:claude:typed',
+    );
     expect(goal('drafted')?.textContent).toBe('GOAL · YOUR FIRST PROMPTDo the thing');
     expect(goal('empty')?.textContent).toBe('GOALAdd a goal');
     expect(goal('empty')?.querySelector('a')?.classList.contains('next-absence')).toBe(true);
@@ -222,19 +225,15 @@ describe('a redraw leaves the reader’s place alone', () => {
   it('keeps the row nodes, an open caveat and a focused link across a poll that changes the rows', async () => {
     const page = await open(data);
     const alpha = document.querySelector('article[data-next-session="a"]');
-    const summary = screen.getByText('How rows are split');
+    const summary = screen.getByRole('button', { name: 'How Intent and drift works' });
     fireEvent.click(summary);
-    (alpha?.querySelector('a.next-operation-route') as HTMLElement).focus();
+    summary.focus();
     await page.poll(
       board([{ ...(data.sessions[0] as object), state_detail: 'now different' }, data.sessions[1]]),
     );
     expect(document.querySelector('article[data-next-session="a"]')).toBe(alpha);
-    expect(
-      (
-        screen.getByText('How rows are split').closest('[data-slot=accordion]') as HTMLElement
-      ).hasAttribute('data-open'),
-    ).toBe(true);
-    expect(document.activeElement).toBe(alpha?.querySelector('a.next-operation-route'));
+    expect(summary.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(summary);
   });
 
   it('opens a session by its exact route on a plain click, and leaves a modified click to the browser', async () => {
@@ -320,8 +319,66 @@ describe('the header counts and the screen are one reading of one payload', () =
       '1 running · 2 subagents observed',
     );
     expect(document.querySelector('.next-gate')?.textContent).toBe('1 reported block');
-    expect(
-      document.querySelector('[data-next-fleet-fact="reported-blocks"] strong')?.textContent,
-    ).toBe('1');
+    expect(document.querySelector('[data-next-fleet-fact="reported-blocks"]')).toBeNull();
   });
+});
+
+describe('the Sessions first step', () => {
+  it.each([false, true])(
+    'keeps orientation and the shared how-to when a checked session exists: %s',
+    async (checked) => {
+      await open(
+        board(
+          [
+            {
+              harness: 'claude',
+              sid: 'a',
+              project: 'p',
+              state: 'idle',
+              departure_checked: checked,
+            },
+          ],
+          { annotate: true },
+        ),
+      );
+      expect(
+        screen.getByText(
+          'Open a session, set its goal and press Analyze drift to see how far it moved from it.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'How Intent and drift works' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'How rows are split' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Goal sources' })).toBeNull();
+      expect(document.querySelector('[data-next-fleet-fact="requests"]')).toBeNull();
+      expect(document.querySelector('[data-next-fleet-fact="reported-blocks"]')).toBeNull();
+    },
+  );
+  it.each(['working', 'idle'])(
+    'opens a saved goal in one press and focuses its box for %s',
+    async (state) => {
+      const page = await open(
+        board(
+          [
+            {
+              harness: 'claude',
+              sid: 'saved',
+              project: 'p',
+              state,
+              annotation_goal: 'Ship the queue',
+              annotation_revision: 1,
+            },
+          ],
+          { annotate: true },
+        ),
+      );
+      fireEvent.click(screen.getByRole('link', { name: 'Ship the queue' }));
+      await page.settle();
+      expect(page.router.getRoute()).toMatchObject({ view: 'session', session: 'saved' });
+      expect(document.activeElement?.getAttribute('data-next-focus')).toBe(
+        'held:claude:saved:goal',
+      );
+    },
+  );
 });

@@ -1,6 +1,9 @@
 /* DEC-27 retracts the session Copy controls. Normalize only the recorded side;
    a Copy control reintroduced on the React side must still fail parity. */
 export function retractSessionCopies(root: ParentNode) {
+  root.querySelectorAll('h2').forEach((node) => {
+    if (node.textContent === 'ASSIGNMENT') node.textContent = 'Current task';
+  });
   root
     .querySelectorAll(
       '[data-copy-kind], .next-session-copy, .next-session-copy-link, .next-session-copy-command',

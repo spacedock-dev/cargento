@@ -85,7 +85,18 @@ const summarizeList = () => {
   const root = document.querySelector('[data-next-view-body="sessions"]');
   if (!root) return { missing: true, text: norm(document.body).slice(0, 200) };
   return {
-    header: norm(root.querySelector('.next-operations-header')),
+    header: (() => {
+      const header = root.querySelector('.next-operations-header').cloneNode(true);
+      header.querySelector('[data-next-sessions-orientation]')?.remove();
+      const trigger = header.querySelector('[data-slot=popover-trigger]');
+      const popup = [...document.querySelectorAll('[data-slot=popover-content]')].find(
+        (popup) => popup.getAttribute('aria-labelledby') === trigger?.id,
+      );
+      trigger?.parentElement.remove();
+      for (const body of popup?.querySelectorAll('.next-why-body') || [])
+        header.append(body.cloneNode(true));
+      return norm(header);
+    })(),
     fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map((node) => [
       node.dataset.nextFleetFact,
       norm(node),
@@ -265,7 +276,17 @@ function firstDifference(left, right, path = '$') {
 }
 
 /* A difference found by the comparison is a failure unless it is named here with its reason. */
-const DEVIATIONS = [];
+const DEVIATIONS = [
+  {
+    scope: 'Sessions header',
+    reason:
+      'DEC-27 moves the two explanations into the shared how-to and request/block counters to Attention; goal links include saved words.',
+  },
+  {
+    scope: 'assignment',
+    reason: 'Current task names the instruction without borrowing the session goal label.',
+  },
+];
 
 const browser = await chromium.launch();
 const golden = sessionDeviations('sessions-parity');
@@ -287,6 +308,92 @@ try {
   const real = await (await fetch(board.react.origin + '/api/data')).json();
   const holder = { body: real };
   await freeze(react, holder);
+
+  await step('first step: four goal links need one click and land focus on Intent', async () => {
+    const fixtures = [
+      {
+        harness: 'claude',
+        sid: 'active-draft',
+        state: 'working',
+        first_prompt: 'Draft active task',
+        first_prompt_at: 100,
+      },
+      {
+        harness: 'claude',
+        sid: 'recent-draft',
+        state: 'idle',
+        first_prompt: 'Draft recent task',
+        first_prompt_at: 100,
+      },
+      {
+        harness: 'claude',
+        sid: 'active-typed',
+        state: 'working',
+        annotation_goal: 'Saved active task',
+        annotation_revision: 1,
+      },
+      {
+        harness: 'claude',
+        sid: 'recent-typed',
+        state: 'idle',
+        annotation_goal: 'Saved recent task',
+        annotation_revision: 1,
+      },
+    ].map((row) => ({ ...row, project: 'first/step' }));
+    const o = await newPage();
+    const state = { body: { ...real, annotate: true, sessions: fixtures } };
+    await freeze(o, state);
+    const clicks = [];
+    try {
+      for (const [index, row] of fixtures.entries()) {
+        state.body = {
+          ...state.body,
+          sessions: fixtures.map((item) => ({ ...item, departure_checked: index % 2 === 1 })),
+        };
+        await load(o, board.react.origin, '#n=sessions');
+        assert.equal(
+          await o.page
+            .getByText(
+              'Open a session, set its goal and press Analyze drift to see how far it moved from it.',
+              { exact: true },
+            )
+            .count(),
+          1,
+        );
+        assert.equal(
+          await o.page.getByRole('button', { name: 'How Intent and drift works' }).count(),
+          1,
+        );
+        assert.equal(
+          await o.page.locator('.next-operations-header [data-slot=accordion-trigger]').count(),
+          0,
+        );
+        assert.equal(await o.page.locator('[data-next-fleet-fact]').count(), 2);
+        await o.page.evaluate(() => {
+          globalThis.__goalClicks = 0;
+          document.addEventListener('click', (event) => {
+            if (event.target.closest('[data-next-goal-focus]')) globalThis.__goalClicks += 1;
+          });
+        });
+        await o.page
+          .locator(`article[data-next-session="${row.sid}"] [data-next-goal-focus]`)
+          .click();
+        await o.page.waitForFunction(
+          ({ typed, sid }) =>
+            typed
+              ? document.activeElement?.getAttribute('data-next-focus') ===
+                `held:claude:${sid}:goal`
+              : document.activeElement?.id === 'next-session-intent-heading',
+          { typed: Boolean(row.annotation_goal), sid: row.sid },
+        );
+        assert.equal(await o.page.evaluate(() => globalThis.__goalClicks), 1);
+        clicks.push({ sid: row.sid, clicks: 1 });
+      }
+      return clicks;
+    } finally {
+      await o.close();
+    }
+  });
 
   /* ===================== DIFFERENTIAL: the real board ===================== */
   await step(
@@ -678,7 +785,7 @@ try {
       const o = await clocked('#n=sessions');
       try {
         await o.page.addStyleTag({ content: '#app{min-height:3200px}' });
-        await o.page.getByText('How rows are split').click();
+        await o.page.getByRole('button', { name: 'How Intent and drift works' }).click();
         await o.page.evaluate(() => {
           const row = globalThis.document.querySelector('article[data-next-session="live-work"]');
           row.__mark = 'kept';
@@ -728,7 +835,7 @@ try {
           Math.abs(kept.linkTop - kept.before) <= 1,
           `the focused link stayed where it was on screen: ${kept.linkTop} against ${kept.before}`,
         );
-        assert.deepEqual(kept.open, ['How rows are split'], 'the caveat stayed open');
+        assert.deepEqual(kept.open, [], 'the how-to closes when focus leaves for the row link');
         return kept;
       } finally {
         await o.close();
@@ -847,7 +954,7 @@ try {
     'keyboard: a caveat opens and closes with Enter and Space, and the page reports its state',
     async () => {
       await load(react, board.react.origin, '#n=sessions');
-      const summary = react.page.getByText('How rows are split');
+      const summary = react.page.getByRole('button', { name: 'How Intent and drift works' });
       await summary.focus();
       await react.page.keyboard.press('Enter');
       assert.equal(

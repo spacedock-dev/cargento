@@ -30,14 +30,20 @@ prototype and this document disagree, this document is what shipped.
 
 ## Cockpit reconciliation
 
+The project labels distinguish the harness's latest instruction from a session's own goal.
+The browser-only draft is labelled A note to yourself, kept in this browser tab. The first-officer
+and Captain gloss appears only with a first-officer session or an enabled stage source; stage
+alerts remain conditional on their source being enabled. Project member rows open the session
+at the Intent heading for an untouched draft, otherwise at its goal box, in one press.
+
 The project page uses the cockpit's information architecture: a left Scope rail, a persistent
-ASSIGNMENT / EXECUTION / COMMAND briefing with latest evidence and direction, and Now / Course /
+Where this project stands briefing with Current task, Running now, Needs you and Latest result, and Now / Course /
 Decisions / Console tabs beneath it. This preserves the recovery briefing while retaining v2's
 rule that every claim needs published evidence. The shared-label caveat stays with project identity.
 
 | Retained v2 surface | Cockpit home |
 |---|---|
-| Stated goal, source, and goal-gap reason | ASSIGNMENT in the briefing |
+| Latest instruction, source, and absence reason | Current task in the briefing |
 | Going on and observed endings, including six outcomes, glyphs and git readings | Now, alongside workflow evidence |
 | Observed state changes and unattended count | Course, beside semantic history and completed tasks |
 | Delegation, Waiting on you, Capacity, Tripwires | Console |
@@ -51,7 +57,7 @@ activity view or to every event without leaving it.
 
 RC-1 protects [P3's promise of one queue of everything blocked on the reader](promise-map.md#p3-is-anything-waiting-on-me).
 Putting all waiting evidence behind the Console tab would weaken that promise: a reader returning
-to Now could miss a session that needs them. COMMAND therefore names a waiting project session
+to Now could miss a session that needs them. Needs you therefore names a waiting project session
 above the tabs whenever one exists, with raise and copy-resume controls wherever supported.
 Console holds the full queue and its detail. Selecting another tab or focusing a non-waiting
 sibling must not hide the project wait. Both surfaces silent while a session waits is a defect;
@@ -561,7 +567,7 @@ installed copy is complete rather than relying on recursive copying to conceal a
 The header counts running sessions and all observed subagents from the shared derivation,
 including quiet subagents. Running requires working state, no observed end, and the published
 `active` flag. A reported-block button appears while a session is waiting on the reader in that
-model. Projects, Sessions, Attention and Intent log all have primary navigation links; the fourth arrived with the annotation work, which needed a surface whose rows outlive the board. Shortcuts `p`, `s`, and
+model. Sessions, Projects, Attention and Intent log have primary navigation links, in that order; the fourth arrived with the annotation work, which needed a surface whose rows outlive the board. Shortcuts `p`, `s`, and
 `a` are case-insensitive and do not run while a form control or editable content owns focus or
 Meta, Control, or Alt is held. `Escape` follows the same restrictions and returns from session
 detail to its project, and from any other view to Sessions. In a tripwire draft it cancels the
@@ -860,7 +866,7 @@ happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-The board carries STEER and TRIPWIRES because the dashboard needs the interaction shape,
+The board carries A note to yourself, kept in this browser tab and TRIPWIRES because the dashboard needs the interaction shape,
 but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It

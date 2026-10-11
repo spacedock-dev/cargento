@@ -10,6 +10,8 @@ import {
   resumeCommand,
 } from '../controls';
 import { useControls, useValueStore } from '../controls/kit';
+import { stageData } from '../steering/stage';
+import { isRecord } from '../observed';
 import { annotationOf } from '../intent/annotation';
 import { sessionKey } from '../observed/values';
 import type { ObservedSession } from '../observed';
@@ -286,7 +288,7 @@ function Goal({ model }: { readonly model: ProjectModel }) {
   return (
     <Card as="section" variant="project-goal" className="next-project-goal">
       <header>
-        <h2>STATED GOAL</h2>
+        <h2>Latest instruction</h2>
         {!goal.typed.length && goal.scope.known ? (
           <span className="next-project-goal-source">{goal.derivedSource}</span>
         ) : null}
@@ -406,15 +408,20 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
       aria-label="Recovery summary"
     >
       <header>
-        <strong>PROJECT RECOVERY BRIEFING</strong>
-        <small className="next-cockpit-recovery-gloss">{AUTHORITY_GLOSS}</small>
+        <strong>Where this project stands</strong>
+        {group.sessions.some(
+          (session) =>
+            isRecord(session['spacedock']) && session['spacedock']['role'] === 'first-officer',
+        ) || stageData(model.payload).enabled ? (
+          <small className="next-cockpit-recovery-gloss">{AUTHORITY_GLOSS}</small>
+        ) : null}
       </header>
       <div
         data-next-cockpit-task=""
         {...(task.id ? { 'data-work-item': task.id } : {})}
         {...(task.known ? { 'data-next-cockpit-task-known': '' } : {})}
       >
-        <span>ASSIGNMENT</span>
+        <span>Current task</span>
         <strong>{taskText}</strong>
         {task.known && task.qualifier ? <small>{task.qualifier}</small> : null}
         {task.known && task.provenance ? (
@@ -433,16 +440,16 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
         <Goal model={model} />
       </div>
       <div>
-        <span>EXECUTION</span>
+        <span>Running now</span>
         <Execution model={model} briefing={briefing} compactIdle={compactIdle} />
       </div>
       <div>
-        <span>COMMAND</span>
+        <span>Needs you</span>
         {waiting ? <Waiting session={waiting} project={model.route.project} /> : null}
         <Attention model={model} briefing={briefing} />
       </div>
       <div className="next-cockpit-recovery-evidence">
-        <span>LATEST EVIDENCE</span>
+        <span>Latest result</span>
         {latest.directionInAssignment ? (
           <p>Direction shown in assignment</p>
         ) : latest.direction ? (

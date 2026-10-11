@@ -8,9 +8,13 @@ export function sessionDeviations(proof) {
   const seen = new Map();
   const retract = (value, key = '') => {
     if (typeof value === 'string') {
+      value = value.replaceAll('ASSIGNMENT', 'Current task');
       if (key === 'header' || key === 'text')
         return value
           .replace(/Copy ID|Copy link|Copy command/g, '')
+          .replaceAll('COMMAND SURFACE', '')
+          .replaceAll('How rows are split', '')
+          .replaceAll('Goal sources', '')
           .replace(
             /No resume commandWhy(?:This session published no usable id this run|[^.]* publishes no re-entry command), so (?:there is no re-entry command to copy|there is none to copy)\./g,
             '',
@@ -42,7 +46,10 @@ export function sessionDeviations(proof) {
         .map((item) => retract(item, key));
     if (value && typeof value === 'object')
       return Object.fromEntries(
-        Object.entries(value).map(([name, item]) => [name, retract(item, name)]),
+        Object.entries(value).map(([name, item]) => [
+          name,
+          retract(name === 'fleet' ? item.slice(0, 2) : item, name),
+        ]),
       );
     return value;
   };

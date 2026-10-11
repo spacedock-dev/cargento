@@ -82,6 +82,7 @@ describe('the stage-condition cards agree with the legacy page', () => {
         { data: generated.payload, strict: false },
       );
       await page.settle();
+      html.querySelector('h2')?.replaceChildren('Stage alerts');
       const theirs = summarize(html);
       const mine = summarize(page.container);
       if (JSON.stringify(theirs) !== JSON.stringify(mine)) {

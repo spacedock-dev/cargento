@@ -40,7 +40,7 @@ export function ProjectSteer({
   return (
     <section className={`next-control next-steer${layout ? ` ${layout}` : ''}`} data-next-steer>
       <header>
-        <span className="next-steer-label">STEER · LOCAL ONLY</span>
+        <span className="next-steer-label">A note to yourself, kept in this browser tab</span>
         <p className="next-steer-caveat">
           Cargento has no write path into a session. Anything you type here is a note to yourself,
           kept in this browser tab.
