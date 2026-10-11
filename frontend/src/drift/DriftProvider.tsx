@@ -84,7 +84,21 @@ export function DriftProvider({
     contexts: view.contexts,
     held: ctx.intent.held,
   });
-  const value = useMemo<DriftValue>(() => ({ ctx, model }), [ctx, model]);
+  const [chosen, setChosen] = useState<{ session: string; readAt: unknown; key: string } | null>(
+    null,
+  );
+  const finding =
+    chosen?.session === key && chosen.readAt === model.raw?.['read_at']
+      ? (model.shape?.criteria.find((row) => row.key === chosen.key && row.citedIds.length) ?? null)
+      : null;
+  const value: DriftValue = {
+    ctx,
+    model,
+    finding,
+    jump: chosen,
+    chooseFinding: (findingKey) =>
+      setChosen({ session: key, readAt: model.raw?.['read_at'], key: findingKey }),
+  };
 
   /* After the commit, never from the render: the timers the card asked for, the announcements of a running
      analysis, and the one release of a paint the reader's editing queued. */

@@ -116,8 +116,15 @@ export function DriftBody({ primary }: { readonly primary: boolean }) {
       <ReadingResult
         question={control}
         slotted={slotted}
-        again={(steer) => (
-          <ReadingControl board={board} primary={false} again steer={steer} refusalOf={refusal} />
+        again={(steer, showRun = true) => (
+          <ReadingControl
+            board={board}
+            primary={false}
+            again
+            showRun={showRun}
+            steer={steer}
+            refusalOf={refusal}
+          />
         )}
       />
     );

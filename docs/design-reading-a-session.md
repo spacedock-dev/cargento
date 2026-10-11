@@ -3400,7 +3400,8 @@ the analysis's recommendation.
   change that later), "Allow and analyze" while confirming, none while analyzing and none with no
   reader. Amended 2026-10-01 (owner, Q3, DRC-4758): under a stored reading the result takes the
   button's place, "Analyze drift" is not drawn, its one "Analyze again" is secondary, and Steer
-  back is that stage's primary where a departure stands.
+  back is that stage's primary where a departure stands. Amended 2026-10-12 under DEC-27:
+  a current result has no run control; a stale result keeps one with its reason in the callout.
 - No Stop session control (DEC-16).
 - The fold, measured on a live board at 1440x900: the first build stacked the header one element
   per line (205px) and put Analyze drift's bottom at 1022 on a Claude Code session and 1085 on a
@@ -3960,7 +3961,9 @@ saved-line labels. The calls the rulings left open:
   as a secondary, the design's "Analyze again". With no reader it is the primary beside the route's
   reason. With a reader and no departure it is a secondary after Analyze drift. It is not drawn
   while the question before the press stands, since the question owns that slot and Keep is its
-  primary. The result stage gains nothing, so DRC-4695 renders around it.
+  primary. The result stage gains nothing, so DRC-4695 renders around it. Amended 2026-10-12
+  under DEC-27: after a current result, Steer back has no Analyze again beside it. A stale result
+  offers the one rerun in its reason callout.
 - The box is labelled "Correction to copy" with the hint "Cargento never sends this. Copy it and
   paste it into the session." Copy writes the box's text, frozen at the press, and posts it to
   `POST /api/correction/copied` only after the clipboard took it. The owner approved "Copy",
@@ -4123,20 +4126,32 @@ having happened. This supersedes the placement in the bullets above; their wordi
 - Under a stored, readable reading and no job, the slot holds the result in this order: the stale
   callout if any; the headline and its account under a departure only; the goal row; "Against
   expected outcome", an ordered list with one item per outcome line; Where the work went; Steer back
-  and Update intent instead; "Analyze again"; Not accurate; then "What it read", one click away with
+  and Update intent instead; Not accurate; then "What it read", one click away with
   the definition, the model stamp, the baseline's source, the cutoff and the revision. The READING
   section is not drawn there. A malformed reading, a refused one and no reading keep it.
 - Each checklist line is a glyph, the line's own words as its title, the ruled status beneath, and
   "Evidence" one click away holding the source tag, the why and the limit. The glyph is shape first:
   a cross for departs in the panel's clay (Q10), a neutral filled dot for consistent, never a check
-  and never green, and a dashed circle for can't tell. "#n" stays text, not a link, because the page
-  routes on its fragment.
+  and never green, and a dashed circle for can't tell. "#n" stays text because the page routes on
+  its fragment. Amended 2026-10-12 under DEC-27: each finding with resolved citations has a
+  button to jump within the page to its entries in Session activity. It resolves fact ids, scrolls
+  to and focuses the first entry, and marks each with the finding's stored words and the entry's
+  current number as text. Reduced motion uses an instant scroll. Missing citations keep the
+  existing nothing-resolvable sentence and mark nothing. The jump starts no request or model
+  and is outside DEC-27's measured click path.
 - One "Analyze again" (Q3). It is the same control as "Analyze drift", so it keeps every refusal,
   the consent step and the count, and is inert with its reason wherever the press would be refused.
   It is never the stage's primary. A stale result holds it in the callout, and Steer back keeps its
-  own row at the foot; a current result holds it at the foot beside Steer back. While the question
+  own row at the foot. Amended 2026-10-12 under DEC-27 row 3: a current result offers no
+  second run control. New work or changed intent makes it stale, and its one Analyze again
+  appears with the reason in the callout. The request count, disclosure and daily cap remain
+  visible or reachable beside the result. While the question
   before the press stands, no press is drawn under the result. While a job runs the analyzing box
   takes the slot alone and the old result is not drawn.
+  The session's run controls are Analyze drift before a result, Allow and analyze inside consent,
+  Keep my intent and analyze while later directions are unsettled, and Analyze again for a stale
+  result. A current result and a running job offer no run control. Cancel only cancels; Keep my
+  intent where consent is owed only opens or settles directions and launches no reading.
 - The end of a job that stored a reading is announced as "The analysis finished. Its result is in
   the Drift section.", with no positional word, so it is true at every width.
 

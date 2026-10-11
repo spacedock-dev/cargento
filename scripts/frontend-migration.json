@@ -1075,6 +1075,16 @@
       "disposition": "store-held"
     },
     {
+      "name": "A finding selected in the session result",
+      "owner": "DRC-4825",
+      "oracles": [
+        "frontend/src/drift/ReadingResult.test.tsx",
+        "frontend/e2e/drift-parity.mjs"
+      ],
+      "contract": "The selected finding is held by session key, reading time and finding key across refreshes. Fact ids resolve again to current activity rows and numbers; only a press focuses and scrolls. A new reading, unavailable citations, navigation away or reload removes the marks. Nothing is stored or requested.",
+      "disposition": "stable-identity"
+    },
+    {
       "name": "A Not accurate mark the store did not take",
       "owner": "DRC-4825",
       "oracles": [

@@ -518,6 +518,15 @@ read" where the legacy page, which reads only the focused session's record, says
 panel here reads both, and neither sentence is an empty record. Dismissal has no legacy web surface (nothing in
 the web assets calls the dismiss route), so none was built.
 
+DEC-27 row 3 removes Analyze again from a current result; the count, disclosure and cap stay.
+A stale result keeps one run control in its reason callout, and a direction question replaces it.
+Finding buttons jump by stored fact id to the current activity rows, reveal cited rows outside
+the display bound, label them with the finding's stored words and current numbers, and focus
+the first. Reduced motion scrolls instantly. The drift proof compares retained content against
+unchanged recordings with the new jump buttons removed from its comparison snapshot and
+the obsolete current-result run button removed from the recorded side. Dedicated assertions
+cover every added button, missing citations, renumbering, focus, scrolling and zero requests.
+
 ## Project views, steering and the Console
 
 Deviations (2026-10-12): The recovery strip uses Where this project stands, Current task,

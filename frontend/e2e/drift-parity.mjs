@@ -90,6 +90,9 @@ const summarizeCard = () => {
   const liveCard = document.querySelector('.next-session-drift');
   if (!liveCard) return { missing: true, body: norm(document.body).slice(0, 200) };
   const card = liveCard.cloneNode(true);
+  // The new jumps are proved separately; every retained word still compares with its recording.
+  for (const jump of card.querySelectorAll('[data-next-cockpit-action="finding-jump"]'))
+    jump.remove();
   // Closed native details retained their evidence and controls. Read each owned
   // keepMounted popup after its trigger in the snapshot, without opening or moving live nodes.
   const joined = new Set();
@@ -523,7 +526,8 @@ try {
       // Sorted as a copy: a golden observation is the stored value itself, and sorting it would change the recording.
       assert.deepEqual([...state.resultStates].sort(), ['consistent', 'departs']);
       assert.ok(state.entries.length >= 2);
-      assert.ok(state.buttons.some(([label]) => label === 'Analyze again'));
+      assert.ok(!state.buttons.some(([label]) => label === 'Analyze again'));
+      assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 0);
       return state.resultStates;
     },
   );
@@ -568,6 +572,7 @@ try {
       );
       assert.deepEqual(state.stale, ['intent']);
       assert.match(state.text, /Revision 4 is current/);
+      assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 1);
       const work = await compare('new work', (g) =>
         stored(g, {
           facts: [
@@ -578,6 +583,100 @@ try {
         }),
       );
       assert.deepEqual(work.stale, ['work']);
+      assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 1);
+      assert.match(work.text, /New work since this analysis/);
+    },
+  );
+
+  await step(
+    'finding jumps resolve fact ids after renumbering without requests or launches',
+    async () => {
+      const g = await clockOf();
+      await setState(react, () => stored(g));
+      await load(react);
+      await read(react);
+      await react.page.emulateMedia({ reducedMotion: 'reduce' });
+      await react.page.evaluate(() => {
+        globalThis.__findingScrolls = [];
+        const scroll = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function (options) {
+          globalThis.__findingScrolls.push({
+            id: this.getAttribute('data-next-entry-id'),
+            options,
+          });
+          return scroll.call(this, options);
+        };
+      });
+      const choose = async (key, id, number, words) => {
+        const requests = [...react.log.requests];
+        const before = await resources(react.page);
+        const posts = react.script.posts.length;
+        await react.page.locator(`[data-next-finding="${key}"]`).click();
+        const row = react.page.locator(`[data-next-entry-id="${id}"]`);
+        await row.locator('[data-next-finding-entry]').waitFor();
+        assert.match(await row.innerText(), new RegExp(`Cited for “${words}” · #${number}`));
+        assert.equal(await row.evaluate((node) => document.activeElement === node), true);
+        assert.equal(
+          await row.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            return box.top >= 0 && box.bottom <= innerHeight;
+          }),
+          true,
+        );
+        assert.deepEqual(await resources(react.page), before);
+        assert.equal(react.script.posts.length, posts);
+        assert.deepEqual(react.log.requests, requests);
+        assert.equal(await react.page.locator('[data-next-finding-entry]').count(), 1);
+      };
+      await choose('goal', 'c1', 1, 'It stopped running the tests.');
+      await choose('line_1', 'c2', 2, 'Tests pass');
+      assert.equal(
+        await react.page.locator('[data-next-entry-id="c1"] [data-next-finding-entry]').count(),
+        0,
+      );
+      assert.deepEqual(
+        await react.page.evaluate(() =>
+          globalThis.__findingScrolls.map((row) => row.options.behavior),
+        ),
+        ['instant', 'instant'],
+      );
+      await setState(react, () =>
+        stored(g, {
+          facts: [
+            check('c2', g - 650, 'passed'),
+            check('c1', g - 600, 'failed', { result_source: 'failed flag' }),
+          ],
+        }),
+      );
+      await load(react);
+      await read(react);
+      await choose('goal', 'c1', 2, 'It stopped running the tests.');
+      await setState(react, () =>
+        stored(g, {
+          facts: RECORD(g),
+          session: {
+            annotation_assessment: ASSESSMENT(g, {
+              criteria: {
+                goal: {
+                  result: 'departure',
+                  cites: ['gone'],
+                  detail: 'Old account',
+                  clause: 'Ship the queue worker',
+                },
+              },
+            }),
+          },
+        }),
+      );
+      await load(react);
+      await read(react);
+      assert.match(
+        await react.page.locator('[data-next-result-goal]').innerText(),
+        /Nothing resolvable was cited/,
+      );
+      assert.equal(await react.page.locator('[data-next-finding]').count(), 0);
+      assert.equal(await react.page.locator('[data-next-finding-entry]').count(), 0);
+      await react.page.emulateMedia({ reducedMotion: 'no-preference' });
     },
   );
 

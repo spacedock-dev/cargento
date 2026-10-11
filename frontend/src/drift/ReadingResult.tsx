@@ -1,4 +1,5 @@
 import { Card } from '../ui/card';
+import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
 import { ActionButton } from '../intent/ActionButton';
@@ -39,12 +40,8 @@ import type { SteerSlot } from './ReadingControl';
 import { isOutcomeLine, type Criterion, type Shape } from './shape';
 import { Why } from './Why';
 
-/* The result, in the button's place: under the level, the stale callout if any, the headline, the goal row, the
-   checklist against the expected outcome, where the work went, then the one press, "Analyze again", and Not
-   accurate. A reading is a model's account and takes the third treatment: italic, secondary ink, a dotted
-   rule, and no colour under any result. Accent on a reading would read as "met", which is a claim about the
-   reader's intent from partial evidence. The legacy page's `nextCockpitReadingParts` is the oracle, and
-   `result.differential.test.ts` holds the words to it. */
+/* Accent on a reading would read as "met", a claim about intent from partial evidence.
+   The result keeps secondary ink and no colour under any verdict. */
 
 function ClauseCell({ row }: { readonly row: Criterion }) {
   if (row.key === CLAIMS) return null;
@@ -125,6 +122,7 @@ function ResultItem({
       <span className="next-cockpit-result-body">
         <ClauseCell row={row} />
         <em className="next-cockpit-reading-result">{status}</em>
+        <FindingJump row={row} />
         {row.key === CLAIMS && row.result === DEPARTURE ? (
           <Account row={row} showClause={false} />
         ) : null}
@@ -140,6 +138,22 @@ function ResultItem({
         </Why>
       </span>
     </Tag>
+  );
+}
+
+function FindingJump({ row }: { readonly row: Criterion }) {
+  const { chooseFinding } = useDrift();
+  if (!row.citedIds.length) return null;
+  return (
+    <Button
+      type="button"
+      variant="bare"
+      data-next-cockpit-action="finding-jump"
+      data-next-finding={row.key}
+      onClick={() => chooseFinding(row.key)}
+    >
+      Show cited entries in Session activity
+    </Button>
   );
 }
 
@@ -325,8 +339,8 @@ export function ReadingResult({
   readonly question: ReactNode;
   /** Steer back's row and box, where the control offers it. */
   readonly slotted: SteerSlot | null;
-  /** The Analyze again press, which carries Steer back at the foot and not in the stale callout. */
-  readonly again: (steer: SteerSlot | null) => ReactNode;
+  /** The stale result's one run control. */
+  readonly again: (steer: SteerSlot | null, showRun?: boolean) => ReactNode;
 }) {
   const { model } = useDrift();
   const { shape, raw, annotation, entries, numbers, byId, source } = model;
@@ -359,20 +373,22 @@ export function ReadingResult({
       {shape.cutoff ? <p className="next-cockpit-reading-why">{shape.cutoff}</p> : null}
     </>
   );
-  /* A changed reading keeps Analyze again in its callout. A surviving departure's primary precedes
-     the evidence rows; a secondary steer stays at the foot. A direction question holds both back. */
+  /* A current result keeps the disclosure and accounting without a second run control.
+     [DEC-27](../../../docs/design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result)
+     A direction question owns the sole run path while it stands. */
   const leadSteer = !question && slotted?.lead ? slotted : null;
-  const press = question
-    ? null
-    : again(staleState ? null : leadSteer ? { ...leadSteer, button: null } : slotted);
   const steers =
-    staleState && slotted && !question ? (
+    slotted && !question ? (
       <>
         {leadSteer ? null : <div className="next-cockpit-reading-ask">{slotted.button}</div>}
         {slotted.box}
       </>
     ) : null;
-  const foot = staleState ? steers : press;
+  const foot = staleState
+    ? steers
+    : question
+      ? null
+      : again(leadSteer ? { ...leadSteer, button: null } : slotted, false);
   const callout = staleState && !question ? again(null) : null;
   return (
     <div className="next-session-drift-check next-cockpit-result gap-1" data-next-result>

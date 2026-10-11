@@ -121,13 +121,27 @@ export function normaliseSessionRecord(record, evidence = {}) {
             ...(Array.isArray(item) && typeof item[0] === 'string' ? [item[0]] : []),
           ]),
         );
-    if (value && typeof value === 'object')
+    if (value && typeof value === 'object') {
+      if (
+        value === record &&
+        Array.isArray(value.resultStates) &&
+        value.resultStates.length &&
+        !value.stale?.length &&
+        typeof value.text === 'string' &&
+        Array.isArray(value.buttons)
+      )
+        value = {
+          ...value,
+          text: value.text.replace('Analyze again', ''),
+          buttons: value.buttons.filter(([label]) => label !== 'Analyze again'),
+        };
       return Object.fromEntries(
         Object.entries(value).map(([name, item]) => [
           name,
           retract(name === 'fleet' ? item.slice(0, 2) : item, name, [...path, name]),
         ]),
       );
+    }
     return value;
   };
   const result = retract(record);

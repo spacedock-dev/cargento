@@ -29,7 +29,10 @@ const ASSESSMENT = {
   },
 };
 const session = { annotation_assessment: ASSESSMENT, annotation_window_start: 100 };
-const FACTS = [check('c1', 500, 'failed', { result_source: 'failed flag' })];
+const FACTS = [
+  check('c1', 500, 'failed', { result_source: 'failed flag' }),
+  check('c2', 1100, 'passed'),
+];
 const PARTS = ['Your last check failed', { entry: 'c1' }, '. Fix it.'];
 const routes = {
   '/api/correction': () => json({ ok: true, parts: PARTS }),
