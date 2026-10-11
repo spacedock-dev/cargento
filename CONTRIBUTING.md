@@ -205,6 +205,12 @@ focus keys and modified-key behavior. Static stale and terminal absence messages
 [family record](docs/design-shadcn-adoption.md#project-console-timeline-shell-and-terminal-layer)
 owns the cascade audit and width reference.
 
+Attention and Capacity reuse Card on their existing queue, window and consent roots. Observer
+status paragraphs use polite Alert; blocked notifications use Badge while retaining native title
+text. Preserve each quota figure and its own clock, in-flow consent, the per-origin answer and
+request-on-press behavior. The [family record](docs/design-shadcn-adoption.md#attention-capacity-and-consent-layer)
+owns the cascade audit, hover and rail contexts, and width reference.
+
 Utilities beat `legacy` regardless of specificity: express surface chrome in variants or props
 and leave layout in the surface sheet. Update the exact count when deleting rules; a PR cannot
 raise its own allowance.

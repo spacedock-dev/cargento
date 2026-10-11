@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Fragment, useEffect, useMemo, type ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
@@ -127,7 +128,8 @@ function WindowRow({
   return (
     // The whole row is a pointer target for its window, as the legacy row was; the button inside it is the
     // one a keyboard and a screen reader reach, and both name the same key.
-    <div
+    <Card
+      variant="capacity-band"
       className="next-capacity-row"
       data-next-capacity-row={key}
       data-next-capacity-pick={key}
@@ -181,7 +183,7 @@ function WindowRow({
           duration(Math.max(0, row.remainingSec))
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -243,7 +245,7 @@ function Prospect({
       : 'Recent pace not measured: no second reading yet from this vendor.';
   }
   return (
-    <div className="next-capacity-prospect">
+    <Card variant="capacity-prospect" className="next-capacity-prospect">
       <p>
         <span className="next-capacity-scope">{`${label} · ${SLOT_LABELS[row.slot]}`}</span>
       </p>
@@ -269,7 +271,7 @@ function Prospect({
         </p>
       ) : null}
       {stale === null ? null : <small>{stale}</small>}
-    </div>
+    </Card>
   );
 }
 

@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useFocusKey } from '../controls/useFocusKey';
 import { useShell } from '../shell/context';
@@ -39,7 +40,9 @@ export function UsageDisclosure() {
   });
   if (!offered || consent !== null) return null;
   return (
-    <section
+    <Card
+      as="section"
+      variant="quota-consent"
       className="next-usage-consent"
       data-next-usage-consent=""
       role="region"
@@ -77,7 +80,7 @@ export function UsageDisclosure() {
         Changeable later from this strip. <code>--no-usage</code> refuses it for a whole run
         whatever is stored here.
       </p>
-    </section>
+    </Card>
   );
 }
 

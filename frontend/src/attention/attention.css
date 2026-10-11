@@ -6,7 +6,6 @@
 .next-attention-heading{margin-bottom:24px}
 .next-attention-heading h1{margin:0;font-size:var(--fs-head);font-weight:700;letter-spacing:-.02em}
 .next-attention-heading p,.next-attention-section-heading p{margin:0;color:var(--ink2);font-size:var(--fs-body);font-weight:500;line-height:1.55;max-width:var(--measure)}
-.next-attention-brief{display:grid;gap:10px;padding:16px 18px;border:1px solid var(--rule);border-left:2px solid var(--accent-dim);border-radius:var(--r-card);background:var(--panel)}
 .next-attention-brief p{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.6}
 .next-attention-brief>p,.next-attention-coverage>p{display:grid;grid-template-columns:104px minmax(0,1fr);gap:16px;align-items:baseline}
 .next-attention-brief>p>span:last-child{color:var(--ink)}
@@ -30,12 +29,7 @@
 .next-attention-section>h2{margin:0 0 10px;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-attention-section>ol{display:grid;gap:10px;margin:0;padding:0;list-style:none}
 .next-attention-section>ol>li[hidden]{display:none}
-.next-attention-item{display:grid;grid-template-columns:26px 240px minmax(0,1fr) 190px;gap:18px;align-items:start;min-width:0;padding:14px 18px;border:1px solid var(--rule);border-left:2px solid var(--line);border-radius:var(--r-card);background:var(--panel)}
-.next-attention-item[data-tone="unknown"]{border-left-color:var(--line)}
-.next-attention-item[data-tone="want"]{border-left-color:var(--amber)}
-.next-attention-item[data-tone="bad"]{border-left-color:var(--clay)}
-.next-attention-item[data-tone="ok"]{border-left-color:var(--accent)}
-.next-attention-item--board{background:transparent}
+.next-attention-item{grid-template-columns:26px 240px minmax(0,1fr) 190px;gap:18px;align-items:start;min-width:0}
 .next-attention-item>h3,.next-attention-item>p,.next-attention-item>div{min-width:0;margin:0}
 .next-attention-index{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
 .next-attention-risk-identity h3{margin:0 0 5px;font-size:var(--fs-body);font-weight:600;line-height:1.4}

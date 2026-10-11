@@ -52,12 +52,15 @@ const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2
 /* One break each, applied to the scratch copy only. A missing needle fails the run loudly rather than silently
    testing nothing. */
 const MUTATIONS = {
+  'figure-becomes-verdict': [
+    ['src/capacity/CapacityStrip.tsx', '{`${String(row.pct)}%`}', "{'safe'}"],
+  ],
   // The strip's rows keep their wide desktop columns on a narrow window: the page scrolls sideways.
   'strip-wide-columns': [
     [
       'src/capacity/capacity.css',
-      '.next-capacity-row{position:relative;padding:13px 4px;',
-      '.next-capacity-row{position:relative;min-width:560px;padding:13px 4px;',
+      '.next-capacity-row{position:relative;',
+      '.next-capacity-row{position:relative;min-width:560px;',
     ],
   ],
   // A window row and the consent answers answer a pointer press and nothing else.

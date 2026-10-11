@@ -1,3 +1,4 @@
+import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { useEffect, useSyncExternalStore } from 'react';
 import { useFocusKey } from '../controls/useFocusKey';
@@ -28,9 +29,9 @@ export function NotificationControl() {
   const state = owner.control(data);
   if (state === 'blocked') {
     return (
-      <span className="next-notify-note" title={BLOCKED_TITLE}>
+      <Badge variant="notify-blocked" className="next-notify-note" title={BLOCKED_TITLE}>
         notifications blocked
-      </span>
+      </Badge>
     );
   }
   if (state !== 'enable') return null;

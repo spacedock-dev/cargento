@@ -822,3 +822,62 @@ Hand-written CSS falls from 140,163 to 137,209 bytes, a reduction of 2,954 bytes
 paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,619,656 bytes, 21,440 more than the
 Intent and Drift layer; first-render medians are 144.2, 93.8 and 143.1 ms and poll-to-paint medians are 44.2, 44.6 and 61.6 ms;
 every budget passes. Native Windows, Linux, screen readers, Firefox and WebKit are not measured locally.
+
+## Attention, Capacity and consent layer
+
+This family reuses Card, Badge and Alert from the previous layers. No new component or package
+is vendored. Card keeps the Attention coverage brief and queue articles, each quota window row,
+the selected window's prospect, and the quota and observer consent sections on their original
+roots. Badge keeps the blocked-notification span and its native title. Alert keeps the observer
+status and refusal paragraphs polite, with the same text and request lifecycle.
+
+### Attention and Capacity cascade audit
+
+| Surface | Component chrome and retained layout |
+|---|---|
+| Coverage brief | Card owns grid display, gap, padding, rule border, accent edge, panel background and card radius. Coverage children, labels and disclosure stay in Attention. |
+| Queue article | Card owns grid display, padding, rule border, tone edge, background and radius. The sheet keeps responsive columns, gaps and evidence cells; off-board risks retain a transparent surface. |
+| Quota window | Card owns grid display, padding, lower rule and hover background, including narrow-screen padding. The sheet keeps columns, labels, the selection marker and the single keyboard button's full-row pointer target. |
+| Prospect | Card owns padding, accent edge, corner shape, panel background and sentence type. The sheet keeps margins, labelled numbers and text wrapping. |
+| Consent | Card owns padding, amber edge, panel background, type and line height. The rail's smaller padding and label type are explicit contextual utilities. The sheet keeps action layout, paragraph spacing and margins. |
+| Observer status | Alert preserves the existing status role and paragraph root. It inherits consent type, including the rail's smaller tier. |
+| Blocked notifications | Badge owns the existing ink. The span's native title and notification owner remain unchanged. |
+
+Risk and waiting evidence stays in its labelled cells: these are sourced sentences and elapsed
+figures, rather than independent pills. Coverage rows, open-board subjects and the remaining-window
+summary keep their list and grouping rules. Column captions, model sub-limit values, scope labels
+and consent switch state are measurements or labels, rather than new badges. The budget-against-clock
+bar stays native because its fill and its elapsed tick express two independent quantities; a
+single progress value would discard that comparison. Existing progress elements and title tooltips
+stay native. Consent remains in flow with its existing labelled region, focus keys and per-origin
+storage; allowing model summaries still sends nothing until Summarize is pressed. No reader-state
+owner, storage key, golden or frozen legacy source moves. No legacy rule leaves its layer.
+
+`attention-chrome-reference.json` records 46 identities from `34045be7`, the branch tip before this
+swap, using an archive built once under this worktree's ignored screenshots directory. The existing 87-view sweep
+is supplemented with Attention, quota windows and observer consent at 1280, 800 and 375 px, including
+the blocked-notification state. Keys contain surface, viewport band, tone, rail context, hover state
+and visible or hidden sizing, with no clocks, counts or absolute widths. The notification tag also
+distinguishes the fleet header's layout with running counts from the project header's layout with
+a More menu. The recorder refuses conflicting values within one identity. The gate compares ink, background, all four borders,
+display, padding, radius, type and role on every adopted instance. Row width is a fraction of parent
+content width with a 0.015 tolerance; the notification tag's width is compared with its rendered
+text plus chrome with a 15 percent tolerance for font metrics. Non-finite ratios fail.
+
+The development CSS sweep passes across 87 views, comparing 216 adopted instances and retaining
+all earlier component gates. Six scratch-copy mutations fail this family's gate: queue padding
+and width each produce 18 differences, band padding and Badge ink nine each, and assertive status
+and quota-consent padding three each. The width mutation changes no chrome property. Ten helper
+tests reject non-finite ratios, collapsed widths, changed ink, missing identities and unwanted
+live roles while allowing the text-metric tolerance. Replacing a quota percentage with `safe`
+fails both the existing browser differential and the mounted Capacity differential; restoring
+the source passes the mounted comparison. No broader normalization or golden change is needed.
+The whole Vitest suite passes 1,491 tests in 132 files with two workers; build tests pass 23.
+Development browser proofs pass Attention (16 steps including captures), Capacity (17), Sessions
+(18), Intent (20), Drift (30), Project (19), Console (29), Terminal (19), Timeline filtering (13),
+shell (29), Controls (22) and Popover (10). No recorded fixture changes.
+
+Hand-written CSS falls from 137,209 to 136,243 bytes, a reduction of 966 bytes, with the counted
+paths unchanged. The lead owns the stack-head bundle rebuild and fluidity measurement. This
+layer's local development checks do not certify production bytes, native Windows or Linux,
+screen readers, Firefox or WebKit.

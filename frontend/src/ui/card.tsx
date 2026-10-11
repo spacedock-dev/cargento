@@ -44,6 +44,18 @@ const cardVariants = cva('min-w-0', {
         'grid gap-[7px] px-[12px] py-[10px] [border-left:2px_solid_var(--rule)] bg-[var(--sunk)] text-muted-foreground [font-family:var(--sans)] text-body font-medium leading-[1.55]',
       'terminal-frame':
         'flex flex-col [border:1px_solid_var(--rule)] rounded-card bg-[var(--sunk)] text-foreground overflow-hidden [font-family:var(--sans)] text-body leading-[1.5]',
+      'attention-brief':
+        'grid gap-[10px] px-[18px] py-[16px] border border-solid border-[var(--rule)] border-l-2 border-l-[var(--accent-dim)] rounded-card bg-card',
+      'attention-item':
+        'grid px-[18px] py-[14px] border border-solid border-[var(--rule)] border-l-2 border-l-border rounded-card bg-card [&.next-attention-item--board]:bg-transparent',
+      'capacity-band':
+        'grid px-[4px] py-[13px] [border-bottom:1px_solid_var(--line)] hover:bg-card [@media(max-width:980px)]:py-[15px]',
+      'capacity-prospect':
+        'block px-[18px] py-[15px] [border-left:2px_solid_var(--accent-dim)] [border-radius:0_var(--r-card)_var(--r-card)_0] bg-card text-muted-foreground text-body leading-[1.6]',
+      'quota-consent':
+        'block px-[18px] py-[16px] [border-left:3px_solid_var(--amber)] bg-card text-body leading-[1.5] [.next-project-detail-rail_&]:p-[12px] [.next-project-detail-rail_&]:text-label',
+      'observer-consent':
+        'block px-[18px] py-[16px] [border-left:3px_solid_var(--amber)] bg-card text-body leading-[1.5] [.next-project-detail-rail_&]:p-[12px] [.next-project-detail-rail_&]:text-label',
       'work-panel': 'flex flex-col gap-[8px] pt-[12px] px-[16px] pb-[14px]',
     },
     tone: {

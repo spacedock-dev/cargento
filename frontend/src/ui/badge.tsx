@@ -19,6 +19,7 @@ const badgeVariants = cva('', {
         'px-[8px] py-px border border-dashed border-border rounded-pill text-muted-foreground text-label',
       'course-tag':
         'text-[var(--ink-label)] [font-family:var(--mono)] text-label font-semibold leading-[normal] tracking-[.07em]',
+      'notify-blocked': 'text-foreground',
       'terminal-tag': 'ml-auto text-muted-foreground',
       'work-flag':
         'ml-auto px-[7px] py-0 border border-solid border-[var(--rule)] rounded-pill text-muted-foreground [font-family:var(--mono)] text-label font-medium leading-[1.5] [&+[data-variant=work-flag]]:ml-0',

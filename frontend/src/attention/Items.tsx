@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { CopyControl, RaiseControl, resumeCommand } from '../controls';
 import type { BoardRisk, Row } from '../observed';
 import { AttentionLink } from './AttentionLink';
@@ -70,7 +71,9 @@ export function SubjectItem({
   const checkpoints = checkpointRows(subject, model);
   return (
     <li {...(hidden ? { hidden: true } : {})}>
-      <article
+      <Card
+        as="article"
+        variant="attention-item"
         className="next-attention-item next-attention-item--legacy"
         data-next-attention-subject={subject.key}
         data-next-subject-key={subject.key}
@@ -113,7 +116,7 @@ export function SubjectItem({
             {subject.section === 'needs' ? <GateControls session={subject.session} /> : null}
           </span>
         </p>
-      </article>
+      </Card>
     </li>
   );
 }
@@ -138,9 +141,14 @@ export function RiskItem({
   const outcome = row.subject ? subjectOutcome(row.subject, model) : null;
   return (
     <li>
-      <article
+      <Card
+        as="article"
+        variant="attention-item"
         className={`next-attention-item${board ? ' next-attention-item--board' : ''}`}
         {...(board ? { 'data-next-board-risk': risk.kind } : {})}
+        tone={
+          risk.tone === 'want' || risk.tone === 'bad' || risk.tone === 'ok' ? risk.tone : 'unknown'
+        }
         data-tone={risk.tone}
         data-next-attention-subject={row.key}
         data-next-subject-key={row.key}
@@ -186,7 +194,7 @@ export function RiskItem({
           <span>{`source · ${risk.src}`}</span>
           {row.subject?.section === 'needs' ? <GateControls session={row.subject.session} /> : null}
         </div>
-      </article>
+      </Card>
     </li>
   );
 }

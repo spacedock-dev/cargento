@@ -90,6 +90,14 @@ remains compared. Recorded fixtures and frozen legacy sources are unchanged. The
 [family adoption](design-shadcn-adoption.md#project-console-timeline-shell-and-terminal-layer)
 owns the keyboard contract, measured reference and native decisions.
 
+Attention, Capacity and consent display components keep their articles, sections, paragraphs,
+spans, list order, numeric readings, clock ticks and action attributes. Existing display-component
+utility-class normalization already handles these roots; no wider normalization or recorded-fixture
+change is needed. The Attention text and Capacity tree differentials still compare each waiting
+source and each window's own figures. A number-to-verdict mutation is checked against the existing
+Capacity browser and mounted differentials. The [family adoption](design-shadcn-adoption.md#attention-capacity-and-consent-layer)
+owns the chrome reference, rail inheritance and native bar decision.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script
