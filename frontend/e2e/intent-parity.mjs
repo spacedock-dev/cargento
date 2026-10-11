@@ -21,7 +21,6 @@
  */
 import assert from 'node:assert/strict';
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { nativeFieldContinuity } from './support/native-field.mjs';
 import { visitFieldStates } from './support/field-worlds.mjs';
@@ -34,6 +33,7 @@ import { instrumentResources, recordClipboard, resources } from './sessions-boar
 import { openPage } from './support/browser.mjs';
 import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 import { awaitRecordRead } from './support/record.mjs';
+import { copyProofPath } from './support/proof-copy.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
@@ -195,6 +195,7 @@ if (mutation) {
       'relative min-w-0 max-w-full',
       'relative min-w-[400px] max-w-full',
     ],
+    'auto-prompt-width': ['ui/native-select.tsx', "prompt: 'block w-full", "prompt: 'block w-auto"],
     'reset-held-viewport': [
       'intent/HeldTextarea.tsx',
       'if (!element) return;',
@@ -202,11 +203,13 @@ if (mutation) {
     ],
   };
   assert.ok(mutations[mutation], `unknown intent mutation ${mutation}`);
-  copy = await mkdtemp(join(tmpdir(), 'cargento-intent-field-'));
+  const scratch = join(checkout, 'docs/screenshots/prompt-select');
+  await mkdir(scratch, { recursive: true });
+  copy = await mkdtemp(join(scratch, 'proof-'));
   for (const folder of ['frontend', 'cargento'])
     await cp(join(REPOSITORY, folder), join(copy, folder), {
       recursive: true,
-      filter: (path) => !path.includes('/test-results') && !path.includes('__pycache__'),
+      filter: copyProofPath,
     });
   await symlink(
     join(REPOSITORY, 'node_modules'),
@@ -645,6 +648,102 @@ try {
   );
 
   /* ===================== BEHAVIOUR: the prompt menu, adoption, directions, discard ===================== */
+  await step(
+    'the prompt select paints loading on the first press and reserves its width',
+    async () => {
+      const sizes = [];
+      for (const width of [1280, 375, 320]) {
+        await react.page.setViewportSize({ width, height: 900 });
+        await load(react, fragmentOf('intent-2'));
+        await readEditor(react);
+        const select = react.page.locator('[data-next-cockpit-prompt-select]');
+        const idle = await select.evaluate((el) => el.getBoundingClientRect().width);
+        let release;
+        const held = new Promise((done) => {
+          release = done;
+        });
+        const routeHandler = async (route) => {
+          await held;
+          await route.continue();
+        };
+        const pattern = '**/api/project-context?*prompts=1*';
+        await react.page.route(pattern, routeHandler);
+        try {
+          await select.evaluate((el) => {
+            globalThis.__promptFirstFrame = new Promise((done) => {
+              el.addEventListener(
+                'pointerdown',
+                () =>
+                  requestAnimationFrame(() =>
+                    done({
+                      width: el.getBoundingClientRect().width,
+                      text: el.selectedOptions[0]?.textContent,
+                      busy: el.getAttribute('aria-busy'),
+                      focused: document.activeElement === el,
+                    }),
+                  ),
+                { once: true },
+              );
+            });
+          });
+          await select.click();
+          const pending = await react.page.evaluate(() => globalThis.__promptFirstFrame);
+          assert.equal(pending.text, 'Loading your prompts', 'the first frame must show loading');
+          assert.equal(pending.busy, 'true');
+          assert.equal(pending.focused, true);
+          release();
+          await react.page.waitForFunction(() => {
+            const el = document.querySelector('[data-next-cockpit-prompt-select]');
+            return el?.getAttribute('aria-busy') === 'false' && el.options.length > 1;
+          });
+          const loaded = await select.evaluate((el) => ({
+            width: el.getBoundingClientRect().width,
+            text: el.selectedOptions[0]?.textContent,
+          }));
+          assert.equal(loaded.text, 'Use your prompt');
+          for (const [state, size] of [
+            ['pending', pending.width],
+            ['loaded', loaded.width],
+          ])
+            assert.ok(
+              Math.abs(size - idle) <= 0.5,
+              `prompt width changed at ${width}px: idle ${idle}, ${state} ${size}`,
+            );
+          const row = await select.evaluate((el) => {
+            const heading = el.closest('.next-cockpit-held-heading');
+            const label = heading.querySelector('.next-cockpit-held-label');
+            const pick = el.getBoundingClientRect();
+            const goal = label.getBoundingClientRect();
+            const bounds = heading.getBoundingClientRect();
+            return {
+              label: label.textContent.trim(),
+              fits:
+                pick.left >= bounds.left - 0.5 &&
+                pick.right <= bounds.right + 0.5 &&
+                goal.left >= bounds.left - 0.5 &&
+                goal.right <= bounds.right + 0.5,
+              separate: pick.left >= goal.right || pick.top >= goal.bottom,
+              overflow: document.documentElement.scrollWidth > innerWidth,
+            };
+          });
+          assert.equal(row.label, 'Goal');
+          assert.equal(
+            row.fits && row.separate && !row.overflow,
+            true,
+            `the Goal row must fit or wrap at ${width}px: ${JSON.stringify(row)}`,
+          );
+          sizes.push({ viewport: width, idle, pending: pending.width, loaded: loaded.width });
+          await react.page.keyboard.press('Escape');
+        } finally {
+          release();
+          await react.page.unroute(pattern, routeHandler);
+        }
+      }
+      await react.page.setViewportSize({ width: 1280, height: 900 });
+      return sizes;
+    },
+  );
+
   await step(
     'the native select reads the prompts once per opening, fills the box, and Save adopts it naming the fact',
     async () => {

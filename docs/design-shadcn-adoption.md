@@ -67,7 +67,7 @@ their existing groups and roles. Unused Card and Alert parts and TabsContent wer
 because a second panel lifecycle would duplicate route ownership. Icon-library imports, the npm `cn`
 package, Preflight and animation-package imports were also omitted for the reasons in the findings.
 
-The final page is 1,608,412 bytes against a 2,000,000-byte ceiling. Hand-written CSS is 124,635 bytes
+The final page is 1,608,668 bytes against a 2,000,000-byte ceiling. Hand-written CSS is 124,635 bytes
 across the same thirteen counted sheets. The cleanup's rough starting estimate was about 135,500 bytes;
 its recorded start was 136,243, a reduction of 11,608 bytes. The whole migration started at 161,464
 counted bytes. The [cleanup](#stylesheet-cleanup) removed 83 rule entries, including the alias block,
@@ -80,10 +80,10 @@ optional evidence, transient states, browser-specific progress and individual an
 readability exception; the form layer removed four native focus-ring exceptions. The coverage method's
 five limits are recorded in [Stylesheet cleanup](#stylesheet-cleanup).
 
-The final three-run fluidity measurement on 2026-10-11 passes every budget. For 5, 50 and 250 sessions,
-first-render medians are 136.8, 94.2 and 124.3 ms; poll-to-paint medians are 43.7, 46 and 60.1 ms.
-The [cleanup measurement](#stylesheet-cleanup) owns those figures; the earlier layer measurements below
-remain the history of how the page reached this state.
+The final three-run fluidity measurement on 2026-10-11, after the prompt menu fix, passes every budget. For 5, 50
+and 250 sessions, first-render medians are 148.6, 94.3 and 127.6 ms; poll-to-paint medians are 44.7, 44.5 and 61.4
+ms. The earlier layer measurements below remain the history of how the page reached this state; the cleanup
+measurement in [Stylesheet cleanup](#stylesheet-cleanup) records the page before the fix (1,608,412 bytes).
 
 ## What was measured, and how
 
@@ -664,7 +664,7 @@ chrome explicitly, while surface sheets retain grid columns, flex placement and 
 | Goal and outcome line | Textarea intent owns value ink, panel background, 7 px padding, 1.55 line height and vertical resizing. An untouched drafted goal uses sunk background. Intent keeps grid placement. |
 | Pending direction | The same intent recipe, with a 44 px floor. Content sizing no longer overrides a remembered drag. |
 | Correction to copy | Textarea correction owns the former panel/value recipe and 120 px floor. Its existing composition and paint-pause owner stays in place. |
-| Prompt, stage and direction select | NativeSelect owns token border and sunk background, sans control type and a 44 px floor. The prompt retains its medium weight and label-row placement. All three reserve 28 px for the ten-pixel chevron. |
+| Prompt, stage and direction select | NativeSelect owns token border and sunk background, sans control type and a 44 px floor. The prompt retains its medium weight and label-row placement; its wrapper reserves 18rem, capped by the label's available width, and the select fills it through idle, loading and loaded states. All three reserve 28 px for the ten-pixel chevron. |
 | Gallery draft | Textarea draft replaces the deleted ctl-draft chrome; the gallery select uses NativeSelect. |
 
 `field-chrome-reference.json` records sixteen identities from the pre-swap page at `bd79507d`,
@@ -674,7 +674,9 @@ tripwire, a workflow stage choice, later-direction fields and a correction box. 
 semantic owners and attributes, including the drafted flag, and no clock or count text. The gate
 compares every reached field with that reference. Its explicit select adjustments replace UA
 chrome with tokens and raise the direction choice from 13.3333 px Arial to the 15 px control tier.
-Other measured field chrome is unchanged. Focus rings are shared two-pixel solid outlines, including
+The two prompt identities also record the approved 288 px desktop width, measured explicitly
+so an intrinsic-width regression fails the gate. Other measured field chrome is unchanged.
+Focus rings are shared two-pixel solid outlines, including
 forced colours; the four former UA-ring exceptions are deleted.
 
 The gallery checks field type, 44 px targets, focus, forced colours, chevron clearance and fixed

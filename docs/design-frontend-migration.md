@@ -415,6 +415,17 @@ instead (one direction read, nothing saved), `intentForReading`, the live monito
 reading-feedback lane. The per-entry Add to my intent buttons of the legacy activity list are drawn by the
 Drift step's numbered activity list.
 
+Deviations: the prompt select now reserves `min(18rem, 100%)` from its first paint,
+so loading the choices does not widen the Goal row. During the reader's opening
+request its placeholder says "Loading your prompts" and carries `aria-busy`;
+the held-state subscription paints that cue while the select keeps focus without
+releasing a background board paint. Empty or failed reads restore "Use your prompt"
+and open no picker. `PromptSelect.test.tsx` covers the held request and those absences;
+`intent-parity.mjs` checks idle, first-frame pending and loaded widths at 1280,
+375 and 320 px, with an `auto-prompt-width` mutation. The field chrome gate measures
+the reserved width explicitly; its reference table adds the approved 288 px desktop
+width for the two prompt identities. The recorded answers remain unchanged.
+
 ## The Drift card, Analyze and Steer back
 
 The Drift section of the session page (the live and analysis levels, the reading card, Analyze and its
