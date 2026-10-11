@@ -107,7 +107,6 @@ class FrontendAggregateControlsTest(unittest.TestCase):
             "R_TEST": "success",
             "R_PLATFORM": "success",
             "R_FRONTEND": "success",
-            "R_FRONTEND_PROOFS": "success",
             "R_FRONTEND_PRODUCTION": "success",
         }
         for name in successful:
@@ -126,7 +125,6 @@ class FrontendAggregateControlsTest(unittest.TestCase):
             "R_TEST": "skipped",
             "R_PLATFORM": "skipped",
             "R_FRONTEND": "skipped",
-            "R_FRONTEND_PROOFS": "skipped",
             "R_FRONTEND_PRODUCTION": "skipped",
         }
         self.assertEqual(0, self.aggregate(code="false", results=skipped).returncode)
@@ -136,7 +134,7 @@ class FrontendAggregateControlsTest(unittest.TestCase):
                     0,
                     self.aggregate(code="false", results={**skipped, "R_CHANGES": bad}).returncode,
                 )
-        for name in ("R_FRONTEND", "R_FRONTEND_PROOFS", "R_FRONTEND_PRODUCTION"):
+        for name in ("R_FRONTEND", "R_FRONTEND_PRODUCTION"):
             with self.subTest(failed=name):
                 self.assertNotEqual(
                     0, self.aggregate(code="false", results={**skipped, name: "failure"}).returncode
@@ -150,7 +148,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
         frontend = jobs()["frontend"]
         steps = frontend["steps"]
         ratchet = next((step for step in steps if step.get("run") == "pnpm test:styles"), None)
-        self.assertIsNotNone(ratchet, "the PR base gate must run on Windows as well as Unix")
+        self.assertIsNotNone(ratchet, "the PR base gate must remain on the macOS frontend leg")
         assert ratchet is not None
         self.assertEqual("${{ github.event.pull_request.base.sha }}", ratchet["env"]["PR_BASE"])
         self.assertEqual("github.event_name == 'pull_request'", ratchet["if"])
@@ -162,8 +160,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
         unit = next(step for step in steps if step.get("run") == "pnpm test")
         self.assertGreaterEqual(unit["timeout-minutes"], 6)
 
-    def check_runs_everywhere(self, job: dict[str, Any], runners: list[str]) -> None:
-        """Every pull request and every push runs every platform: the Windows legs are no longer paused."""
+    def check_runners(self, job: dict[str, Any], runners: list[str]) -> None:
         selection = job["strategy"]["matrix"]["os"]
         self.assertEqual(runners, selection)
         self.assertNotIn("windows-ci", json.dumps(job))
@@ -178,10 +175,10 @@ class FrontendWiringControlsTest(unittest.TestCase):
     def test_matrix_is_required_and_keeps_all_current_python_jobs(self) -> None:
         workflow_jobs = jobs()
         frontend = workflow_jobs["frontend"]
-        everywhere = ["ubuntu-latest", "macos-latest", "windows-latest"]
-        self.check_runs_everywhere(frontend, everywhere)
+        self.check_runners(frontend, ["macos-latest"])
+        self.assertEqual("Frontend (${{ matrix.os }})", frontend["name"])
         platform = workflow_jobs["platform-tests"]
-        self.check_runs_everywhere(platform, ["macos-latest", "windows-latest"])
+        self.check_runners(platform, ["macos-latest"])
         # The two suites run as parallel legs so the slow script suite does not hold the dashboard one.
         self.assertEqual(["dashboard", "scripts"], platform["strategy"]["matrix"]["suite"])
         self.assertEqual([1, 2, 3], platform["strategy"]["matrix"]["shard"])
@@ -212,25 +209,18 @@ class FrontendWiringControlsTest(unittest.TestCase):
                 "test",
                 "platform-tests",
                 "frontend",
-                "frontend-proofs",
                 "frontend-production",
             },
             set(aggregate["needs"]),
         )
         env = aggregate["steps"][0]["env"]
         self.assertEqual("${{ needs.frontend.result }}", env["R_FRONTEND"])
-        self.assertEqual("${{ needs.frontend-proofs.result }}", env["R_FRONTEND_PROOFS"])
         self.assertEqual("${{ needs.frontend-production.result }}", env["R_FRONTEND_PRODUCTION"])
-        # The proofs job is a second half of `frontend`, so it keeps the same runners and cap.
-        proofs = workflow_jobs["frontend-proofs"]
-        self.check_runs_everywhere(proofs, everywhere)
-        self.assertFalse(proofs["strategy"]["fail-fast"])
-        self.assertLessEqual(proofs["timeout-minutes"], 30)
-        self.assertEqual("changes", proofs["needs"])
-        self.assertEqual("needs.changes.outputs.code == 'true'", proofs["if"])
+        self.assertNotIn("frontend-proofs", workflow_jobs)
+        self.assertNotIn("R_FRONTEND_PROOFS", env)
 
     def test_bootstrap_is_exact_without_auth_or_implicit_dependency_scripts(self) -> None:
-        for name in ("frontend", "frontend-proofs", "frontend-production"):
+        for name in ("frontend", "frontend-production"):
             with self.subTest(job=name):
                 self.check_bootstrap(jobs()[name]["steps"])
 
@@ -261,10 +251,8 @@ class FrontendWiringControlsTest(unittest.TestCase):
             for name in ("NODE_AUTH_TOKEN", "NPM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
                 self.assertNotIn(name, step.get("env", {}))
 
-    def test_integrated_development_runs_on_every_native_frontend_runner(self) -> None:
-        # `frontend` and `frontend-proofs` split the development proofs between them; each proof runs once.
-        workflow_jobs = jobs()
-        steps = [*workflow_jobs["frontend"]["steps"], *workflow_jobs["frontend-proofs"]["steps"]]
+    def test_retained_development_proofs_run_once_on_macos(self) -> None:
+        steps = jobs()["frontend"]["steps"]
         for command in (
             "pnpm test:dev",
             "pnpm test:dev:browser",
@@ -272,14 +260,6 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "pnpm test:shell:browser",
             "pnpm test:controls:browser",
             "pnpm test:sessions:browser",
-            "pnpm test:intent:browser",
-            "pnpm test:drift:browser",
-            "pnpm test:project:browser",
-            "pnpm test:console:browser",
-            "pnpm test:attention:browser",
-            "pnpm test:capacity:browser",
-            "pnpm test:terminal:browser",
-            "pnpm test:css:browser",
         ):
             with self.subTest(command=command):
                 matches = [step for step in steps if step.get("run") == command]
@@ -295,13 +275,12 @@ class FrontendWiringControlsTest(unittest.TestCase):
                 self.assertNotIn(
                     "CARGENTO_E2E_BUNDLE", step["env"], "development must stay development"
                 )
-        for name in ("frontend", "frontend-proofs"):
-            commands = [step.get("run") for step in workflow_jobs[name]["steps"]]
-            install = commands.index("pnpm exec playwright install --with-deps chromium")
-            for command in commands:
-                if command and command.endswith(":browser") and command.startswith("pnpm test:"):
-                    with self.subTest(job=name, command=command):
-                        self.assertLess(install, commands.index(command))
+        commands = [step.get("run") for step in steps]
+        install = commands.index("pnpm exec playwright install --with-deps chromium")
+        for command in commands:
+            if command and command.endswith(":browser") and command.startswith("pnpm test:"):
+                with self.subTest(command=command):
+                    self.assertLess(install, commands.index(command))
 
     def test_each_browser_script_runs_every_proof_it_names(self) -> None:
         """A script that chains two proofs is one workflow step, so the step test alone cannot see one dropped."""
@@ -364,17 +343,21 @@ class FrontendWiringControlsTest(unittest.TestCase):
         listed = [name for names in shards.values() for name in names]
         self.assertEqual(len(listed), len(set(listed)), "a proof is in two shards")
         scripts = json.loads((ROOT / "package.json").read_text())["scripts"]
-        development_proofs = {
-            step["run"].removeprefix("pnpm ")
-            for name in ("frontend", "frontend-proofs")
-            for step in jobs()[name]["steps"]
-            if step.get("run", "").startswith("pnpm test:") and step["run"].endswith(":browser")
+        expected = {
+            "test:shell:browser",
+            "test:project:browser",
+            "test:capacity:browser",
+            "test:sessions:browser",
+            "test:terminal:browser",
+            "test:intent:browser",
+            "test:drift:browser",
+            "test:console:browser",
+            "test:attention:browser",
+            "test:storage:browser",
+            "test:controls:browser",
+            "test:css:browser",
         }
-        # dev:browser is the hot-refresh proof, which is development-only by definition.
-        development_proofs.discard("test:dev:browser")
-        self.assertEqual(
-            development_proofs, set(listed), "a development proof has no production run"
-        )
+        self.assertEqual(expected, set(listed), "a parity proof has no production run")
         for name in listed:
             self.assertIn(name, scripts)
         self.assertIn("frontend/e2e/production-proofs.mjs", scripts["test:production:browser"])
@@ -385,7 +368,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
         """A job-level `continue-on-error` makes `needs.<job>.result` read success for a red job; a weakened `if`
         lets the job skip where the aggregator expects it to run."""
         workflow_jobs = jobs()
-        for name in ("frontend", "frontend-proofs", "frontend-production"):
+        for name in ("frontend", "frontend-production"):
             with self.subTest(job=name):
                 job = workflow_jobs[name]
                 self.assertNotIn("continue-on-error", job)
@@ -431,7 +414,13 @@ class FrontendWiringControlsTest(unittest.TestCase):
         ):
             self.assertIn(command, commands)
             self.assertNotIn("if", commands[command])
-        self.assertEqual("matrix.os == 'ubuntu-latest'", commands["pnpm build:check"]["if"])
+        self.assertNotIn("pnpm build:check", commands)
+        production_build = next(
+            step
+            for step in jobs()["frontend-production"]["steps"]
+            if step.get("run") == "pnpm build:check"
+        )
+        self.assertNotIn("if", production_build)
         installed = commands["pnpm test:installed"]
         self.assertNotIn("if", installed)
         self.assertEqual(
@@ -446,7 +435,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
     def test_no_step_runs_the_retired_embedded_linter_or_a_legacy_recording_mode(self) -> None:
         # The embedded linter checked the previous interface's sources and went with them; Biome,
         # strict types, the unit tests, the hostile-literal parser proof and `pnpm build:check`
-        # (the frontend job) are what check the React sources and the page built from them.
+        # (the production job) are what check the React sources and the page built from them.
         text = WORKFLOW.read_text()
         self.assertNotIn("lint_embedded", text)
         self.assertNotIn("CARGENTO_LEGACY", text)

@@ -1729,12 +1729,11 @@ class LauncherQuitArmTest(unittest.TestCase):
                     "the launcher is read by a shell, so a metacharacter in it is a command",
                 )
         # The ESCAPED path, because `open_launcher_window` doubles every
-        # backslash for the AppleScript string literal it builds. `platform-tests`
-        # runs this module on windows-latest, where `tempfile.mkdtemp()` answers
-        # `C:\Users\runneradmin\...\a2`, so the raw path is absent from the
-        # command and asserting it fails a REQUIRED check. Nothing else in a2's
-        # path is macOS-only, so the coverage stays on all three runners rather
-        # than being skipped off darwin.
+        # backslash for the AppleScript string literal it builds. When `platform-tests`
+        # ran this module on windows-latest, `tempfile.mkdtemp()` answered
+        # `C:\Users\runneradmin\...\a2`, so asserting the raw path failed a
+        # required check. The assertion stays portable for local Windows runs
+        # even though CI now exercises only macOS and Linux.
         self.assertIn(self.handshake.replace("\\", "\\\\"), launcher)
         del record
 

@@ -224,6 +224,10 @@ root-document prose allowlist by hand. The unfiltered validate suite remains the
 misclassification; the detector's job is to request all measurable jobs with `code=true` for
 these dependencies.
 
+The local frontend proofs below remain required before a PR even where CI no longer runs their
+development-server mode. CI now exercises macOS and Linux; Windows dashboard and frontend
+checks require a local run. See [Quality Gate](#quality-gate) for the retained jobs.
+
 ```bash
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
 ruff check .
@@ -449,46 +453,42 @@ is Sonnet 5.5. Reviewer acceptance and scored producer results retain their sepa
 
 ## Quality Gate
 
-Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests` — the same unit suite re-run natively on macOS and on Windows, each as two parallel legs, dashboard and scripts (Ubuntu is already covered by the two jobs before it). Python suite jobs use `scripts/run_tests.py`, one worker per core. The threshold only ratchets up — never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
+Every PR must pass the `quality-gate` required check (`.github/workflows/quality-gate.yml`): ruff with `select = ALL` (curated ignores documented in `pyproject.toml`), `ruff format --check`, `mypy --strict`, a direct-launch smoke test on the Python 3.11 runtime floor followed by the whole suite there, the same suite under `coverage` on 3.12 with the `fail_under` threshold from `pyproject.toml` enforced once, and `platform-tests`, the same unit suite re-run natively on macOS with one dashboard leg and three script shards (Ubuntu is already covered by the two jobs before it). Python suite jobs use `scripts/run_tests.py`, one worker per core. The threshold only ratchets up; never lower it in a PR. A PR that must merge below threshold needs the `coverage-exception` label, which is visible in the PR timeline.
 
 **The required context always reports; its constituent jobs may not run.** A `changes` job decides
 whether the diff contains anything the gate can measure, and the measurable jobs are gated on
 it. The `quality-gate` job itself always runs and always reports, so branch protection is never
-left waiting — which is the failure mode that made a naive `paths:` filter unusable here: a
+left waiting. That is the failure mode that made a naive `paths:` filter unusable here: a
 required check a filter excludes never reports, and GitHub reads a missing context as pending
-forever rather than as passing. The detector **fails open** — anything it cannot compute runs the
-full gate — and the aggregator accepts `skipped` only when the detector said `code=false`, so a
+forever rather than as passing. The detector **fails open**: anything it cannot compute runs the
+full gate. The aggregator accepts `skipped` only when the detector said `code=false`, so a
 job skipped because an upstream dependency died still fails the gate. `validate` and
 `version-guard` are deliberately unfiltered for the same required-check reason, and `validate` is
 in any case the check a prose change most needs: it resolves every relative Markdown link and
 heading anchor, and it runs the dashboard suite. That second step is **not** a duplicate of the
-gate's copy — it is the only run of the suite on a PR the detector called prose, so deleting it as
+gate's copy: it is the only run of the suite on a PR the detector called prose, so deleting it as
 redundant would let a prose edit that breaks a test merge green. `validate.yml` says the same thing
 at the step itself.
 
-**Windows runs on every pull request.** `platform-tests` and the frontend jobs run `windows-latest` beside
-macOS (and Ubuntu for the frontend). The two Python suites run as separate legs on each platform, so the
-slow script suite (about 12 minutes on Windows) does not hold the dashboard suite, and the longest leg is
-what a pull request waits for. A passing Windows log carries no tracebacks from test servers.
+**CI exercises macOS and Linux.** Windows is no longer exercised by CI for the dashboard unit
+suite or the frontend. `platform-tests` keeps the macOS dashboard leg and three script shards;
+the Linux coverage and runtime-floor jobs still run both Python suites.
 
-The required frontend matrix uses pinned Node and pnpm on Linux, macOS and Windows. It runs
-frontend lint, strict types, unit tests and a clean preview build on each platform. Each native leg checks
-the hand-written CSS record against the actual pull request base through a Node environment read,
-without shell-specific variable syntax. Unit tests have a six-minute step limit because Windows took
-159 seconds against the former three-minute limit. Linux checks
-the canonical tracked build; every platform checks hostile HTML literals and an installed Python
-3.11 copy in pinned Chromium, with Node hidden from the backend and external asset requests refused.
-Every platform also exercises owned development startup/cleanup and real Python/Vite hot refresh,
-API/SSE, backend restart and inert capability guards with models, usage and native actions disabled.
-Two more required jobs belong to the same gate. `Frontend proofs` runs the seven longer development-server
-browser proofs that used to share the `frontend` job, on the same operating systems and under the same
-Windows pause; a test pins that each development proof runs once across the two jobs. `Frontend
-production bundle` runs on Linux in two shards: it rebuilds and compares the tracked artifact, then runs
-the parity proofs against the shipped bundle rather than the development server, with the shard
-membership kept in `frontend/e2e/production-shards.json`. Both are in the aggregator's `needs`, and a
-skipped result passes only when the detector said `code=false`. The Python jobs retain their existing
-discovery and coverage gate. Native harness canary Node requirements remain independent of this build
-toolchain.
+`Frontend (macos-latest)` uses pinned Node and pnpm for lint, strict types, unit tests and a clean
+preview build. It checks the hand-written CSS record against the actual pull request base, hostile
+HTML literals and an installed Python 3.11 copy in pinned Chromium, with Node hidden from the backend
+and external asset requests refused. It also exercises owned development startup/cleanup, real
+Python/Vite hot refresh, API/SSE, backend restart and inert capability guards with models, usage and
+native actions disabled, followed by storage, shell, shared-controls and session browser proofs.
+The separate `Frontend proofs` job has been retired after the major frontend refactor. Its longer
+development-server proofs remain runnable through the unchanged local pre-PR command list.
+
+`Frontend production bundle` runs on Linux in two shards: it rebuilds and compares the tracked
+artifact, then runs all twelve parity proofs against the shipped bundle, with shard membership
+kept in `frontend/e2e/production-shards.json`. Both remaining frontend jobs are in the aggregator's
+`needs`, and a skipped result passes only when the detector said `code=false`. The required status
+checks on main remain `validate`, `version-guard` and `quality-gate`. Native harness canary Node
+requirements remain independent of this build toolchain.
 
 ## Measured Invariants
 
