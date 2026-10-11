@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { build } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -33,6 +34,39 @@ export function externalUrls(text: string): string[] {
 
 const REM = /^(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)rem$/;
 const STEPS = { label: 0.8125, body: 0.9375, value: 1.125, head: 1.5, hero: 2.125 };
+const cssList: { space(value: string): string[] } = createRequire(import.meta.resolve('vite'))(
+  'postcss',
+).list;
+const FONT_KEYWORDS = new Set([
+  'inherit',
+  'initial',
+  'unset',
+  'revert',
+  'revert-layer',
+  'caption',
+  'icon',
+  'menu',
+  'message-box',
+  'small-caption',
+  'status-bar',
+]);
+function fontShorthandSize(value: string): string | undefined {
+  if (FONT_KEYWORDS.has(value.toLowerCase())) return undefined;
+  const terms = cssList.space(value);
+  while (
+    /^(?:normal|italic|oblique|small-caps|bold|bolder|lighter|[1-9]\d{0,2}|1000)$/i.test(
+      terms[0] ?? '',
+    )
+  ) {
+    const term = terms.shift();
+    if (
+      term?.toLowerCase() === 'oblique' &&
+      /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:deg|grad|rad|turn)$/i.test(terms[0] ?? '')
+    )
+      terms.shift();
+  }
+  return terms[0]?.split('/')[0] ?? value;
+}
 export function builtProblems(input: string): string[] {
   const text = clean(input);
   const problems: string[] = [];
@@ -87,8 +121,10 @@ export function builtProblems(input: string): string[] {
       .join(',')
   )
     problems.push('type step inventory');
-  for (const match of text.matchAll(/(?<![-\w])font-size\s*:\s*([^;}]+)/g)) {
-    const value = resolveValue((match[1] ?? '').trim().replace(/\s*!important$/, ''));
+  for (const match of text.matchAll(/(?<![-\w])(font-size|font)\s*:\s*([^;}]+)/g)) {
+    const declaration = resolveValue((match[2] ?? '').trim().replace(/\s*!important$/, ''));
+    const value = match[1] === 'font' ? fontShorthandSize(declaration) : declaration;
+    if (value === undefined) continue;
     if (
       !['inherit', '100%', '0'].includes(value) &&
       !(REM.test(value) && Object.values(STEPS).includes(Number.parseFloat(value)))
@@ -123,6 +159,9 @@ describe('the compiled stylesheet', () => {
   it.each([
     ['.dead{--fs-extra:.75rem}', 'type step inventory'],
     ['.dead{font-size:12px}', 'off-scale size 12px'],
+    ['.dead{font:12px var(--sans)}', 'off-scale size 12px'],
+    ['.dead{font:italic small-caps 600 12px/1.5 var(--sans)}', 'off-scale size 12px'],
+    ['.dead{--bad-size:12px;font:var(--bad-size) var(--sans)}', 'off-scale size 12px'],
     ['.dead{color:var(--missing)}', 'undeclared variable --missing'],
     ['.dead{background:url(https://x.test/a.png)}', 'external asset'],
     ['@import url("a.css");', 'remaining import'],
@@ -130,5 +169,31 @@ describe('the compiled stylesheet', () => {
     ['.dead{--a:var(--b);--b:var(--a);color:var(--a)}', 'cyclic variable --a'],
   ])('fails a compiled addition %s', (addition, reason) => {
     expect(builtProblems(css + addition)).toContain(reason);
+  });
+  it.each([
+    '.dead{font:.8125rem var(--sans)}',
+    '.dead{font:italic small-caps 600 .9375rem/1.5 "A Font",sans-serif}',
+    '.dead{font:normal 1.125rem / 1.5 var(--sans)}',
+    '.dead{font:oblique 10deg bold 1.5rem var(--sans)}',
+    '.dead{font:2.125rem var(--sans)!important}',
+    ...['label', 'body', 'value', 'head', 'hero'].map(
+      (step) => `.dead{font:500 var(--fs-${step})/1.55 var(--sans)}`,
+    ),
+    '.dead{--font:italic var(--fs-body)/1.5 var(--sans);font:var(--font)}',
+    ...[
+      'inherit',
+      'initial',
+      'unset',
+      'revert',
+      'revert-layer',
+      'caption',
+      'icon',
+      'menu',
+      'message-box',
+      'small-caption',
+      'status-bar',
+    ].map((keyword) => `.dead{font:${keyword}}`),
+  ])('accepts an on-scale or system font shorthand %s', (addition) => {
+    expect(builtProblems(css + addition)).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -59,6 +60,39 @@ test('pseudo base matches retain state rules; named exceptions are exact', () =>
   assert.deepEqual(uncoveredRules('sheet.css', text, record), [second]);
   assert.equal(first.context, '@media print');
 });
+
+for (const [name, used, pseudoMatches, text, identity, covered] of [
+  ['used', ['|.a|color:red'], [], '.a{color:red}', 'frontend/sheet.css||.a', true],
+  ['pseudo matched', [], ['.a:hover'], '.a:hover{color:red}', 'frontend/sheet.css||.a:hover', true],
+  ['unused', [], [], '.a{color:red}', 'frontend/sheet.css||.a', false],
+])
+  test(`${name} exception ${covered ? 'must be removed' : 'remains valid'}`, async (t) => {
+    const repository = fileURLToPath(new URL('../../', import.meta.url));
+    const directory = join(repository, 'docs/screenshots');
+    await mkdir(directory, { recursive: true });
+    const root = await mkdtemp(join(directory, 'css-coverage-fixture-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    await mkdir(join(root, 'frontend'));
+    await writeFile(
+      join(root, 'frontend/css-budget.json'),
+      JSON.stringify({ files: ['frontend/sheet.css'] }),
+    );
+    await writeFile(join(root, 'frontend/sheet.css'), text);
+    const baseline = JSON.parse(
+      await readFile(join(repository, 'frontend/css-coverage.json'), 'utf8'),
+    );
+    const problems = await coverageProblems(root, {
+      runs: baseline.runs,
+      used,
+      pseudoMatches,
+      exceptions: { [identity]: 'This state is outside the screen proof fixtures.' },
+    });
+    if (covered) {
+      assert.equal(problems.length, 1);
+      assert.match(problems[0], /remove.*frontend\/css-coverage\.json/i);
+      assert.ok(problems[0].includes(identity));
+    } else assert.deepEqual(problems, []);
+  });
 
 test('the current sheets retain no uncovered rule or unexplained exception', async () => {
   const root = fileURLToPath(new URL('../../', import.meta.url));

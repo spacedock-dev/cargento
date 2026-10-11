@@ -79,20 +79,24 @@ export function sourceRules(text) {
 export function ruleIdentity(file, rule) {
   return `${file}|${rule.context}|${selectorKey(rule.selector)}`;
 }
+const isCovered = (rule, used, pseudo) =>
+  selectors(rule.selector).some(
+    (key) => used.has(coverageKey(rule.context, key, rule.declarations)) || pseudo.has(key),
+  );
 export function uncoveredRules(file, text, record) {
   const used = new Set(record.used);
   const pseudo = new Set(record.pseudoMatches);
   return sourceRules(text).filter(
-    (rule) =>
-      !selectors(rule.selector).some(
-        (key) => used.has(coverageKey(rule.context, key, rule.declarations)) || pseudo.has(key),
-      ) && !record.exceptions[ruleIdentity(file, rule)],
+    (rule) => !isCovered(rule, used, pseudo) && !record.exceptions[ruleIdentity(file, rule)],
   );
 }
 export async function coverageProblems(root, record) {
   const budget = JSON.parse(await readFile(resolve(root, 'frontend/css-budget.json'), 'utf8'));
   const problems = [];
   const identities = new Set();
+  const covered = new Set();
+  const used = new Set(record.used);
+  const pseudo = new Set(record.pseudoMatches);
   const expected = [
     'css-contract',
     'controls-continuity',
@@ -115,12 +119,18 @@ export async function coverageProblems(root, record) {
         problems.push(`Missing coverage: ${mode}/${proof}`);
   for (const file of budget.files) {
     const text = await readFile(resolve(root, file), 'utf8');
-    for (const rule of sourceRules(text)) identities.add(ruleIdentity(file, rule));
+    for (const rule of sourceRules(text)) {
+      const identity = ruleIdentity(file, rule);
+      identities.add(identity);
+      if (isCovered(rule, used, pseudo)) covered.add(identity);
+    }
     for (const rule of uncoveredRules(file, text, record))
       problems.push(`Uncovered rule: ${ruleIdentity(file, rule)}`);
   }
   for (const [identity, reason] of Object.entries(record.exceptions)) {
     if (!identities.has(identity)) problems.push(`Stale exception: ${identity}`);
+    if (covered.has(identity))
+      problems.push(`Covered exception: ${identity}; remove it from frontend/css-coverage.json`);
     if (typeof reason !== 'string' || reason.trim().length < 20)
       problems.push(`Missing exception reason: ${identity}`);
   }

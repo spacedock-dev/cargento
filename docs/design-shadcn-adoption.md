@@ -901,6 +901,14 @@ conditional context and declaration values identify retained rules. Hover, focus
 disabled and pseudo-element rules are retained conservatively when their base selector
 matches. No class grep substitutes for this measurement.
 
+The method has five limits. The rule-boundary check discards Playwright ranges Chromium
+coalesces across adjacent used rules, so CDP rule-usage counts carry the certification
+alone. A comma-separated selector list is certified by its first matching selector, so a
+dead selector appended to a used rule is not detected. `coverageKey` omits the file, so a
+dead rule duplicating a covered rule's selector and declarations in another file is not
+detected. Two rules with the same file, context and selector share one exception identity.
+`@font-face` blocks are not walked; the font checks protect those rows instead.
+
 The deletion groups were verified separately against the CSS proof and all seven chrome
 tables. Group one removes 66 retired control, layout, memo and native-popover rules for
 7,514 bytes. Group two removes 13 obsolete Drift, Intent and subject rules for 1,510 bytes.
@@ -920,7 +928,7 @@ this layer started with and 36,829 fewer than the milestone start of 161,464.
 reasons. Optional published evidence, transient settling, browser-specific progress and
 individual animation steps remain when the proof fixtures do not exercise them. The
 coverage tests check the current sheets, require every baseline proof/mode pair, reject
-stale or unexplained exception identities and fail an added dead-rule mutation.
+stale, covered or unexplained exception identities and fail an added dead-rule mutation.
 `pnpm test:css:coverage` runs that inventory directly. To collect a new run, set
 `CARGENTO_CSS_COVERAGE` to a directory under this worktree and preload the hook with
 `NODE_OPTIONS=--import=<absolute hook path>`. Run the proofs sequentially in each bundle
@@ -929,7 +937,8 @@ local union under `docs/screenshots/css-cleanup/` before reviewing it for the tr
 
 `css.test.ts` now compiles the actual Vite entry in memory instead of opening a list of
 source sheets. It checks the emitted stylesheet for the five type steps, root body type,
-dark-only scheme, local assets and resolved custom-property chains. Deliberate mutations
+dark-only scheme, local assets and resolved custom-property chains. Both `font-size` and
+the size component of `font` shorthands must use the scale. Deliberate mutations
 remove type, body, absence ink, scheme and variable declarations or add off-scale type,
 external assets, imports, a light-scheme query and a variable cycle. The browser contract
 continues to measure links, controls, rings and every rendered ink. Its exact exception
