@@ -531,6 +531,45 @@ the obsolete current-result run button removed from the recorded side. Dedicated
 cover every added button, missing citations, renumbering, focus, scrolling and zero non-GET requests
 or launches, including while ordinary GET polling continues.
 
+### The first analysis click budget
+
+[DEC-27](design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result)
+holds the path from a Sessions row's goal link to a stored analysis to these ceilings.
+`frontend/e2e/journey-budget.mjs`, run by `pnpm test:journey:browser`, observes trusted
+browser activations. A pointer press or Enter activation of a control or link counts once,
+including clicking into the goal box. Typing, focus moves and waiting for the background job
+do not count. The how-to is opened and closed outside the counted path.
+
+| Fixture | Counted path | Click ceiling |
+| -- | -- | -- |
+| Accept the first-prompt draft, with no later direction | Row goal link, Analyze drift, Allow and analyze | 3 |
+| Accept the draft, with two later directions | Row goal link, Keep my intent twice, Allow and analyze | 4 |
+| Type over a draft on a running session | Row goal link to Intent heading, goal box, Save intent, Analyze drift, Allow and analyze | 5 |
+| Type with no draft on a running session | Row goal link into the box, Save intent, Analyze drift, Allow and analyze | 4 |
+
+Both draft paths run for a running session, an ended session and a Claude turn-stop with its
+last turn recorded. The first Keep draws every direction whole and saves nothing; the second
+settles them and opens consent. Neither draft path presses Save intent. A typed save sets the
+goal's baseline to now, leaving no later direction at that moment.
+
+Each fixture has a fresh browser context and no Allow for the route's receiver, its words
+destination or its tool-output destination. The synthetic Intent backend performs saves and
+prompt adoption; the Drift script supplies the model job and stored assessment without calling
+a model. Completion requires the level, findings and cited evidence with recorded times to be
+read in place without another activation. A goal-only result can say Not enough recorded yet.
+The nondeparture fixture keeps the same three-click ceiling and reads the cited entry in
+Session activity without another press; a departure is not required to qualify as a result.
+
+Two refusal fixtures also remain on the path: a goal typed on an ended session states before
+typing that words saved now cannot be read against it, then says "saved after this session ended"
+with no result; idle without a recorded stop keeps Analyze inert and shows its refusal sentence.
+Their attempted paths cost four and two activations respectively, without a model request.
+
+The proof runs in development and `CARGENTO_E2E_BUNDLE=production` modes, packaging only
+its worktree scratch copy. `JOURNEY_MUTATION=confirm-step` adds a confirmation before Allow;
+it must fail the three-click draft ceiling at four clicks. Production shard a carries the
+proof once, with shard membership pinned by `test_frontend_quality_gate.py`.
+
 ## Project views, steering and the Console
 
 Deviations (2026-10-12): The recovery strip uses Where this project stands, Current task,

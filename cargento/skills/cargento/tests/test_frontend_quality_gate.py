@@ -373,6 +373,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
             "test:terminal:browser",
             "test:intent:browser",
             "test:drift:browser",
+            "test:journey:browser",
             "test:console:browser",
             "test:attention:browser",
             "test:storage:browser",

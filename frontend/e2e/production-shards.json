@@ -3,6 +3,7 @@
     "test:shell:browser",
     "test:project:browser",
     "test:capacity:browser",
+    "test:journey:browser",
     "test:sessions:browser"
   ],
   "b": [

@@ -32,6 +32,7 @@
     "test:sessions:browser": "node --test frontend/e2e/support/session-deviations.test.mjs && node frontend/e2e/sessions-parity.mjs",
     "test:intent:browser": "node frontend/e2e/intent-parity.mjs && node frontend/e2e/session-first-view.mjs",
     "test:drift:browser": "node frontend/e2e/drift-parity.mjs",
+    "test:journey:browser": "node frontend/e2e/journey-budget.mjs",
     "test:console:browser": "node frontend/e2e/console-parity.mjs",
     "test:project:browser": "node frontend/e2e/project-parity.mjs",
     "test:attention:browser": "node frontend/e2e/attention-parity.mjs",

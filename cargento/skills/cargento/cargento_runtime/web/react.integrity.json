@@ -1428,7 +1428,7 @@
       },
       {
         "file": "package.json",
-        "sha256": "6b3b84241edab5418d26fc53ff06e333a894483197bdbcf33440f6408483b413"
+        "sha256": "edbc732008063393ec95a998f72ef0217a8141ce0040110de7fc7eeb3a77cfdb"
       },
       {
         "file": "pnpm-lock.yaml",
