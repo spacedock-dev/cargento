@@ -154,6 +154,14 @@
           "style": { "useComponentExportOnlyModules": "off" }
         }
       }
+    },
+    {
+      "includes": ["frontend/stories/**", "frontend/.storybook/**"],
+      "linter": {
+        "rules": {
+          "style": { "useComponentExportOnlyModules": "off" }
+        }
+      }
     }
   ]
 }

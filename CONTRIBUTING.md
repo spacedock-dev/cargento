@@ -38,6 +38,34 @@ python3 cargento/skills/cargento/server.py --port 4553
 python3 -m webbrowser -t http://127.0.0.1:4553/
 ```
 
+### Component stories
+
+Run `pnpm storybook` to explore components at `http://127.0.0.1:6006/`. Storybook uses the page's
+dark stylesheet and embedded local fonts. It binds loopback only and disables telemetry and update
+checks. Build its static explorer with `pnpm build:storybook`; the ignored `.storybook-build/`
+directory stays outside the shipped page.
+
+Write stories in `frontend/stories/<component>.stories.tsx`. Keep one file per component under
+`frontend/src/ui`; a unit test fails when a new component has no story. Add examples for its variants,
+disabled and pending states, and the transitions a reader can trigger. A `play` function should use
+roles and accessible names to assert keyboard operation, visible words, native field behavior, focus
+return and layout stability. Assert the result of an action rather than a class name.
+
+After changing a component or view, update its story. Run `pnpm build:storybook`, then
+`pnpm test:stories`. The tests run in pinned Chromium with one worker, fail on console and page
+errors or external requests, and check the static manager and preview offline. Stories have a separate
+strict typecheck with dependency declaration checking skipped because Storybook 10.6.0's declarations
+fail with TypeScript 6 and exact optional properties; the page's declaration checks stay strict.
+Stories are excluded from page coverage and the CSS budget. They live outside Tailwind's explicit
+source paths. `pnpm build:check` checks the page and its source provenance; dependency edits
+require a refreshed integrity record even when the rendered page bytes stay unchanged.
+
+The prompt picker story currently uses `NativeSelect appearance="prompt"` with a reserved fixture
+width. Its idle, loading and loaded examples exercise the select's native semantics and busy message;
+replace that fixture with the owning prompt component when it lands. The fixture does not certify the
+page's prompt loader. Component stories supplement the application browser proofs, which still own
+routing, refresh continuity, backend behavior and installed-page checks.
+
 ### Frontend development
 
 The root package builds React source in `frontend/`. Install the exact Node and pnpm versions

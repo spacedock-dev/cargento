@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "../stories/**/*.tsx",
+    "./**/*.ts",
+    "./**/*.mts",
+    "../storybook/guard.mts"
+  ],
+  "exclude": []
+}

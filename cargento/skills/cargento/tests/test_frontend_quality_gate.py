@@ -108,6 +108,7 @@ class FrontendAggregateControlsTest(unittest.TestCase):
             "R_PLATFORM": "success",
             "R_FRONTEND": "success",
             "R_FRONTEND_PRODUCTION": "success",
+            "R_STORYBOOK": "success",
         }
         for name in successful:
             for bad in ("failure", "cancelled", "skipped"):
@@ -126,6 +127,7 @@ class FrontendAggregateControlsTest(unittest.TestCase):
             "R_PLATFORM": "skipped",
             "R_FRONTEND": "skipped",
             "R_FRONTEND_PRODUCTION": "skipped",
+            "R_STORYBOOK": "skipped",
         }
         self.assertEqual(0, self.aggregate(code="false", results=skipped).returncode)
         for bad in ("failure", "cancelled", "skipped"):
@@ -134,7 +136,7 @@ class FrontendAggregateControlsTest(unittest.TestCase):
                     0,
                     self.aggregate(code="false", results={**skipped, "R_CHANGES": bad}).returncode,
                 )
-        for name in ("R_FRONTEND", "R_FRONTEND_PRODUCTION"):
+        for name in ("R_FRONTEND", "R_FRONTEND_PRODUCTION", "R_STORYBOOK"):
             with self.subTest(failed=name):
                 self.assertNotEqual(
                     0, self.aggregate(code="false", results={**skipped, name: "failure"}).returncode
@@ -210,17 +212,19 @@ class FrontendWiringControlsTest(unittest.TestCase):
                 "platform-tests",
                 "frontend",
                 "frontend-production",
+                "storybook",
             },
             set(aggregate["needs"]),
         )
         env = aggregate["steps"][0]["env"]
         self.assertEqual("${{ needs.frontend.result }}", env["R_FRONTEND"])
         self.assertEqual("${{ needs.frontend-production.result }}", env["R_FRONTEND_PRODUCTION"])
+        self.assertEqual("${{ needs.storybook.result }}", env["R_STORYBOOK"])
         self.assertNotIn("frontend-proofs", workflow_jobs)
         self.assertNotIn("R_FRONTEND_PROOFS", env)
 
     def test_bootstrap_is_exact_without_auth_or_implicit_dependency_scripts(self) -> None:
-        for name in ("frontend", "frontend-production"):
+        for name in ("frontend", "frontend-production", "storybook"):
             with self.subTest(job=name):
                 self.check_bootstrap(jobs()[name]["steps"])
 
@@ -336,6 +340,24 @@ class FrontendWiringControlsTest(unittest.TestCase):
         self.assertLess(build, commands.index(proof))
         self.assertLess(install, commands.index(proof))
 
+    def test_storybook_job_builds_and_tests_offline_in_pinned_chromium(self) -> None:
+        job = jobs()["storybook"]
+        self.assertEqual("Storybook (ubuntu-latest)", job["name"])
+        self.assertEqual("ubuntu-latest", job["runs-on"])
+        self.assertLessEqual(job["timeout-minutes"], 15)
+        commands = [step.get("run") for step in job["steps"]]
+        ordered = [
+            "pnpm install --frozen-lockfile --ignore-scripts",
+            "pnpm build:storybook",
+            "pnpm exec playwright install --with-deps chromium",
+            "pnpm test:stories",
+        ]
+        self.assertEqual(ordered, [command for command in commands if command])
+        for step in job["steps"]:
+            if "run" in step:
+                self.assertGreater(step.get("timeout-minutes", 0), 0)
+                self.assertNotIn("if", step)
+
     def test_production_shards_cover_every_parity_proof_exactly_once(self) -> None:
         shards = json.loads((ROOT / "frontend/e2e/production-shards.json").read_text())
         matrix = jobs()["frontend-production"]["strategy"]["matrix"]["shard"]
@@ -368,7 +390,7 @@ class FrontendWiringControlsTest(unittest.TestCase):
         """A job-level `continue-on-error` makes `needs.<job>.result` read success for a red job; a weakened `if`
         lets the job skip where the aggregator expects it to run."""
         workflow_jobs = jobs()
-        for name in ("frontend", "frontend-production"):
+        for name in ("frontend", "frontend-production", "storybook"):
             with self.subTest(job=name):
                 job = workflow_jobs[name]
                 self.assertNotIn("continue-on-error", job)
