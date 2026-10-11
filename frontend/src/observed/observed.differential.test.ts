@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { instructionSourceDeviation } from '../../test/projectWordDeviation';
 import {
   canonical,
   firstDifference,
@@ -43,7 +44,9 @@ describe('nextObserved and observe agree over generated payloads', () => {
     const failures: string[] = [];
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const payload = genPayload(seed);
-      const old = withoutHistory(legacy.call<Record<string, unknown>>('nextObserved', payload, {}));
+      const old = instructionSourceDeviation(
+        withoutHistory(legacy.call<Record<string, unknown>>('nextObserved', payload, {})),
+      );
       const mine = withoutHistory(observe(payload) as unknown as Record<string, unknown>);
       const found = firstDifference(canonical(old), canonical(mine));
       if (found) failures.push(`seed ${String(seed)}: ${found}`);

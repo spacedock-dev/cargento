@@ -3638,10 +3638,10 @@
     "timeline @1280 | next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 appChange scope |  | disabled=false hidden=false": [
       null
     ],
-    "timeline @1280 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 assignment source |  | disabled=false hidden=false": [
+    "timeline @1280 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 task source |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
-        "width": 227.891
+        "width": 173.969
       }
     ],
     "timeline @1280 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-execution-root > next-cockpit-child-row > ctl-disclosure |  | Evidence \u00b7 child handoff |  | disabled=false hidden=false": [
@@ -3685,10 +3685,10 @@
         "width": 307.875
       }
     ],
-    "timeline @375 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 assignment source |  | disabled=false hidden=false": [
+    "timeline @375 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 task source |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
-        "width": 227.891
+        "width": 173.969
       }
     ],
     "timeline @375 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-execution-root > next-cockpit-child-row > ctl-disclosure |  | Evidence \u00b7 child handoff |  | disabled=false hidden=false": [
@@ -4260,5 +4260,6 @@
   "deviations": [
     "DEC-27 replaces What analysis does with the Intent how-to Popover; the remaining disclosure chrome retains its measured contract."
   ],
+  "projectDeviation": "2026-10-12: Evidence · task source replaces Evidence · assignment source. Chromium measured 173.969 px at 1280 and 375 px, with unchanged row filling and chrome.",
   "sessionsDeviation": "2026-10-12: the two Sessions header explanations share How Intent and drift works. Chromium measured identical trigger chrome and a trigger filling its row at desktop and 375px; retired trigger identities are removed."
 }

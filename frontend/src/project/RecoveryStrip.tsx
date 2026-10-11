@@ -24,7 +24,7 @@ import type { Row } from './raw';
 
 /* The strip that opens a project page: what the work is, who is doing it, what needs the captain, and the
    newest direction and result, each with where it came from. Every claim carries its source or its absence
-   ("Assignment evidence not published", "Actionable direction not observed"), and a scan that did not
+   ("Task evidence not published", "Actionable direction not observed"), and a scan that did not
    finish says so before anything is concluded from it. The reader's own browser-local note sits at the end
    and is never presented as something the agents observed. Ported from `nextCockpitRecoveryStrip`. */
 
@@ -33,6 +33,10 @@ export const AUTHORITY_GLOSS =
 
 function Source({ children }: { readonly children: ReactNode }) {
   return <span className="next-cockpit-source">{children}</span>;
+}
+
+function taskSource(source: string): string {
+  return source === 'assignment source unavailable' ? 'task source unavailable' : source;
 }
 
 function disclosureKeys(model: ProjectModel) {
@@ -45,7 +49,7 @@ function ChildEvidence({ child, model }: { readonly child: Child; readonly model
   const assignmentMissing = child.assignment === 'assignment unavailable';
   const resultMissing = child.result === 'result unavailable';
   const missing = [
-    assignmentMissing ? child.assignment : '',
+    assignmentMissing ? 'task unavailable' : '',
     resultMissing ? child.result : '',
   ].filter(Boolean);
   return (
@@ -59,7 +63,7 @@ function ChildEvidence({ child, model }: { readonly child: Child; readonly model
         focusKey={`cockpit-disclosure:child:${child.sourceSession}:${child.worker}:${child.lifecycle}`}
       >
         <small>
-          {assignmentMissing ? child.assignment : <Source>{child.assignment}</Source>}
+          {assignmentMissing ? 'task unavailable' : <Source>{child.assignment}</Source>}
           {child.result ? (
             <>
               {' · '}
@@ -68,7 +72,7 @@ function ChildEvidence({ child, model }: { readonly child: Child; readonly model
           ) : null}
           {' · '}
           {/unavailable/i.test(child.assignmentSource) ? (
-            `source ${child.assignmentSource}`
+            `source ${taskSource(child.assignmentSource)}`
           ) : (
             <Source>{`source ${child.assignmentSource}`}</Source>
           )}
@@ -242,7 +246,7 @@ function Attention({
           : 'Your attention is unknown';
   const heading = compactIdle
     ? workflow
-      ? 'FO CONTINUES · Continue current assignment'
+      ? 'FO CONTINUES · Continue current task'
       : 'CONTINUES · Continue the current task'
     : stateLabel;
   const row = (item: (typeof attention)[number]) => (
@@ -273,7 +277,7 @@ function Attention({
       >
         {attention.map((item) => (
           <small key={`${item.owner}\n${item.label}`}>
-            {`${workflow ? item.owner : item.owner === 'CAPTAIN' ? 'YOU' : 'AGENT'} · ${item.kind || 'attention'} · ${item.label} · ${String(field(item.evidence, 'source') || 'source unavailable')} · ${String(field(item.evidence, 'confidence') || 'confidence unavailable')}`}
+            {`${workflow ? item.owner : item.owner === 'CAPTAIN' ? 'YOU' : 'AGENT'} · ${item.kind || 'attention'} · ${item.label} · ${taskSource(String(field(item.evidence, 'source') || 'source unavailable'))} · ${String(field(item.evidence, 'confidence') || 'confidence unavailable')}`}
           </small>
         ))}
         {remainder ? (
@@ -443,7 +447,7 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
         {task.known && task.provenance ? (
           <Disclosure
             disclosureKey={key(`assignment:${task.id || task.sourceSession}`)}
-            summary="Evidence · assignment source"
+            summary="Evidence · task source"
             focusKey={`cockpit-disclosure:assignment:${task.id || task.sourceSession}`}
           >
             <small className="next-cockpit-source">
@@ -451,7 +455,7 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
             </small>
           </Disclosure>
         ) : task.known ? (
-          <small className="next-cockpit-evidence-missing">Assignment evidence not published</small>
+          <small className="next-cockpit-evidence-missing">Task evidence not published</small>
         ) : null}
         <Goal model={model} />
       </div>

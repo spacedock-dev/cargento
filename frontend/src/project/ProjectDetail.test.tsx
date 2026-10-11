@@ -81,6 +81,44 @@ describe('a focused session on the Now tab', () => {
 });
 
 describe('the recovery strip', () => {
+  it('names the task source in plain words and preserves the published instruction', async () => {
+    const scenario = WAITING as NonNullable<typeof WAITING>;
+    const sessions = (scenario.board['sessions'] as Record<string, unknown>[]).map((row) => ({
+      ...row,
+      instruction: { label: 'asked', text: 'Review the assignment source', at: 900 },
+    }));
+    const page = open({ ...scenario, board: { ...scenario.board, sessions } });
+    await page.settle();
+    const strip = screen.getByLabelText('Recovery summary');
+    expect(within(strip).getByText('Evidence · task source')).toBeInTheDocument();
+    expect(within(strip).getByText('Review the assignment source')).toBeInTheDocument();
+    expect(within(strip).getAllByText(/claude · latest instruction/).length).toBeGreaterThan(0);
+  });
+
+  it('calls missing child evidence a task while keeping published assignments intact', async () => {
+    const scenario = CALM as NonNullable<typeof CALM>;
+    const sessions = (scenario.board['sessions'] as Record<string, unknown>[]).map((row) => ({
+      ...row,
+      state: 'working',
+      subagent_hierarchy: [
+        { name: 'missing', active: true },
+        { name: 'published', active: true, assignment: 'Review the assignment source' },
+      ],
+    }));
+    const page = open({ ...scenario, board: { ...scenario.board, sessions } });
+    await page.settle();
+    const strip = screen.getByLabelText('Recovery summary');
+    expect(within(strip).getAllByText('task unavailable').length).toBeGreaterThan(0);
+    expect(strip.textContent).toContain('task source unavailable');
+    expect(within(strip).getAllByText('Review the assignment source').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('tab', { name: /Decisions/ }));
+    await page.settle();
+    const contributors = document.querySelector('.pc-unbound-context');
+    expect(contributors?.textContent).toContain('task unavailable');
+    expect(contributors?.textContent).toContain('task source unavailable');
+    expect(contributors?.textContent).toContain('Review the assignment source');
+  });
+
   it('names what the captain has to do, with its source, before anything is concluded', async () => {
     const page = open(WAITING as never);
     await page.settle();

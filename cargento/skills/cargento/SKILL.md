@@ -79,7 +79,7 @@ session's optional read-only terminal, the observer-model controls and the statu
 names the state of both capabilities. A capability that is on renders expanded and outside the
 disclosure, so nothing you can act on is behind a click. What you typed for a session, and
 everything read against it, lives on that session's own page (below), not on a tab here.
-The **A note to yourself, kept in this browser tab** box, browser-local human context and old
+The **Your note (this tab only)** box, browser-local human context and old
 tripwire notes do not instruct an agent and remain inert. The first-officer gloss appears with a
 first-officer session or enabled stage source; stage alerts require an enabled stage source.
 

@@ -210,7 +210,7 @@ export function goalOf(source: Row): Goal | false {
   ) {
     return {
       text: instruction['text'] as string,
-      src: `${String(source['harness'])} · latest assignment`,
+      src: `${String(source['harness'])} · latest instruction`,
       at: nextNumber(instruction['at']),
     };
   }

@@ -89,7 +89,9 @@ export function UnboundContext({
           return (
             // Two workers can share a name; the position keeps their rows apart.
             <div className="pc-trail-event" key={`${name}#${String(index)}`}>
-              <strong>{row.assignment}</strong>
+              <strong>
+                {row.assignment === 'assignment unavailable' ? 'task unavailable' : row.assignment}
+              </strong>
               <span>{row.worker}</span>
               <Disclosure
                 disclosureKey={timelineDisclosureKey(scope, name)}
@@ -97,7 +99,11 @@ export function UnboundContext({
                 className="pc-event-evidence"
                 summary="evidence"
               >
-                <div>{row.source}</div>
+                <div>
+                  {row.source === 'assignment source unavailable'
+                    ? 'task source unavailable'
+                    : row.source}
+                </div>
               </Disclosure>
             </div>
           );

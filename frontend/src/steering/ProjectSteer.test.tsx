@@ -17,7 +17,7 @@ describe('the steering bar says what it is before the first keystroke', () => {
   it('names itself local and says there is no write path into a session', async () => {
     const page = mountPanels(<ProjectSteer project="alpha/app" />);
     await page.settle();
-    expect(screen.getByText('A note to yourself, kept in this browser tab')).toBeInTheDocument();
+    expect(screen.getByText('Your note (this tab only)')).toBeInTheDocument();
     expect(
       screen.getByText(
         /Cargento has no write path into a session\. Anything you type here is a note to yourself/,

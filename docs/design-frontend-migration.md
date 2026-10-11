@@ -501,13 +501,22 @@ the web assets calls the dismiss route), so none was built.
 
 Deviations (2026-10-12): The recovery strip uses Where this project stands, Current task,
 Running now, Needs you, Latest result and Latest instruction. Its source and absence labels say
-instruction rather than goal; the session's own words remain intact. The steering bar is A note
-to yourself, kept in this browser tab. The authority gloss is conditional on a first-officer
+instruction rather than goal; the session's own words remain intact. The steering bar is
+Your note (this tab only), shortened to stay on one line at 375 px. Its explanatory sentence
+is unchanged. The authority gloss is conditional on a first-officer
 session or an enabled stage source, and Workflow stage conditions becomes Stage alerts with
 its enabled-source gate retained. Needs you still names a waiting session above the tabs.
+Task evidence uses Evidence · task source and Task evidence not published; the workflow
+continuation says FO CONTINUES · Continue current task. Instruction sources say latest
+instruction. Missing child tasks and sources say task unavailable and task source unavailable
+in the recovery and Decisions render layers, while internal sentinels and published values
+stay intact. Observed-model comparisons rename only the derived instruction-source fields;
+the Console proof normalises the recorded contributor region while preserving published values.
 Member rows request the Sessions goal link's Intent focus in one click. Project parity changes
 only the recorded labels and conditional gloss; chrome references retain measured styles and
-note the renamed instruction surface. The no-workflow fixture rejects old labels and counts
+note the renamed instruction surface. The shorter task-source disclosure measures 173.969 px
+at both 1280 and 375 px, replacing the recorded 227.891 px text width; its styles and row
+filling are unchanged. The no-workflow fixture rejects old labels and counts
 member clicks. Goldens stay unchanged.
 
 The Projects list and history, project detail with its workflow plans, the scope tree and switcher, the

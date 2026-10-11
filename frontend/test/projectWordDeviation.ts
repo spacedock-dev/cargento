@@ -1,5 +1,18 @@
 import type { Row } from '../src/observed';
 
+export function instructionSourceDeviation<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(instructionSourceDeviation) as T;
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      ['ownGoalSrcText', 'goalSrcText'].includes(key) && typeof item === 'string'
+        ? item.replace(/ · latest assignment$/, ' · latest instruction')
+        : instructionSourceDeviation(item),
+    ]),
+  ) as T;
+}
+
 // Recorded summaries flatten labels and evidence into two UI regions. Mask the
 // published values before changing those regions; other fields are never renamed.
 export function renameProjectWords(
@@ -20,7 +33,7 @@ export function renameProjectWords(
   collect(evidence);
   const held: string[] = [];
   const affected = [...words].filter((word) =>
-    /PROJECT RECOVERY BRIEFING|STATED GOAL|ASSIGNMENT|EXECUTION|COMMAND|LATEST EVIDENCE|YOUR WORDS|FROM YOUR PROMPT|workflow goal|no goal\.|FO|Captain|CAPTAIN|captain|Direction shown in assignment/.test(
+    /PROJECT RECOVERY BRIEFING|STATED GOAL|ASSIGNMENT|assignment|Assignment|EXECUTION|COMMAND|LATEST EVIDENCE|YOUR WORDS|FROM YOUR PROMPT|workflow goal|no goal\.|FO|Captain|CAPTAIN|captain|Direction shown in assignment/.test(
       word,
     ),
   );
@@ -44,6 +57,15 @@ export function renameProjectWords(
     .replace('EXECUTION', 'Running now')
     .replace('COMMAND', 'Needs you')
     .replace('LATEST EVIDENCE', 'Latest result')
+    .replaceAll('Evidence · assignment source', 'Evidence · task source')
+    .replaceAll('Assignment evidence not published', 'Task evidence not published')
+    .replaceAll(
+      'FO CONTINUES · Continue current assignment',
+      'FO CONTINUES · Continue current task',
+    )
+    .replaceAll(' · latest assignment', ' · latest instruction')
+    .replaceAll('assignment unavailable', 'task unavailable')
+    .replaceAll('assignment source unavailable', 'task source unavailable')
     .replaceAll('FROM YOUR PROMPT · GOAL', 'Your saved words · from your prompt')
     .replaceAll('YOUR WORDS · GOAL', 'Your saved words')
     .replaceAll(
@@ -63,10 +85,7 @@ export function renameProjectWords(
       .replace('FO is the first officer, the agent driving this workflow; Captain is you.', '')
       .replaceAll('CAPTAIN NEEDED', 'NEEDS YOU')
       .replaceAll('FO INSPECTING', 'CHECKING')
-      .replaceAll(
-        'FO CONTINUES · Continue current assignment',
-        'CONTINUES · Continue the current task',
-      )
+      .replaceAll('FO CONTINUES · Continue current task', 'CONTINUES · Continue the current task')
       .replaceAll('FO CONTINUES', 'CONTINUES')
       .replaceAll('Captain not needed', 'You are not needed')
       .replaceAll('Captain state unknown', 'Your attention is unknown')
@@ -160,10 +179,15 @@ export function projectWordDeviation<T>(
           key,
           item.map((disclosure) => ({
             ...disclosure,
-            body:
-              disclosure.summary === 'Evidence · attention sources'
-                ? renameProjectWords(disclosure.body, gloss, evidence, heading)
-                : disclosure.body,
+            summary:
+              disclosure.summary === 'Evidence · assignment source'
+                ? 'Evidence · task source'
+                : disclosure.summary,
+            body: ['Evidence · attention sources', 'Evidence · child handoff'].includes(
+              disclosure.summary,
+            )
+              ? renameProjectWords(disclosure.body, gloss, evidence, heading)
+              : disclosure.body,
           })),
         ];
       return [key, item];

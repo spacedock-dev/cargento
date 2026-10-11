@@ -31,7 +31,7 @@ prototype and this document disagree, this document is what shipped.
 ## Cockpit reconciliation
 
 The project labels distinguish the harness's latest instruction from a session's own goal.
-The browser-only draft is labelled A note to yourself, kept in this browser tab. The first-officer
+The browser-only draft is labelled Your note (this tab only). The first-officer
 and Captain gloss appears only with a first-officer session or an enabled stage source; stage
 alerts remain conditional on their source being enabled. Project member rows open the session
 at the Intent heading for an untouched draft, otherwise at its goal box, in one press.
@@ -867,7 +867,7 @@ happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-The board carries A note to yourself, kept in this browser tab and TRIPWIRES because the dashboard needs the interaction shape,
+The board carries Your note (this tab only) and TRIPWIRES because the dashboard needs the interaction shape,
 but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It
