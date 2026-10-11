@@ -7,15 +7,13 @@ it replaced; the [reader-state inventory](design-reader-state.md#the-inventory) 
 
 ## Verdict
 
-Go, with conditions. Nothing measured stops the migration layer by layer. With the whole adopted set bundled
-and running, the page stays inside every fluidity time budget, every browser proof that was run passes on
-macOS, the CSS gates hold with no new exception, and Windows and Linux x64 install and build under the
-unchanged policy. Two conditions come with it. The disclosure and popover layers must not merge until the
-production drift proof is clean in a Linux container five times in a row, because the full set crashed
-Chromium's renderer in that proof (see the gates section) and the cause is not known. And every layer
-re-measures fluidity and recomposes the receipt, because the Python suite checks its final form on every pull
-request. The work is larger than installing a package: ten things in the tree break or silently misbehave
-under a naive install, and each is listed under the finding that exposed it.
+Adopted with the reader-state contracts intact. The final page stays inside every fluidity time budget;
+the layer records below describe the browser proofs and platform checks that were run. The original go
+decision required repeated Linux production drift checks for the disclosure and popover layers after the
+spike crashed Chromium's renderer. Those layers record their qualification separately from the spike
+findings. Each change to the page still requires fresh fluidity measurements and a recomposed receipt,
+because the Python suite checks its final form on every pull request. The work was larger than installing
+a package: ten things broke or silently misbehaved under a naive install, each listed below.
 
 The ten, in the order they are met:
 
@@ -37,16 +35,66 @@ own machine, so growth in size is accepted and the guard against slowness is tim
 measurement the owner confirmed (2026-10-10) that the component flavour is Base UI and that the fluidity
 receipt's byte ceiling is re-based to 2,000,000 bytes, to be raised again if a layer needs it.
 
+## End state
+
+Thirteen shadcn components are vendored under `frontend/src/ui/`, using the Base UI flavour and the
+local `cn` merger. The directory also holds Cargento's inline disclosure chevron and Button tests.
+The components keep the existing semantic roots, field owners and disclosure store.
+
+| Vendored file | Shipped use | Layer record |
+|---|---|---|
+| `button.tsx` | Shared actions, pending actions, tabs, switches and filters; plain links use `buttonVariants`. | [Button](#button-layer) |
+| `accordion.tsx` | The accordion variant of `Disclosure`, including session, project and timeline evidence. | [Disclosures](#accordion-and-collapsible-layer) |
+| `collapsible.tsx` | The armed Intent discard offer. | [Disclosures](#accordion-and-collapsible-layer) |
+| `popover.tsx` | The popover variant of `Disclosure`, including Sessions caveats, reentry Why and Drift sending details. | [Popover](#popover-layer) |
+| `native-select.tsx` | Prompt, workflow stage and pending direction choices, all real native selects. | [Fields](#form-controls-layer) |
+| `input.tsx` | Project steering and local tripwire drafts through `DraftInput`. | [Fields](#form-controls-layer) |
+| `textarea.tsx` | Goal, outcomes, pending direction, context notes and correction drafts through their existing uncontrolled owners. | [Fields](#form-controls-layer) |
+| `label.tsx` | Native field associations in Intent, context, correction and stage controls. | [Fields](#form-controls-layer) |
+| `badge.tsx` | Session and drift state, prompt origin, activity flags, course tags, read-only terminal and blocked notifications. | [Sessions](#sessions-layer), [Intent and Drift](#intent-drift-and-steering-layer), [Project](#project-console-timeline-shell-and-terminal-layer), [Attention](#attention-capacity-and-consent-layer) |
+| `card.tsx` | Session rows and panels, Intent and Drift panels, project and Console surfaces, timeline evidence, terminal chrome, Attention queues and Capacity windows and consent. | [Sessions](#sessions-layer), [Intent and Drift](#intent-drift-and-steering-layer), [Project](#project-console-timeline-shell-and-terminal-layer), [Attention](#attention-capacity-and-consent-layer) |
+| `alert.tsx` | Health notes, polite failures and shell or observer status; static log, drift, timeline and terminal messages disable announcements. | [Sessions](#sessions-layer), [Intent and Drift](#intent-drift-and-steering-layer), [Project](#project-console-timeline-shell-and-terminal-layer), [Attention](#attention-capacity-and-consent-layer) |
+| `separator.tsx` | The decorative notification boundary in session details. | [Sessions](#sessions-layer) |
+| `tabs.tsx` | Route-controlled `ProjectTabs` with automatic keyboard activation; only Root, List and Trigger are retained. | [Project](#project-console-timeline-shell-and-terminal-layer) |
+
+Native menus keep their deliberate exemption from Escape dismissal. Select choices and uncontrolled
+editor nodes retain native focus, undo, composition and dragged dimensions. Native progress elements
+and title tooltips remain because the swap offered no gain; the Capacity budget bar keeps its two
+independent quantities. Facts, evidence rows, switches, meter segments, result glyphs and conditional
+status paragraphs keep the semantic grouping or lifecycle named in their layer records. The xterm host
+and persistent live regions retain their owners. Empty was not vendored; absence sentences remain in
+their existing groups and roles. Unused Card and Alert parts and TabsContent were omitted, the last
+because a second panel lifecycle would duplicate route ownership. Icon-library imports, the npm `cn`
+package, Preflight and animation-package imports were also omitted for the reasons in the findings.
+
+The final page is 1,608,412 bytes against a 2,000,000-byte ceiling. Hand-written CSS is 124,635 bytes
+across the same thirteen counted sheets. The cleanup's rough starting estimate was about 135,500 bytes;
+its recorded start was 136,243, a reduction of 11,608 bytes. The whole migration started at 161,464
+counted bytes. The [cleanup](#stylesheet-cleanup) removed 83 rule entries, including the alias block,
+duplicate keyframe steps and redundant Raise weight, and retired all eighteen `--ctl-*` aliases.
+The counting rule excludes the Tailwind entry, so moving the 42 page tokens into its static theme
+contributes to the saving without deleting those tokens.
+
+The coverage record retains 57 exact exception identities covering 58 rule entries, with reasons for
+optional evidence, transient states, browser-specific progress and individual animation steps. The computed-style contract gained no
+readability exception; the form layer removed four native focus-ring exceptions. The coverage method's
+five limits are recorded in [Stylesheet cleanup](#stylesheet-cleanup).
+
+The final three-run fluidity measurement on 2026-10-11 passes every budget. For 5, 50 and 250 sessions,
+first-render medians are 136.8, 94.2 and 124.3 ms; poll-to-paint medians are 43.7, 46 and 60.1 ms.
+The [cleanup measurement](#stylesheet-cleanup) owns those figures; the earlier layer measurements below
+remain the history of how the page reached this state.
+
 ## What was measured, and how
 
-Every figure below came from a throwaway branch off `main` at `cde1188b` (never merged) on one machine
+The spike figures in Findings came from a throwaway branch off `main` at `cde1188b` (never merged) on one machine
 (macOS arm64, Node 26.10.0, pnpm 12.9.1, Chrome 156) unless a row says otherwise. The branch added
 `tailwindcss` and `@tailwindcss/vite` 4.3.3, `@base-ui/react` 1.8.0, `class-variance-authority` 0.7.1,
 `clsx` 2.1.1 and `tailwind-merge` 3.7.0, vendored eight shadcn components (Button, Accordion, Collapsible,
 Popover, NativeSelect, Input, Textarea, Label) and rendered each of them, hidden, from the real page so the
 bundle carried and ran them. The browser behaviour comparison was run in headless Chromium through
 Playwright 1.63 against one small page per library, and the popover and a pending button were repeated by
-hand in headed Chrome 156.
+hand in headed Chrome 156. The layer sections record their own later measurements.
 
 ## Findings
 
@@ -96,8 +144,8 @@ Three things were not what the plan assumed.
 - `pnpm build` passes: one chunk, one CSS asset, no `@import` and no non-`data:` `url()` in the built CSS, the
   fifteen fonts, and a thirteenth bundled licence (Base UI, its utilities and floating-positioning packages,
   tailwind-merge, clsx and cva) found and written by the existing notices step. The notices step covers
-  packages, not copied source: the licence text of the copied shadcn files is not in `react-licenses.txt` and
-  has to be added.
+  packages, not copied source: the copied shadcn licence text was absent from `react-licenses.txt` in the
+  spike; the toolchain layer now ships the full copied-source notice.
 - `css.test.ts` fails once, on the Tailwind entry's `@import`. A two-line allowance, for exactly
   `@import 'tailwindcss/theme.css' layer(theme);` and `@import 'tailwindcss/utilities.css' layer(utilities);`,
   is enough, and a third import still fails. The type-size, variable and scheme tests pass.
@@ -181,7 +229,7 @@ Three fresh fluidity runs per page on the same machine, base page against the pa
 The page grew by 233 KB and first render moved by at most 3.6 ms, inside the run-to-run spread. The byte
 ceiling in the fluidity receipt (1.25 times the replaced page, 1,816,276 bytes) was a proxy for that cost; the
 time budgets are the guard. The owner re-based the ceiling to 2,000,000 bytes, which keeps the proxy as a
-tripwire and leaves room for the display components that may still be adopted. A layer that would cross it
+tripwire and left room for the display components adopted in later layers. A layer that would cross it
 raises it in its own pull request, with its measured times.
 
 ### Tooling
@@ -230,10 +278,12 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
   full adopted set bundled and rendered. The unmodified page passed 5 of 5; Tailwind
   alone passed 5 of 5; the light components (Button, Input, Textarea, Label, NativeSelect with tailwind-merge)
   passed 5 of 5; the set with Accordion and Collapsible and without Popover passed 5 of 5; the set with
-  Popover and without Accordion and Collapsible passed 5 of 5. The same proof passed on macOS. The cause is not
-  known: no single component reproduces it, and only the full set does. It is a risk the disclosure and popover
-  layers carry: each runs the production drift proof repeatedly in a Linux container (five clean runs) before
-  its pull request opens, and the first layer that reproduces the crash finds its cause before merging.
+  Popover and without Accordion and Collapsible passed 5 of 5. The same proof passed on macOS. The cause was
+  unknown at the spike: no single component reproduced it, and only the full set did. The original gate
+  required five clean production drift runs before the disclosure and popover layers merged. The later
+  [single-file build record](design-frontend-migration.md#candidate-packaging) identifies Chromium's
+  callback source-name growth and the short `sourceURL` that bounded it; the popover layer records the
+  clean production proof after that fix.
 
 ## What each pattern becomes
 
@@ -246,15 +296,16 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
 | Disclosure, menu variant | keep native | not dismissed by Escape by design; not a popover |
 | Select | adopt NativeSelect; keep it a real `<select>` | `displayGate` defers polls while a native select is focused |
 | Textarea, input | restyle with Textarea and Input classes; stay uncontrolled | native undo and composition |
-| Tabs (`ProjectTabs`) | decided in the project layer after a test of automatic activation and modifier keys | hand-rolled roving tabindex over the route |
-| `role="status"` banner | Alert only if it stays polite | Alert defaults to an assertive role |
+| Tabs (`ProjectTabs`) | adopted route-controlled Tabs after testing automatic activation and modifier keys | original labelled panel and route ownership retained |
+| `role="status"` banner | adopted polite Alert; static messages disable announcements | the registry's assertive default would change the contract |
 | `<progress>`, `title` tooltips | keep native | nothing gained; hover-only text is worse on touch |
-| Badge, Card, Separator, Empty | adopt where a hand-written equivalent exists, for consistency | owner brief; vendored in the layer that uses them |
+| Badge, Card, Separator | adopted on the surfaces named in the layer records | shared recipes retain the original semantic roots |
+| Empty | not vendored | absence sentences retain their existing groups and roles |
 
 ## Rules every layer follows
 
-1. One stack. Each layer changes `react.html`, so layers land in dependency order from one stack, each rebuilt
-   from a clean `node_modules`. Every layer re-measures fluidity three times and recomposes the receipt, because
+1. One stack. Component layers change `react.html`, so they land in dependency order from one stack, each rebuilt
+   from a clean `node_modules`. Every layer changing the page re-measures fluidity three times and recomposes the receipt, because
    the Python suite checks the final form on every pull request, so each layer's page is release-qualified when
    it merges. The release hold stays. A merged layer that regresses is reverted by its own pull request and its
    receipts reconciled.
@@ -299,8 +350,8 @@ replaces.
 
 ## What was not verified
 
-The browser's find bar, any screen reader, Firefox and WebKit, touch, and the Windows and Linux x64 timings
-outside what the pull request's CI legs recorded. The full browser proof set was not run on the branch.
+The spike did not verify the browser's find bar, any screen reader, Firefox and WebKit, touch, or Windows
+and Linux x64 timings outside what its pull request's CI legs recorded. It did not run the full browser proof set.
 
 ## Toolchain layer
 
@@ -310,8 +361,8 @@ their rule bodies are unchanged. The entry imports theme and utilities without P
 
 Scanning all of `frontend/src` emitted utility rules from ordinary words such as `hidden` and `filter`
 despite there being no utility callers. The entry therefore scans `ui/**/*.{ts,tsx}` and
-`lib/**/*.{ts,tsx}`, excludes tests, the gallery and stylesheets, and uses `source(none)`. A later layer
-adds an explicit source glob for any utility caller outside those directories. Nothing is vendored in
+`lib/**/*.{ts,tsx}`, excludes tests, the gallery and stylesheets, and uses `source(none)`. Later layers
+added an explicit source glob for utility callers outside those directories. Nothing was vendored in
 this layer. `frontend/build/style-policy.mjs` rejects a vendored module unreachable from the shipped
 entry through runtime imports, exports or dynamic imports with literal targets (including template
 literals without substitutions). Type-only imports and unreachable modules do not qualify; imports inside `if (false)`
@@ -376,7 +427,7 @@ are removed from the sheets. The CSS record falls from 161,464 to 153,203 bytes.
 gallery includes default, hover, keyboard focus, pending, disabled, retry, long text, primary, quiet
 and linked actions, plus an explicit width reservation. The initial adoption measured the gallery at
 1280 and 320 px in both bundle modes, alongside real-route type, ring and target checks. The
-correction is checked in development; production verification follows the stack-head rebuild.
+correction was checked in development at this stage; production verification belonged to the stack-head rebuild.
 
 The target floor stays at 44 CSS px, as in the replaced rule. A first attempt using Tailwind's
 rem-based spacing step made the Console tab at least 88 px wide at 200% text size and overflowed
@@ -492,7 +543,7 @@ Measured on 2026-10-10 in three fresh fluidity runs: the page is 1,465,036 bytes
 reactive state layer. First-render medians are 129.3, 92 and 125.6 ms and poll-to-paint medians are
 44.4, 45.3 and 62.2 ms; every budget passes, and the opened session-facts disclosure keeps its node and its
 open state across a poll. The measurement driver reads the disclosure by its accordion trigger now. The production
-drift crash condition is qualified on hosted Linux runners before this layer merges.
+drift crash condition moved to qualification on hosted Linux runners for this layer.
 
 The CSS proof now settles opened panels before measuring their text. The native proof read inside
 the opening transition and missed some bodies at zero height. Newly reached harness-source prose,
@@ -958,7 +1009,7 @@ mutations and six browser mutations fail at their intended guarantees, covering 
 body type, dark scheme, variables, absence ink, control colour, target floors and focus.
 The current-shell dead-rule mutation also fails the coverage inventory.
 
-Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,608,412 bytes, -12,884 more than the
-attention and capacity layer; first-render medians are 136.8, 94.2 and 124.3 ms and poll-to-paint medians are 43.7, 46 and 60.1 ms;
+Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,608,412 bytes, 12,884 fewer than the
+Attention and Capacity layer; first-render medians are 136.8, 94.2 and 124.3 ms and poll-to-paint medians are 43.7, 46 and 60.1 ms;
 every budget passes. Production
 coverage is the pre-deletion baseline; native Windows and Linux are checked by the pull request.
