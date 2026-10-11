@@ -264,6 +264,7 @@ pnpm test:sessions:browser
 pnpm test:terminal:browser
 pnpm test:intent:browser
 pnpm test:drift:browser
+pnpm test:journey:browser
 pnpm test:project:browser
 pnpm test:console:browser
 pnpm test:attention:browser
@@ -488,7 +489,7 @@ The separate `Frontend proofs` job has been retired after the major frontend ref
 development-server proofs remain runnable through the unchanged local pre-PR command list.
 
 `Frontend production bundle` runs on Linux in two shards: it rebuilds and compares the tracked
-artifact, then runs all twelve parity proofs against the shipped bundle, with shard membership
+artifact, then runs all thirteen parity proofs against the shipped bundle, with shard membership
 kept in `frontend/e2e/production-shards.json`. The `Storybook (ubuntu-latest)` job builds the offline explorer and runs component assertions in
 pinned Chromium. All three frontend jobs are in the aggregator's
 `needs`, and a skipped result passes only when the detector said `code=false`. The required status

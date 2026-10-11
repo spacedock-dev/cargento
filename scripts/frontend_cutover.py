@@ -66,7 +66,7 @@ PARITY_SCRIPTS = frozenset(
 )
 # Not a parity proof: the computed-style contract that replaced the legacy stylesheet guards also
 # runs on the shipped bundle.
-EXTRA_PRODUCTION_PROOFS = frozenset({"test:css:browser"})
+EXTRA_PRODUCTION_PROOFS = frozenset({"test:css:browser", "test:journey:browser"})
 # The sources a measurement is taken with. A receipt records two digests of each: what the runs were
 # taken with (`source_bindings`, embedded in every run and never rewritten) and what the tree holds
 # when the receipt was last composed (`current_sources`, checked against the files).
