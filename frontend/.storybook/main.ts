@@ -8,7 +8,7 @@ const config: StorybookConfig = {
   framework: '@storybook/react-vite',
   addons: ['@storybook/addon-vitest'],
   core: { disableTelemetry: true, disableWhatsNewNotifications: true },
-  features: { developmentMode: false },
+  features: { developmentModeForBuild: false },
   async previewHead(head) {
     const { css } = await readFonts(fileURLToPath(new URL('../../', import.meta.url)));
     return `${head}<style>${css}</style>`;

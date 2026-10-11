@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, expect } from 'vitest';
 import { commands } from 'vitest/browser';
-import type { storyGuard, storyResult } from '../storybook/guard.mts';
 
 declare module 'vitest/browser' {
   interface BrowserCommands {
-    storyGuard: typeof storyGuard;
-    storyResult: typeof storyResult;
+    storyGuard(): Promise<string>;
+    storyResult(): Promise<string[]>;
   }
 }
 beforeEach(async () => {

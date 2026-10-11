@@ -5,9 +5,7 @@ import { Disclosure } from '../src/controls/Disclosure';
 import { ControlsProvider } from '../src/controls/ControlsProvider';
 import { testControls } from '../src/controls/testControls';
 import { Button } from '../src/ui/button';
-const meta = { title: 'Controls/Disclosure', component: Disclosure } satisfies Meta<
-  typeof Disclosure
->;
+const meta = { title: 'Controls/Disclosure', component: Example } satisfies Meta<typeof Example>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 function Example({ variant }: { variant: 'accordion' | 'popover' }) {
@@ -24,7 +22,7 @@ function Example({ variant }: { variant: 'accordion' | 'popover' }) {
   );
 }
 export const Accordion: Story = {
-  render: () => <Example variant="accordion" />,
+  args: { variant: 'accordion' },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const trigger = canvas.getByRole('button', { name: 'Project plan' });
@@ -40,7 +38,7 @@ export const Accordion: Story = {
   },
 };
 export const Popover: Story = {
-  render: () => <Example variant="popover" />,
+  args: { variant: 'popover' },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const trigger = canvas.getByRole('button', { name: 'Project plan' });

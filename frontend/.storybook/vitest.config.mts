@@ -7,6 +7,7 @@ import { storyGuard, storyResult } from '../storybook/guard.mts';
 export default defineConfig({
   server: { host: '127.0.0.1' },
   test: {
+    coverage: { enabled: false },
     projects: [
       {
         plugins: [
@@ -20,7 +21,6 @@ export default defineConfig({
           maxWorkers: 1,
           fileParallelism: false,
           setupFiles: [fileURLToPath(new URL('./vitest.setup.ts', import.meta.url))],
-          coverage: { enabled: false },
           browser: {
             enabled: true,
             api: { host: '127.0.0.1' },
