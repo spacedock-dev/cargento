@@ -153,8 +153,9 @@ The dashboard opens on Sessions. Projects, one click away, groups sessions by th
 harness publishes, and each project opens a cockpit with a Scope rail, a persistent assignment/execution/command briefing,
 and Now, Course, Decisions and Console tabs. Each session's own page leads with drift: there you
 type the goal and the expected outcome, a checklist of up to six lines, you are holding that session to, check it for drift with one
-press, and read back what has been raised about that session and what became of the raise. Its
-`Copy link` control copies a link that reopens that page.
+press, and read back what has been raised about that session and what became of the raise.
+Open a session, set a goal and press `Analyze drift`; `How Intent and drift works` beside Intent
+explains those steps, the reading's limits and when an outcome line gives a drift level.
 Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.

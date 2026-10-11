@@ -1,4 +1,4 @@
-import { CopyControl, RaiseControl, resumeCommand, useControls } from '../controls';
+import { RaiseControl, useControls } from '../controls';
 import { delegatedWork, type Row } from '../observed';
 import { LANE_OFF_RECORD, laneOffWhy, unaskedDepartures, type DepartureRow } from './detail';
 
@@ -8,26 +8,19 @@ import { LANE_OFF_RECORD, laneOffWhy, unaskedDepartures, type DepartureRow } fro
    panel; this step draws them in the panel's slot until that panel exists, so a raise on record is never
    hidden by the panel being absent. Each takes the session row and nothing else it could get wrong. */
 
-/* The way back into the session beside a departure. Cargento never writes into a session, so acting on
-   drift means putting the reader back in it: the command that harness's CLI takes to resume it, and the raise
-   where one was measured. Both are the header's own controls, so a cue written by one is swept onto the
-   other. The raise draws whatever the session's state, which is the difference from the header, where it is
-   offered only while the session waits on the reader. Only what exists is drawn; what does not is said once
-   for the section, never repeated under every departure. */
+/* Terminal raise remains beside each departure when the board can identify its terminal.
+   Resume commands live on Attention, the waiting panel and the project rail (DEC-27). */
 export function DepartureReentry({ session }: { readonly session: Row }) {
   const controls = useControls();
-  const harness = String(session['harness'] || '');
   const sid = String(session['sid'] || '');
-  const command = resumeCommand(harness, String(session['resume_id'] || ''));
   const raisable =
     session['focusable'] === true &&
     Boolean(sid.trim()) &&
     Boolean(String(session['harness'] == null ? '' : session['harness']).trim()) &&
     controls.focus !== null;
-  if (!command && !raisable) return null;
+  if (!raisable) return null;
   return (
     <div className="next-departure-reentry" data-next-departure-reentry>
-      {command ? <CopyControl kind="command" harness={harness} sid={sid} value={command} /> : null}
       {raisable ? (
         <RaiseControl harness={String(session['harness']).trim()} sid={sid.trim()} focusable />
       ) : null}

@@ -119,8 +119,9 @@ reader is named. With no reader on this machine, the reason stands where the con
 page has at most one primary control, `Analyze drift`. No answer option is ever emphasised: a session blocked on
 you gives the primary to the terminal raise when one is offered, and otherwise nothing is primary
 while its question is open.
-Beside `Copy ID`, `Copy link` copies the page's own address, which reopens the same session after
-a reload. A link to a session the board no longer holds names that session and says it is not in
+Open a session, set a goal and press `Analyze drift`. The `How Intent and drift works` button
+beside Intent explains the steps and limits. `Not enough recorded yet` is normal until you add
+an expected outcome line. A link to a session the board no longer holds names that session and says it is not in
 the current payload.
 
 The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`, `#n=intent`,
@@ -432,10 +433,10 @@ and why the board never describes it as a session nobody typed against. That act
 where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. That sentence is the control's own description, and it is
 written to the page's live region when the first press arms it, so it reaches a reader who is not
-looking at the screen. Beside each raised departure sit the command that resumes the session, on Claude
-Code and Codex, and the raise that selects its tmux pane, whatever state the session is in; the
-raise does not bring the window forward. Where either is missing the section says why once. Neither
-sends anything to the session. The Intent log carries the same raises a line at a time, and keeps
+looking at the screen. Beside each raised departure sits the raise that selects its tmux pane
+where available, whatever state the session is in; it does not bring the window forward or send
+anything to the session. Resume commands are available on Attention, the waiting panel and the
+project rail. The Intent log carries the same raises a line at a time, and keeps
 them after the session leaves the board.
 
 Sessions labels your typed goal beside NOW, or shows the prompt the session page drafts ("GOAL ·

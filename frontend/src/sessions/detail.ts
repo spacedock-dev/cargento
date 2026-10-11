@@ -507,35 +507,8 @@ const NO_TERMINAL_LINE =
 const RAISE_LIMIT =
   'A raise switches what the terminal displays; its window may still be behind others.';
 
-export interface ReentryInputs {
-  readonly label: string;
-  readonly hasCommand: boolean;
-  /** The harness has a re-entry verb at all. */
-  readonly knownHarness: boolean;
-  readonly canRaise: boolean;
-  /** The run minted a raise capability. */
-  readonly focusCapability: boolean;
-}
-
-/* Why a way back is missing, or what the one offered cannot do. Two limits, split by cause: a harness
-   with no re-entry command never will have one, while one with a command and no usable id has none THIS
-   RUN. The raise's own limit is the standing one, said here because one session is the whole subject and
-   silence would read as "no limit". */
-export function reentryLimit(input: ReentryInputs): {
-  readonly resume: string;
-  readonly raise: string;
-} {
-  const resume = input.hasCommand
-    ? ''
-    : !input.knownHarness
-      ? `${input.label} publishes no re-entry command, so there is none to copy.`
-      : 'This session published no usable id this run, so there is no re-entry command to copy.';
-  const raise = input.canRaise
-    ? RAISE_LIMIT
-    : !input.focusCapability
-      ? FOCUS_OFF_LINE
-      : NO_TERMINAL_LINE;
-  return { resume, raise };
+export function raiseLimit(canRaise: boolean, focusCapability: boolean): string {
+  return canRaise ? RAISE_LIMIT : !focusCapability ? FOCUS_OFF_LINE : NO_TERMINAL_LINE;
 }
 
 export interface CommandReports {

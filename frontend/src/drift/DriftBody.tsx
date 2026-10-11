@@ -10,7 +10,6 @@ import { useDrift } from './context';
 import { offeredDirection, steerOffer, steerTrigger, type SteerOffer } from './correction';
 import { DriftLevelView } from './DriftLevelView';
 import { readingBoard } from './flip';
-import { readingStored } from './level';
 import {
   BudgetLine,
   DISCLOSURE_ID,
@@ -139,12 +138,10 @@ export function DriftBody({ primary }: { readonly primary: boolean }) {
       </div>
     );
   }
-  const lede = annotate && !model.drafted && !readingStored(annotation) ? <Lede /> : null;
   return (
     <>
       <DriftLevelView />
       {area}
-      {lede}
       {annotate ? <DelegatedWorkLine session={session} now={model.generated} /> : null}
       <ReadingSection />
     </>
@@ -163,20 +160,6 @@ function TriggerLine({ offer }: { readonly offer: SteerOffer }) {
     generated: model.generated,
   });
   return text ? <p className="next-cockpit-reading-why">{text}</p> : null;
-}
-
-/* Tier 2 under its summary: it says what the press does, which the button and its result already show. Under a
-   stored reading it is not drawn at all: it explains a step already done. */
-function Lede() {
-  const { model } = useDrift();
-  const goal = String(model.annotation?.['goal'] || '').trim()
-    ? 'When you analyze drift, Cargento lists where this session departed from your saved goal. '
-    : 'Choose a goal or use your prompt, then analyze drift: Cargento lists where this session departed from it. ';
-  return (
-    <Why name="held-lede" summary="What analysis does">
-      <p className="next-cockpit-held-lede">{`${goal}It never writes into the session, so steering stays yours.`}</p>
-    </Why>
-  );
 }
 
 /* The question before the press, in the Analyze control's place while a later direction is unsettled: Keep is

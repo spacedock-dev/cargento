@@ -256,39 +256,6 @@ describe('a redraw leaves the reader’s place alone', () => {
   });
 });
 
-describe('row control cues keep the newest thirty-two', () => {
-  it('forgets the oldest cue once a thirty-third control has been pressed', async () => {
-    const many = board(
-      Array.from({ length: 34 }, (_, index) => ({
-        harness: 'claude',
-        sid: `s${String(index).padStart(2, '0')}`,
-        project: 'p',
-        title: `T${String(index)}`,
-        state: 'idle',
-        last_activity: NOW - index,
-      })),
-    );
-    const page = await open(many);
-    for (let index = 0; index < 34; index += 1) {
-      await act(async () => {
-        fireEvent.click(
-          document.querySelector(
-            `article[data-next-session="s${String(index).padStart(2, '0')}"] button[data-copy-kind="id"]`,
-          ) as Element,
-        );
-      });
-    }
-    await page.settle();
-    const marked = [...document.querySelectorAll('button[data-copy-state]')].map((button) =>
-      button.closest('article')?.getAttribute('data-next-session'),
-    );
-    expect(marked).toHaveLength(32);
-    expect(marked).not.toContain('s00');
-    expect(marked).not.toContain('s01');
-    expect(marked).toContain('s33');
-  });
-});
-
 describe('the goal link opens the session at its goal', () => {
   const focused = () => document.activeElement?.getAttribute('data-next-focus');
 

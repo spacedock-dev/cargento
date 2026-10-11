@@ -1,3 +1,4 @@
+import { sessionDeviations } from './support/session-deviations.mjs';
 /*
  * The Sessions screen and the session page in a real browser, against the real backend (DRC-4824).
  *
@@ -26,7 +27,7 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { openPage } from './support/browser.mjs';
-import { digest, goldenFor } from './support/golden.mjs';
+import { digest } from './support/golden.mjs';
 import {
   instrumentResources,
   recordClipboard,
@@ -267,7 +268,7 @@ function firstDifference(left, right, path = '$') {
 const DEVIATIONS = [];
 
 const browser = await chromium.launch();
-const golden = goldenFor('sessions-parity');
+const golden = sessionDeviations('sessions-parity');
 const board = await startSessionsBoard();
 const reactOrigins = [board.react.origin, board.react.viteOrigin];
 const shots = [];
@@ -987,40 +988,32 @@ try {
   });
 
   await step(
-    'copy: a press is recorded, the cue stays on that session’s control across a poll, and the clipboard is the recorder',
+    'session copy controls are absent on rows and detail, including departures',
     async () => {
       const o = await clocked('#n=sessions');
       try {
-        const button = o.page.locator(
-          'article[data-next-harness="claude"][data-next-session="shared-sid"] button[data-copy-kind="id"]',
+        assert.equal(await o.page.locator('.next-operation-row [data-copy-kind]').count(), 0);
+        for (const row of real.sessions.filter(routable)) {
+          await load(o, board.react.origin, sessionFragment(row));
+          assert.equal(await o.page.locator('.next-session-detail [data-copy-kind]').count(), 0);
+        }
+        await load(o, board.react.origin, '#n=attention');
+        assert.ok(
+          (await o.page.locator('.next-attention [data-copy-kind=command]').count()) > 0,
+          'Attention lost resume commands',
         );
-        await button.click();
-        await o.page.waitForTimeout(patience(100));
-        assert.deepEqual(await o.page.evaluate(() => globalThis.__copied), ['shared-sid']);
-        assert.equal(await button.getAttribute('data-copy-state'), 'copied');
-        assert.equal(
-          await o.page
-            .locator(
-              'article[data-next-harness="codex"][data-next-session="shared-sid"] button[data-copy-kind="id"]',
-            )
-            .getAttribute('data-copy-state'),
-          null,
-          'the sid under the other harness is not marked',
+        await load(o, board.react.origin, '#n=project:alpha%2Fapp');
+        assert.ok(
+          (await o.page.locator('.next-cockpit-waiting [data-copy-kind=command]').count()) > 0,
+          'project rail lost resume commands',
         );
-        o.state.body = { ...real, generated: real.generated + 25 };
-        await o.poll();
-        assert.equal(
-          await button.getAttribute('data-copy-state'),
-          'copied',
-          'the cue outlived a poll',
+        await o.page.getByRole('tab', { name: /^Console/ }).click();
+        await o.page.waitForSelector('.next-rail-wait [data-copy-kind=command]');
+        assert.ok(
+          (await o.page.locator('.next-rail-wait [data-copy-kind=command]').count()) > 0,
+          'waiting panel lost resume commands',
         );
-        await o.page.clock.fastForward(31_000);
-        await o.page.waitForTimeout(patience(200));
-        assert.equal(
-          await button.getAttribute('data-copy-state'),
-          null,
-          'and lapsed at thirty seconds',
-        );
+        assert.deepEqual(await o.page.evaluate(() => globalThis.__copied), []);
       } finally {
         await o.close();
       }

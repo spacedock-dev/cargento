@@ -128,6 +128,16 @@ try {
     join(copy, 'frontend/src/main.tsx'),
     "import { mountGallery } from './controls/gallery';\nmountGallery(document.getElementById('root')!);\n",
   );
+  const galleryPath = join(copy, 'frontend/src/controls/GalleryBoard.tsx');
+  const gallery = await readFile(galleryPath, 'utf8');
+  await writeFile(
+    galleryPath,
+    "import { IntentHowTo } from '../intent/HowTo';\nimport '../intent/intent.css';\n" +
+      gallery.replace(
+        '<h1>Shared controls</h1>',
+        `<h1>Shared controls</h1><section className="next-cockpit-held"><header className="flex-wrap"><h2>Intent</h2><IntentHowTo project="alpha/app" session={{ harness: 'claude', sid: 'howto' }} payload={{ reading_routes: { claude: { provider: 'claude', label: 'Claude Code' } } }} /></header></section>`,
+      ),
+  );
   if (mutation) {
     const [file, needle, replacement] = MUTATIONS[mutation];
     const path = join(copy, 'frontend/src', file);
@@ -276,7 +286,13 @@ try {
     await open();
     await page.keyboard.press('Tab');
     await page.waitForFunction(
-      () => document.querySelector('[data-slot=popover-content]')?.contains(document.activeElement),
+      () =>
+        [...document.querySelectorAll('[data-slot=popover-content]')]
+          .find(
+            (el) =>
+              document.getElementById(el.getAttribute('aria-labelledby'))?.textContent === 'Why',
+          )
+          ?.contains(document.activeElement),
       null,
       { timeout: patience(5000) },
     );
@@ -418,7 +434,12 @@ try {
       await open();
       await page.getByRole('button', { name: 'Inside why', exact: true }).focus();
       await page.evaluate(() => {
-        globalThis.__popupBefore = document.querySelector('[data-slot=popover-content]');
+        globalThis.__popupBefore = [
+          ...document.querySelectorAll('[data-slot=popover-content]'),
+        ].find(
+          (el) =>
+            document.getElementById(el.getAttribute('aria-labelledby'))?.textContent === 'Why',
+        );
         globalThis.__focusBefore = document.activeElement;
       });
       const before = Number(await page.locator('[data-readout=displayed-accepted]').textContent());
@@ -434,7 +455,11 @@ try {
       assert.equal(await isOpen(), true, 'poll closed popup');
       assert.deepEqual(
         await page.evaluate(() => ({
-          node: document.querySelector('[data-slot=popover-content]') === globalThis.__popupBefore,
+          node:
+            [...document.querySelectorAll('[data-slot=popover-content]')].find(
+              (el) =>
+                document.getElementById(el.getAttribute('aria-labelledby'))?.textContent === 'Why',
+            ) === globalThis.__popupBefore,
           focus: document.activeElement === globalThis.__focusBefore,
           scrolls: globalThis.__popoverScrolls,
         })),
@@ -514,6 +539,54 @@ try {
         );
         await page.screenshot({ path: join(scratch, `popover-${width}-${text}.png`) });
       }
+    },
+  );
+  await step(
+    'Intent how-to opens by click and keyboard, keeps state on redraw and fits at 320 px',
+    async () => {
+      await page.setViewportSize({ width: 320, height: 700 });
+      await load();
+      const name = 'How Intent and drift works';
+      const howto = trigger(name);
+      assert.equal(
+        await howto
+          .locator('xpath=../..')
+          .getByRole('heading', { name: 'Intent', exact: true })
+          .count(),
+        1,
+      );
+      await howto.click();
+      await waitOpen(name);
+      const panel = page.getByRole('dialog', { name, exact: true });
+      assert.match(await panel.innerText(), /Cargento never writes into sessions/);
+      assert.match(await panel.innerText(), /Not enough recorded yet/);
+      assert.ok((await panel.innerText()).split(/\s+/).length <= 150, 'how-to word ceiling');
+      const box = await panel.boundingBox();
+      assert.ok(
+        box.x >= 0 && box.x + box.width <= 320 && box.y >= 0 && box.y + box.height <= 700,
+        'how-to left 320 px viewport',
+      );
+      await panel.screenshot({ path: join(scratch, 'intent-howto-320.png') });
+      const before = Number(await page.locator('[data-readout=displayed-accepted]').textContent());
+      await page.evaluate(() => globalThis.__gallery.runtime.refresh({ manual: true }));
+      await page.waitForFunction(
+        (number) =>
+          Number(document.querySelector('[data-readout=displayed-accepted]')?.textContent) > number,
+        before,
+        { timeout: patience(5000) },
+      );
+      await waitOpen(name);
+      await page.keyboard.press('Escape');
+      await waitOpen(name, false);
+      await waitFocus(name);
+      await howto.press('Enter');
+      await waitOpen(name);
+      await howto.press('Space');
+      await waitOpen(name, false);
+      await howto.press('Space');
+      await waitOpen(name);
+      await page.getByRole('heading', { name: 'Shared controls' }).click();
+      await waitOpen(name, false);
     },
   );
   assert.deepEqual(opened.log.externalRequests, []);

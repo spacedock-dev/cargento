@@ -926,6 +926,13 @@ if (new URLSearchParams(location.search).has('late')) {
     async () => {
       await load({ stream: true });
       const idButton = page.getByRole('button', { name: /^Copy session ID colon:sid$/ }).first();
+      assert.deepEqual(
+        await page
+          .locator('#gallery [data-copy-kind]')
+          .evaluateAll((nodes) => [...new Set(nodes.map((node) => node.dataset.copyKind))].sort()),
+        ['command', 'id', 'link'],
+        'the shared gallery keeps every CopyControl kind after session copies retire',
+      );
       await idButton.click();
       await page.waitForFunction(() => globalThis.__gallery.hooks.copied.length === 1);
       assert.deepEqual(await page.evaluate(() => globalThis.__gallery.hooks.copied), ['colon:sid']);

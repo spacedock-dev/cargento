@@ -583,8 +583,8 @@ reader was on, so every row, card and link that routes through it carries it wit
 own; the Intent log's row now routes through it too. The session page's tab is that view (Projects
 for a project page), its breadcrumb starts there (`Sessions ›`, `Attention ›`, `Intent log ›`, or
 `Projects › <project> ›`), and `Escape` goes where the breadcrumb's last link goes. A pasted link, a
-bookmark or Copy link carries no origin and opens under Sessions; Copy link is built from the
-session, so it never carries the sender's path. When the crumb does not name the project, the
+bookmark without an origin opens under Sessions. DEC-27 removes Copy link and its builder from
+the session page. When the crumb does not name the project, the
 header's identity line links to it, so it stays one click away. A new page opens at its top, while
 a tab or scope change within one keeps the reader's place, one click draws the page once, and a
 fragment canonicalised on load or on `hashchange` replaces its history entry rather than pushing
@@ -705,8 +705,8 @@ stale route, including the right ID under the wrong project label, gets an expli
 outside-payload state instead of a guessed row. That state names the harness and session the link
 asked for and states the board's observation window as a fact about the board, never as the cause,
 since a session from another machine is absent for a different reason. Before the first payload
-arrives the page says so rather than claiming the session is absent. The header's `Copy link`,
-beside `Copy ID`, copies the page's absolute address in the same copy lane (DRC-4638). The flat session table now emits the same route as
+arrives the page says so rather than claiming the session is absent. DEC-27 removes Copy ID,
+Copy link and Copy command from the header, and Copy ID from Sessions rows. The flat session table emits the same route as
 the project activity cards, so it no longer stops at project detail.
 
 Since DRC-4639 the page leads, after its identity header, with what was the cockpit's Held to tab.
@@ -1078,10 +1078,11 @@ git evidence, but omits NEXT and BLOCKED. An ENDED row reported its own end; mer
 history proves neither an open nor a closed process.
 
 Wide rows share one grid definition with their column header, so values do not drift between rows.
-The harness and title remain visible while the full session ID moves behind a dedicated copy
-control. The control exposes the ID in its accessible label and tooltip, writes it to the clipboard,
-and announces success without navigating. Routes include project label, harness, and full session
-ID so equal IDs from different harnesses cannot select the wrong row.
+The harness and title remain visible. The dedicated copy control that once held the full session ID
+was removed from Sessions rows by [DEC-27](design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result);
+a session's ID is read on its page or copied from Attention, the waiting panel or the project rail. Routes
+include project label, harness, and full session ID so equal IDs from different harnesses cannot select
+the wrong row.
 
 The 320-pixel layout changes form instead of squeezing the table. The fleet strip becomes a
 compact two-by-two summary. Each active session becomes a nearly full-width card with identity

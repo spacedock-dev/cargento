@@ -1,3 +1,4 @@
+import { sessionDeviations } from './support/session-deviations.mjs';
 /* global document, getComputedStyle -- used inside page.evaluate, which runs in the browser */
 /*
  * The Drift section, Analyze, its result, Steer back and the departures in a real browser.
@@ -45,7 +46,7 @@ import {
 import { call, startIntentBoard } from './intent-board.mjs';
 import { instrumentResources, recordClipboard, resources } from './sessions-board.mjs';
 import { openPage, REPOSITORY } from './support/browser.mjs';
-import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
+import { jsonSafe, normalise } from './support/golden.mjs';
 import { awaitRecordRead } from './support/record.mjs';
 import { copyProofPath } from './support/proof-copy.mjs';
 
@@ -60,7 +61,7 @@ const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`
   /\/?$/,
   '/',
 );
-const golden = goldenFor('drift-parity');
+const golden = sessionDeviations('drift-parity');
 /* The React reading in the stable form a recorded observation has, so the two compare as plain data. */
 const norm = (value) => jsonSafe(normalise(value));
 const receipts = {};

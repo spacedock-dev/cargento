@@ -7,6 +7,7 @@ import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
 import type { Row } from '../observed';
 import { DelegatedWorkLine, UnaskedDepartureBody } from './DepartureParts';
+import { retractSessionCopies } from '../../test/sessionCopyDeviation';
 
 /* The departure rows, the way back beside them and the delegated-work line, held to the legacy page's own
    functions over every session a generated payload carries. The comparison is the rendered text, plus the
@@ -43,6 +44,7 @@ describe('the departure rows read as the legacy rows do', () => {
           const html = legacy.call<string>('nextUnaskedDepartureBody', session);
           const template = document.createElement('template');
           template.innerHTML = html;
+          retractSessionCopies(template.content);
           const kit = testControls(capability ? {} : { focus: null });
           const view = render(
             <StrictMode>

@@ -64,7 +64,9 @@ disabled rather than silently missing.
 current turn it is, and an estimate of when that turn ends. It tells you when that changes instead
 of making you poll. The first screen sets your goal or a permitted prompt beside current activity
 and brings recorded departures forward. The session page asks once before a reading, remembers
-your answer, and offers an off switch and a way back into the session, without steering it for you.
+your answer, and offers an off switch, without steering it for you. Open a session, set a goal and
+press Analyze drift. The How Intent and drift works button beside Intent explains the steps and
+the limits; Not enough recorded yet is normal until you add an expected outcome line.
 On Claude Code sessions, you can turn on a live drift estimate in the panel and header after every
 turn, based on recorded checks and file paths rather than the meaning of your intent. An analysis
 shows its level, each outcome line against the recorded work and what the agent said with its
@@ -189,8 +191,8 @@ new is being checked.
 
 What was raised is reviewable rather than only raised. The session page's drift block collects, in
 one place, the departures a reading you asked for produced, the departures the checks run while you
-were away produced, what became of the raise, and the figures, with the resume command and the
-tmux raise beside each departure where those exist; the Intent log carries a line per session
+were away produced, what became of the raise, and the figures, with a tmux raise beside each
+departure where it exists; the Intent log carries a line per session
 saying what was raised against the words on it, and keeps that after the row leaves the board.
 Where it stops is the follow-up. What came after a raise is derived from later checks in the same
 store, so the common answer is that no later check has read the session, and the board says that
