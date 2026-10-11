@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1596260,
+    "bytes": 1596232,
     "file": "react.html",
-    "sha256": "053b20e29d5b4133a5567ca09aaaf7aab251f19f1264275ebdd1a487849fab9f"
+    "sha256": "9e5834215d5cd6c5bcbe2b17f6e1be437603b1065fb84589dd755bd75896c50c"
   },
   "format": 1,
   "frontend": "react",
@@ -960,7 +960,7 @@
       },
       {
         "file": "frontend/src/sessions/DetailParts.tsx",
-        "sha256": "2d12a24236a0d31dc5716f95f9008a1248488e58b010093bd92ccfb62cb1d602"
+        "sha256": "e2d2cdff74cd9f7c5d03cda0267651af3a173fdaa2f82ea0c8358b54398077c9"
       },
       {
         "file": "frontend/src/sessions/DriftSlot.tsx",
@@ -1384,7 +1384,7 @@
       },
       {
         "file": "frontend/src/ui/separator.tsx",
-        "sha256": "edde482642fe4954351a75b7edac4e92f7b1fbe94e35b30ecad1c880c28b217d"
+        "sha256": "4f427687a25a2a584ffbc9f29e4d94af140046fc0bc0296616c5c2dc316968e5"
       },
       {
         "file": "frontend/src/ui/textarea.tsx",
@@ -1420,7 +1420,7 @@
       },
       {
         "file": "package.json",
-        "sha256": "da473ee12e5f75447506c832e7cab42709b16450e62d3777ae896dc4086441e0"
+        "sha256": "8522eecb0fe2614dc02660ab4f82086c07a06950a1a0a8a528a9ee35d0fe9df8"
       },
       {
         "file": "pnpm-lock.yaml",
