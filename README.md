@@ -11,6 +11,10 @@ Run as many coding agents as you like. Cargento tells you which ones need you, w
 and when it is safe to walk away. One local screen, every harness you use, and nothing leaves your
 machine that you cannot switch off.
 
+Use Intent and drift to compare a session's recorded work with your goal. Open a session, set a
+goal and press `Analyze drift`. The `How Intent and drift works` button explains the steps, the
+reading's limits and why an expected outcome line is needed for a drift level.
+
 It answers five questions, in the order a working day hits them. Which of my agents are running.
 What is each one doing, and when should I come back. Is anything waiting on me. Will I hit the quota
 wall before the work finishes. Did anything die quietly.
@@ -155,8 +159,6 @@ with a Scope rail and a persistent Where this project stands briefing,
 and Now, Course, Decisions and Console tabs. Each session's own page leads with drift: there you
 type the goal you are holding that session to, optionally add an expected outcome, and check it for drift with one
 press, and read back what has been raised about that session and what became of the raise.
-Open a session, set a goal and press `Analyze drift`; `How Intent and drift works` beside Intent
-explains those steps, the reading's limits and when an outcome line gives a drift level.
 Sessions keeps an orientation paragraph and how-to visible after a session has been checked.
 The paragraph explains analysis when annotations are on, the store is readable and a reading
 route names a provider; otherwise it explains how to inspect a session. Every goal
