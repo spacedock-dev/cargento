@@ -72,6 +72,13 @@ The Vitest text summaries need no broader normalization. Goldens, disclosure rea
 order and action lists remain unchanged. The [Sessions adoption](design-shadcn-adoption.md#sessions-layer)
 owns the computed chrome reference and native decisions.
 
+Intent, Drift and steering display components likewise retain their semantic roots, cell classes,
+text, field keys, consent group and action order. Static Alert paragraphs retain their absence of
+a live-region role. The existing DOM and text summaries therefore need no wider normalization;
+unchanged recordings still compare consent, drafts and the first Copy press. The
+[family adoption](design-shadcn-adoption.md#intent-drift-and-steering-layer) owns the computed chrome
+reference and keep-native decisions.
+
 ## The ownership map
 
 [The machine-readable inventory](../scripts/frontend-migration.json) maps each legacy script

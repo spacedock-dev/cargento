@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
@@ -116,7 +117,7 @@ function CorrectionBox({ held }: { readonly held: HeldCorrection }) {
     held.cue === 'copied' ? 'Copied' : held.cue === 'failed' ? 'Copy unavailable' : 'Copy';
   const stale = Boolean(held.stale);
   return (
-    <div className="next-cockpit-steer-box" data-next-steer-box>
+    <Card variant="steer-box" className="next-cockpit-steer-box" data-next-steer-box>
       <Label className="next-cockpit-held-label" htmlFor="next-cockpit-correction">
         Correction to copy
       </Label>
@@ -186,7 +187,7 @@ function CorrectionBox({ held }: { readonly held: HeldCorrection }) {
           {CORRECTION_HINT}
         </p>
       </div>
-    </div>
+    </Card>
   );
 }
 

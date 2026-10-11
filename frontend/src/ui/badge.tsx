@@ -2,19 +2,27 @@
    Registry: https://ui.shadcn.com/r/styles/base-nova/badge.json
    Upstream content SHA-256: d9fb280e266119c4b62a4c518e63152de27b094c68d3e5f8929d05bfb0c1bc6c
    MIT; the full upstream notice ships in react-licenses.txt.
-   Sessions recipes preserve the measured cascade; docs/design-shadcn-adoption.md#sessions-layer. */
+   Display recipes preserve the measured cascade; docs/design-shadcn-adoption.md. */
 import { mergeProps } from '@base-ui/react/merge-props';
 import { useRender } from '@base-ui/react/use-render';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-const badgeVariants = cva(
-  'inline-block m-0 px-[8px] py-[2px] border border-solid border-border rounded-pill text-muted-foreground [font-family:var(--mono)] text-label font-normal leading-[normal]',
-  {
-    variants: { variant: { 'session-state': '' } },
-    defaultVariants: { variant: 'session-state' },
+const badgeVariants = cva('', {
+  variants: {
+    variant: {
+      'session-state':
+        'inline-block m-0 px-[8px] py-[2px] border border-solid border-border rounded-pill text-muted-foreground [font-family:var(--mono)] text-label font-normal leading-[normal]',
+      'drift-pill':
+        'inline-flex items-center gap-[8px] max-w-full px-[10px] py-[3px] border border-solid border-border rounded-pill text-foreground text-label',
+      'draft-source':
+        'px-[8px] py-px border border-dashed border-border rounded-pill text-muted-foreground text-label',
+      'work-flag':
+        'ml-auto px-[7px] py-0 border border-solid border-[var(--rule)] rounded-pill text-muted-foreground [font-family:var(--mono)] text-label font-medium leading-[1.5] [&+[data-variant=work-flag]]:ml-0',
+    },
   },
-);
+  defaultVariants: { variant: 'session-state' },
+});
 
 function Badge({
   className,

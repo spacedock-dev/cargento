@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { compatSessKey } from '../api/identity';
 import { nextNumber } from '../api/bootstrap';
 import { Disclosure, disclosureKey, useFocusKey } from '../controls';
@@ -118,7 +119,7 @@ export function IntentSection() {
   const why = drafted ? '' : noDraftWhy(session, annotation, payload);
   const unreadable = storeUnreadable(payload);
   return (
-    <section className="next-cockpit-held">
+    <Card variant="intent-panel" as="section" className="next-cockpit-held">
       <header>
         <h2
           id="next-session-intent-heading"
@@ -147,6 +148,6 @@ export function IntentSection() {
         <OutcomeLines />
       </div>
       <Footer />
-    </section>
+    </Card>
   );
 }

@@ -1,3 +1,5 @@
+import { Alert } from '../ui/alert';
+import { Badge } from '../ui/badge';
 import { Fragment } from 'react';
 import { annotationLines } from '../intent/annotation';
 import { intentUnsaved } from '../intent/derive';
@@ -74,12 +76,12 @@ export function DriftPill() {
   const level = model.pill;
   if (!level) return null;
   return (
-    <span className="next-session-drift-pill" data-next-drift-pill>
+    <Badge variant="drift-pill" className="next-session-drift-pill" data-next-drift-pill>
       <PillMeter level={level.level} />
       <span>
         Drift: <strong>{level.label}</strong>
       </span>
-    </span>
+    </Badge>
   );
 }
 
@@ -216,7 +218,9 @@ export function DriftLevelView() {
       !running &&
       !routeRefusal(payload, session) &&
       !intentUnsaved(model.input) ? (
-        <p className="next-session-drift-nudge">{NUDGE}</p>
+        <Alert as="p" variant="drift-nudge" announce={false} className="next-session-drift-nudge">
+          {NUDGE}
+        </Alert>
       ) : null}
     </>
   );

@@ -1,3 +1,5 @@
+import { Badge } from '../ui/badge';
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { openDirection } from '../intent/directions';
 import { useDrift } from './context';
@@ -38,7 +40,7 @@ export function WorkListView() {
     list.mix || list.unlisted.length || list.checks || list.bound || list.reads,
   );
   return (
-    <section className="next-cockpit-work" data-next-cockpit-work>
+    <Card variant="work-panel" as="section" className="next-cockpit-work" data-next-cockpit-work>
       {list.anchor ? <p className="next-cockpit-work-anchor">{list.anchor}</p> : null}
       {list.unnumbered ? <p className="next-cockpit-work-absent">{list.unnumbered}</p> : null}
       {list.rows.length ? (
@@ -73,14 +75,22 @@ export function WorkListView() {
                       </>
                     )}
                     {row.flags.includes('later') ? (
-                      <span className="next-cockpit-work-flag" data-next-entry-flag="later">
+                      <Badge
+                        variant="work-flag"
+                        className="next-cockpit-work-flag"
+                        data-next-entry-flag="later"
+                      >
                         A later direction you gave
-                      </span>
+                      </Badge>
                     ) : null}
                     {row.flags.includes('cited') ? (
-                      <span className="next-cockpit-work-flag" data-next-entry-flag="cited">
+                      <Badge
+                        variant="work-flag"
+                        className="next-cockpit-work-flag"
+                        data-next-entry-flag="cited"
+                      >
                         Cited
-                      </span>
+                      </Badge>
                     ) : null}
                   </div>
                   {/* A model's paraphrase takes the third treatment, not the mono of a string a source
@@ -131,6 +141,6 @@ export function WorkListView() {
           {about}
         </Why>
       ) : null}
-    </section>
+    </Card>
   );
 }

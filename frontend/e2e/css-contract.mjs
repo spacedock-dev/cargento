@@ -54,6 +54,11 @@ import { startReactWorld } from './support/world.mjs';
 import { startConsoleWorld, fragmentFor } from './console-board.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
 import { measureSessionChrome, sessionChromeDifferences } from './support/session-chrome.mjs';
+import { measureIntentChrome, intentChromeDifferences } from './support/intent-chrome.mjs';
+import { visitIntentDisplayStates } from './support/intent-worlds.mjs';
+const INTENT_TABLE = JSON.parse(
+  await readFile(new URL('./intent-chrome-reference.json', import.meta.url), 'utf8'),
+);
 const SESSION_TABLE = JSON.parse(
   await readFile(new URL('./session-chrome-reference.json', import.meta.url), 'utf8'),
 );
@@ -106,6 +111,7 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const E = encodeURIComponent;
 const WORLDS = (process.env.CSS_CONTRACT_WORLDS || 'sessions,intent,console').split(',');
 const MUTATION = process.env.CARGENTO_MUTATION || '';
+const INTENT_CHROME_ONLY = process.env.CSS_CONTRACT_INTENT_CHROME_ONLY === '1';
 const GALLERY_ONLY = process.env.CSS_CONTRACT_GALLERY_ONLY === '1';
 
 const LABEL_PX = 13;
@@ -115,6 +121,20 @@ const TABS = ['now', 'course', 'decisions', 'console'];
 /* One deliberate break per name, in the SHIPPED sheets of a scratch copy: [file under frontend/src, the text to
    replace, what replaces it]. The run is expected to fail, and to fail on the check the name says. */
 const MUTATIONS = {
+  'intent-card-padding': [['ui/card.tsx', 'pt-0 px-0 pb-[4px]', 'pt-0 px-[10px] pb-[4px]']],
+  'intent-card-shrinks': [
+    ['ui/card.tsx', 'block m-0 pt-0 px-0 pb-[4px]', 'block w-1/2 m-0 pt-0 px-0 pb-[4px]'],
+  ],
+  'intent-badge-ink': [
+    [
+      'ui/badge.tsx',
+      'rounded-pill text-foreground text-label',
+      'rounded-pill text-muted-foreground text-label',
+    ],
+  ],
+  'intent-alert-announces': [['intent/IntentLog.tsx', 'announce={false}', 'announce={true}']],
+  'intent-alert-padding': [['ui/alert.tsx', 'px-[12px] py-[10px]', 'px-[2px] py-[10px]']],
+
   'session-card-padding': [['ui/card.tsx', 'px-[17px]', 'px-[7px]']],
   'session-row-shrinks': [['ui/card.tsx', 'grid w-full p-0', 'grid w-fit p-0']],
   'session-badge-colour': [['ui/badge.tsx', 'text-muted-foreground', 'text-foreground']],
@@ -696,6 +716,7 @@ const measured = {
   disclosureInlineSizes: [],
   fieldChrome: [],
   sessionChrome: [],
+  intentChrome: [],
 };
 
 const SURFACES = {
@@ -808,6 +829,8 @@ async function measure(opened, view, { walk = false } = {}) {
   measured.views.push(view);
   for (const row of await page.evaluate(measureSessionChrome))
     measured.sessionChrome.push({ view, ...row });
+  for (const row of await page.evaluate(measureIntentChrome))
+    measured.intentChrome.push({ view, ...row });
   await proveCollapsedSession(page);
   for (const row of await page.evaluate(measureFieldChrome))
     measured.fieldChrome.push({ view, ...row });
@@ -1068,13 +1091,19 @@ async function runIntent(browser, world) {
       }),
     };
     let walked = false;
-    for (const next of Object.values(states)) {
+    for (const [stateName, next] of Object.entries(states)) {
       for (const key of Object.keys(script)) delete script[key];
       Object.assign(script, freshScript(), next);
       await visit(opened, world.origin, `#n=session:${E('w/alpha')}:claude:intent-2`, {
         walk: !walked,
         recordRead: true,
       });
+      if (stateName === 'an Allow owed') {
+        await opened.page.locator('[data-next-cockpit-action="reading-ask"]').click();
+        await opened.page.locator('.next-cockpit-reading-consent').waitFor();
+        for (const row of await opened.page.evaluate(measureIntentChrome))
+          measured.intentChrome.push({ view: 'Intent consent step', ...row });
+      }
       walked = true;
     }
     for (const key of Object.keys(script)) delete script[key];
@@ -1212,6 +1241,34 @@ const UNRESOLVED_VARIABLES = new Set(INVENTORY.unresolved);
 const STEPS_PX = [13, 15, 18, 24, 34];
 
 function checks() {
+  if (INTENT_TABLE)
+    step_('intent: every adopted surface keeps its measured chrome and inline size', () => {
+      const differences = intentChromeDifferences(measured.intentChrome, INTENT_TABLE.instances);
+      assert.deepEqual(
+        measured.intentChrome.filter(
+          (row) => /^(intent-note|drift-nudge)\|/.test(row.key) && row.role !== null,
+        ),
+        [],
+        'static Intent notices and drift nudges must not become live regions',
+      );
+      assert.deepEqual(
+        differences.slice(0, 8),
+        [],
+        `${differences.length} Intent/Drift chrome or width differences`,
+      );
+      if (FULL) {
+        const seen = new Set(measured.intentChrome.map((row) => row.key));
+        assert.deepEqual(
+          Object.keys(INTENT_TABLE.instances).filter((key) => !seen.has(key)),
+          [],
+          'unreached Intent/Drift identities',
+        );
+        if (!INTENT_CHROME_ONLY)
+          assert.ok(measured.intentChrome.length >= 100, 'too few Intent/Drift instances reached');
+      }
+      return `${measured.intentChrome.length} instances against ${INTENT_TABLE.commit}`;
+    });
+  if (INTENT_CHROME_ONLY) return;
   step_('sessions: every adopted surface keeps its measured chrome and inline size', () => {
     const seen = new Set();
     const differences = sessionChromeDifferences(measured.sessionChrome, SESSION_TABLE.instances);
@@ -1802,18 +1859,34 @@ try {
     assert.ok(MUTATIONS[MUTATION], `unknown mutation ${MUTATION}`);
     copy = await scratchCopy();
   }
-  await step('gallery: shared buttons and native fields at desktop, 375 and 320 px', () =>
-    checkButtonGallery(browser),
-  );
+  if (!INTENT_CHROME_ONLY)
+    await step('gallery: shared buttons and native fields at desktop, 375 and 320 px', () =>
+      checkButtonGallery(browser),
+    );
   const root = copy || REPOSITORY;
   if (!GALLERY_ONLY)
     await step('fields: stage, tripwire, context, direction and correction states', () =>
       visitFieldStates(browser, root, async (page, view) => {
+        const steer = page.locator('[data-next-draft="steer"]');
+        if ((await steer.count()) && !(await page.locator('[data-next-steer-receipt]').count())) {
+          await steer.fill('A locally held next step');
+          await page.locator('[data-next-steer-form] button[type="submit"]').click();
+          await page.locator('[data-next-steer-receipt]').waitFor();
+        }
         for (const row of await page.evaluate(measureFieldChrome))
           measured.fieldChrome.push({ view, ...row });
+        for (const row of await page.evaluate(measureIntentChrome))
+          measured.intentChrome.push({ view, ...row });
       }),
     );
-  for (const name of GALLERY_ONLY ? [] : WORLDS) {
+  if (!GALLERY_ONLY && WORLDS.includes('intent'))
+    await step('intent: live level and superseded result at desktop and narrow widths', () =>
+      visitIntentDisplayStates(browser, root, async (page, view) => {
+        for (const row of await page.evaluate(measureIntentChrome))
+          measured.intentChrome.push({ view, ...row });
+      }),
+    );
+  for (const name of GALLERY_ONLY || INTENT_CHROME_ONLY ? [] : WORLDS) {
     const started = Date.now();
     const world = await startWorld(name, root);
     try {
@@ -1823,7 +1896,7 @@ try {
     }
     receipts[`world ${name}`] = `${Math.round((Date.now() - started) / 1000)}s`;
   }
-  if (WORLDS.includes('console')) await runTimelineInlineSizes(browser);
+  if (!INTENT_CHROME_ONLY && WORLDS.includes('console')) await runTimelineInlineSizes(browser);
 } catch (error) {
   failures.push({ name: 'run', message: String(error.stack || error).slice(0, 4000) });
 } finally {

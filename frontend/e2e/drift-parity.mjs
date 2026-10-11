@@ -22,7 +22,9 @@
  * matches.
  */
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import {
@@ -42,9 +44,10 @@ import {
 } from './drift-board.mjs';
 import { call, startIntentBoard } from './intent-board.mjs';
 import { instrumentResources, recordClipboard, resources } from './sessions-board.mjs';
-import { openPage } from './support/browser.mjs';
+import { openPage, REPOSITORY } from './support/browser.mjs';
 import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 import { awaitRecordRead } from './support/record.mjs';
+import { copyProofPath } from './support/proof-copy.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
    delivers events and frames later than a desktop, so each wait is tripled there; only a pass gets slower. A
@@ -173,7 +176,27 @@ async function settled(read, { deadline = patience(6000), every = 120 } = {}) {
   }
 }
 
-const board = await startIntentBoard();
+let mutationRoot = null;
+if (process.env.DRIFT_MUTATION && process.env.DRIFT_MUTATION !== 'drop-consent')
+  throw new Error(`Unknown drift mutation: ${process.env.DRIFT_MUTATION}`);
+if (process.env.DRIFT_MUTATION === 'drop-consent') {
+  mutationRoot = await mkdtemp(join(tmpdir(), 'cargento-drift-consent-'));
+  for (const folder of ['frontend', 'cargento'])
+    await cp(join(REPOSITORY, folder), join(mutationRoot, folder), {
+      recursive: true,
+      filter: copyProofPath,
+    });
+  await symlink(
+    join(REPOSITORY, 'node_modules'),
+    join(mutationRoot, 'node_modules'),
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+  const file = join(mutationRoot, 'frontend/src/drift/ReadingControl.tsx');
+  const source = await readFile(file, 'utf8');
+  assert.ok(source.includes('if (confirming) {'));
+  await writeFile(file, source.replace('if (confirming) {', 'if (confirming && false) {'));
+}
+const board = await startIntentBoard({ root: mutationRoot || REPOSITORY });
 const browser = await chromium.launch();
 const origins = [board.react.origin, board.react.viteOrigin];
 const opened = [];
@@ -1368,6 +1391,7 @@ try {
   for (const o of opened) await o.close().catch(() => undefined);
   await browser.close();
   await board.close();
+  if (mutationRoot) await rm(mutationRoot, { recursive: true, force: true });
 }
 
 try {

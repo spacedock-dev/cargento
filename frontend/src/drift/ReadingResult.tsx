@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import type { ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
 import { ActionButton } from '../intent/ActionButton';
@@ -372,13 +373,17 @@ export function ReadingResult({
     <div className="next-session-drift-check next-cockpit-result" data-next-result>
       {question}
       {stale ? (
-        <div className="next-cockpit-result-stale" data-next-result-stale={stale.kind}>
+        <Card
+          variant="reading-stale"
+          className="next-cockpit-result-stale"
+          data-next-result-stale={stale.kind}
+        >
           <p className="next-cockpit-result-stale-head">{stale.head}</p>
           {stale.superseded ? (
             <p className="next-cockpit-reading-stale">{stale.superseded}</p>
           ) : null}
           {callout}
-        </div>
+        </Card>
       ) : null}
       {annotation['not_accurate'] === true ? (
         <p className="next-cockpit-result-marked">{RESULT_MARKED}</p>
