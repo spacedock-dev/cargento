@@ -4593,6 +4593,12 @@ drift works, Use your prompt, the goal box, Save intent, Analyze drift (or the c
 make primary), What is sent, More, and the way back to Sessions. The optional outcome line is a
 field and is not counted.
 
+Amended 2026-10-12 by the owner: from 1101px wide the page is two columns, the session's activity on
+the left and the Intent and drift panel on the right, level at the top. Below that it is one column
+with the panel first, so the goal stays in the first view on a phone. The count above is the panel
+and the page chrome. The activity column's own disclosures (About this record, Session facts and the
+reports line) now also show beside it at 1280 by 800, and are held by the complete inventory of 14.
+
 ### The Sessions screen
 
 Keep the "running" and "waiting on you" counters; move the "exact requests" and "reported blocks"
@@ -4642,8 +4648,9 @@ bodies, has a 90-word ceiling. The opened how-to retains its separate 150-word c
 
 The fresh Claude Code fixture inventory below includes the session's project link and the Sessions
 breadcrumb. Before: 19 controls across the page, 13 in the 1280 by 800 viewport. After: 14 across
-the page, eight in that viewport. The activity disclosures remain below the first view; none of
-their sentences or controls are removed. The switch's accessible name is Live monitor.
+the page, eight in that viewport. The activity disclosures remain below the first view in one column; none of
+their sentences or controls are removed. (Beside the panel from 1101px wide, three of them show in
+that viewport; see the 2026-10-12 amendment above.) The switch's accessible name is Live monitor.
 
 | Button, link or disclosure | Before | After |
 | -- | -- | -- |

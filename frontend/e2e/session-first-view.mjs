@@ -46,6 +46,7 @@ const inventory = () =>
             ? 'Use your prompt'
             : (el.getAttribute('aria-label') || el.textContent).replace(/\s+/g, ' ').trim(),
         top: Math.round(el.getBoundingClientRect().top),
+        inActivity: Boolean(el.closest('[data-next-session-activity]')),
         inFirstView:
           el.getBoundingClientRect().top < innerHeight && el.getBoundingClientRect().bottom > 0,
       }));
@@ -95,14 +96,14 @@ try {
       'Sessions',
     ]);
     assert.equal(before.length, 14, 'one extra or missing control changes the complete inventory');
+    // The signed set is the Intent and drift side and the page chrome. The activity column on the left is the
+    // session's own record: its disclosures may show beside the panel, and are held to the complete inventory above.
+    const signed = before.filter((item) => item.inFirstView && !item.inActivity);
     assert.ok(
-      before.filter((item) => item.inFirstView).every((item) => allowed.has(item.label)),
+      signed.every((item) => allowed.has(item.label)),
       'one extra control violates the signed first-view set',
     );
-    assert.ok(
-      before.filter((item) => item.inFirstView).length <= 8,
-      'first view has more than eight controls',
-    );
+    assert.ok(signed.length <= 8, 'first view has more than eight controls');
     for (const viewport of [
       { width: 1280, height: 800 },
       { width: 375, height: 667 },
@@ -123,6 +124,8 @@ try {
         return {
           goal: box('[data-next-cockpit-held-kind="goal"]'),
           primary: box('[data-next-cockpit-action="reading-ask"]'),
+          panel: box('[data-next-session-panel]'),
+          activity: box('[data-next-session-activity]'),
           height: innerHeight,
           width: innerWidth,
           scroll: document.documentElement.scrollWidth,
@@ -139,6 +142,19 @@ try {
           `primary outside viewport ${JSON.stringify({ viewport, bounds })}`,
         );
       assert.ok(bounds.scroll <= bounds.width + 1, `horizontal overflow ${viewport.width}`);
+      // Wide: the activity reads on the left and the Intent and drift panel on the right, level at the top.
+      // Narrow: one column, with the panel first so the goal stays in the first view.
+      if (viewport.width === 1280)
+        assert.ok(
+          bounds.panel.left >= bounds.activity.right - 1 &&
+            Math.abs(bounds.panel.top - bounds.activity.top) <= 2,
+          `panel is not beside the activity ${JSON.stringify({ viewport, bounds })}`,
+        );
+      else if (viewport.width <= 1100)
+        assert.ok(
+          bounds.panel.bottom <= bounds.activity.top + 1,
+          `panel does not lead the single column ${JSON.stringify({ viewport, bounds })}`,
+        );
       console.log(JSON.stringify({ viewport, bounds }));
     }
     await page.setViewportSize({ width: 1280, height: 800 });

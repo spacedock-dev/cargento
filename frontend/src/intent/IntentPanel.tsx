@@ -134,7 +134,7 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
   return (
     <PanelContext value={panel}>
       <aside
-        className="next-session-panel"
+        className="next-session-panel min-[1101px]:col-start-2 min-[1101px]:row-start-1"
         data-next-session-drift
         data-next-session-panel="intent"
         aria-label="Intent and drift"

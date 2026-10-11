@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1616424,
+    "bytes": 1616972,
     "file": "react.html",
-    "sha256": "120e743a90422002632aad42a982ea9e4aebb190e2d593030b81afbf7d320556"
+    "sha256": "3a71b3f9304882cc7d11f15b6fcdae39a026dd0bd7fb145cf2fa49a891bc3f25"
   },
   "format": 1,
   "frontend": "react",
@@ -664,7 +664,7 @@
       },
       {
         "file": "frontend/src/intent/IntentPanel.tsx",
-        "sha256": "1b1e741a94f609b4c7d46b262b609f1fa2796adb16079109f51cfff38b6e43f5"
+        "sha256": "e9326cb9b1980f7c9315bd0c74c947d1753db02a4bf5d3d215f6fa05f92befcb"
       },
       {
         "file": "frontend/src/intent/IntentSection.tsx",
@@ -972,7 +972,7 @@
       },
       {
         "file": "frontend/src/sessions/SessionDetail.tsx",
-        "sha256": "7ab282db7a7c018251e723023b1d582155d677bd779fc629466888f5ab3636cf"
+        "sha256": "84c58e172011343379a2eac2c8ef2d0775f71ccc9824de201de7a83f01b268ea"
       },
       {
         "file": "frontend/src/sessions/SessionsView.tsx",
