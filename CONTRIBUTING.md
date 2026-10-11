@@ -190,7 +190,11 @@ Controls and Intent proofs exercise native undo/redo, IME, caret, scroll and dra
 explicit UA-select departures.
 
 Sessions uses Badge, Card, Separator and Alert with explicit surface recipes. Preserve article and
-section roots when composing Card, keep health notes as notes, and keep answer failures polite.
+section roots when composing Card, keep health notes as notes, and keep answer failures polite. Intent,
+Drift and steering reuse those display components on their existing roots. Static log notes and
+drift nudges pass `announce={false}`; consent retains its labelled group, and held field owners
+remain outside the components. The [family adoption record](docs/design-shadcn-adoption.md#intent-drift-and-steering-layer)
+owns their chrome reference and native decisions.
 The CSS proof compares their chrome and rendered width ratios with the pre-swap page. The
 [Sessions record](docs/design-shadcn-adoption.md#sessions-layer) owns the native decisions and audit.
 

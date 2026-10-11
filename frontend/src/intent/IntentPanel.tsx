@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import './intent.css';
 import { useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { payloadSessions } from '../api/bootstrap';
@@ -141,7 +142,9 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
         aria-label="Intent and drift"
       >
         {annotating ? <IntentSection /> : null}
-        <section
+        <Card
+          variant="drift-panel"
+          as="section"
           className="next-session-drift"
           id="next-session-drift"
           aria-labelledby="next-session-drift-heading"
@@ -164,7 +167,7 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
           {annotating ? <LaterDirections /> : null}
           {annotating ? <Caveats /> : null}
           {children}
-        </section>
+        </Card>
       </aside>
     </PanelContext>
   );

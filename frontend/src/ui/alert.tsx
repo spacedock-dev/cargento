@@ -2,7 +2,7 @@
    Registry: https://ui.shadcn.com/r/styles/base-nova/alert.json
    Upstream content SHA-256: f253568242c1c69b343f12474002fdbe229f603158171c59e21c491ab79f2e6e
    MIT; the full upstream notice ships in react-licenses.txt.
-   Sessions recipes preserve the measured cascade; docs/design-shadcn-adoption.md#sessions-layer. */
+   Display recipes preserve the measured cascade; docs/design-shadcn-adoption.md. */
 import type { ComponentProps } from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,10 @@ const alertVariants = cva('block', {
       'session-health':
         'px-[16px] py-[14px] [border-left:3px_solid_var(--amber)] bg-card text-muted-foreground text-body leading-[1.5]',
       'answer-failure': 'p-0 text-foreground text-label leading-[normal]',
+      'intent-note':
+        'm-0 max-w-[var(--measure)] text-muted-foreground [font-family:var(--sans)] text-body font-medium leading-[1.55]',
+      'drift-nudge':
+        'px-[12px] py-[10px] border border-solid border-[var(--amber)] rounded-control text-foreground text-body leading-[1.5]',
     },
   },
   defaultVariants: { variant: 'answer-failure' },
@@ -22,14 +26,18 @@ function Alert({
   variant,
   as: Tag = 'div',
   role = 'status',
+  announce = true,
   ...props
 }: ComponentProps<'div'> &
-  VariantProps<typeof alertVariants> & { readonly as?: 'div' | 'aside' | 'p' }) {
+  VariantProps<typeof alertVariants> & {
+    readonly as?: 'div' | 'aside' | 'p';
+    readonly announce?: boolean;
+  }) {
   return (
     <Tag
       data-slot="alert"
       data-variant={variant ?? 'answer-failure'}
-      role={role}
+      role={announce ? role : undefined}
       className={cn(alertVariants({ variant }), className)}
       {...props}
     />

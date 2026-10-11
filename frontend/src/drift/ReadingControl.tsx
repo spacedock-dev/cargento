@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useEffect, type ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
@@ -77,7 +78,11 @@ export function JobBox({ job, running }: { readonly job: Row; readonly running: 
   const mine = held && held.job === job['id'] ? held : null;
   const finishing = job['cancelling'] === true || Boolean(mine?.pending);
   return (
-    <div className="next-cockpit-reading-job" data-next-analyzing={String(job['id'])}>
+    <Card
+      variant="reading-job"
+      className="next-cockpit-reading-job"
+      data-next-analyzing={String(job['id'])}
+    >
       <div className="next-cockpit-reading-job-head">
         {/* The press button's focus key goes to the title, not to Cancel: on Cancel, a keyboard press
             followed by a second Enter cancelled the analysis it had just started, which is a spent attempt.
@@ -125,7 +130,7 @@ export function JobBox({ job, running }: { readonly job: Row; readonly running: 
       {mine?.failed && !finishing ? (
         <p className="next-cockpit-reading-why">{CANCEL_FAILED}</p>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -497,7 +502,8 @@ function ConsentCard({
     { fallback: `reading:${model.key}` },
   );
   return (
-    <div
+    <Card
+      variant="reading-consent"
       className="next-cockpit-reading-consent"
       role="group"
       aria-labelledby="next-cockpit-reading-consent-title"
@@ -529,6 +535,6 @@ function ConsentCard({
           Not now
         </Button>
       </div>
-    </div>
+    </Card>
   );
 }

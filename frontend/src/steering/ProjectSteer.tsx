@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { FormEvent } from 'react';
 import { DraftInput } from '../controls/DraftField';
@@ -69,13 +70,18 @@ export function ProjectSteer({
           {held.steers(project).map((record, index) => (
             // The receipts only grow at the end and drop from the front, so a position is not an identity;
             // the tab never reorders them, and nothing in one is editable.
-            <div className="next-steer-receipt" data-next-steer-receipt key={index}>
+            <Card
+              variant="steer-receipt"
+              className="next-steer-receipt"
+              data-next-steer-receipt
+              key={index}
+            >
               <strong>{record.text}</strong>
               <p>
                 Draft recorded in this tab. Not delivered. Cargento has no write path into a
                 session.
               </p>
-            </div>
+            </Card>
           ))}
         </div>
       ) : null}

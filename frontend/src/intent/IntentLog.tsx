@@ -1,3 +1,5 @@
+import { Alert } from '../ui/alert';
+import { Card } from '../ui/card';
 import './intent.css';
 import { Fragment, useEffect, useMemo } from 'react';
 import { payloadSessions } from '../api/bootstrap';
@@ -29,7 +31,7 @@ function RowView({
 }) {
   const { session } = row;
   return (
-    <div className="next-intent-row">
+    <Card variant="intent-row" className="next-intent-row">
       <span className="next-intent-key">
         {session ? (
           <RouteAnchor
@@ -64,7 +66,7 @@ function RowView({
           {cell.text}
         </span>
       ))}
-    </div>
+    </Card>
   );
 }
 
@@ -104,9 +106,19 @@ export function IntentLog() {
   return (
     <section className="next-intent" data-next-view-body="intent">
       <h1>Intent log</h1>
-      <p className="next-intent-note">{view.counts}</p>
-      {view.notice ? <p className="next-intent-note">{view.notice}</p> : null}
-      {view.limits ? <p className="next-intent-note">{view.limits}</p> : null}
+      <Alert as="p" variant="intent-note" announce={false} className="next-intent-note">
+        {view.counts}
+      </Alert>
+      {view.notice ? (
+        <Alert as="p" variant="intent-note" announce={false} className="next-intent-note">
+          {view.notice}
+        </Alert>
+      ) : null}
+      {view.limits ? (
+        <Alert as="p" variant="intent-note" announce={false} className="next-intent-note">
+          {view.limits}
+        </Alert>
+      ) : null}
       {view.groups.map((group) => (
         <Fragment key={group.title}>
           <h2>{group.title}</h2>
@@ -115,7 +127,9 @@ export function IntentLog() {
           ))}
         </Fragment>
       ))}
-      <p className="next-intent-note">{view.closing}</p>
+      <Alert as="p" variant="intent-note" announce={false} className="next-intent-note">
+        {view.closing}
+      </Alert>
     </section>
   );
 }

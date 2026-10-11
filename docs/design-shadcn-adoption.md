@@ -705,3 +705,55 @@ those omissions are not the mutation verdict. An assertive failure role fails th
 test, changed health evidence fails the recorded text differential, and a wrong logical health-part
 name fails the browser differential at seed 2. The unmutated Sessions browser proof passes all
 18 steps without a new departure.
+
+## Intent, Drift and steering layer
+
+This family reuses Badge, Card and Alert from the Sessions layer. No new component or package is
+vendored. Card keeps the Intent log row, Intent editor, Drift section, running analysis, consent
+step, stale-reading callout, correction box, observed-work panel and local steering receipt on
+their original div or section roots. Badge keeps the drift pill, prompt-origin tag and activity
+flags as spans. Alert keeps the Intent log notes and high-drift nudge as paragraphs.
+
+### Intent and Drift cascade audit
+
+| Surface | Component chrome and retained layout |
+|---|---|
+| Intent log row | Card owns flex display, three-pixel gap, nine-pixel inset and the left rule. The cells, words and links keep their original classes. |
+| Intent editor | Card owns column display, six-pixel gap and zero padding, the recipe previously selected by its session-panel ancestor. Field layout, labels, held nodes and keys stay with Intent. |
+| Drift section | Card owns block display, zero margin, four-pixel bottom padding, rule border, panel background and card radius. Heading and child spacing stay in the sheet. |
+| Analysis and consent | Card owns column display, token gap and padding, panel background, card radius and reading measure; consent retains its line border and labelled group role. The job keeps no live-region role. |
+| Stale reading and correction | Card owns column display and gap, plus the stale callout's amber border, padding and control radius. The correction retains its top margin and its existing uncontrolled editor owner. |
+| Observed work and local receipt | Card owns the work panel's column layout and padding, and the receipt's ten-pixel padding, amber edge and panel background. Semantic rows and receipt children remain in their sheets. |
+| Pills and tags | Badge owns the measured padding, borders, radius, ink and type. The drift pill retains its inline meter; activity flags retain their sibling spacing. |
+| Log notes and nudge | Alert owns their measured type and chrome. Nudge margins remain with the surface. Both pass `announce={false}` because they were static paragraphs; the live estimate explicitly promises no announcement. Other Alerts retain their polite default. |
+
+The live-monitor switch, meter segments and result glyphs remain native: a switch carries its
+existing checked state, and result glyphs distinguish evidence states without a reassuring check
+mark. State-dependent refusal paragraphs remain native because their role is conditional on
+whether the persistent region already announced the sentence. Source labels, checklist and
+activity-row rules, and the result-footer boundary remain part of their semantic groups rather
+than new independent panels or Separators. Native title tooltips and progress elements are kept.
+The existing controlled Collapsible for armed discard and keyed Accordion and Popover disclosures
+are reused without changing their callbacks. No reader-state owner moves, no legacy rule leaves
+its layer, and no golden or study-bound script changes.
+
+`intent-chrome-reference.json` records 22 identities from `fd3e0ece`, the Sessions-layer tip before
+this swap. An archive of that commit under this worktree's ignored screenshots directory was built
+once. The existing 87-view sweep recorded the native surfaces; supplementary consent, live-level,
+stale-result, correction and steering-receipt states completed the table. The same helper reads
+native selectors only while recording, and component slots during verification. Keys contain
+surfaces, viewport bands and activity-flag kinds, with no clocks, counts or absolute widths.
+The gate compares ink, background, four borders, display, padding, radius and type on every reached
+adopted instance. It compares row width with parent content width, allowing 0.015 for rounding,
+and badge width with its actual content plus chrome, allowing 15 percent for font metrics.
+Non-finite ratios fail. Static Alert roles are checked separately.
+
+The development CSS sweep passes across 87 views, comparing 160 adopted instances. A smaller
+family-only mode reaches the same reference identities for deliberate mutations. Card padding,
+row width alone, Badge ink, Alert padding and an unwanted live-region role each fail the family
+gate. Dropping the consent step in a scratch copy fails the existing Drift consent proof at its
+missing-card assertion. Hand-written CSS falls from 142,131 to 140,163 bytes, a reduction of 1,968 bytes, with the
+counted paths unchanged. The whole Vitest suite passes 1,486 tests and the build tests pass 23.
+The final verification report records the browser-proof results. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,598,216 bytes, 1,092 more than the
+Sessions layer; first-render medians are 147.8, 93.3 and 126.2 ms and poll-to-paint medians are 44.1, 44.4 and 61.2 ms;
+every budget passes. Native Windows, Linux, screen readers, Firefox and WebKit were not measured locally.

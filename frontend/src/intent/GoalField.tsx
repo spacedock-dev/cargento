@@ -1,3 +1,4 @@
+import { Badge } from '../ui/badge';
 import { useId } from 'react';
 import { Label } from '../ui/label';
 import { nextNumber } from '../api/bootstrap';
@@ -28,7 +29,10 @@ function DraftMarks({ draft }: { readonly draft: Draft }) {
   const clipped = draft.cut === true || draft.text.endsWith('…');
   return (
     <span className="next-intent-draft-marks" data-next-cockpit-draft-marks>
-      <span className="next-intent-draft-source">{`from your prompt${which}`}</span>
+      <Badge
+        variant="draft-source"
+        className="next-intent-draft-source"
+      >{`from your prompt${which}`}</Badge>
       {clipped ? <span className="next-cockpit-held-cue">{EXCERPT_READ_WHOLE}</span> : null}
     </span>
   );

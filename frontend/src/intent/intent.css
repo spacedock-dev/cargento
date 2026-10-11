@@ -4,7 +4,6 @@
    COCKPIT section so the two renderers look alike (the browser parity test compares their layout at 320,
    375 and 1280 CSS px). What is left behind belongs to the Analyze step: the level meter, the reading, the
    departures and the re-entry row. Selectors are copied as written, `#app` included. */
-.next-session-panel .next-cockpit-held{gap:6px;padding:0}
 .next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:22px}
 .next-session-panel .next-cockpit-held-list{gap:2px}
 .next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}
@@ -12,7 +11,6 @@
 .next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
 .next-cockpit-held-stamp{display:block}
 .next-cockpit-held-stamp [data-slot="accordion-content"]>span{display:block}
-.next-session-drift{margin:0;padding:0 0 4px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
 .next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 12px;padding:8px 16px 2px}
 .next-session-drift-titles{min-width:0}
 .next-session-drift-monitor{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-top:-13px;color:var(--ink);font-size:var(--fs-label);font-weight:500}
@@ -37,7 +35,6 @@
 .next-session-panel .next-cockpit-held-line .next-cockpit-held-source{min-width:0;overflow-wrap:anywhere}
 }
 .next-cockpit-define{margin:0;max-width:var(--measure);color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans)}
-.next-cockpit-held{display:flex;flex-direction:column;gap:11px;padding:14px 16px}
 .next-cockpit-held>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .next-cockpit-held h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-lede{margin:0;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
@@ -73,7 +70,6 @@
 .next-cockpit-held-field[data-next-cockpit-held-field="goal"]>.next-cockpit-held-under>[data-slot="button"]{flex:none;margin-inline-start:auto}
 .next-intent-draft-marks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
 .next-intent-draft-marks[hidden]{display:none}
-.next-intent-draft-source{padding:1px 8px;border:1px dashed var(--line);border-radius:var(--r-pill);color:var(--ink2);font-size:var(--fs-label)}
 .next-intent-draft-marks>.next-cockpit-held-cue{grid-column:auto}
 .next-cockpit-direction-tools,.next-cockpit-direction-replace{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .next-cockpit-direction-replace{grid-column:1/-1;color:var(--ink2);font-size:var(--fs-label)}
@@ -91,8 +87,6 @@
 .next-cockpit-reading-why[data-absence="run-config"]{border-left-style:dotted}
 .next-cockpit-held-bound{color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label)}
 .next-intent{display:flex;flex-direction:column;gap:10px}
-.next-intent-note{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
-.next-intent-row{display:flex;flex-direction:column;gap:3px;padding-left:9px;border-left:1px solid var(--rule)}
 .next-intent-key{font-family:var(--mono);font-size:var(--fs-label);color:var(--ink-label);font-weight:600;letter-spacing:.07em}
 .next-intent-key a{color:var(--ink);text-decoration-color:var(--line);text-underline-offset:4px}
 .next-intent-key a:hover{text-decoration-color:var(--accent)}
