@@ -57,6 +57,14 @@ import { measureSessionChrome, sessionChromeDifferences } from './support/sessio
 import { measureIntentChrome, intentChromeDifferences } from './support/intent-chrome.mjs';
 import { visitIntentDisplayStates } from './support/intent-worlds.mjs';
 import { measureProjectChrome, projectChromeDifferences } from './support/project-chrome.mjs';
+import { measureAttentionChrome, attentionChromeDifferences } from './support/attention-chrome.mjs';
+const ATTENTION_RECORD = process.env.CSS_CONTRACT_ATTENTION_RECORD;
+const ATTENTION_ONLY = process.env.CSS_CONTRACT_ATTENTION_CHROME_ONLY === '1';
+const ATTENTION_TABLE = ATTENTION_RECORD
+  ? null
+  : JSON.parse(
+      await readFile(new URL('./attention-chrome-reference.json', import.meta.url), 'utf8'),
+    );
 const PROJECT_RECORD = process.env.CSS_CONTRACT_PROJECT_RECORD;
 const PROJECT_TABLE = PROJECT_RECORD
   ? null
@@ -128,6 +136,36 @@ const TABS = ['now', 'course', 'decisions', 'console'];
 /* One deliberate break per name, in the SHIPPED sheets of a scratch copy: [file under frontend/src, the text to
    replace, what replaces it]. The run is expected to fail, and to fail on the check the name says. */
 const MUTATIONS = {
+  'attention-card-padding': [
+    ['ui/card.tsx', "'grid px-[18px] py-[14px]", "'grid px-[8px] py-[14px]"],
+  ],
+  'attention-card-shrinks': [
+    ['ui/card.tsx', "'grid px-[18px] py-[14px]", "'grid w-1/2 px-[18px] py-[14px]"],
+  ],
+  'attention-band-padding': [
+    ['ui/card.tsx', "'grid px-[4px] py-[13px]", "'grid px-[14px] py-[13px]"],
+  ],
+  'attention-badge-ink': [
+    [
+      'ui/badge.tsx',
+      "'notify-blocked': 'text-foreground'",
+      "'notify-blocked': 'text-muted-foreground'",
+    ],
+  ],
+  'attention-alert-assertive': [
+    [
+      'capacity/ObserverControls.tsx',
+      '<Alert as="p" variant="observer-status">',
+      '<Alert as="p" variant="observer-status" role="alert">',
+    ],
+  ],
+  'attention-consent-padding': [
+    [
+      'ui/card.tsx',
+      "'quota-consent':\n        'block px-[18px]",
+      "'quota-consent':\n        'block px-[8px]",
+    ],
+  ],
   'project-card-padding': [['ui/card.tsx', 'grid w-full px-[18px]', 'grid w-full px-[8px]']],
   'project-row-shrinks': [['ui/card.tsx', 'grid w-full px-[18px]', 'grid w-1/2 px-[18px]']],
   'project-badge-ink': [['ui/badge.tsx', 'text-[var(--ink-label)]', 'text-foreground']],
@@ -733,6 +771,7 @@ const measured = {
   sessionChrome: [],
   intentChrome: [],
   projectChrome: [],
+  attentionChrome: [],
 };
 
 const SURFACES = {
@@ -843,6 +882,8 @@ async function measure(opened, view, { walk = false } = {}) {
   const { page } = opened;
   await page.evaluate(() => document.fonts.ready);
   measured.views.push(view);
+  for (const row of await page.evaluate(measureAttentionChrome, Boolean(ATTENTION_RECORD)))
+    measured.attentionChrome.push({ view, ...row });
   for (const row of await page.evaluate(measureProjectChrome, Boolean(PROJECT_RECORD)))
     measured.projectChrome.push({ view, ...row });
   for (const row of await page.evaluate(measureSessionChrome))
@@ -1176,6 +1217,51 @@ async function runConsole(browser, world) {
   }
 }
 
+async function runAttentionChromeStates(browser, root) {
+  const world = await startWorld('console', root);
+  try {
+    for (const width of [1280, 800, 375]) {
+      const opened = await openWorldPage(browser, world, { width, height: 900 });
+      try {
+        // Production on macOS publishes the native lane; this world needs the browser lane,
+        // which development already supplies, to reach the refused-permission headers.
+        await opened.page.route('**/api/data*', async (route) => {
+          const response = await route.fetch();
+          const body = await response.json();
+          body.native_notify = '';
+          await route.fulfill({ response, json: body });
+        });
+        await opened.context.addInitScript(() => {
+          globalThis.Notification = Object.assign(
+            function Notification() {
+              throw new Error('Blocked notifications must never be created.');
+            },
+            { permission: 'denied' },
+          );
+        });
+        for (const route of [
+          '#n=attention',
+          '#n=sessions',
+          '#n=project:alpha%2Fapp:claude%3Alive-work:console',
+        ]) {
+          await opened.page.goto(world.origin + '/' + route);
+          await settle(opened.page);
+          await opened.page.evaluate(() => document.fonts.ready);
+          for (const row of await opened.page.evaluate(
+            measureAttentionChrome,
+            Boolean(ATTENTION_RECORD),
+          ))
+            measured.attentionChrome.push({ view: `${route} @${width}`, ...row });
+        }
+      } finally {
+        await opened.close();
+      }
+    }
+  } finally {
+    await world.close();
+  }
+}
+
 /* The capacity worlds have no timeline rows. The populated Console board catches an auto-width
    button shrinking where the pre-swap block summary filled its row. */
 async function runTimelineInlineSizes(browser, root) {
@@ -1323,6 +1409,31 @@ const UNRESOLVED_VARIABLES = new Set(INVENTORY.unresolved);
 const STEPS_PX = [13, 15, 18, 24, 34];
 
 function checks() {
+  if (ATTENTION_TABLE)
+    step_('attention: every adopted surface keeps measured chrome and inline size', () => {
+      const differences = attentionChromeDifferences(
+        measured.attentionChrome,
+        ATTENTION_TABLE.instances,
+      );
+      assert.deepEqual(
+        differences.slice(0, 8),
+        [],
+        `${differences.length} Attention/Capacity chrome or width differences`,
+      );
+      const seen = new Set(measured.attentionChrome.map((row) => row.key));
+      assert.ok(
+        measured.attentionChrome.length >= (ATTENTION_ONLY ? 10 : 100),
+        'too few Attention/Capacity instances',
+      );
+      if (FULL)
+        assert.deepEqual(
+          Object.keys(ATTENTION_TABLE.instances).filter((key) => !seen.has(key)),
+          [],
+          'unreached Attention/Capacity identities',
+        );
+      return `${measured.attentionChrome.length} instances against ${ATTENTION_TABLE.commit}`;
+    });
+  if (ATTENTION_ONLY) return;
   if (PROJECT_TABLE)
     step_('project: every adopted surface keeps measured chrome and inline size', () => {
       const differences = projectChromeDifferences(measured.projectChrome, PROJECT_TABLE.instances);
@@ -1991,12 +2102,12 @@ try {
     assert.ok(MUTATIONS[MUTATION], `unknown mutation ${MUTATION}`);
     copy = await scratchCopy();
   }
-  if (!INTENT_CHROME_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY)
+  if (!ATTENTION_ONLY && !INTENT_CHROME_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY)
     await step('gallery: shared buttons and native fields at desktop, 375 and 320 px', () =>
       checkButtonGallery(browser),
     );
   const root = copy || process.env.CSS_CONTRACT_ROOT || REPOSITORY;
-  if (!GALLERY_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY)
+  if (!ATTENTION_ONLY && !GALLERY_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY)
     await step('fields: stage, tripwire, context, direction and correction states', () =>
       visitFieldStates(browser, root, async (page, view) => {
         const steer = page.locator('[data-next-draft="steer"]');
@@ -2011,14 +2122,24 @@ try {
           measured.intentChrome.push({ view, ...row });
       }),
     );
-  if (!GALLERY_ONLY && !PROJECT_SUPPLEMENT && !PROJECT_ONLY && WORLDS.includes('intent'))
+  if (
+    !ATTENTION_ONLY &&
+    !GALLERY_ONLY &&
+    !PROJECT_SUPPLEMENT &&
+    !PROJECT_ONLY &&
+    WORLDS.includes('intent')
+  )
     await step('intent: live level and superseded result at desktop and narrow widths', () =>
       visitIntentDisplayStates(browser, root, async (page, view) => {
         for (const row of await page.evaluate(measureIntentChrome))
           measured.intentChrome.push({ view, ...row });
       }),
     );
-  for (const name of GALLERY_ONLY || INTENT_CHROME_ONLY || PROJECT_SUPPLEMENT || PROJECT_ONLY
+  for (const name of ATTENTION_ONLY ||
+  GALLERY_ONLY ||
+  INTENT_CHROME_ONLY ||
+  PROJECT_SUPPLEMENT ||
+  PROJECT_ONLY
     ? []
     : WORLDS) {
     const started = Date.now();
@@ -2030,7 +2151,8 @@ try {
     }
     receipts[`world ${name}`] = `${Math.round((Date.now() - started) / 1000)}s`;
   }
-  if (!INTENT_CHROME_ONLY && WORLDS.includes('console'))
+  await runAttentionChromeStates(browser, root);
+  if (!ATTENTION_ONLY && !INTENT_CHROME_ONLY && WORLDS.includes('console'))
     await runTimelineInlineSizes(browser, root);
 } catch (error) {
   failures.push({ name: 'run', message: String(error.stack || error).slice(0, 4000) });
@@ -2039,7 +2161,12 @@ try {
   if (copy) await rm(copy, { recursive: true, force: true });
 }
 
-if (!PROJECT_RECORD && !GALLERY_ONLY && !failures.some((failure) => failure.name === 'run')) {
+if (
+  !ATTENTION_RECORD &&
+  !PROJECT_RECORD &&
+  !GALLERY_ONLY &&
+  !failures.some((failure) => failure.name === 'run')
+) {
   checks();
   for (const [name, run] of pending) await step(name, run);
 }
@@ -2072,5 +2199,30 @@ if (PROJECT_RECORD) {
   );
   console.log(
     `Recorded ${measured.projectChrome.length} Project instances, ${Object.keys(instances).length} identities`,
+  );
+}
+
+if (ATTENTION_RECORD) {
+  const instances = {};
+  for (const { key, chrome, inlineSize, role } of measured.attentionChrome) {
+    const next = { chrome, inlineSize, role };
+    if (
+      instances[key] &&
+      (JSON.stringify(instances[key].chrome) !== JSON.stringify(chrome) ||
+        instances[key].role !== role ||
+        Math.abs(instances[key].inlineSize.ratio - inlineSize.ratio) >
+          (inlineSize.kind === 'text' ? 0.15 : 0.015))
+    )
+      throw new Error(
+        `Conflicting Attention chrome: ${key}\n${JSON.stringify({ previous: instances[key], next }, null, 2)}`,
+      );
+    instances[key] = next;
+  }
+  await writeFile(
+    ATTENTION_RECORD,
+    JSON.stringify({ commit: '34045be7', instances }, null, 2) + '\n',
+  );
+  console.log(
+    `Recorded ${measured.attentionChrome.length} Attention instances, ${Object.keys(instances).length} identities`,
   );
 }

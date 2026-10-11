@@ -12,6 +12,7 @@ const alertVariants = cva('block', {
     variant: {
       'session-health':
         'px-[16px] py-[14px] [border-left:3px_solid_var(--amber)] bg-card text-muted-foreground text-body leading-[1.5]',
+      'observer-status': 'm-0',
       'answer-failure': 'p-0 text-foreground text-label leading-[normal]',
       'intent-note':
         'm-0 max-w-[var(--measure)] text-muted-foreground [font-family:var(--sans)] text-body font-medium leading-[1.55]',

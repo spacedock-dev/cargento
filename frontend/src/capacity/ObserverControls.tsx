@@ -1,3 +1,5 @@
+import { Alert } from '../ui/alert';
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useState, type ReactNode } from 'react';
 import { contextKey, exactIdentity } from '../api/identity';
@@ -140,7 +142,9 @@ export function ObserverControls({ projectKey, focus }: ObserverControlsProps) {
   const goal = observed ? String(observed.goal || '').trim() : '';
   const modelStatus = observed?.model?.status;
   return (
-    <section
+    <Card
+      as="section"
+      variant="observer-consent"
       className="next-usage-consent"
       data-next-observer-consent=""
       aria-label="Observer model disclosure"
@@ -151,11 +155,13 @@ export function ObserverControls({ projectKey, focus }: ObserverControlsProps) {
         request.
       </p>
       <div className="next-usage-consent-actions">{actions}</div>
-      <p role="status">{status}</p>
+      <Alert as="p" variant="observer-status">
+        {status}
+      </Alert>
       {refused === null ? null : (
-        <p data-next-observer-refused="" role="status">
+        <Alert as="p" variant="observer-status" data-next-observer-refused="">
           {refused}
-        </p>
+        </Alert>
       )}
       {state === 'ready' ? (
         goal ? (
@@ -175,6 +181,6 @@ export function ObserverControls({ projectKey, focus }: ObserverControlsProps) {
           <p>No goal summary was published by this refresh.</p>
         )
       ) : null}
-    </section>
+    </Card>
   );
 }

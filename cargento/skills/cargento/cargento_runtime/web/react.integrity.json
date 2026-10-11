@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1619656,
+    "bytes": 1621296,
     "file": "react.html",
-    "sha256": "205154a6fb318dee6f247a3c041162faf78c5bb765979ad6b60329a71d863082"
+    "sha256": "dd5c05aeee031fccc76b7dd7d7b7e77bcb42fd7f8951cc2a2fd1563510ece59b"
   },
   "format": 1,
   "frontend": "react",
@@ -292,7 +292,7 @@
       },
       {
         "file": "frontend/src/attention/AttentionView.tsx",
-        "sha256": "86aae86a0233ae27b7ba7ecd2b12a90afe2a2b5935f521ea809968adf66f205a"
+        "sha256": "ff771da53b8bb8ae96122b3735cd8a02a77c3b822ff4a321afdd34541d275ee9"
       },
       {
         "file": "frontend/src/attention/Coverage.tsx",
@@ -300,11 +300,11 @@
       },
       {
         "file": "frontend/src/attention/Items.tsx",
-        "sha256": "448a2231683265e50d5afdb66bd5e68a730dd1f852b415e51f147854ae3f5dc6"
+        "sha256": "17cb2eb898ac8a2019aa13b92bff34fdb0081cfc171490d9704fe4ad6674d436"
       },
       {
         "file": "frontend/src/attention/attention.css",
-        "sha256": "3edd7319c12e58d7aeded320317a5f1f3ba61cfbc099b72e94c57c369fc74b06"
+        "sha256": "2558170f20659b174f38716c9a236482448e2cf2dd7dce27b2a47c2a6dcd4fd5"
       },
       {
         "file": "frontend/src/attention/expansion.ts",
@@ -336,19 +336,19 @@
       },
       {
         "file": "frontend/src/capacity/CapacityStrip.tsx",
-        "sha256": "39a46464747ed53d9d47ca6ed8d25cb89a751fc08b205573021fdca0bbcf1561"
+        "sha256": "00c376c00489197bd1dcf47b89371f01c17c6b3603696bb832dfeb20ba15be0e"
       },
       {
         "file": "frontend/src/capacity/ObserverControls.tsx",
-        "sha256": "682c90956e3322366591acffe081585b5872ea733c9641778154eccdf0e7e6bf"
+        "sha256": "d9313fdc2cf88afc23c5db56b76b3c2e21bea5c88a99dec2dbcb993be1afd2bc"
       },
       {
         "file": "frontend/src/capacity/UsageConsent.tsx",
-        "sha256": "b3525db1bfac210ff5a3e18a8043a7b3f9c8427ad2835fb7a98b8cdc86b75c9e"
+        "sha256": "beabd8f8310700576f1805d4469ebc0168135c670e38a00e2d9941af0ac726a8"
       },
       {
         "file": "frontend/src/capacity/capacity.css",
-        "sha256": "c861551a1019d637fdff34dec8cfd7846b3730877f65ad34d765d6afb09bb587"
+        "sha256": "84f8f13f23cda5793c36310572c2194fa3da85ad4ef8fc963338ec65e862f43c"
       },
       {
         "file": "frontend/src/capacity/held.ts",
@@ -492,7 +492,7 @@
       },
       {
         "file": "frontend/src/delegation/delegation.css",
-        "sha256": "c031fb2f5e03ae1492dfd6108b55164e64eb098a746bd7ff92353f9ad21c32bd"
+        "sha256": "349a4b129df7a8561d366cea3ff0e5c736722ee9934ab0e703e79f33d5b122a7"
       },
       {
         "file": "frontend/src/delegation/evidence.ts",
@@ -772,7 +772,7 @@
       },
       {
         "file": "frontend/src/notify/NotificationControl.tsx",
-        "sha256": "55c8518c9d3f8c45761ff76a844ef3b5efe22878d64addf8e652b4bc9f671312"
+        "sha256": "05c5bbe93217df364d5d2d6d5969ab227290f4ec561c631fb1f3c67802cd49f0"
       },
       {
         "file": "frontend/src/notify/edges.ts",
@@ -784,7 +784,7 @@
       },
       {
         "file": "frontend/src/notify/notify.css",
-        "sha256": "f3476fe7116d4223cc00666b599bf17bfe1af425b817e92a702f07cf51d52d94"
+        "sha256": "f5dd5b4ca890413e9e43a2cdbd113017468600ff157aefb54578f25acd994e0a"
       },
       {
         "file": "frontend/src/notify/owner.ts",
@@ -1344,11 +1344,11 @@
       },
       {
         "file": "frontend/src/ui/alert.tsx",
-        "sha256": "5a10027342982171fd9b4fb9257bd497dd277c90c5ffef1fab2022a568d4b79b"
+        "sha256": "7de8f6d251e4681d30599db39e45ba39662a43948f6802ce31328a214fe29a43"
       },
       {
         "file": "frontend/src/ui/badge.tsx",
-        "sha256": "ecb6cfbb6510663c8c391afd7f6362bc9678631ebf6b2efb1ad143ce3a674020"
+        "sha256": "68e8f9fec0948a7407c02eedf887ac81a71946985136ec646ffb0943496ea654"
       },
       {
         "file": "frontend/src/ui/button.tsx",
@@ -1356,7 +1356,7 @@
       },
       {
         "file": "frontend/src/ui/card.tsx",
-        "sha256": "f41d0cf288290e26b723ecbcc4ff42c891edf27a8f5f40fd095e83e560a104de"
+        "sha256": "5fbeea0fc03a1c8e229e55591e6cce5fc39f705022d95cc876822310407272d2"
       },
       {
         "file": "frontend/src/ui/collapsible.tsx",
@@ -1424,7 +1424,7 @@
       },
       {
         "file": "package.json",
-        "sha256": "4f369c95f0a751755e99b8757e1282a22a3dfdbdcfe86097bd22ca99cb934fd1"
+        "sha256": "9c82b37ad3e4c50a9d4a733b2edc00e22e339e166f14febe334e4100d2cca7eb"
       },
       {
         "file": "pnpm-lock.yaml",

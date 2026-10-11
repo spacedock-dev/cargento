@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useMemo } from 'react';
 import { payloadSessions } from '../api/bootstrap';
@@ -145,7 +146,7 @@ function Board({
   return (
     <section className="next-attention" data-next-view-body="attention">
       <Title />
-      <div className="next-attention-brief">
+      <Card variant="attention-brief" className="next-attention-brief">
         <p>
           <span className="next-attention-brief-label">OBSERVED</span>
           {collection ? (
@@ -164,7 +165,7 @@ function Board({
         >
           View all projects
         </RouteAnchor>
-      </div>
+      </Card>
       {observed.sessions.length || !collection ? null : (
         <p className="next-attention-empty">
           {`No sessions in this ${model.windowHours == null ? 'payload' : `${String(model.windowHours)}h payload`}`}
