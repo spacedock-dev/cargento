@@ -392,6 +392,14 @@ maximum, because the legacy page's own textarea rule makes xterm's helper elemen
 
 The timeline and the terminal are mounted in the project view's Decisions and Console tabs.
 
+Deviations (DEC-27, 2026-10-11): Sessions rows no longer offer Copy ID; session headers
+no longer offer Copy ID, Copy link or Copy command, and departure rows no longer offer Copy
+command. The header's resume absence and explanation go with that control. Terminal raise and
+its limits remain. Resume commands remain on Attention, the waiting panel and the project rail;
+Steer back still copies a correction. The unused absolute-session-link builder is retired.
+Recorded-side normalizers remove just these controls and the resume explanation; the current
+page still has to assert their absence. The fixture recordings are unchanged.
+
 ## The Intent log and the Intent panel
 
 The Intent log (`#n=intent`) and the panel on the session page (the goal and expected-outcome editor,
@@ -425,6 +433,14 @@ and open no picker. `PromptSelect.test.tsx` covers the held request and those ab
 375 and 320 px, with an `auto-prompt-width` mutation. The field chrome gate measures
 the reserved width explicitly; its reference table adds the approved 288 px desktop
 width for the two prompt identities. The recorded answers remain unchanged.
+
+DEC-27 replaces What analysis does with the keyed How Intent and drift works popover beside
+the Intent heading. Its three steps explain the goal, Analyze and the correction. Its limit line
+uses the shared work and steering harness lists and the board's reading route, including a
+missing reader's reason; it retains the promise that Cargento never writes into sessions.
+The shared Popover proof covers click, keyboard, Escape, outside press, focus return and 320 px.
+No browser storage or first-visit marker is added. The old disclosure is removed only from the
+recorded-side Drift snapshot; the remaining limits and privacy disclosures are still compared.
 
 ## The Drift card, Analyze and Steer back
 

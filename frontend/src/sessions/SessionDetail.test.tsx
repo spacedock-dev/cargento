@@ -1,6 +1,5 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { CUE_TTL_MS } from '../controls';
 import { mountSessions, type AnswerScript } from './testing';
 import { answerNotesFor } from './heldState';
 
@@ -49,6 +48,30 @@ const expectPoliteFailure = (notice: Element | null) => {
   expect(notice?.getAttribute('role')).toBe('status');
   expect([null, 'polite']).toContain(notice?.getAttribute('aria-live'));
 };
+
+it('has no session copy controls, including beside a stored departure with a resume command', async () => {
+  const page = await open(
+    board(
+      [
+        {
+          ...ONE,
+          resume_id: 'abc-1',
+          departures: [{ at: 100, revision: 1, constraint: 'goal', reading: 'r' }],
+        },
+      ],
+      { annotate: true },
+    ),
+    { focusCapability: 'minted' },
+  );
+  expect(document.querySelector('[data-copy-kind]')).toBeNull();
+  expect(document.body.textContent).not.toContain('No resume command');
+  expect(document.body.textContent).toContain('No terminal to raise');
+  await act(async () => {
+    page.router.navigate({ view: 'sessions' });
+  });
+  await page.settle();
+  expect(document.querySelector('.next-operation-row [data-copy-kind]')).toBeNull();
+});
 
 describe('answering a held request', () => {
   const asked = () => board([ONE], { ask: true, asks: [ASK] });
@@ -393,37 +416,6 @@ describe('what the page says about what it could not see', () => {
   });
 });
 
-describe('a row control’s confirmation belongs to the exact session and lasts thirty seconds', () => {
-  const rows = () =>
-    board([
-      { harness: 'claude', sid: 'one', project: 'p', title: 'First', state: 'idle' },
-      { harness: 'codex', sid: 'one', project: 'p', title: 'Second', state: 'idle' },
-    ]);
-
-  it('marks the pressed session’s copy control, keeps the cue across a poll, and clears it at thirty seconds', async () => {
-    const page = await open(rows(), { hash: '#n=sessions' });
-    const copy = (harness: string) =>
-      document.querySelector<HTMLButtonElement>(
-        `article[data-next-harness="${harness}"] button[data-copy-kind="id"]`,
-      );
-    await act(async () => {
-      fireEvent.click(copy('claude') as Element);
-    });
-    await page.settle();
-    expect(page.written).toEqual(['one']);
-    expect(copy('claude')?.getAttribute('data-copy-state')).toBe('copied');
-    expect(copy('codex')?.hasAttribute('data-copy-state')).toBe(false);
-    const node = copy('claude');
-    await page.poll(rows());
-    expect(copy('claude')).toBe(node);
-    expect(copy('claude')?.getAttribute('data-copy-state')).toBe('copied');
-    await act(async () => {
-      page.clock.advance(CUE_TTL_MS + 1);
-    });
-    expect(copy('claude')?.hasAttribute('data-copy-state')).toBe(false);
-  });
-});
-
 describe('the raise control', () => {
   const data = board([{ ...ONE, focusable: true }]);
 
@@ -446,7 +438,7 @@ describe('the raise control', () => {
     );
   });
 
-  it('is not drawn for a session that is not waiting, where the header offers copy controls alone', async () => {
+  it('is not drawn for a session that is not waiting, where the header offers no raise', async () => {
     await open(board([{ ...ONE, state: 'idle', focusable: true }]), { focusCapability: 'minted' });
     expect(document.querySelector('[data-control="raise"]')).toBeNull();
   });

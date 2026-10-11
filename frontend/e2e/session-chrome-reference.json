@@ -483,5 +483,8 @@
         "ratio": 1
       }
     }
-  }
+  },
+  "deviations": [
+    "DEC-27 removes session Copy controls; surface chrome and width ratios remain the same contract."
+  ]
 }

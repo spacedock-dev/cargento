@@ -728,7 +728,7 @@ try {
   );
 
   await step(
-    'permalink: the session link the page builds keeps ?all=1 (the control that copies it arrives with the sessions step) and reopens the same exact session after a reload',
+    'bookmark: an exact session fragment keeps ?all=1 and reopens the same session after a reload',
     async () => {
       const link = `${board.react.origin}/?all=1#n=session:${A}:codex:shared-sid`;
       await react.page.goto('about:blank');

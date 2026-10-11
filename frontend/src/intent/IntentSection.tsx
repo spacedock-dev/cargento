@@ -20,6 +20,7 @@ import { OutcomeLines } from './OutcomeLines';
 import { saveIntent } from './save';
 import { INTENT_MEASURED } from './sentences';
 import { usePanel } from './useIntent';
+import { HowTo } from './HowTo';
 
 /* Under both fields, as the design's single hint line is: the hint on the left, Undo changes and Save intent
    on the right, both inert while nothing has changed. An inert save is described by whichever absence
@@ -120,7 +121,7 @@ export function IntentSection() {
   const unreadable = storeUnreadable(payload);
   return (
     <Card variant="intent-panel" as="section" className="next-cockpit-held">
-      <header>
+      <header className="flex-wrap">
         <h2
           id="next-session-intent-heading"
           ref={heading}
@@ -129,6 +130,7 @@ export function IntentSection() {
         >
           Intent
         </h2>
+        <HowTo />
       </header>
       {/* Under the heading rather than in its header, so the revision line keeps the sentence tier. */}
       <SavedStamp />

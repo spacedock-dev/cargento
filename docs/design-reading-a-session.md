@@ -1405,9 +1405,9 @@ button's top sat at 1010px while the disclosure stacked above it, and at 840px o
 row. The reading says it is never a verification once, in the server's disclosure, and the page's
 own sentence renders only where no disclosure was published.
 
-The way back beside a departure is the header's own resume and raise controls, drawn per departure
-whatever the session's state; what is missing is said once per departures section, because a limit
-repeated under every row is furniture. The raise's own caveat follows the rows it qualifies.
+DEC-27 removes the resume control from the header and departures. Resume commands live on
+Attention, the waiting panel and the project rail only. A terminal raise remains beside a
+departure where available, whatever the session's state. Its caveat follows the rows it qualifies.
 
 The departures section draws only with the unasked lane on, a departure on record, or a reading the
 reader asked for, whose cutoff is printed there and nowhere else. That restores DRC-4543 on this
@@ -3581,8 +3581,9 @@ at most 174 words (175 ceiling), the idle fixture 82 (85 ceiling), and the parti
   ("Reporter available", "No block-state reading available") is not drawn, here or on the
   Sessions list. Command-shape reports, on the session page, are one summary while off or
   unsupported, and the list or "No command-shape reports." with the caveats behind "About these
-  reports" while on; Attention keeps its whole section. A missing way back is one clause beside
-  the header's controls ("No resume command", "No terminal to raise", "Terminal raise off"),
+  reports" while on; Attention keeps its whole section. DEC-27 removes the resume absence and
+  its explanation. A missing terminal is one clause beside the header's controls
+  ("No terminal to raise", "Terminal raise off"),
   said once per page before any departure (DRC-4658), with the cause behind "Why". HOW IT LANDED
   keeps "Neither card implies the other." in view with its reason behind "Why two cards", and the
   Intent-log pointer is the link with what it keeps behind "What it keeps".
@@ -4525,7 +4526,9 @@ The owner's 2026-10-06 request for plain explanations and evidence times superse
 175-word ceiling for the canonical stored-departure fixture only: its measured limit is now
 215 words outside field values. The canonical partial-departure fixture keeps its coverage
 limits visible and has a 295-word ceiling, replacing its earlier 270. The unchanged
-nondeparture fixtures retain 175, and idle retains 85. The historical ceilings above record
+nondeparture fixtures retain 175. DEC-27 moves the idle explanation to the how-to popup;
+its opened body has a 150-word ceiling, including the board-derived limit line, replacing the
+85-word idle explanation ceiling. HowTo.test.tsx and popover-continuity.mjs assert it. The historical ceilings above record
 what was agreed then; this amendment does not rewrite them. These are regression ceilings for
 those two canonical examples, not universal reading budgets or runtime citation limits. A
 valid reading with two or more citations keeps every surviving support and its recorded times,

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
 import { mountShell } from '../shell/testing';
+import { retractSessionCopies } from '../../test/sessionCopyDeviation';
 
 /* The Sessions screen, held to the legacy page by what a reader can read. The legacy `nextSessionsView`
    runs unchanged over a generated payload and this screen renders the same payload in the real shell;
@@ -78,6 +79,7 @@ function summarize(source: Element | DocumentFragment): Summary {
 function legacySummary(payload: unknown): Summary {
   const template = document.createElement('template');
   template.innerHTML = legacy.sessionsHtml(payload);
+  retractSessionCopies(template.content);
   return summarize(template.content);
 }
 

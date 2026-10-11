@@ -1,7 +1,7 @@
 import { nextNumber } from '../api/bootstrap';
 import { isRecord, type Row } from '../observed';
 import { DepartureEvidence } from '../sessions/DepartureParts';
-import { reentryLimit, sessionDelivery } from '../sessions/detail';
+import { raiseLimit, sessionDelivery } from '../sessions/detail';
 import { useShell } from '../shell/context';
 import { useDrift } from './context';
 import { DEPARTURE_DEFINITION, STEER_BY_HAND, STEER_BY_HAND_WHY, UNVERIFIABLE } from './sentences';
@@ -160,15 +160,7 @@ export function DeparturesSection() {
     Boolean(sid) &&
     Boolean(String(session['harness'] == null ? '' : session['harness']).trim()) &&
     shell.controls.focus !== null;
-  const raiseLine = raisable
-    ? reentryLimit({
-        label: '',
-        hasCommand: true,
-        knownHarness: true,
-        canRaise: true,
-        focusCapability: true,
-      }).raise
-    : '';
+  const raiseLine = raisable ? raiseLimit(true, true) : '';
   const summary = rows ? `Raised while you were away: ${String(rows)}` : 'About these checks';
   const evidence = (
     <DepartureEvidence

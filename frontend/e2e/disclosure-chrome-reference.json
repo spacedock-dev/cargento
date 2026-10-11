@@ -267,20 +267,6 @@
       "font-size": "15px",
       "line-height": "23.25px"
     },
-    "next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": {
-      "color": "rgb(205, 199, 180)",
-      "background-color": "rgba(0, 0, 0, 0)",
-      "border-top": "0px none rgb(205, 199, 180)",
-      "border-right": "0px none rgb(205, 199, 180)",
-      "border-bottom": "0px none rgb(205, 199, 180)",
-      "border-left": "0px none rgb(205, 199, 180)",
-      "display": "flex",
-      "padding": "0px",
-      "justify-content": "normal",
-      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
-      "font-size": "15px",
-      "line-height": "23.25px"
-    },
     "next-session-detail.next-session-detail--blocked > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
@@ -352,20 +338,6 @@
       "line-height": "23.25px"
     },
     "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.next-cockpit-why |  | What a reading reads |  | disabled=false hidden=false": {
-      "color": "rgb(205, 199, 180)",
-      "background-color": "rgba(0, 0, 0, 0)",
-      "border-top": "0px none rgb(205, 199, 180)",
-      "border-right": "0px none rgb(205, 199, 180)",
-      "border-bottom": "0px none rgb(205, 199, 180)",
-      "border-left": "0px none rgb(205, 199, 180)",
-      "display": "flex",
-      "padding": "0px",
-      "justify-content": "normal",
-      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
-      "font-size": "15px",
-      "line-height": "23.25px"
-    },
-    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -812,6 +784,34 @@
       "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
       "font-size": "15px",
       "line-height": "23.25px"
+    },
+    "next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "normal"
+    },
+    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": {
+      "color": "rgb(205, 199, 180)",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "border-top": "0px none rgb(205, 199, 180)",
+      "border-right": "0px none rgb(205, 199, 180)",
+      "border-bottom": "0px none rgb(205, 199, 180)",
+      "border-left": "0px none rgb(205, 199, 180)",
+      "display": "flex",
+      "padding": "0px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "normal"
     }
   },
   "inlineSizes": {
@@ -1421,12 +1421,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:claude:gate-open | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:claude:gate-open | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -1463,12 +1457,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:claude:gate-open [expanded] | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:claude:gate-open [expanded] | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -1503,12 +1491,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:beta%2Fapi:claude:ended-still-working | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:beta%2Fapi:claude:ended-still-working | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-caveats > ctl-disclosure |  | About these saved words |  | disabled=false hidden=false": [
@@ -1551,12 +1533,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:beta%2Fapi:claude:ended-still-working [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:beta%2Fapi:claude:ended-still-working [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-caveats > ctl-disclosure |  | About these saved words |  | disabled=false hidden=false": [
@@ -1673,12 +1649,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:gamma:claude:long-turn | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:gamma:claude:long-turn | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -1713,12 +1683,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:gamma:claude:long-turn [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:gamma:claude:long-turn [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -1757,12 +1721,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:beta%2Fapi:codex:colon%3Asid | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:beta%2Fapi:codex:colon%3Asid | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -1793,12 +1751,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:beta%2Fapi:codex:colon%3Asid [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:beta%2Fapi:codex:colon%3Asid [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -1827,12 +1779,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:gamma:claude:delegated | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:gamma:claude:delegated | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -1871,12 +1817,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:gamma:claude:delegated [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:gamma:claude:delegated [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -1913,12 +1853,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:codex:idle-recent | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:codex:idle-recent | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -1947,12 +1881,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:alpha%2Fapp:codex:idle-recent [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:alpha%2Fapp:codex:idle-recent [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
@@ -1985,12 +1913,6 @@
         "width": 166.719
       }
     ],
-    "#n=session::codex:no-project | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session::codex:no-project | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2019,12 +1941,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session::codex:no-project [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session::codex:no-project [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
@@ -2057,12 +1973,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:delta:codex:scan-only | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:delta:codex:scan-only | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2093,12 +2003,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:delta:codex:scan-only [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:delta:codex:scan-only [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2127,12 +2031,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:alpha%2Fapp:claude:shared-sid | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:alpha%2Fapp:claude:shared-sid | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -2171,12 +2069,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:claude:shared-sid [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:claude:shared-sid [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2213,12 +2105,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:codex:shared-sid | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:codex:shared-sid | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2247,12 +2133,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:alpha%2Fapp:codex:shared-sid [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:alpha%2Fapp:codex:shared-sid [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
@@ -2285,12 +2165,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:delta:codex:source-gap | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:delta:codex:source-gap | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2321,12 +2195,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:delta:codex:source-gap [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:delta:codex:source-gap [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2355,12 +2223,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:delta:claude:spacedock-asked | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:delta:claude:spacedock-asked | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -2399,12 +2261,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:delta:claude:spacedock-asked [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:delta:claude:spacedock-asked [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2439,12 +2295,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:beta%2Fapi:claude:stopped-dirty | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:beta%2Fapi:claude:stopped-dirty | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -2483,12 +2333,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:beta%2Fapi:claude:stopped-dirty [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:beta%2Fapi:claude:stopped-dirty [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2525,12 +2369,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2565,12 +2403,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -2645,12 +2477,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:claude:gate-open @375 | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:claude:gate-open @375 | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2686,12 +2512,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:claude:gate-open @375 [expanded] | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:claude:gate-open @375 [expanded] | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2725,12 +2545,6 @@
       {
         "fillsRow": false,
         "width": 185.25
-      }
-    ],
-    "#n=session:w%2Falpha:claude:intent-2 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:w%2Falpha:claude:intent-2 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-conflict > ctl-disclosure |  | Later directions: none |  | disabled=false hidden=false": [
@@ -2784,12 +2598,6 @@
       {
         "fillsRow": false,
         "width": 185.25
-      }
-    ],
-    "#n=session:w%2Falpha:claude:intent-2 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:w%2Falpha:claude:intent-2 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-conflict > ctl-disclosure |  | Later directions: none |  | disabled=false hidden=false": [
@@ -2912,12 +2720,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:w%2Falpha:claude:intent-1 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:w%2Falpha:claude:intent-1 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-conflict > ctl-disclosure |  | Later directions: none |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -2975,12 +2777,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:w%2Falpha:claude:intent-1 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:w%2Falpha:claude:intent-1 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-conflict > ctl-disclosure |  | Later directions: none |  | disabled=false hidden=false": [
@@ -3661,28 +3457,10 @@
         "width": 576.547
       }
     ],
-    "#n=session:alpha%2Fapp:claude:live-work | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
-    "#n=session:alpha%2Fapp:claude:live-work [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:beta%2Fapi:codex:beta-codex | next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > ctl-disclosure.next-cockpit-why |  | What a reading reads |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:beta%2Fapi:codex:beta-codex | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:beta%2Fapi:codex:beta-codex | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
@@ -3715,12 +3493,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:beta%2Fapi:codex:beta-codex [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:beta%2Fapi:codex:beta-codex [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -3749,12 +3521,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:beta%2Fapi:claude:beta-idle | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:beta%2Fapi:claude:beta-idle | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -3793,12 +3559,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:beta%2Fapi:claude:beta-idle [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:beta%2Fapi:claude:beta-idle [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -3835,12 +3595,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -3871,12 +3625,6 @@
         "width": 166.719
       }
     ],
-    "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
-      }
-    ],
     "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 [expanded] | next-session-detail > next-session-columns > next-session-activity > ctl-disclosure.next-session-facts-more |  | Session facts: No stop or end observed \u00b7 Git state was not measured |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
@@ -3905,12 +3653,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:alpha%2Fapp:claude:workflow-run | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:alpha%2Fapp:claude:workflow-run | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -3947,12 +3689,6 @@
       {
         "fillsRow": false,
         "width": 166.719
-      }
-    ],
-    "#n=session:alpha%2Fapp:claude:workflow-run [expanded] | next-session-detail > next-session-columns > next-session-panel > next-session-drift > ctl-disclosure.next-cockpit-why |  | What analysis does |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 153.594
       }
     ],
     "#n=session:alpha%2Fapp:claude:workflow-run [expanded] | next-session-detail > next-session-columns > next-session-activity > next-cockpit-work > ctl-disclosure.next-cockpit-why |  | About this record |  | disabled=false hidden=false": [
@@ -4396,7 +4132,230 @@
       {
         "fillsRow": true
       }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open [expanded] | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:ended-still-working | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:ended-still-working [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:long-turn | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:long-turn [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:colon%3Asid | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:colon%3Asid [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:delegated | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:gamma:claude:delegated [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:idle-recent | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:idle-recent [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session::codex:no-project | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session::codex:no-project [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:scan-only | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:scan-only [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:shared-sid | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:shared-sid [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:shared-sid | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:shared-sid [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:source-gap | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:codex:source-gap [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:claude:spacedock-asked | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:delta:claude:spacedock-asked [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:stopped-dirty | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:stopped-dirty [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:%C3%BCn%C3%AF%2F%C3%A7%C3%B8d%C3%A9:claude:unicode-title [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open @375 | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:gate-open @375 [expanded] | next-session-detail.next-session-detail--blocked > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-2 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-1 | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:w%2Falpha:claude:intent-1 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:live-work | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:live-work [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:beta-codex | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:codex:beta-codex [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:beta-idle | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:beta%2Fapi:claude:beta-idle [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:codex:disposable-tmux-origin%3A1 [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:workflow-run | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
+    ],
+    "#n=session:alpha%2Fapp:claude:workflow-run [expanded] | next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
+      {
+        "fillsRow": true
+      }
     ]
   },
-  "popoverSource": "47ed3654, native popover triggers measured over the same 87 route views on 2026-10-10; inline sizes measured from 7d4a23c3 over 87 route views on 2026-10-11"
+  "popoverSource": "47ed3654, native popover triggers measured over the same 87 route views on 2026-10-10; inline sizes measured from 7d4a23c3 over 87 route views on 2026-10-11",
+  "deviations": [
+    "DEC-27 replaces What analysis does with the Intent how-to Popover; the remaining disclosure chrome retains its measured contract."
+  ]
 }

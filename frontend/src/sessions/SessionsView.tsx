@@ -3,7 +3,7 @@ import { buttonVariants } from '../ui/button';
 import { cn } from '../lib/utils';
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
 import { CapacityStrip } from '../capacity';
-import { Disclosure, disclosureKey, CopyControl } from '../controls';
+import { Disclosure, disclosureKey } from '../controls';
 import { gapNames, isScanOnly, type Row } from '../observed';
 import { fragmentForRoute, type RouteInput } from '../router/grammar';
 import { selectObserved } from '../observed/select';
@@ -153,7 +153,6 @@ function assignmentOf(source: Row | undefined): string {
 
 function Identity({ row }: { readonly row: SessionRow }) {
   const { session, source, history } = row;
-  const sid = session.sid.trim();
   const assignment = history ? '' : assignmentOf(source);
   const names = source ? gapNames(source) : [];
   return (
@@ -176,7 +175,6 @@ function Identity({ row }: { readonly row: SessionRow }) {
           {session.titleText}
         </strong>
       </RouteAnchor>
-      {sid ? <CopyControl kind="id" harness={session.harness} sid={sid} value={sid} /> : null}
       {!session.titleKnown && session.promptKnown ? (
         <span className="next-operation-assignment">{`LAST PROMPT · ${session.promptText}`}</span>
       ) : null}

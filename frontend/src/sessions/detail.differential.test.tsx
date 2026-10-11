@@ -4,6 +4,7 @@ import { fragmentForRoute } from '../router/grammar';
 import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
 import { mountShell } from '../shell/testing';
+import { retractSessionCopies } from '../../test/sessionCopyDeviation';
 
 /* The session page, held to the legacy page by what a reader can read. `nextSessionView` runs unchanged
    over a generated payload for each of several sessions in it, and this page renders the same route in the
@@ -79,6 +80,7 @@ function legacySummary(
   legacy.setFocusCapability(capability);
   const template = document.createElement('template');
   template.innerHTML = legacy.sessionHtml(payload, route);
+  retractSessionCopies(template.content);
   return summarize(template.content);
 }
 

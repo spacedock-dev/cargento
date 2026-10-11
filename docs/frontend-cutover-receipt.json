@@ -19,10 +19,6 @@
             "test": "parses and prints the same for every generated fragment"
           },
           {
-            "vitest": "frontend/src/router/permalink.test.ts",
-            "test": "agrees with the legacy builder"
-          },
-          {
             "vitest": "frontend/src/api/identity.test.ts",
             "test": "keys a session by the exact harness and sid pair"
           },
@@ -502,7 +498,7 @@
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "copy: a press is recorded"
+            "step": "session copy controls are absent on rows and detail, including departures"
           }
         ]
       },
@@ -1289,10 +1285,6 @@
         "status": "proven",
         "proofs": [
           {
-            "vitest": "frontend/src/router/permalink.test.ts",
-            "test": "encodes a colon in a part and keeps an empty project, which is a valid session project"
-          },
-          {
             "vitest": "frontend/src/shell/Views.test.tsx",
             "test": "project route out of reach, since an empty project is not a project"
           },
@@ -1303,17 +1295,15 @@
         ]
       },
       "absolute-session-permalink-query": {
-        "status": "proven",
+        "status": "deviation",
         "proofs": [
           {
-            "vitest": "frontend/src/router/permalink.test.ts",
-            "test": "keeps the path and every query, ?all=1 included, and replaces only the fragment"
-          },
-          {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "permalink: the session link the page builds keeps ?all=1"
+            "step": "bookmark: an exact session fragment keeps ?all=1 and reopens the same session after a reload"
           }
-        ]
+        ],
+        "deviation": "docs/design-frontend-migration.md#sessions-session-detail-the-timeline-and-the-terminal",
+        "note": "DEC-27 retires the session Copy link builder. Exact session fragments can still be bookmarked and reloaded with all=1."
       },
       "all-query-data-scope": {
         "status": "proven",
@@ -1469,8 +1459,8 @@
             "test": "keeps the cue on a node that is replaced, then lets it lapse after thirty seconds"
           },
           {
-            "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "copy: a press is recorded, the cue stays on that"
+            "browser": "frontend/e2e/controls-continuity.mjs",
+            "step": "copy cues are distinct and durable, copy writes once per press, and raise is explicit and deduplicated"
           }
         ]
       },
@@ -2209,6 +2199,21 @@
             "step": "continuity: a selection inside a row, and a session page"
           }
         ]
+      },
+      "The Intent how-to popover": {
+        "status": "deviation",
+        "deviation": "docs/design-frontend-migration.md#the-intent-log-and-the-intent-panel",
+        "proofs": [
+          {
+            "browser": "frontend/e2e/popover-continuity.mjs",
+            "step": "Intent how-to opens by click and keyboard, keeps state on redraw and fits at 320 px"
+          },
+          {
+            "vitest": "frontend/src/intent/HowTo.test.tsx",
+            "test": "keeps the popup keyed across session remounts without a first-use flag"
+          }
+        ],
+        "note": "DEC-27 replaces What analysis does with a keyed Intent how-to. Existing limits stay reachable and no browser storage is added."
       }
     },
     "storage": {

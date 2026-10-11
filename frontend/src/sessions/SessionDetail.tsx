@@ -1,18 +1,10 @@
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
 import { useMemo, type ReactNode } from 'react';
-import {
-  CopyControl,
-  Disclosure,
-  RaiseControl,
-  disclosureKey,
-  resumeCommand,
-  useFocusKey,
-} from '../controls';
+import { Disclosure, RaiseControl, disclosureKey, useFocusKey } from '../controls';
 import { endedAt, type ObservedSession, type Row } from '../observed';
 import { selectObserved } from '../observed/select';
 import { sessionHome, type SessionRoute } from '../router/grammar';
-import { sessionLink } from '../router/permalink';
 import { useDisplayed, useShell } from '../shell/context';
 import type { PayloadData } from '../api/types';
 import { AnswerBlock } from './AnswerBlock';
@@ -41,7 +33,7 @@ import {
   askingTitle,
   commandReports,
   detailState,
-  reentryLimit,
+  raiseLimit,
   sessionAsks,
   sessionDelivery,
   sessionFacts,
@@ -65,60 +57,28 @@ function Controls({
   session,
   observed,
   route,
-  labels,
 }: {
   readonly session: Row;
   readonly observed: ObservedSession;
   readonly route: SessionRoute;
-  readonly labels: ReadonlyMap<string, string>;
 }) {
   const shell = useShell();
   const rawHarness = String(session['harness'] == null ? '' : session['harness']);
-  const harness = String(session['harness'] || '');
   const rawSid = String(session['sid'] || '');
-  /* The copy control and the raise name the session by its trimmed id and harness, and the link and the
-     command by what the row published, exactly as the legacy controls do: the cue is keyed on the pair, so
-     the lane a press writes is the lane the same control reads back. */
   const trimmedSid = rawSid.trim();
-  const command = resumeCommand(harness, String(session['resume_id'] || ''));
   const focusCapability = shell.controls.focus !== null;
   const raisable =
     session['focusable'] === true &&
     Boolean(trimmedSid) &&
     Boolean(rawHarness.trim()) &&
     focusCapability;
-  const limit = reentryLimit({
-    label: labels.get(harness) || humanLabel(harness),
-    hasCommand: Boolean(command),
-    knownHarness: harness === 'claude' || harness === 'codex',
-    canRaise: raisable,
-    focusCapability,
-  });
+  const limit = raiseLimit(raisable, focusCapability);
   const missing = [
-    limit.resume ? 'No resume command' : '',
     !raisable ? (focusCapability ? 'No terminal to raise' : 'Terminal raise off') : '',
   ].filter(Boolean);
   return (
     <>
       <div className="next-session-controls">
-        {trimmedSid ? (
-          <CopyControl kind="id" harness={harness} sid={trimmedSid} value={trimmedSid} />
-        ) : null}
-        {rawSid ? (
-          <CopyControl
-            kind="link"
-            harness={harness}
-            sid={rawSid}
-            value={sessionLink(window.location.href, {
-              project: observed.project,
-              harness,
-              sid: rawSid,
-            })}
-          />
-        ) : null}
-        {command ? (
-          <CopyControl kind="command" harness={harness} sid={rawSid} value={command} />
-        ) : null}
         {observed.isNeeds ? (
           <RaiseControl
             harness={rawHarness.trim()}
@@ -141,20 +101,12 @@ function Controls({
             summary="Why"
             variant="popover"
           >
-            {limit.resume ? <ReentryLine text={limit.resume} /> : null}
-            {!raisable ? <ReentryLine text={limit.raise} /> : null}
+            {!raisable ? <ReentryLine text={limit} /> : null}
           </Disclosure>
         </div>
       ) : null}
     </>
   );
-}
-
-function humanLabel(value: string): string {
-  const words = String(value || 'work')
-    .replace(/[-_]+/g, ' ')
-    .trim();
-  return words ? (words[0] ?? '').toUpperCase() + words.slice(1) : 'Work';
 }
 
 function ReentryLine({ text }: { readonly text: string }) {
@@ -260,7 +212,7 @@ function Header({
       <div className="next-session-detail-bar">
         {meta ? <p className="next-session-detail-meta">{meta}</p> : null}
         <DriftPill />
-        <Controls session={session} observed={observed} route={route} labels={labels} />
+        <Controls session={session} observed={observed} route={route} />
       </div>
     </header>
   );

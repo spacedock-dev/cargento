@@ -6,13 +6,12 @@
       "owner": "DRC-4823",
       "oracles": [
         "frontend/src/router/grammar.test.ts",
-        "frontend/src/router/permalink.test.ts",
         "frontend/src/api/identity.test.ts",
         "frontend/src/controls/SessionControls.test.tsx",
         "frontend/e2e/shell-routing.mjs",
         "frontend/e2e/sessions-parity.mjs"
       ],
-      "contract": "Released fragment routes, exact session identity, copy/re-entry/permalink controls and shared escaped display helpers; store selectors belong to DRC-4822."
+      "contract": "Released fragment routes, exact session identity, shared copy/re-entry controls outside session detail and escaped display helpers; store selectors belong to DRC-4822."
     },
     {
       "name": "next-observed.js",
@@ -273,7 +272,7 @@
         "frontend/e2e/controls-continuity.mjs",
         "frontend/e2e/sessions-parity.mjs"
       ],
-      "contract": "ID, absolute link and resume command use distinct durable copy cues; terminal raise is explicit, capability-bound and deduplicated while busy."
+      "contract": "DEC-27 removes ID, link and command copies from Sessions rows and session detail. Shared CopyControl cues remain on Attention, the waiting panel, project rail and gallery; terminal raise remains explicit, capability-bound and deduplicated."
     },
     {
       "name": "sessions-first-screen",
@@ -723,7 +722,6 @@
       "name": "malformed-encoding-and-empty-project",
       "owner": "DRC-4823",
       "oracles": [
-        "frontend/src/router/permalink.test.ts",
         "frontend/src/shell/Views.test.tsx",
         "frontend/e2e/shell-routing.mjs"
       ],
@@ -733,10 +731,9 @@
       "name": "absolute-session-permalink-query",
       "owner": "DRC-4823",
       "oracles": [
-        "frontend/src/router/permalink.test.ts",
         "frontend/e2e/shell-routing.mjs"
       ],
-      "contract": "Copied session links preserve the entire current pre-fragment URL including ?all=1 and reopen the same exact session after reload."
+      "contract": "Retired under DEC-27: session Copy link and its unused absolute-link builder are removed; exact session routes remain bookmarkable."
     },
     {
       "name": "all-query-data-scope",
@@ -1263,6 +1260,16 @@
       ],
       "contract": "No synthetic text Range restoration or clipboard action. Stable nodes may retain native highlight; do not restore it over changed text.",
       "disposition": "not-managed"
+    },
+    {
+      "name": "The Intent how-to popover",
+      "owner": "DRC-4825",
+      "oracles": [
+        "frontend/src/intent/HowTo.test.tsx",
+        "frontend/e2e/popover-continuity.mjs"
+      ],
+      "contract": "How Intent and drift works is keyed by project and exact session identity, persists across redraws and remounts for this tab, and uses shared Popover dismissal/focus rules without browser storage.",
+      "disposition": "stable-identity"
     }
   ],
   "storage": [

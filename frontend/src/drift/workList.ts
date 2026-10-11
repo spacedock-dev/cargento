@@ -19,7 +19,7 @@ import {
 } from '../observed';
 import { harnessLabels } from '../sessions/rows';
 import { readingRoute } from './route';
-import { WORK_AS_REPORTED, WORK_READ_FROM } from './sentences';
+import { WORK_AS_REPORTED, WORK_READ_FROM, WORK_HARNESSES } from './sentences';
 import { readingAuthor, readingCopied } from './shape';
 
 /* The session's activity, numbered. It sits right after CURRENT ACTIVITY in the activity column, under the
@@ -414,7 +414,7 @@ export function workList(input: WorkListInput): WorkList {
         : 'No entry in the record read here has a published time, so none is numbered.'
       : '';
   const harness = String(session['harness'] || '');
-  const reads = harness === 'claude' || harness === 'pi';
+  const reads = WORK_HARNESSES.includes(harness);
   const limit = reads
     ? `${WORK_READ_FROM} ${evidenceOwn(payload, harness, false)}`
     : `${WORK_READ_FROM} ${evidenceOwn(payload, harness)}`;

@@ -8,6 +8,7 @@ import { meterSegments, readingStored, type Signals } from './level';
 import { routeRefusal } from './route';
 import {
   HARNESS_LIMIT,
+  WORK_HARNESSES,
   LEVEL_SCALE,
   LIVE_HINT,
   LIVE_LEVEL_NAMES,
@@ -116,7 +117,7 @@ function SignalsView({ signals }: { readonly signals: Signals }) {
 export function DriftLevelView() {
   const { model } = useDrift();
   const { session, harness, annotation, payload } = model;
-  if (harness !== 'claude' && harness !== 'pi') {
+  if (!WORK_HARNESSES.includes(harness)) {
     return (
       <p className="next-session-drift-limit" data-next-drift-limit>
         {HARNESS_LIMIT}
