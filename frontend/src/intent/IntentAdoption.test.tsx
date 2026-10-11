@@ -221,9 +221,9 @@ describe('Save intent over an adopted prompt', () => {
       },
     });
     await settle(page);
-    await press(control('held-line-add'));
-    await press(control('held-line-add'));
     type(lineBoxes()[0] as HTMLTextAreaElement, 'The queue drains');
+    await press(control('held-line-add'));
+    await press(control('held-line-add'));
     await press(control('held-save'));
     await settle(page);
     const [first, second] = page.allPosts();
@@ -249,7 +249,6 @@ describe('Save intent over an adopted prompt', () => {
       },
     });
     await settle(page);
-    await press(control('held-line-add'));
     type(lineBoxes()[0] as HTMLTextAreaElement, 'The queue drains');
     await press(control('held-save'));
     await settle(page);

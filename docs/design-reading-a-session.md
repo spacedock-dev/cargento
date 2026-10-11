@@ -2686,7 +2686,8 @@ the later-direction floor (item 9).
    2026-10-02 (owner): there is no "Looks right"; Save intent is enabled over the untouched draft
    and adopts it, so a drafted goal has one way to be saved, and Undo changes stays inert until
    there is an edit.
-3. The checklist. The expected outcome is up to six lines the reader types, each at most 240
+3. The checklist. The expected outcome starts with one optional empty line. Add a line and per-line
+   Remove appear after use; the checklist still holds up to six lines the reader types, each at most 240
    characters and one line, each read and shown as its own constraint under DEC-17's rules. Each
    line records its source: typed, or added from entry #n. The bounds, fixed by DRC-4685, the layer
    that first stores and sends outcome lines:
@@ -4608,3 +4609,45 @@ says so before the reader types. Removing the departure rows' Copy command retra
 promise map, and this ruling authorises it. The click budget that follows from the rows is in the
 milestone: three clicks for an accepted draft, four with later directions, four or five for a
 typed goal.
+
+### Session first-view build, 2026-10-12
+
+The unblocked session header follows the goal and analysis panel, before Session activity; a blocked
+session retains its header raise and waiting panel above the goal. More has six groups at most:
+Live monitor with its explanation, saved-word caveats and Discard everything, Delegated work,
+Turn off readings, Saved with Clear, and settled or unread later directions. The privacy disclosure,
+model-request count and daily cap stay beside Analyze. The goal and primary fit at 1280 by 800 and
+375 by 667; 320 px and the 640 px layout representing 200% zoom retain wrapping and document scroll.
+
+The count-only Direction summary quotes no whole text, so even a sole short direction needs the
+opening press before the settlement press. The first-view browser proof injects one extra button
+and rejects it. The idle drafted fixture's visible panel text, excluding field values and closed
+bodies, has a 90-word ceiling. The opened how-to retains its separate 150-word ceiling.
+
+The fresh Claude Code fixture inventory below includes the session's project link and the Sessions
+breadcrumb. Before: 19 controls across the page, 13 in the 1280 by 800 viewport. After: 14 across
+the page, eight in that viewport. The activity disclosures remain below the first view; none of
+their sentences or controls are removed. The switch's accessible name is Live monitor.
+
+| Button, link or disclosure | Before | After |
+| -- | -- | -- |
+| Sessions breadcrumb | First view | First view |
+| Project link | First view | First view |
+| No terminal to raise: Why | First view | Blocked only |
+| How Intent and drift works | First view | First view |
+| Use your prompt | First view | First view |
+| Clear | First view | More |
+| Remove line 1 | First view | After outcome use |
+| + Add a line | First view | After outcome use |
+| Undo changes | First view | After a goal edit |
+| Save intent | First view | First view |
+| Live monitor | Below fold | More |
+| Analyze drift | Below fold | First view |
+| What is sent | Below fold | First view |
+| More | Absent | First view |
+| About this record | First view | Below fold |
+| Session facts | First view | Below fold |
+| Command-shape reports: off | First view | Below fold |
+| Why two cards | Below fold | Below fold |
+| Intent log | Below fold | Below fold |
+| What it keeps | Below fold | Below fold |

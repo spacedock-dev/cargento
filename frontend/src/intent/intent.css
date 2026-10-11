@@ -4,7 +4,7 @@
    COCKPIT section so the two renderers look alike (the browser parity test compares their layout at 320,
    375 and 1280 CSS px). What is left behind belongs to the Analyze step: the level meter, the reading, the
    departures and the re-entry row. Selectors are copied as written, `#app` included. */
-.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:22px}
+.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:8px}
 .next-session-panel .next-cockpit-held-list{gap:2px}
 .next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}
 .next-session-panel .next-cockpit-held-lines>.next-cockpit-held-heading>.next-cockpit-held-label{min-height:0}

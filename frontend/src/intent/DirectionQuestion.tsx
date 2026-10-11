@@ -9,7 +9,6 @@ import { ActionButton } from './ActionButton';
 import { DirectionGoalButton } from './OutcomeLines';
 import {
   directionSelected,
-  directionSentence,
   directionsOpen,
   editedRefusal,
   intentDraft,
@@ -167,7 +166,7 @@ export function DirectionQuestion({
           </Label>
         ) : null}
         <p className="next-cockpit-direction-said">
-          {directionSentence(earliest, count, n, since)}
+          {`${String(count)} later direction${count === 1 ? '' : 's'} ${since}.`}
         </p>
         <WholeList pending={pending} numbers={numbers} />
         <div className="next-cockpit-reading-ask">

@@ -52,6 +52,12 @@ import { recordClipboard, startSessionsBoard } from './sessions-board.mjs';
 import { freePorts, openPage, REPOSITORY } from './support/browser.mjs';
 import { startReactWorld } from './support/world.mjs';
 import { startConsoleWorld, fragmentFor, BOARD } from './console-board.mjs';
+import {
+  firstViewChromeReferences,
+  firstViewDisclosureSizes,
+  isSessionMore,
+  SESSION_MORE_SIZE,
+} from './support/session-first-view-chrome.mjs';
 import { measureButtonChrome, normaliseButtonKey } from './support/button-chrome.mjs';
 import { measureSessionChrome, sessionChromeDifferences } from './support/session-chrome.mjs';
 import { measureIntentChrome, intentChromeDifferences } from './support/intent-chrome.mjs';
@@ -108,15 +114,28 @@ const disclosureKey = (key) => key.replace(/\b\d{1,2}:\d{2}\b/g, '<clock>');
 const DISCLOSURE_TABLE = JSON.parse(
   await readFile(new URL('./disclosure-chrome-reference.json', import.meta.url), 'utf8'),
 );
-const DISCLOSURE_REFERENCE = Object.fromEntries(
+const DISCLOSURE_REFERENCE = firstViewChromeReferences(
   Object.entries(DISCLOSURE_TABLE.instances).map(([key, chrome]) => [disclosureKey(key), chrome]),
 );
-const BUTTON_REFERENCE = Object.fromEntries(
+const BUTTON_REFERENCE = firstViewChromeReferences(
   Object.entries(BUTTON_TABLE.instances).map(([key, profile]) => [
     key,
     BUTTON_TABLE.profiles[profile],
   ]),
 );
+
+const DISCLOSURE_SIZES = firstViewDisclosureSizes(Object.entries(DISCLOSURE_TABLE.inlineSizes));
+const SESSION_MORE_CHROME = Object.entries(DISCLOSURE_REFERENCE).find(([key]) =>
+  key.includes('| About these saved words |'),
+)[1];
+// A row now spans the page: retain its 16px inset and 33.75rem reading-card cap, rather than the old column ratio.
+const INTENT_REFERENCES = {
+  ...INTENT_TABLE.instances,
+  'drift-nudge|wide||row': {
+    ...INTENT_TABLE.instances['drift-nudge|wide||row'],
+    inlineSize: { kind: 'row', ratio: 1 },
+  },
+};
 
 /* Every fixed wait here means "give the page time to react"; a hosted runner delivers frames later, so each is
    tripled there. */
@@ -350,7 +369,6 @@ const INVENTORY = {
     'div.next-capacity-row > div.next-capacity-ends > span.next-capacity-slack',
     'header.next-header > div.next-header-right > span.next-running.next-live',
     'header.next-session-detail-header > div.next-session-detail-bar > p.next-session-detail-meta',
-    'header.next-session-drift-head > div.next-session-drift-titles > p.next-session-drift-sub',
     'main > article.next-session-detail > footer.next-session-footer',
     'main > nav.next-breadcrumb > span',
     'section.next-capacity > div.next-capacity-models > i',
@@ -1486,7 +1504,7 @@ function checks() {
   if (PROJECT_ONLY) return;
   if (INTENT_TABLE)
     step_('intent: every adopted surface keeps its measured chrome and inline size', () => {
-      const differences = intentChromeDifferences(measured.intentChrome, INTENT_TABLE.instances);
+      const differences = intentChromeDifferences(measured.intentChrome, INTENT_REFERENCES);
       assert.deepEqual(
         measured.intentChrome.filter(
           (row) => /^(intent-note|drift-nudge)\|/.test(row.key) && row.role !== null,
@@ -1563,11 +1581,14 @@ function checks() {
     const seen = new Set();
     for (const row of measured.disclosureChrome) {
       seen.add(row.key);
-      const expected = DISCLOSURE_REFERENCE[row.key];
+      const expected = isSessionMore(row.key) ? SESSION_MORE_CHROME : DISCLOSURE_REFERENCE[row.key];
       if (!expected || JSON.stringify(expected) !== JSON.stringify(row.chrome)) failures.push(row);
     }
     assert.deepEqual(
-      failures.slice(0, 15).map((row) => ({ ...row, expected: DISCLOSURE_REFERENCE[row.key] })),
+      failures.slice(0, 15).map((row) => ({
+        ...row,
+        expected: isSessionMore(row.key) ? SESSION_MORE_CHROME : DISCLOSURE_REFERENCE[row.key],
+      })),
       [],
       `${failures.length} disclosure chrome differences`,
     );
@@ -1589,7 +1610,7 @@ function checks() {
     for (const { view, key, size } of measured.disclosureInlineSizes) {
       const identity = `${view} | ${key}`;
       seen.add(identity);
-      const expected = DISCLOSURE_TABLE.inlineSizes[identity];
+      const expected = isSessionMore(key) ? SESSION_MORE_SIZE : DISCLOSURE_SIZES[identity];
       // Clock labels normalize their identity, but the digits still change their real width: a
       // two-digit hour is about 9.5 px wider than a one-digit hour, and a Linux run that crossed
       // that boundary failed against the 8 px allowance this used to carry. A collapsed trigger
@@ -1618,7 +1639,7 @@ function checks() {
     );
     if (WORLDS.length === 3)
       assert.deepEqual(
-        Object.keys(DISCLOSURE_TABLE.inlineSizes).filter((key) => !seen.has(key)),
+        Object.keys(DISCLOSURE_SIZES).filter((key) => !seen.has(key)),
         [],
         'a baseline disclosure inline size was not reached',
       );

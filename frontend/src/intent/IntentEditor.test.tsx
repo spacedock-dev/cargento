@@ -31,7 +31,7 @@ describe('a goal-less session arrives with its first prompt drafted and nothing 
     expect(text('[data-next-cockpit-draft-marks]')).toBe('from your prompt');
     // The draft is adopted by Save intent, which is live over it; nothing else is.
     expect(inert(control('held-save'))).toBe(false);
-    expect(inert(control('held-undo'))).toBe(true);
+    expect(control('held-undo')).toBeNull();
     expect(page.posts()).toBe(0);
     expect(page.state.requests.filter((r) => r.method !== 'GET').length).toBe(0);
   });
@@ -269,7 +269,7 @@ describe('Undo changes', () => {
     expect(goalBox().value).toBe('Saved goal');
     expect(lineBoxes().map((box) => box.value)).toEqual(['A saved line']);
     expect(page.posts()).toBe(0);
-    expect(inert(control('held-undo'))).toBe(true);
+    expect(control('held-undo')).toBeNull();
   });
 
   it('is Escape in the goal box, and Escape in a line puts the whole list back', async () => {

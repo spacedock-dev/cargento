@@ -55,6 +55,9 @@ describe('Keep my intent and analyze', () => {
     await press(byAction('direction-keep'));
     await page.settle();
     expect(readingPosts(page)).toEqual([]);
+    expect(textOf('[data-next-cockpit-direction-whole]')).toContain('Do it the careful way');
+    await press(byAction('direction-keep'));
+    await page.settle();
     expect(
       page.state.requests.filter((r) => r.method === 'POST' && r.path === '/api/annotate'),
     ).toHaveLength(1);
@@ -81,6 +84,9 @@ describe('Keep during a held close', () => {
     await press(byAction('direction-keep'));
     await page.settle();
     expect(readingPosts(page)).toEqual([]);
+    expect(textOf('[data-next-cockpit-direction-whole]')).toContain('Do it the careful way');
+    await press(byAction('direction-keep'));
+    await page.settle();
     expect(
       page.state.requests.filter((r) => r.method === 'POST' && r.path === '/api/annotate'),
     ).toHaveLength(1);

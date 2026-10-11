@@ -2,7 +2,7 @@ import { Badge } from '../ui/badge';
 import { useId } from 'react';
 import { Label } from '../ui/label';
 import { nextNumber } from '../api/bootstrap';
-import { clock } from '../observed';
+import { clock, endedAt } from '../observed';
 import { PROMPT_CHOSEN, PROMPT_SOURCES } from '../sessions/intent';
 import { ActionButton } from './ActionButton';
 import { storeUnreadable } from './annotation';
@@ -102,15 +102,20 @@ export function GoalField() {
       data-next-cockpit-held-field="goal"
       {...(untouched ? { 'data-next-cockpit-drafted': '' } : {})}
     >
-      <div className="next-cockpit-held-heading">
+      <div className="next-cockpit-held-heading flex-nowrap [&_.next-intent-prompt-pick]:flex-1">
         <Label className="next-cockpit-held-label" htmlFor={boxId}>
           Goal
         </Label>
         <PromptSelect />
       </div>
+      {endedAt(session) !== null ? (
+        <p className="next-cockpit-held-absent" data-next-ended-goal>
+          This session has ended, so Cargento can only read the goal drafted from your prompt.
+        </p>
+      ) : null}
       <HeldTextarea
         id={boxId}
-        rows={3}
+        rows={1}
         maxLength={cap}
         memoryKey={key}
         focusKey={key}
@@ -127,22 +132,13 @@ export function GoalField() {
           escapeGoal(ctx, input);
         }}
       />
-      <div className="next-cockpit-held-under">
+      <div className="next-cockpit-held-under min-h-0">
         <span className="next-cockpit-held-count" data-next-cockpit-held-count="goal">
           {`${String(text.length)}/${String(cap)}`}
         </span>
-        {/* Where the words came from sits between the count and Clear, as an outcome line's source sits
-            between its count and Remove. In the label row it was a line of its own, and moved the box the
-            pick fills 25px down and back up on the first keystroke. */}
+        {/* The source stays beside the count: in the label row it moved the box 25px down and back up
+            on the first keystroke. */}
         {untouched && drafted ? <DraftMarks draft={drafted} /> : <SourceLine />}
-        <ActionButton
-          label="Clear"
-          action="held-clear"
-          arg="goal"
-          hidden={!text}
-          focusKey={`${key}:clear`}
-          onPress={() => clearGoal(ctx, input)}
-        />
       </div>
       {/* The absence sentence answers "why is this empty", so it goes when the box stops being empty. It
           stays in the document, visually hidden, because the inert Save intent is described by it. */}
@@ -159,5 +155,21 @@ export function GoalField() {
       <LinesQuestion />
       {cue ? <small className="next-cockpit-held-cue">{cue}</small> : null}
     </div>
+  );
+}
+
+export function ClearGoal() {
+  const { ctx, input, session } = usePanel();
+  const key = goalKey(session);
+  const text = ctx.held.goals.get(key) ?? goalBaseline(input);
+  return (
+    <ActionButton
+      label="Clear"
+      action="held-clear"
+      arg="goal"
+      hidden={!text}
+      focusKey={`${key}:clear`}
+      onPress={() => clearGoal(ctx, input)}
+    />
   );
 }

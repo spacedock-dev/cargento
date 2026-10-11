@@ -154,10 +154,12 @@ function LineRow({
   index,
   text,
   boxId,
+  used,
 }: {
   readonly index: number;
   readonly text: string;
   readonly boxId: string | undefined;
+  readonly used: boolean;
 }) {
   const { ctx, input, session, cap, source, payload } = usePanel();
   const key = linesKey(session);
@@ -173,7 +175,7 @@ function LineRow({
       <HeldTextarea
         id={boxId}
         aria-label={`Expected outcome line ${String(index + 1)}`}
-        rows={2}
+        rows={1}
         maxLength={cap}
         memoryKey={`${key}:${String(index)}`}
         focusKey={`${key}:${String(index)}`}
@@ -204,16 +206,18 @@ function LineRow({
             {lineSource(place, session, source, payload)}
           </span>
         ) : null}
-        <ActionButton
-          weight="secondary"
-          className="next-cockpit-held-remove"
-          label="Remove"
-          action="held-line-remove"
-          arg={String(index)}
-          ariaLabel={`Remove line ${String(index + 1)}`}
-          focusKey={`${key}:remove:${String(index)}`}
-          onPress={() => removeLine(input, index)}
-        />
+        {used ? (
+          <ActionButton
+            weight="secondary"
+            className="next-cockpit-held-remove"
+            label="Remove"
+            action="held-line-remove"
+            arg={String(index)}
+            ariaLabel={`Remove line ${String(index + 1)}`}
+            focusKey={`${key}:remove:${String(index)}`}
+            onPress={() => removeLine(input, index)}
+          />
+        ) : null}
       </div>
     </li>
   );
@@ -228,13 +232,18 @@ export function OutcomeLines() {
   const draft = linesDraft(held, session, annotation);
   const boxes = draft.length ? draft : [''];
   const full = draft.length >= OUTCOME_LINES_MAX;
+  const line = held.directions.get(compatSessKey(session));
+  const used =
+    draft.length > 1 ||
+    draft.some((text) => text.trim()) ||
+    annotationLines(annotation).length > 0 ||
+    Boolean(line?.text?.trim());
   const why = storeUnreadable(payload) ? '' : String(annotation?.['lines_why'] || '');
   const cue = heldSentence(held.kind(key), null);
   /* Where an open later direction already says the list is full beside its own save, the list's sentence is
      hidden rather than drawn twice. Only then: the line checks saved lines and the list counts draft lines,
      and a line giving another reason would leave the disabled add control with none. It stays in the DOM for
      that control's `aria-describedby`. */
-  const line = held.directions.get(compatSessKey(session));
   const said =
     Boolean(line) &&
     typeof line?.text === 'string' &&
@@ -246,7 +255,7 @@ export function OutcomeLines() {
     >
       <div className="next-cockpit-held-heading">
         <Label className="next-cockpit-held-label" htmlFor={firstBoxId}>
-          Expected outcome
+          Expected outcome (optional)
         </Label>
       </div>
       <ol className="next-cockpit-held-list">
@@ -256,22 +265,25 @@ export function OutcomeLines() {
             key={index}
             index={index}
             text={text}
+            used={Boolean(used)}
             boxId={index === 0 ? firstBoxId : undefined}
           />
         ))}
         <DirectionLineView />
       </ol>
-      <div className="next-cockpit-held-under">
-        <ActionButton
-          label="+ Add a line"
-          action="held-line-add"
-          arg="lines"
-          inert={full}
-          describedBy="next-cockpit-held-full"
-          focusKey={`${key}:add`}
-          onPress={() => addLine(ctx, input)}
-        />
-      </div>
+      {used ? (
+        <div className="next-cockpit-held-under">
+          <ActionButton
+            label="+ Add a line"
+            action="held-line-add"
+            arg="lines"
+            inert={full}
+            describedBy="next-cockpit-held-full"
+            focusKey={`${key}:add`}
+            onPress={() => addLine(ctx, input)}
+          />
+        </div>
+      ) : null}
       <p
         className="next-cockpit-held-full"
         id="next-cockpit-held-full"

@@ -60,6 +60,20 @@ export function normaliseSessionRecord(record, evidence = {}) {
           value = value.replace(/ASSIGNMENT · /, 'Current task · ');
         if (path.includes('parts') && path.includes('.next-session-evidence'))
           value = value.replace(/^ASSIGNMENT/, 'Current task');
+        value = value.replace(
+          "Last turn isn't recorded as finished. Run another turn to open Analyze.",
+          'Analyze opens while this session runs.',
+        );
+        if (driftCard)
+          value = value.replace(
+            'You gave a later direction at #1: "Keep the flag off by default."',
+            '1 later direction since saving your intent.',
+          );
+        if (sessionHeader && !Boolean(record?.attrs?.[3] || record?.ask || record?.answers?.length))
+          value = value.replace(
+            /(?:No resume command · )?(?:No terminal to raise|Terminal raise off)Why.*$/,
+            '',
+          );
         if (key === 'header' || key === 'text')
           return value
             .replace(/Copy ID|Copy link|Copy command/g, '')

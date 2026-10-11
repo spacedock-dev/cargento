@@ -88,7 +88,7 @@ function Controls({
           />
         ) : null}
       </div>
-      {missing.length ? (
+      {(observed.isNeeds || observed.askKnown) && missing.length ? (
         <div className="next-session-reentry-none">
           <span className="next-session-reentry-clause">{missing.join(' · ')}</span>
           {/* A popover: this row is a flex row ending at the controls, and an in-flow body widened the item to its paragraphs and dragged "Why" 492px left. */}
@@ -265,13 +265,15 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
       data-tone={observed.tone}
     >
       <DriftProvider session={session} payload={payload} project={route.project}>
-        <Header
-          session={session}
-          observed={observed}
-          route={route}
-          labels={labels}
-          generated={generated}
-        />
+        {observed.isNeeds || observed.askKnown ? (
+          <Header
+            session={session}
+            observed={observed}
+            route={route}
+            labels={labels}
+            generated={generated}
+          />
+        ) : null}
         {observed.askKnown ? (
           <AnswerBlock
             payload={payload}
@@ -280,7 +282,7 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             title={askingTitle(labels, session)}
           />
         ) : null}
-        <div className="next-session-columns">
+        <div className="next-session-columns grid grid-cols-1 gap-5 items-start">
           <DriftSlot
             session={session}
             payload={payload}
@@ -290,6 +292,15 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             <DeparturesSection />
           </DriftSlot>
           <div className="next-session-activity" data-next-session-activity>
+            {!(observed.isNeeds || observed.askKnown) ? (
+              <Header
+                session={session}
+                observed={observed}
+                route={route}
+                labels={labels}
+                generated={generated}
+              />
+            ) : null}
             <h2 className="next-session-activity-heading">Session activity</h2>
             <CommandSurface session={session} observed={observed} generated={generated} />
             {/* The numbered record every "#<n>" on this page names, right after CURRENT ACTIVITY. */}

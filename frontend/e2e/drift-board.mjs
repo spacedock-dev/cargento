@@ -145,7 +145,11 @@ export const quietWhenClosing = (handler) => async (route) => {
   try {
     return await handler(route);
   } catch (error) {
-    if (/Request context disposed|has been closed|Target closed/.test(String(error?.message)))
+    if (
+      /Request context disposed|Response has been disposed|has been closed|Target closed/.test(
+        String(error?.message),
+      )
+    )
       return undefined;
     throw error;
   }

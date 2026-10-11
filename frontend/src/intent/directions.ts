@@ -383,15 +383,8 @@ export function answerLines(ctx: Ctx, row: Row, answer: 'keep' | 'clear'): void 
 
 export type WholeResult = 'read' | 'shown' | 'refused';
 
-const collapsed = (text: unknown): string =>
-  String(text || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-/* "read" when an earlier press drew every direction Keep would settle, "shown" when this press drew them,
-   "refused" when one could not be opened. Only a sole direction whose whole text is the summary the question
-   quotes settles in one press: of several, the question quotes the earliest alone, so the rest were never on
-   screen. A direction opened or arriving after the list was drawn is unread, so the next press draws it. */
+// The count-only summary shows no direction text. Every Keep first draws all words,
+// including a sole short direction, before a later press may settle them (DEC-27).
 async function readWhole(
   ctx: Ctx,
   identity: SessionIdentity,
@@ -432,11 +425,6 @@ async function readWhole(
   if (refused) return 'refused';
   const ids = pending.map((entry) => String(entry.id || ''));
   if (ids.every((id) => held.drawn.has(id))) return 'read';
-  const sole = ids.length === 1 && !held.drawn.size ? held.texts.get(ids[0] ?? '') : null;
-  const first = pending[0];
-  if (sole && !sole.clipped && first && collapsed(sole.text) === collapsed(first.summary)) {
-    return 'read';
-  }
   held.drawn = new Set(ids);
   held.revision = revision;
   return 'shown';

@@ -106,6 +106,48 @@ const summarizeCard = () => {
     trigger.after(panels[0].cloneNode(true));
     joined.add(trigger);
   }
+  const more = document.querySelector('[data-next-session-more]');
+  const copy = (selector) => more?.querySelector(selector)?.cloneNode(true);
+  const header = card.querySelector('.next-session-drift-head');
+  const subtitle = copy('.next-session-drift-sub');
+  if (subtitle) header.querySelector('.next-session-drift-titles').append(subtitle);
+  const monitor = copy('.next-session-drift-monitor');
+  if (monitor) header.append(monitor);
+  if (
+    monitor &&
+    monitor.querySelector('[role="switch"]')?.getAttribute('aria-checked') === 'false' &&
+    !card.querySelector('.next-cockpit-result,.next-cockpit-reading,.next-cockpit-reading-outcome')
+  ) {
+    const hint = [...more.querySelectorAll('p')].find((node) =>
+      node.textContent.startsWith('Shows a level after every turn'),
+    );
+    if (hint) header.after(hint.cloneNode(true));
+  }
+  const question = card.querySelector('.next-cockpit-direction-question');
+  const off = copy('[data-next-cockpit-action="reading-off"]');
+  if (off) {
+    const noReader = card.querySelector('.next-cockpit-reading-ask--none');
+    const sent = card.querySelector('[data-slot="popover-content"]');
+    const job = card.querySelector('.next-cockpit-reading-job');
+    const consent = card.querySelector('.next-cockpit-reading-consent');
+    if (question) question.querySelector('.next-cockpit-reading-ask').append(off);
+    else if (noReader) noReader.append(off);
+    else {
+      const row = document.createElement('div');
+      row.className = 'next-cockpit-reading-ask';
+      row.append(off);
+      if (sent) sent.append(row);
+      else if (job || consent) (job || consent).after(row);
+    }
+  }
+  for (const selector of ['[data-next-delegated-work]', '[data-next-delegated-check]']) {
+    const node = copy(selector);
+    if (node) card.insertBefore(node, card.querySelector('.next-cockpit-departures'));
+  }
+  for (const selector of ['.next-cockpit-conflict', '.next-session-drift-caveats']) {
+    const node = copy(selector);
+    if (node) card.insertBefore(node, card.querySelector('.next-cockpit-departures'));
+  }
   const button = (b) => [
     norm(b),
     b.getAttribute('data-next-cockpit-action') || '',

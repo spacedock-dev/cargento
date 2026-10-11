@@ -3,7 +3,6 @@ import { DirectionQuestion } from '../intent/DirectionQuestion';
 import { endedAt } from '../observed';
 import { directionsOpen, intentKey, intentUnsaved } from '../intent/derive';
 import type { DirectionReading } from '../intent/directions';
-import { DelegatedWorkLine } from '../sessions/DepartureParts';
 import { useDisplayed } from '../shell/context';
 import { keepReading } from './actions';
 import { useDrift } from './context';
@@ -16,12 +15,11 @@ import {
   ReadingControl,
   ReadingCount,
   REFUSED_ID,
-  TurnOff,
   JobBox,
   type SteerSlot,
 } from './ReadingControl';
 import { ReadingResult } from './ReadingResult';
-import { anyConsent, needsAllow, promptReadingRefusal, routeRefusal } from './route';
+import { needsAllow, promptReadingRefusal, routeRefusal } from './route';
 import { absenceAttr, OFFER, READING_DEFINITION, SCOPE, UNKNOWN_KEY } from './sentences';
 import { SteerBox, SteerButton, UpdateIntentButton } from './SteerBack';
 import { useFollowCorrection } from './useFollowCorrection';
@@ -142,7 +140,6 @@ export function DriftBody({ primary }: { readonly primary: boolean }) {
     <>
       <DriftLevelView />
       {area}
-      {annotate ? <DelegatedWorkLine session={session} now={model.generated} /> : null}
       <ReadingSection />
     </>
   );
@@ -199,7 +196,6 @@ function QuestionWithAnalysis({
       reading={reading}
       primary={primary}
       before={job ? <JobBox job={job} running={running} /> : null}
-      buttons={anyConsent(payload) ? <TurnOff /> : null}
       after={
         <>
           {board.changed ? (

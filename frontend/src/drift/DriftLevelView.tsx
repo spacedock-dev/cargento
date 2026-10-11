@@ -10,7 +10,6 @@ import {
   HARNESS_LIMIT,
   WORK_HARNESSES,
   LEVEL_SCALE,
-  LIVE_HINT,
   LIVE_LEVEL_NAMES,
   LIVE_LINE,
   LIVE_SAVE,
@@ -140,12 +139,7 @@ export function DriftLevelView() {
       </p>
     );
   }
-  /* The design's rows: the hint (where the switch can be turned on and no reading is stored), then the level
-     block, then the control slot the drift block appends. */
-  const hint =
-    liveOnly && model.annotate && !livePending && !readingStored(annotation) ? (
-      <p className="next-session-drift-hint">{LIVE_HINT}</p>
-    ) : null;
+  // The monitor explanation follows its switch into More; a level still stays beside Analyze.
   const running = Boolean(model.job);
   const level = found && 'level' in found ? found : null;
   if (model.drafted || !level || !level.label) {
@@ -154,10 +148,9 @@ export function DriftLevelView() {
       annotation &&
       !readingStored(annotation) &&
       Boolean(String(annotation['goal'] || '').trim() || annotationLines(annotation).length);
-    if (model.drafted || !unchecked) return hint;
+    if (model.drafted || !unchecked) return null;
     return (
       <>
-        {hint}
         <div className="next-session-drift-live" data-next-drift-unchecked>
           <p className="next-session-drift-live-head">
             <span className="next-session-drift-level">{UNCHECKED}</span>
@@ -180,7 +173,6 @@ export function DriftLevelView() {
   const signals: Signals | null = level.signals;
   return (
     <>
-      {hint}
       <div className="next-session-drift-live" data-next-drift-level>
         <p className="next-session-drift-live-head">
           <span className="next-session-drift-level">{level.label}</span>

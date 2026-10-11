@@ -18,7 +18,14 @@ export function retractSessionCopies(root: ParentNode) {
   root.querySelectorAll('.next-departure-reentry-why').forEach((node) => {
     if (node.textContent?.includes('re-entry command')) node.remove();
   });
+  const blocked = root.querySelector(
+    '.next-session-detail--blocked, .next-session-ask-callout, [data-next-answer]',
+  );
   root.querySelectorAll('.next-session-reentry-none').forEach((node) => {
+    if (!blocked) {
+      node.remove();
+      return;
+    }
     if (!node.querySelector('.next-session-reentry-clause')?.textContent?.trim()) node.remove();
   });
 }

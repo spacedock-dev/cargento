@@ -18,13 +18,11 @@ import { undoChanges } from './edit';
 import { GoalField } from './GoalField';
 import { OutcomeLines } from './OutcomeLines';
 import { saveIntent } from './save';
-import { INTENT_MEASURED } from './sentences';
 import { usePanel } from './useIntent';
 import { HowTo } from './HowTo';
 
-/* Under both fields, as the design's single hint line is: the hint on the left, Undo changes and Save intent
-   on the right, both inert while nothing has changed. An inert save is described by whichever absence
-   sentences stand, which is why those stay in the document visually hidden. */
+/* Save remains in view over an untouched prompt draft; Undo appears after a goal edit or a pending
+   prompt choice. Outcome-only edits retain native undo and Escape without adding a first-view control. */
 function Footer() {
   const { ctx, input, session, payload } = usePanel();
   const key = intentKey(session);
@@ -48,18 +46,17 @@ function Footer() {
   /* Undo is inert while its save is in flight: reverting the box would leave the words being sent unseen. */
   return (
     <div className="next-cockpit-held-footer">
-      <p className="next-cockpit-held-hint" data-next-intent-measured>
-        {INTENT_MEASURED}
-      </p>
       <span className="next-cockpit-held-tools">
-        <ActionButton
-          label="Undo changes"
-          action="held-undo"
-          arg="intent"
-          inert={!(changes.undoable && !saving)}
-          focusKey={`${key}:undo`}
-          onPress={() => undoChanges(ctx, input)}
-        />
+        {changes.goal || changes.pending ? (
+          <ActionButton
+            label="Undo changes"
+            action="held-undo"
+            arg="intent"
+            inert={!(changes.undoable && !saving)}
+            focusKey={`${key}:undo`}
+            onPress={() => undoChanges(ctx, input)}
+          />
+        ) : null}
         <ActionButton
           label="Save intent"
           busyLabel="Saving…"
@@ -80,7 +77,7 @@ function Footer() {
 /* "Saved", without a check mark: a check in this panel reads as a verdict, and "Confirmed" would claim what
    nothing did, since a saved revision is the reader's own words. The store key is in its details because the
    reader may need whose words these are, and the page's title already names the session. */
-function SavedStamp() {
+export function SavedStamp() {
   const { input, session, project } = usePanel();
   const annotation = input.annotation;
   const generated = nextNumber(input.payload['generated']);
@@ -133,7 +130,6 @@ export function IntentSection() {
         <HowTo />
       </header>
       {/* Under the heading rather than in its header, so the revision line keeps the sentence tier. */}
-      <SavedStamp />
       {why ? (
         <p className="next-cockpit-held-lede" data-next-intent-no-draft>
           {why}
