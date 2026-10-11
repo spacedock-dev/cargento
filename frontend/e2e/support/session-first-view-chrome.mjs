@@ -1,5 +1,10 @@
 // Only reference identities move. Current DOM keys and computed chrome remain unaltered.
 export function firstViewChromeKey(key) {
+  if (
+    key.includes('next-cockpit-result-press > next-cockpit-reading-ask |') &&
+    key.includes(' | Analyze again | data-next-cockpit-action=reading-ask |')
+  )
+    return null;
   if (key.includes('data-next-cockpit-action=held-undo aria-disabled=true')) return null;
   if (
     key.includes('next-session-detail--blocked') &&

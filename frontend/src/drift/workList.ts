@@ -263,6 +263,7 @@ export interface WorkListInput {
   readonly annotation: Annotation | null;
   readonly draft: Draft | null;
   readonly cited: ReadonlySet<string>;
+  readonly revealed?: ReadonlySet<string>;
   readonly generated: number;
 }
 
@@ -290,10 +291,12 @@ export function workList(input: WorkListInput): WorkList {
   );
   const recentSaid = new Set(numbered.filter(agentSaid).slice(-AGENT_ROWS));
   const isCited = (entry: WorkEntry): boolean => cited.has(String(entry?.id || ''));
+  const isRevealed = (entry: WorkEntry): boolean => Boolean(input.revealed?.has(entry.id));
   const isRecent = (entry: WorkEntry): boolean => recent.has(entry) || recentSaid.has(entry);
   const entries = all.filter(
     (entry) =>
       isCited(entry) ||
+      isRevealed(entry) ||
       open.has(entry) ||
       (numbers.has(entry) && (entry.type === 'tool_report' || isRecent(entry))),
   );
@@ -367,7 +370,7 @@ export function workList(input: WorkListInput): WorkList {
       unlistedClause(
         unasked.length,
         `earlier ${unasked.length === 1 ? 'entry' : 'entries'}, from before your intent’s window opened,`,
-        unasked.filter(isCited).length,
+        unasked.filter((entry) => isCited(entry) || isRevealed(entry)).length,
       ),
     );
   }
@@ -376,7 +379,7 @@ export function workList(input: WorkListInput): WorkList {
       unlistedClause(
         untimed.length,
         `${untimed.length === 1 ? 'entry' : 'entries'} with no published time`,
-        untimed.filter(isCited).length,
+        untimed.filter((entry) => isCited(entry) || isRevealed(entry)).length,
         false,
       ),
     );
@@ -399,6 +402,11 @@ export function workList(input: WorkListInput): WorkList {
             (entry) => isCited(entry) && entry.type !== 'tool_report' && !isRecent(entry),
           )
             ? ['every entry the analysis cites']
+            : []),
+          ...(listed.some(
+            (entry) => input.revealed?.has(entry.id) && !isCited(entry) && !isRecent(entry),
+          )
+            ? ['the selected finding’s entries']
             : []),
           ...(listed.some((entry) => open.has(entry) && !isCited(entry) && !isRecent(entry))
             ? ['every later direction still to settle']

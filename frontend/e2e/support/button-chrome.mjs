@@ -2,6 +2,9 @@
    30bac258 with the same css-contract worlds; it is separate from the retired-page goldens. */
 export function normaliseButtonKey(key) {
   const parts = key.split(' | ');
+  // Finding clauses vary with the reading; the constraint and action retain their own identities.
+  if (parts[3].includes('data-next-cockpit-action=finding-jump'))
+    parts[2] = parts[2].replace(/: .*$/, ': <clause>');
   // DOM text joins adjacent labels ("lead4mchild1m"), so word boundaries miss real durations.
   // Only the label varies with the clock; paths and action attributes remain exact identities.
   const duration = String.raw`\d+(?:\.\d+)?\s*(?:milliseconds?|seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|ms|[smhd])(?=$|[^a-z]|child|finished|lead)`;

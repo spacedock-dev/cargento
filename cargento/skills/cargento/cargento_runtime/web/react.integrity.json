@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1613556,
+    "bytes": 1616424,
     "file": "react.html",
-    "sha256": "d04062066412b115d571f799c0aa12d67fb932837841576d1fa4e0137afdcc09"
+    "sha256": "120e743a90422002632aad42a982ea9e4aebb190e2d593030b81afbf7d320556"
   },
   "format": 1,
   "frontend": "react",
@@ -516,7 +516,7 @@
       },
       {
         "file": "frontend/src/drift/DriftBody.tsx",
-        "sha256": "e3f24265ba3f65e9db3e20a1d8b57f901e8f8fd0753bcac3b86b8bf4e97206c1"
+        "sha256": "de3bcff002e8b97d13cb0e75fdc4c635867f8a31236f19c7da5937f59f108a6e"
       },
       {
         "file": "frontend/src/drift/DriftLevelView.tsx",
@@ -524,7 +524,7 @@
       },
       {
         "file": "frontend/src/drift/DriftProvider.tsx",
-        "sha256": "88d6695b10ba3d5ac7198be32249d498ccd72be440cc97e49033401459ba9900"
+        "sha256": "edfce1e79465c6cce1aae12b1f3fa8da7dbfbda8bc8df06716dd9de08e5792fe"
       },
       {
         "file": "frontend/src/drift/Evidence.tsx",
@@ -532,11 +532,11 @@
       },
       {
         "file": "frontend/src/drift/ReadingControl.tsx",
-        "sha256": "449d6c68a5cbf2eb22972a9496e17b337553e244089ebdfd8bcd10798534ddde"
+        "sha256": "01dc74c7e5b28584db718ef51a32d93705dfd36a79764f3783f5fae686498e3f"
       },
       {
         "file": "frontend/src/drift/ReadingResult.tsx",
-        "sha256": "5d1857b70a33aed7d95377b8875d0bbbd97e533543112467f550d346973a35a0"
+        "sha256": "806f331c2a1714cffaa12d3f8288114428ae27c88a91794234e8fd50fc5aa8ee"
       },
       {
         "file": "frontend/src/drift/SteerBack.tsx",
@@ -548,7 +548,7 @@
       },
       {
         "file": "frontend/src/drift/WorkListView.tsx",
-        "sha256": "a11a3c3e1822581b0bfc445642aef8a0e632bef89f3c5b615cad2c9520033514"
+        "sha256": "991713b37a8f33f1c863bdb0add66fbfda41bc044e6b3eec5b0ec2a7b0bcff7b"
       },
       {
         "file": "frontend/src/drift/actions.ts",
@@ -556,7 +556,7 @@
       },
       {
         "file": "frontend/src/drift/context.ts",
-        "sha256": "c566f6d49fe81ad7f76e6cb1de795ad4d83818499ee97478b12e67ea5c77b03c"
+        "sha256": "8c44807bb3bcde3f8430f7a569f9c7abc656990d853420796579cc15be73e44f"
       },
       {
         "file": "frontend/src/drift/correction.ts",
@@ -632,7 +632,7 @@
       },
       {
         "file": "frontend/src/drift/workList.ts",
-        "sha256": "cba630629cdef69dd81f091f3d08843b3cfda18fb2831926da3000980200e823"
+        "sha256": "2de65daa56d9a45bf12e12e53f9cb608cc59522212dda1e0ae67bfe6d33c3070"
       },
       {
         "file": "frontend/src/intent/ActionButton.tsx",

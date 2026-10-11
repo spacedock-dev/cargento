@@ -146,6 +146,7 @@ export function ReadingControl({
   primary = true,
   steer = null,
   again = false,
+  showRun = true,
   about = '',
   refusalOf,
 }: {
@@ -153,6 +154,7 @@ export function ReadingControl({
   readonly primary?: boolean;
   readonly steer?: SteerSlot | null;
   readonly again?: boolean;
+  readonly showRun?: boolean;
   /** What a reading is, drawn inside "What is sent" while no reading is stored. */
   readonly about?: string;
   /** The refusal as the card computed it before the board's ranking, to drop a stale one. */
@@ -285,7 +287,7 @@ export function ReadingControl({
   }
   const described = reason ? REFUSED_ID : disclosure ? DISCLOSURE_ID : '';
   const label = confirming ? 'Allow and analyze' : again ? 'Analyze again' : 'Analyze drift';
-  const press = (
+  const press = showRun ? (
     <ActionButton
       weight={primary && provider && !inert ? 'primary' : 'secondary'}
       label={label}
@@ -305,7 +307,7 @@ export function ReadingControl({
         }
       }}
     />
-  );
+  ) : null;
   /* The announcement and the description are one node while a refusal stands. Printing the stored message and
      the reason separately rendered the same sentence twice, adjacent and identical, where the contract is that
      it renders exactly once. The press is still announced, because this node carries `role="status"` when it

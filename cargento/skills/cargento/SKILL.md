@@ -355,7 +355,10 @@ recent entries in the window, the ten most recent messages the agent wrote, ever
 the window and every later direction still to settle, each at its own number, and says how many it
 counted and did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you
 gave after saving is flagged "A later direction you gave", which records no finding. Numbers are
-worked out again on every render, so a check that re-runs or a file written again moves the entries
+worked out again on every render. A finding's "Show cited entries in Session activity" button
+scrolls to and marks its resolved entries with its saved words and their current numbers, without
+requesting another analysis. A finding that cites nothing resolvable says so and marks nothing.
+A check that re-runs or a file written again moves the entries
 after it. Each entry shows who wrote it, its own type and the source that published it, and the
 list states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as
@@ -526,7 +529,9 @@ A withdrawn claim draws no row. A claim alone offers Steer back as a secondary e
 `Can you show evidence for "<its first sentence>" at 14:02 (#12 in Cargento)?`, or, contradicted,
 `You said "<its first sentence>" at 14:02 (#12 in Cargento); the record shows otherwise at 14:05 (#13).`
 Short titles and bare URLs are not quoted in the correction. "Where the work went" groups the written files by folder. A
-result says when your intent changed after it or new work arrived since, with "Analyze again", and
+current result offers no second run control. When your intent changed after it or new work arrived
+since, the result gives that reason with one "Analyze again". The request count and daily cap stay
+beside it, and
 "Not accurate?" marks the reading with a token that is stored beside it and never sent or counted;
 that reading no longer contributes to the level or Steer back until you clear the mark. A later
 direction alone offers no correction. A correction puts departures and failed checks first, dates

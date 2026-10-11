@@ -90,6 +90,9 @@ const summarizeCard = () => {
   const liveCard = document.querySelector('.next-session-drift');
   if (!liveCard) return { missing: true, body: norm(document.body).slice(0, 200) };
   const card = liveCard.cloneNode(true);
+  // The new jumps are proved separately; every retained word still compares with its recording.
+  for (const jump of card.querySelectorAll('[data-next-cockpit-action="finding-jump"]'))
+    jump.remove();
   // Closed native details retained their evidence and controls. Read each owned
   // keepMounted popup after its trigger in the snapshot, without opening or moving live nodes.
   const joined = new Set();
@@ -523,7 +526,8 @@ try {
       // Sorted as a copy: a golden observation is the stored value itself, and sorting it would change the recording.
       assert.deepEqual([...state.resultStates].sort(), ['consistent', 'departs']);
       assert.ok(state.entries.length >= 2);
-      assert.ok(state.buttons.some(([label]) => label === 'Analyze again'));
+      assert.ok(!state.buttons.some(([label]) => label === 'Analyze again'));
+      assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 0);
       return state.resultStates;
     },
   );
@@ -568,6 +572,7 @@ try {
       );
       assert.deepEqual(state.stale, ['intent']);
       assert.match(state.text, /Revision 4 is current/);
+      assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 1);
       const work = await compare('new work', (g) =>
         stored(g, {
           facts: [
@@ -578,6 +583,113 @@ try {
         }),
       );
       assert.deepEqual(work.stale, ['work']);
+      assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 1);
+      assert.match(work.text, /New work since this analysis/);
+    },
+  );
+
+  await step(
+    'finding jumps resolve fact ids after renumbering without requests or launches',
+    async () => {
+      const g = await clockOf();
+      await setState(react, () => stored(g));
+      await load(react);
+      await read(react);
+      await react.page.emulateMedia({ reducedMotion: 'reduce' });
+      await react.page.evaluate(() => {
+        globalThis.__findingScrolls = [];
+        const scroll = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function (options) {
+          globalThis.__findingScrolls.push({
+            id: this.getAttribute('data-next-entry-id'),
+            options,
+          });
+          return scroll.call(this, options);
+        };
+      });
+      const choose = async (key, id, number, words, activation) => {
+        const requests = [...react.log.nonGet];
+        const before = await resources(react.page);
+        const posts = react.script.posts.length;
+        await react.page.locator(`[data-next-finding="${key}"]`).focus();
+        await react.page.keyboard.press(activation);
+        const row = react.page.locator(`[data-next-entry-id="${id}"]`);
+        await row.locator('[data-next-finding-entry]').waitFor();
+        assert.match(await row.innerText(), new RegExp(`Cited for “${words}” · #${number}`));
+        assert.equal(await row.evaluate((node) => document.activeElement === node), true);
+        assert.equal(
+          await row.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            return box.top >= 0 && box.bottom <= innerHeight;
+          }),
+          true,
+        );
+        // A board GET may coincide with a jump; only a mutation or launch would violate the contract.
+        await react.page.evaluate(() => fetch('/api/data'));
+        assert.deepEqual(await resources(react.page), before);
+        assert.equal(react.script.posts.length, posts);
+        assert.deepEqual(react.log.nonGet, requests);
+        assert.equal(await react.page.locator('[data-next-finding-entry]').count(), 1);
+      };
+      const names = await react.page
+        .locator('[data-next-finding]')
+        .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
+      assert.deepEqual(names, [
+        'Show cited entries in Session activity for Goal: Ship the queue worker',
+        'Show cited entries in Session activity for Expected outcome line 1: Tests pass',
+      ]);
+      assert.equal(new Set(names).size, names.length);
+      for (const name of names)
+        assert.equal(await react.page.getByRole('button', { name, exact: true }).count(), 1);
+      await choose('goal', 'c1', 1, 'It stopped running the tests.', 'Enter');
+      await choose('line_1', 'c2', 2, 'Tests pass', 'Space');
+      assert.equal(
+        await react.page.locator('[data-next-entry-id="c1"] [data-next-finding-entry]').count(),
+        0,
+      );
+      assert.deepEqual(
+        await react.page.evaluate(() =>
+          globalThis.__findingScrolls.map((row) => row.options.behavior),
+        ),
+        ['instant', 'instant'],
+      );
+      await setState(react, () =>
+        stored(g, {
+          facts: [
+            check('c2', g - 650, 'passed'),
+            check('c1', g - 600, 'failed', { result_source: 'failed flag' }),
+          ],
+        }),
+      );
+      await load(react);
+      await read(react);
+      await choose('goal', 'c1', 2, 'It stopped running the tests.', 'Enter');
+      await setState(react, () =>
+        stored(g, {
+          facts: RECORD(g),
+          session: {
+            annotation_assessment: ASSESSMENT(g, {
+              criteria: {
+                goal: {
+                  result: 'departure',
+                  cites: ['gone'],
+                  detail: 'Old account',
+                  clause: 'Ship the queue worker',
+                },
+              },
+            }),
+          },
+        }),
+      );
+      await load(react);
+      await read(react);
+      const unresolved = react.page.locator('[data-next-result-goal]');
+      await unresolved.getByRole('button', { name: 'Evidence', exact: true }).click();
+      await unresolved.getByText(/Nothing resolvable was cited/).waitFor();
+      assert.match(await unresolved.innerText(), /Nothing resolvable was cited/);
+      assert.equal(await react.page.locator('[data-next-finding]').count(), 0);
+      assert.equal(await react.page.locator('[data-next-finding-entry]').count(), 0);
+      await react.page.emulateMedia({ reducedMotion: 'no-preference' });
     },
   );
 
@@ -933,6 +1045,43 @@ try {
       return 'one request';
     },
   );
+
+  await step('a keyboard-started analysis keeps focus on its result after completion', async () => {
+    const gate = deferred();
+    await apply(react, (g) =>
+      claude(g, {
+        routes: {
+          '/api/reading': async () => {
+            await gate.promise;
+            return { body: { ok: true, job: JOB(g) } };
+          },
+        },
+      }),
+    );
+    await load(react);
+    await read(react);
+    const ask = react.page.locator('[data-next-cockpit-action="reading-ask"]');
+    await ask.focus();
+    await react.page.keyboard.press('Enter');
+    await apply(react, (g) =>
+      claude(g, {
+        payload: { reading_jobs: { [`${HARNESS}:${SID}`]: JOB(g) } },
+        routes: react.script.routes,
+      }),
+    );
+    gate.release();
+    await tick(react);
+    const title = react.page.locator('.next-cockpit-reading-job-title');
+    await title.waitFor();
+    assert.equal(await title.evaluate((node) => node === document.activeElement), true);
+    await apply(react, (g) => stored(g));
+    await tick(react);
+    const heading = react.page.locator('[data-next-result-heading]');
+    await heading.waitFor();
+    assert.equal(await heading.evaluate((node) => node === document.activeElement), true);
+    assert.equal(await heading.evaluate((node) => node.tagName), 'H3');
+    assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 0);
+  });
 
   await step(
     'Cancel names the job, sends one request, and the server’s cancelling flag survives a reload',
@@ -1319,7 +1468,7 @@ try {
     'Analyze, the consent step and Steer back are operated from the keyboard alone',
     async () => {
       await apply(react, (g) =>
-        steerState(g, {
+        claude(g, {
           payload: { reading: UNCONSENTED },
           routes: { '/api/reading': () => ({ body: { ok: true, produced: false } }) },
         }),

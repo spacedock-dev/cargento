@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { normaliseButtonKey } from '../e2e/support/button-chrome.mjs';
+import { firstViewChromeReferences } from '../e2e/support/session-first-view-chrome.mjs';
 import { normaliseButtonTable } from './normalise-button-chrome.mjs';
 
 const key = (name) => `next-project | next-activity-card | ${name} | | disabled=false hidden=false`;
@@ -70,7 +71,34 @@ test('the offline table already uses stable identities without losing a chrome p
     assert.equal(normaliseButtonKey(identity), identity);
     assert.ok(table.profiles[profile]);
   }
-  assert.equal(table.profiles.length, 24);
+  assert.equal(table.profiles.length, 25);
+});
+
+test('finding clauses vary without merging goal and outcome control identities', () => {
+  const action = ' | data-next-cockpit-action=finding-jump | disabled=false hidden=false';
+  for (const constraint of ['Goal', 'Expected outcome line 1', 'Expected outcome line 2']) {
+    const prefix = `next-cockpit-result-body |  | Show cited entries in Session activity for ${constraint}: `;
+    for (const clause of ['Ship the queue', 'Keep this other promise'])
+      assert.equal(normaliseButtonKey(prefix + clause + action), prefix + '<clause>' + action);
+  }
+});
+
+test('the current-result rerun is retired while the stale-result run stays required', () => {
+  const suffix =
+    ' |  | Analyze again | data-next-cockpit-action=reading-ask | disabled=false hidden=false';
+  const current =
+    'next-session-panel > next-cockpit-result-press > next-cockpit-reading-ask' + suffix;
+  const stale =
+    'next-session-panel > next-cockpit-result-stale > next-cockpit-reading-ask' + suffix;
+  assert.deepEqual(
+    firstViewChromeReferences([
+      [current, 'current'],
+      [stale, 'stale'],
+    ]),
+    {
+      [stale]: 'stale',
+    },
+  );
 });
 
 test('offline normalisation merges equal profiles and refuses collisions with different chrome', () => {

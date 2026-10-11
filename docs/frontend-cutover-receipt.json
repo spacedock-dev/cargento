@@ -2214,6 +2214,27 @@
           }
         ],
         "note": "DEC-27 replaces What analysis does with a keyed Intent how-to. Existing limits stay reachable and no browser storage is added."
+      },
+      "A finding selected in the session result": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/ReadingResult.test.tsx",
+            "test": "names the goal and each outcome separately, including the stored clause"
+          },
+          {
+            "vitest": "frontend/src/drift/ReadingResult.test.tsx",
+            "test": "discards a selection when its citations vanish, even if they return in the same reading"
+          },
+          {
+            "vitest": "frontend/src/drift/ReadingResult.test.tsx",
+            "test": "discards a selection when the session changes and does not restore it on return"
+          },
+          {
+            "browser": "frontend/e2e/drift-parity.mjs",
+            "step": "finding jumps resolve fact ids after renumbering without requests or launches"
+          }
+        ]
       }
     },
     "storage": {

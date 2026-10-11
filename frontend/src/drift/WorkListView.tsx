@@ -6,6 +6,7 @@ import { useDrift } from './context';
 import { WORK_AS_REPORTED } from './sentences';
 import { workList } from './workList';
 import { Why } from './Why';
+import { useEffect, useRef } from 'react';
 
 /* The numbered activity list, drawn under CURRENT ACTIVITY. It sits in the activity column under that
    column's own heading, so it has none of its own. The record's footer is tiered: where the harness's work
@@ -13,7 +14,24 @@ import { Why } from './Why';
    "About this record"; where none are read, the limit is the absence and stays in view. The route's
    tool-output sentence is not repeated here: "What is sent" beside the control owns it. */
 export function WorkListView() {
-  const { ctx, model } = useDrift();
+  const { ctx, model, finding, jump } = useDrift();
+  const panel = useRef<HTMLDivElement>(null);
+  const jumped = useRef<object | null>(null);
+  useEffect(() => {
+    if (!finding || jumped.current === jump) return;
+    jumped.current = jump;
+    const target = [
+      ...(panel.current?.querySelectorAll<HTMLElement>('[data-next-entry-id]') ?? []),
+    ].find((node) => finding.citedIds.includes(node.dataset['nextEntryId'] ?? ''));
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+      block: 'center',
+    });
+  }, [finding, jump]);
   const list = workList({
     session: model.session,
     payload: model.payload,
@@ -21,6 +39,7 @@ export function WorkListView() {
     annotation: model.annotation,
     draft: model.draft,
     cited: model.cited,
+    revealed: new Set(finding?.citedIds),
     generated: model.generated,
   });
   const about = (
@@ -40,7 +59,13 @@ export function WorkListView() {
     list.mix || list.unlisted.length || list.checks || list.bound || list.reads,
   );
   return (
-    <Card variant="work-panel" as="section" className="next-cockpit-work" data-next-cockpit-work>
+    <Card
+      ref={panel}
+      variant="work-panel"
+      as="section"
+      className="next-cockpit-work"
+      data-next-cockpit-work
+    >
       {list.anchor ? <p className="next-cockpit-work-anchor">{list.anchor}</p> : null}
       {list.unnumbered ? <p className="next-cockpit-work-absent">{list.unnumbered}</p> : null}
       {list.rows.length ? (
@@ -50,12 +75,13 @@ export function WorkListView() {
             const type = entry.type;
             return (
               <div
-                key={`${entry.id}:${String(row.n)}`}
+                key={entry.id}
                 className="next-cockpit-work-row group"
                 role="listitem"
                 data-next-cockpit-work-type={type}
                 {...(row.n === null ? {} : { 'data-next-entry': String(row.n) })}
                 data-next-entry-id={entry.id}
+                tabIndex={-1}
               >
                 <span className="next-cockpit-work-n">
                   {row.n === null ? (
@@ -93,6 +119,11 @@ export function WorkListView() {
                       </Badge>
                     ) : null}
                   </div>
+                  {finding?.citedIds.includes(entry.id) ? (
+                    <p className="next-cockpit-reading-evidence" data-next-finding-entry>
+                      {`Cited for “${finding.detail || finding.clause || finding.label}” · ${row.n === null ? 'Entry not numbered in this view' : `#${String(row.n)}`}`}
+                    </p>
+                  ) : null}
                   {/* A model's paraphrase takes the third treatment, not the mono of a string a source
                       published: the reader must be able to tell the record from an account of it. */}
                   {entry.modelDerived ? (

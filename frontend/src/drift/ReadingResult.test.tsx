@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { act, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { byAction, check, fact, json, mountDrift, press, textOf } from './testing';
 
 const ASSESSMENT = {
@@ -70,8 +71,9 @@ describe('a stored reading', () => {
     expect(
       document.querySelector('[data-next-entry="2"] [data-next-entry-flag="cited"]'),
     ).toBeNull();
-    // The press that stands in the button's place, inert or not, is Analyze again.
-    expect(byAction('reading-ask')?.textContent).toBe('Analyze again');
+    expect(byAction('reading-ask')).toBeNull();
+    expect(textOf('[data-next-result]')).toContain('1 model request');
+    expect(textOf('.next-cockpit-reading-budget')).toBe('9 of 10 left today');
   });
 
   it('withholds a verdict that cites nothing it can resolve, never softening it', async () => {
@@ -92,6 +94,8 @@ describe('a stored reading', () => {
     expect(document.querySelector('[data-next-result-goal]')?.textContent).toContain(
       'Nothing resolvable was cited',
     );
+    expect(byAction('finding-jump')).toBeNull();
+    expect(document.querySelector('[data-next-finding-entry]')).toBeNull();
   });
 
   it('refuses a reading carrying a field this build does not know, and draws no verdict', async () => {
@@ -119,6 +123,7 @@ describe('a stored reading', () => {
     expect(stale.textContent).toContain('Your intent changed after this analysis.');
     expect(stale.textContent).toContain('This reading read revision 3. Revision 4 is current');
     expect(stale.querySelector('[data-next-cockpit-action="reading-ask"]')).not.toBeNull();
+    expect(document.querySelectorAll('[data-next-cockpit-action="reading-ask"]')).toHaveLength(1);
   });
 
   it('says new work arrived after the reading read, and what kind', async () => {
@@ -134,9 +139,155 @@ describe('a stored reading', () => {
     await page.settle();
     const stale = document.querySelector('[data-next-result-stale="work"]') as HTMLElement;
     expect(stale.textContent).toContain('New work since this analysis.');
+    expect(document.querySelectorAll('[data-next-cockpit-action="reading-ask"]')).toHaveLength(1);
     expect(textOf('.next-cockpit-result-stale + *, [data-next-result]')).toContain(
       '1 check, 1 message arrived since this analysis.',
     );
+  });
+});
+
+describe('result focus', () => {
+  it('receives focus from the running analysis when the current result replaces it', async () => {
+    const job = { id: 'j1', phase: 'read', steps: [{ phase: 'read', text: 'Reading' }] };
+    const page = mountDrift({ payload: { reading_jobs: { 'claude:s1': job } } });
+    await page.settle();
+    await page.settle();
+    const title = document.querySelector<HTMLElement>('.next-cockpit-reading-job-title');
+    expect(title).not.toBeNull();
+    await act(async () => title?.focus());
+    expect(document.activeElement).toBe(title);
+    await page.poll({
+      ...(page.state.data as object),
+      reading_jobs: {},
+      sessions: [{ ...(page.state.data as { sessions: object[] }).sessions[0], ...stored() }],
+    });
+    await page.settle();
+    const heading = document.querySelector('[data-next-result-heading]');
+    expect(heading).not.toBeNull();
+    expect(document.activeElement).toBe(heading);
+    expect(byAction('reading-ask')).toBeNull();
+  });
+});
+
+describe('a finding jump', () => {
+  it('names the goal and each outcome separately, including the stored clause', async () => {
+    const page = mountDrift({ session: stored(), facts: FACTS });
+    await page.settle();
+    await page.settle();
+    const jumps = [...document.querySelectorAll('[data-next-finding]')];
+    expect(
+      screen.queryByRole('button', {
+        name: 'Show cited entries in Session activity for Goal: Ship the queue',
+      }),
+    ).toBe(jumps[0]);
+    expect(
+      screen.queryByRole('button', {
+        name: 'Show cited entries in Session activity for Expected outcome line 1: Tests pass',
+      }),
+    ).toBe(jumps[1]);
+  });
+
+  it('discards a selection when its citations vanish, even if they return in the same reading', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+    const page = mountDrift({ session: stored(), facts: FACTS });
+    await page.settle();
+    await page.settle();
+    await press(byAction('finding-jump'));
+    expect(document.querySelector('[data-next-finding-entry]')).not.toBeNull();
+    const original = page.state.data as { sessions: object[] };
+    await page.poll({
+      ...original,
+      sessions: [
+        {
+          ...original.sessions[0],
+          annotation_assessment: {
+            ...ASSESSMENT,
+            criteria: {
+              ...ASSESSMENT.criteria,
+              goal: { ...ASSESSMENT.criteria.goal, cites: ['gone'] },
+            },
+          },
+        },
+      ],
+    });
+    expect(document.querySelector('[data-next-finding-entry]')).toBeNull();
+    await page.poll(original);
+    expect(document.querySelector('[data-next-finding-entry]')).toBeNull();
+  });
+
+  it('discards a selection when the session changes and does not restore it on return', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+    const page = mountDrift({ session: stored(), facts: FACTS });
+    await page.settle();
+    await page.settle();
+    const original = page.state.data as { sessions: object[] };
+    await page.poll({
+      ...original,
+      sessions: [original.sessions[0], { ...original.sessions[0], sid: 's2' }],
+    });
+    await press(byAction('finding-jump'));
+    expect(document.querySelector('[data-next-finding-entry]')).not.toBeNull();
+    await page.go('#n=session:alpha%2Fapp:claude:s2');
+    expect(document.querySelector('[data-next-finding-entry]')).toBeNull();
+    await page.go('#n=session:alpha%2Fapp:claude:s1');
+    expect(document.querySelector('[data-next-finding-entry]')).toBeNull();
+  });
+
+  it('reveals a consistent finding’s older message without giving it a departure tag', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+    const page = mountDrift({
+      session: stored({
+        annotation_assessment: {
+          ...ASSESSMENT,
+          criteria: {
+            ...ASSESSMENT.criteria,
+            goal: {
+              result: 'consistent with the evidence read',
+              cites: ['old'],
+              clause: 'Ship the queue',
+            },
+          },
+        },
+      }),
+      facts: [
+        fact('old', 500, { type: 'agent_message', by: 'agent' }),
+        check('c2', 600, 'passed'),
+        ...Array.from({ length: 12 }, (_, i) =>
+          fact(`a${i}`, 700 + i, { type: 'agent_message', by: 'agent' }),
+        ),
+      ],
+    });
+    await page.settle();
+    await page.settle();
+    expect(document.querySelector('[data-next-entry-id="old"]')).toBeNull();
+    await press(byAction('finding-jump'));
+    const row = document.querySelector('[data-next-entry-id="old"]');
+    expect(row?.textContent).toContain('Cited for “Ship the queue” · #1');
+    expect(row?.querySelector('[data-next-entry-flag="cited"]')).toBeNull();
+    expect(document.activeElement).toBe(row);
+  });
+
+  it('marks its entries with the stored words and focuses the first without a request', async () => {
+    const scroll = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scroll;
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+    const page = mountDrift({ session: stored(), facts: FACTS });
+    await page.settle();
+    await page.settle();
+    const requests = [...page.state.requests];
+    await press(byAction('finding-jump'));
+    const entry = document.querySelector('[data-next-entry-id="c1"]');
+    expect(entry?.textContent).toContain('Cited for “It stopped running the tests.” · #1');
+    expect(document.activeElement).toBe(entry);
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'instant', block: 'center' });
+    expect(page.state.requests).toEqual(requests);
+    expect(
+      document.querySelector('[data-next-entry-id="c2"] [data-next-finding-entry]'),
+    ).toBeNull();
   });
 });
 

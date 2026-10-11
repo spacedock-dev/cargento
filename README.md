@@ -161,6 +161,9 @@ Sessions keeps an orientation paragraph and how-to visible after a session has b
 The paragraph explains analysis when annotations are on, the store is readable and a reading
 route names a provider; otherwise it explains how to inspect a session. Every goal
 cell, including saved words, opens its session at Intent.
+A finding can jump to the entries it cites in Session activity, marked with its words and their
+current numbers. Departure citations retain the neutral "Cited" tag. A current result has no rerun
+button; new work or changed intent gives one "Analyze again" with that reason.
 Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.

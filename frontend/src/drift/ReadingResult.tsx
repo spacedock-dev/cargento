@@ -1,6 +1,8 @@
 import { Card } from '../ui/card';
+import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
+import { useFocusKey } from '../controls';
 import { ActionButton } from '../intent/ActionButton';
 import { markNotAccurate } from './actions';
 import { useDrift } from './context';
@@ -39,12 +41,8 @@ import type { SteerSlot } from './ReadingControl';
 import { isOutcomeLine, type Criterion, type Shape } from './shape';
 import { Why } from './Why';
 
-/* The result, in the button's place: under the level, the stale callout if any, the headline, the goal row, the
-   checklist against the expected outcome, where the work went, then the one press, "Analyze again", and Not
-   accurate. A reading is a model's account and takes the third treatment: italic, secondary ink, a dotted
-   rule, and no colour under any result. Accent on a reading would read as "met", which is a claim about the
-   reader's intent from partial evidence. The legacy page's `nextCockpitReadingParts` is the oracle, and
-   `result.differential.test.ts` holds the words to it. */
+/* Accent on a reading would read as "met", a claim about intent from partial evidence.
+   The result keeps secondary ink and no colour under any verdict. */
 
 function ClauseCell({ row }: { readonly row: Criterion }) {
   if (row.key === CLAIMS) return null;
@@ -125,6 +123,7 @@ function ResultItem({
       <span className="next-cockpit-result-body">
         <ClauseCell row={row} />
         <em className="next-cockpit-reading-result">{status}</em>
+        <FindingJump row={row} />
         {row.key === CLAIMS && row.result === DEPARTURE ? (
           <Account row={row} showClause={false} />
         ) : null}
@@ -143,6 +142,29 @@ function ResultItem({
   );
 }
 
+function FindingJump({ row }: { readonly row: Criterion }) {
+  const { chooseFinding } = useDrift();
+  if (!row.citedIds.length) return null;
+  const constraint =
+    row.key === 'goal'
+      ? 'Goal'
+      : isOutcomeLine(row.key)
+        ? `Expected outcome line ${row.key === 'output' ? '1' : row.key.slice(5)}`
+        : 'What the agent claimed';
+  return (
+    <Button
+      type="button"
+      variant="bare"
+      data-next-cockpit-action="finding-jump"
+      data-next-finding={row.key}
+      aria-label={`Show cited entries in Session activity for ${constraint}: ${row.clause}`}
+      onClick={() => chooseFinding(row.key)}
+    >
+      Show cited entries
+    </Button>
+  );
+}
+
 /* The answer, and under a departure the headline with its count and a short account built from each
    departure's detail and its citation, never a model's narrative. The count renders only here. `midFlight`
    leads the answer with "So far:", so a reading of a running session never looks like a reading of how it
@@ -151,12 +173,24 @@ function ResultAnswer({
   answer,
   midFlight,
   primary,
+  focusKey,
 }: {
   readonly answer: Answer;
   readonly midFlight: boolean;
   readonly primary?: ReactNode;
+  readonly focusKey: string | null;
 }) {
-  const { model } = useDrift();
+  const { ctx, model } = useDrift();
+  // The completed result replaces the job title in the same focus lane as the original Analyze press.
+  const headingRef = useFocusKey<HTMLHeadingElement>(ctx.shell.controls.focusLane, focusKey);
+  const headingProps = {
+    ref: headingRef,
+    tabIndex: -1,
+    'data-next-result-heading': true,
+    'data-next-focus': focusKey ?? undefined,
+  };
+  const ring =
+    'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-[var(--accent)] focus-visible:outline-offset-1';
   const lead = midFlight ? (
     <>
       <span className="next-cockpit-result-scope">So far:</span>{' '}
@@ -167,11 +201,11 @@ function ResultAnswer({
     const count = `${String(answer.count)} departure${answer.count === 1 ? '' : 's'}`;
     body = (
       <>
-        <p className="next-cockpit-result-headline">
+        <h3 {...headingProps} className={`next-cockpit-result-headline ${ring}`}>
           {lead}
           <span>{RESULT_DEPARTS}</span>
           <span className="next-cockpit-result-count">{count}</span>
-        </p>
+        </h3>
         {primary}
         {answer.departures.map((row) => (
           <Account key={row.key} row={row} />
@@ -181,24 +215,24 @@ function ResultAnswer({
   } else if (answer.kind === 'failed-check') {
     const where = resultWhere(answer.failed, model.numbers, true);
     body = (
-      <p className="next-cockpit-result-line">
+      <h3 {...headingProps} className={`next-cockpit-result-line ${ring}`}>
         {lead}
         {where ? `A check failed at ${where}.` : 'A check failed.'}
-      </p>
+      </h3>
     );
   } else if (answer.kind === 'not-reached') {
     body = (
-      <p className="next-cockpit-result-line">
+      <h3 {...headingProps} className={`next-cockpit-result-line ${ring}`}>
         {lead}
         Not reached at this stop.
-      </p>
+      </h3>
     );
   } else {
     body = (
-      <p className="next-cockpit-result-line">
+      <h3 {...headingProps} className={`next-cockpit-result-line ${ring}`}>
         {lead}
         {answer.kind === 'cant-tell' ? RESULT_CANT_TELL : RESULT_NOTHING_FOUND}
-      </p>
+      </h3>
     );
   }
   return <div className="next-cockpit-result-answer">{body}</div>;
@@ -325,8 +359,8 @@ export function ReadingResult({
   readonly question: ReactNode;
   /** Steer back's row and box, where the control offers it. */
   readonly slotted: SteerSlot | null;
-  /** The Analyze again press, which carries Steer back at the foot and not in the stale callout. */
-  readonly again: (steer: SteerSlot | null) => ReactNode;
+  /** The stale result's one run control. */
+  readonly again: (steer: SteerSlot | null, showRun?: boolean) => ReactNode;
 }) {
   const { model } = useDrift();
   const { shape, raw, annotation, entries, numbers, byId, source } = model;
@@ -359,20 +393,22 @@ export function ReadingResult({
       {shape.cutoff ? <p className="next-cockpit-reading-why">{shape.cutoff}</p> : null}
     </>
   );
-  /* A changed reading keeps Analyze again in its callout. A surviving departure's primary precedes
-     the evidence rows; a secondary steer stays at the foot. A direction question holds both back. */
+  /* A current result keeps the disclosure and accounting without a second run control.
+     [DEC-27](../../../docs/design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result)
+     A direction question owns the sole run path while it stands. */
   const leadSteer = !question && slotted?.lead ? slotted : null;
-  const press = question
-    ? null
-    : again(staleState ? null : leadSteer ? { ...leadSteer, button: null } : slotted);
   const steers =
-    staleState && slotted && !question ? (
+    slotted && !question ? (
       <>
         {leadSteer ? null : <div className="next-cockpit-reading-ask">{slotted.button}</div>}
         {slotted.box}
       </>
     ) : null;
-  const foot = staleState ? steers : press;
+  const foot = staleState
+    ? steers
+    : question
+      ? null
+      : again(leadSteer ? { ...leadSteer, button: null } : slotted, false);
   const callout = staleState && !question ? again(null) : null;
   return (
     <div className="next-session-drift-check next-cockpit-result gap-1" data-next-result>
@@ -397,6 +433,7 @@ export function ReadingResult({
         <ResultAnswer
           answer={answer}
           midFlight={shape.scope === 'mid-flight'}
+          focusKey={staleState || question ? null : `reading:${model.key}`}
           primary={
             leadSteer ? (
               <div className="next-cockpit-reading-ask" data-next-result-primary>
