@@ -1,9 +1,14 @@
 export function intentEditorDeviations(recorded) {
   const value = structuredClone(recorded);
+  const added = [];
   for (const field of value.fields ?? []) {
     if (field.kind === 'goal') field.buttons = field.buttons.filter(([label]) => label !== 'Clear');
     if (field.kind === 'lines') {
       field.label = 'Expected outcome (optional)';
+      if (field.boxes.length !== 1 || field.boxes[0]) {
+        added.push(...field.buttons.filter(([label]) => label === '+ Add a line'));
+        field.buttons = field.buttons.filter(([label]) => label !== '+ Add a line');
+      }
       if (field.boxes.length === 1 && !field.boxes[0])
         field.buttons = field.buttons.filter(
           ([label]) => label !== 'Remove' && label !== '+ Add a line',
@@ -13,6 +18,7 @@ export function intentEditorDeviations(recorded) {
   value.notes = value.notes?.filter((note) => !note.startsWith('Saved'));
   if (value.footer) {
     value.footer.hint = '';
+    value.footer.buttons.unshift(...added);
     value.footer.buttons = value.footer.buttons.filter(
       ([label, inert]) => label !== 'Undo changes' || !inert,
     );

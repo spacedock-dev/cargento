@@ -69,7 +69,7 @@ export function normaliseSessionRecord(record, evidence = {}) {
             'You gave a later direction at #1: "Keep the flag off by default."',
             '1 later direction since saving your intent.',
           );
-        if (sessionHeader && !Boolean(record?.attrs?.[3] || record?.ask || record?.answers?.length))
+        if (sessionHeader && !(record?.attrs?.[3] || record?.ask || record?.answers?.length))
           value = value.replace(
             /(?:No resume command · )?(?:No terminal to raise|Terminal raise off)Why.*$/,
             '',

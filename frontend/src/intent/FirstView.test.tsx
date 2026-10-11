@@ -1,5 +1,6 @@
 import { act, fireEvent } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { mountDrift } from '../drift/testing';
 import { control, goalBox, lineBoxes, mountSession, text, type } from './panel.testing';
 
 const settle = async (page: { settle: () => Promise<void> }) => {
@@ -43,9 +44,28 @@ describe('the first view of a session', () => {
     const page = mountSession({ session: { ended_at: 999 } });
     await settle(page);
     expect(text('[data-next-cockpit-held-field="goal"]')).toContain(
-      'This session has ended, so Cargento can only read the goal drafted from your prompt.',
+      'This session has ended. Words you save now cannot be read against it; your saved intent and the goal drafted from your prompt still can.',
     );
     expect(goalBox().value).toBe('Ship the queue worker');
+  });
+
+  it('keeps a typed goal saved before the end eligible without contradicting Analyze', async () => {
+    const page = mountDrift({
+      store: { goal: 'Ship the queue worker' },
+      session: {
+        ended_at: 900,
+        annotation_goal_saved_at: 700,
+        reading_eligibility: { ok: true },
+      },
+    });
+    await settle(page);
+    expect(goalBox().value).toBe('Ship the queue worker');
+    expect(control('reading-ask')).not.toBeNull();
+    expect(control('reading-ask')?.getAttribute('aria-disabled')).not.toBe('true');
+    expect(text('[data-next-ended-goal]')).toContain(
+      'your saved intent and the goal drafted from your prompt still can',
+    );
+    expect(text('[data-next-ended-goal]')).not.toContain('can only read');
   });
 
   it('keeps More open and held fields across refresh and a remount', async () => {

@@ -138,8 +138,9 @@ export function DriftBody({ primary }: { readonly primary: boolean }) {
   }
   return (
     <>
+      {hasQuestion ? area : null}
       <DriftLevelView />
-      {area}
+      {hasQuestion ? null : area}
       <ReadingSection />
     </>
   );

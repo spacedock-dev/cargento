@@ -16,7 +16,7 @@ import {
 } from './derive';
 import { undoChanges } from './edit';
 import { GoalField } from './GoalField';
-import { OutcomeLines } from './OutcomeLines';
+import { OutcomeLines, AddOutcomeLine } from './OutcomeLines';
 import { saveIntent } from './save';
 import { usePanel } from './useIntent';
 import { HowTo } from './HowTo';
@@ -46,6 +46,7 @@ function Footer() {
   /* Undo is inert while its save is in flight: reverting the box would leave the words being sent unseen. */
   return (
     <div className="next-cockpit-held-footer">
+      <AddOutcomeLine />
       <span className="next-cockpit-held-tools">
         {changes.goal || changes.pending ? (
           <ActionButton

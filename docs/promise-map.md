@@ -280,9 +280,10 @@ an acceptance of each provider's checks enables that control (the captain's of C
 Claude Code). A reading is an account of the evidence, never
 verification that the work was done. The words are kept under a
 session count rather than a date, so an old enough annotation is evicted rather than expired. The
-`clear` beside each box is not the discard: it empties the box, and the save after it keeps every
-earlier revision, so anything raised against those words goes on quoting them. The board says which
-is which where the two controls sit. And both of those
+goal's Clear in More empties that box; outcome lines have Remove after use. Neither is Discard
+everything: the save after a clear or removal keeps every earlier revision, so anything raised
+against those words goes on quoting them. The board says which is which where the two controls
+sit. And both of those
 marks reach only the harnesses whose adapter maps the event that
 carries them. An absent mark means no end was observed, never that a session is alive, so it covers
 the harnesses with no adapter, a session that predates this server process, and a run under

@@ -142,31 +142,10 @@ export function DirectionQuestion({
   return (
     <>
       {before}
-      <div className="next-cockpit-direction-question" data-next-cockpit-direction-question>
-        {count > 1 ? (
-          <Label className="next-direction-select">
-            {'Direction '}
-            <NativeSelect
-              appearance="direction"
-              ref={pickRef}
-              data-next-direction-select
-              data-next-focus={`direction-pick:${key}`}
-              value={earliest.id}
-              onChange={(event) => pickDirection(ctx, session, event.currentTarget.value)}
-            >
-              {pending.map((entry) => {
-                const at = numbers.get(entry.id);
-                return (
-                  <option key={entry.id} value={entry.id}>
-                    {`${at !== undefined ? `#${String(at)}` : clock(Number(entry.at) || 0)} · ${entry.summary || 'Your direction'}`}
-                  </option>
-                );
-              })}
-            </NativeSelect>
-          </Label>
-        ) : null}
+      <div className="next-cockpit-direction-question gap-0.5" data-next-cockpit-direction-question>
         <p className="next-cockpit-direction-said">
-          {`${String(count)} later direction${count === 1 ? '' : 's'} ${since}.`}
+          {`${String(count)} later direction${count === 1 ? '' : 's'}`}
+          <span className="next-visually-hidden">{` ${since}`}</span>.
         </p>
         <WholeList pending={pending} numbers={numbers} />
         <div className="next-cockpit-reading-ask">
@@ -197,6 +176,28 @@ export function DirectionQuestion({
           <DirectionGoalButton factId={String(earliest.id || '')} scope="question" />
           {buttons}
         </div>
+        {count > 1 ? (
+          <Label className="next-direction-select">
+            {'Direction '}
+            <NativeSelect
+              appearance="direction"
+              ref={pickRef}
+              data-next-direction-select
+              data-next-focus={`direction-pick:${key}`}
+              value={earliest.id}
+              onChange={(event) => pickDirection(ctx, session, event.currentTarget.value)}
+            >
+              {pending.map((entry) => {
+                const at = numbers.get(entry.id);
+                return (
+                  <option key={entry.id} value={entry.id}>
+                    {`${at !== undefined ? `#${String(at)}` : clock(Number(entry.at) || 0)} · ${entry.summary || 'Your direction'}`}
+                  </option>
+                );
+              })}
+            </NativeSelect>
+          </Label>
+        ) : null}
         {edited ? (
           <p className="next-cockpit-reading-why" id={REFUSED_ID}>
             {reason}

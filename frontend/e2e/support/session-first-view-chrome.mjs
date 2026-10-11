@@ -7,6 +7,18 @@ export function firstViewChromeKey(key) {
   )
     return null;
   if (!key.includes('next-session-panel >')) return key;
+  if (key.includes('data-next-cockpit-action=held-line-remove'))
+    return key.replace(' > next-cockpit-held-under |', ' |');
+  if (key.includes('data-next-cockpit-action=held-line-add'))
+    return key.replace(
+      'next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field.next-cockpit-held-lines > next-cockpit-held-under',
+      'next-cockpit-held > next-cockpit-held-footer',
+    );
+  if (/data-next-cockpit-action=(steer-back|update-intent)/.test(key))
+    return key.replace(
+      'next-cockpit-result-press > next-cockpit-reading-ask',
+      'next-cockpit-result-answer > next-cockpit-reading-ask',
+    );
   if (/data-next-cockpit-action=(held-clear|reading-off)/.test(key))
     return key.replace(/next-session-panel > .*?(?= \|)/, 'next-session-panel > ctl-disclosure');
   return key

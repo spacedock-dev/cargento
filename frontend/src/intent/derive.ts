@@ -478,23 +478,3 @@ export function promptMenu(input: DraftInput): PromptMenu {
     value: options.find((option) => option.selected)?.value ?? '',
   };
 }
-
-/* Of several, the sentence quotes the selected direction, which is the earliest unless the reader picked
-   another: the one Add opens. */
-export function directionSentence(
-  selected: Pick<WorkEntry, 'summary'>,
-  count: number,
-  n: number | undefined,
-  since: string,
-): string {
-  const summary = String(selected.summary || '').trim();
-  /* No second mark after a quote that ends in its own: the sentence's full stop is the quote's, including a
-     mark a closing quote or bracket follows. */
-  const said = `"${summary}"${/[.!?…]["'”’)\]]*$/.test(summary) ? '' : '.'}`;
-  if (count === 1) {
-    return n === undefined
-      ? `You gave a later direction: ${said}`
-      : `You gave a later direction at #${String(n)}: ${said}`;
-  }
-  return `You gave ${String(count)} later directions ${since}, the selected direction${n === undefined ? '' : ` at #${String(n)}`}: ${said}`;
-}

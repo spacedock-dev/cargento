@@ -123,6 +123,26 @@ const summarizeCard = () => {
     );
     if (hint) header.after(hint.cloneNode(true));
   }
+  // Compare every retained word in the recorded order; the live placement has its own viewport proof.
+  const primary = card.querySelector('[data-next-result-primary]');
+  if (primary) {
+    const result = card.querySelector('[data-next-result]');
+    let foot = result.querySelector('.next-cockpit-result-press');
+    if (!foot) {
+      foot = document.createElement('div');
+      foot.className = 'next-cockpit-result-press';
+      result.querySelector('.next-cockpit-result-foot').before(foot);
+    }
+    const ask = foot.querySelector('.next-cockpit-reading-ask');
+    if (ask) ask.prepend(...primary.children);
+    else foot.prepend(primary);
+    if (!primary.children.length) primary.remove();
+  }
+  const liveLevel = card.querySelector('.next-session-drift-live');
+  const questionArea = card.querySelector(
+    '.next-session-drift-check:has(.next-cockpit-direction-question)',
+  );
+  if (liveLevel && questionArea) questionArea.before(liveLevel);
   const question = card.querySelector('.next-cockpit-direction-question');
   const off = copy('[data-next-cockpit-action="reading-off"]');
   if (off) {

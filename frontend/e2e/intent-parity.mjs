@@ -335,7 +335,9 @@ try {
       ]);
       assert.equal(state.fields[0].boxes[0], 'Fix the redirect for signed-in readers');
       assert.ok(
-        state.footer.buttons.every(([, inert]) => inert),
+        state.footer.buttons
+          .filter(([label]) => label === 'Save intent' || label === 'Undo changes')
+          .every(([, inert]) => inert),
         'Save and Undo are live over saved words',
       );
     },
@@ -802,8 +804,8 @@ try {
       await react.page.waitForSelector('[data-next-cockpit-direction-question]', {
         timeout: patience(15000),
       });
-      const said = await react.page.locator('.next-cockpit-direction-said').innerText();
-      assert.equal(said, '2 later directions since saving your intent.');
+      const said = await react.page.locator('.next-cockpit-direction-said').textContent();
+      assert.equal(norm(said), '2 later directions since saving your intent.');
       const number = await react.page
         .locator('[data-next-direction-select]')
         .inputValue()

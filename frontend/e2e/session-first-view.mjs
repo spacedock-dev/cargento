@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { startIntentBoard } from './intent-board.mjs';
 import { installScript, freshScript, POLICY, ROUTE, SAVED, SID } from './drift-board.mjs';
+import { proveFirstViewStates } from './support/session-first-view-states.mjs';
 import { openPage, refreshReact } from './support/browser.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -273,6 +274,7 @@ try {
       else assert.equal(await button.getAttribute('aria-disabled'), 'true', fixture.name);
       console.log(JSON.stringify({ inert: fixture.name, sentence: fixture.line }));
     }
+    await proveFirstViewStates({ page, browser, board, script });
     assert.equal(opened.log.nonGet.length, 0);
     assert.deepEqual(opened.log.externalRequests, []);
   }

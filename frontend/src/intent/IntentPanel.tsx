@@ -147,7 +147,7 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
           id="next-session-drift"
           aria-labelledby="next-session-drift-heading"
         >
-          <header className="next-session-drift-head">
+          <header className="next-session-drift-head py-0">
             <div className="next-session-drift-titles flex flex-wrap items-baseline gap-x-2">
               <h2 id="next-session-drift-heading" className="next-session-drift-heading">
                 Drift

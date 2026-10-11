@@ -109,7 +109,7 @@ export function WorkListView() {
                   ) : null}
                   {row.add ? (
                     <Button
-                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100"
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:opacity-100"
                       variant="bare"
                       type="button"
                       data-next-cockpit-action="direction-add"

@@ -50,6 +50,10 @@ function summarize(source: Element | DocumentFragment): DetailSummary {
     owned.remove();
   }
   const meta = copy.querySelector('.next-session-detail-meta');
+  // Compare retained counts in the recorded header order; the viewport proof owns their new placement.
+  if (meta && header && !header.contains(meta)) {
+    header.querySelector('.next-session-detail-bar')?.prepend(meta);
+  }
   if (meta) {
     meta.textContent = (meta.textContent ?? '')
       .split(' · ')

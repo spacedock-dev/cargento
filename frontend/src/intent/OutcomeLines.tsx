@@ -164,16 +164,18 @@ function LineRow({
   const { ctx, input, session, cap, source, payload } = usePanel();
   const key = linesKey(session);
   const saved = annotationLines(input.annotation);
-  /* The box, then one row under it as the Goal has: the count on the left and Remove on the right. The source
-     is a fact about saved words, so it shows only while the box still holds the line saved in that place,
-     and only for a line added from an entry: "typed" told a reader what they already knew. Its space is kept
-     while it is hidden, so Remove does not jump under the caret. */
+  /* Remove shares the box row so a saved outcome does not push Keep below the phone viewport.
+     An entry source keeps its space during an edit, so the editor does not move under the caret. */
   const place = saved[index] ?? null;
   const line = place && place.text === text ? place : null;
   return (
-    <li className="next-cockpit-held-line" data-next-cockpit-held-line={index}>
+    <li
+      className={`next-cockpit-held-line${used ? ' grid-cols-[minmax(0,1fr)_auto]' : ''}`}
+      data-next-cockpit-held-line={index}
+    >
       <HeldTextarea
         id={boxId}
+        className={used ? 'col-start-1 col-end-2' : undefined}
         aria-label={`Expected outcome line ${String(index + 1)}`}
         rows={1}
         maxLength={cap}
@@ -206,19 +208,19 @@ function LineRow({
             {lineSource(place, session, source, payload)}
           </span>
         ) : null}
-        {used ? (
-          <ActionButton
-            weight="secondary"
-            className="next-cockpit-held-remove"
-            label="Remove"
-            action="held-line-remove"
-            arg={String(index)}
-            ariaLabel={`Remove line ${String(index + 1)}`}
-            focusKey={`${key}:remove:${String(index)}`}
-            onPress={() => removeLine(input, index)}
-          />
-        ) : null}
       </div>
+      {used ? (
+        <ActionButton
+          weight="secondary"
+          className="next-cockpit-held-remove col-start-2 row-start-1 row-span-2 self-start"
+          label="Remove"
+          action="held-line-remove"
+          arg={String(index)}
+          ariaLabel={`Remove line ${String(index + 1)}`}
+          focusKey={`${key}:remove:${String(index)}`}
+          onPress={() => removeLine(input, index)}
+        />
+      ) : null}
     </li>
   );
 }
@@ -271,19 +273,6 @@ export function OutcomeLines() {
         ))}
         <DirectionLineView />
       </ol>
-      {used ? (
-        <div className="next-cockpit-held-under">
-          <ActionButton
-            label="+ Add a line"
-            action="held-line-add"
-            arg="lines"
-            inert={full}
-            describedBy="next-cockpit-held-full"
-            focusKey={`${key}:add`}
-            onPress={() => addLine(ctx, input)}
-          />
-        </div>
-      ) : null}
       <p
         className="next-cockpit-held-full"
         id="next-cockpit-held-full"
@@ -304,5 +293,28 @@ export function OutcomeLines() {
       ) : null}
       {cue ? <small className="next-cockpit-held-cue">{cue}</small> : null}
     </div>
+  );
+}
+
+export function AddOutcomeLine() {
+  const { ctx, input, session } = usePanel();
+  const draft = linesDraft(ctx.held, session, input.annotation);
+  const line = ctx.held.directions.get(compatSessKey(session));
+  const used =
+    draft.length > 1 ||
+    draft.some((text) => text.trim()) ||
+    annotationLines(input.annotation).length > 0 ||
+    Boolean(line?.text?.trim());
+  if (!used) return null;
+  return (
+    <ActionButton
+      label="+ Add a line"
+      action="held-line-add"
+      arg="lines"
+      inert={draft.length >= OUTCOME_LINES_MAX}
+      describedBy="next-cockpit-held-full"
+      focusKey={`${linesKey(session)}:add`}
+      onPress={() => addLine(ctx, input)}
+    />
   );
 }

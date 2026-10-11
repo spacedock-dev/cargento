@@ -110,12 +110,14 @@ export function GoalField() {
       </div>
       {endedAt(session) !== null ? (
         <p className="next-cockpit-held-absent" data-next-ended-goal>
-          This session has ended, so Cargento can only read the goal drafted from your prompt.
+          This session has ended. Words you save now cannot be read against it; your saved intent
+          and the goal drafted from your prompt still can.
         </p>
       ) : null}
       <HeldTextarea
         id={boxId}
         rows={1}
+        className="min-h-[44px]"
         maxLength={cap}
         memoryKey={key}
         focusKey={key}

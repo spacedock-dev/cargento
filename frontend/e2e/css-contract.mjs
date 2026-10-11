@@ -1384,7 +1384,12 @@ const key = (row) =>
     .split(' > ')
     .slice(-3)
     .join(' > ')
-    .replace(/\.[\w-]*--[\w-]+/g, '');
+    .replace(/\.[\w-]*--[\w-]+/g, '')
+    // Blocked-session counts retain the measured metadata identity after moving to activity.
+    .replace(
+      'div.next-session-columns > div.next-session-activity > p.next-session-detail-meta',
+      'header.next-session-detail-header > div.next-session-detail-bar > p.next-session-detail-meta',
+    );
 const shape = (row) => `${key(row)} "${row.text}"`;
 const keys = (rows) => new Set(rows.map(key));
 const rgbOf = (colour) => colour.replace(/\s+/g, '');
