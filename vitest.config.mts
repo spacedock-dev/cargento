@@ -21,6 +21,9 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['frontend/**/*.test.ts', 'frontend/**/*.test.tsx'],
     setupFiles: ['frontend/test/setup.ts'],
+    coverage: {
+      exclude: ['frontend/stories/**', 'frontend/.storybook/**', 'frontend/storybook/**'],
+    },
     maxWorkers: 2,
     // A hosted Windows runner took longer than the default five seconds on a generated-board test that
     // takes about one second here; a hang still ends, only later.

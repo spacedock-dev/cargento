@@ -1424,11 +1424,11 @@
       },
       {
         "file": "package.json",
-        "sha256": "7a5395758bd61305976760179386ad16c0ae2675f792bc00a5c1bd7eb1b01afe"
+        "sha256": "724417d2b7581603c924b20d8d2ce32db7d8e4a1ed028ee6bfbfb6a9c68d1f47"
       },
       {
         "file": "pnpm-lock.yaml",
-        "sha256": "90d438ba540e4c5740ff1c305f96516501005d4d709a8380c91749356dad261c"
+        "sha256": "fb6256b7a55277375258ae9ff81e3707f6ff10c43c955441843b5b8a9e302744"
       }
     ]
   }

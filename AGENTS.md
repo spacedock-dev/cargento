@@ -49,6 +49,8 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
 frontend/                           # React sources, unit tests and browser proofs (Node and pnpm; not shipped)
+├── .storybook/                     # offline component explorer and Chromium test config
+├── stories/                        # component examples with play-function assertions
 ├── src/                            # the React page; `pnpm build` packages it into `web/react.html`
 ├── test/                           # test support, synthetic backends and the recorded answers
 │                                   # (`test/golden/`: fixtures of record, never regenerated)
@@ -245,6 +247,8 @@ pnpm lint   # Biome: lint rules and formatting; `pnpm format` rewrites the forma
 pnpm typecheck
 pnpm test:styles --base origin/main   # exact CSS count, scale and live imports; CI uses the actual PR base SHA
 pnpm test
+pnpm build:storybook
+pnpm test:stories
 pnpm test:dev
 pnpm build
 pnpm build:check
@@ -485,7 +489,8 @@ development-server proofs remain runnable through the unchanged local pre-PR com
 
 `Frontend production bundle` runs on Linux in two shards: it rebuilds and compares the tracked
 artifact, then runs all twelve parity proofs against the shipped bundle, with shard membership
-kept in `frontend/e2e/production-shards.json`. Both remaining frontend jobs are in the aggregator's
+kept in `frontend/e2e/production-shards.json`. The `Storybook (ubuntu-latest)` job builds the offline explorer and runs component assertions in
+pinned Chromium. All three frontend jobs are in the aggregator's
 `needs`, and a skipped result passes only when the detector said `code=false`. The required status
 checks on main remain `validate`, `version-guard` and `quality-gate`. Native harness canary Node
 requirements remain independent of this build toolchain.
@@ -525,6 +530,8 @@ no longer published about an end published seconds later. The comment above the
 `_attach_annotations` call in `Application.collect` records it; read that before reordering
 anything in that sequence, because three of the calls around it are ordered for reasons of their
 own and one of them is deliberately ordered by convention alone.
+
+A change to a component or view updates its story and passes `pnpm test:stories`.
 
 ## Code Comments
 

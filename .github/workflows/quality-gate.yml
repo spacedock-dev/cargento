@@ -567,6 +567,40 @@ jobs:
           CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:production:browser --shard ${{ matrix.shard }}
 
+  storybook:
+    name: Storybook (ubuntu-latest)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .node-version
+          check-latest: false
+          package-manager-cache: false
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024
+        with:
+          version: 12.9.1
+          install: false
+          node-version-file: false
+          cache: false
+      - name: Frozen install with dependency scripts denied
+        timeout-minutes: 5
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build offline component stories
+        timeout-minutes: 3
+        run: pnpm build:storybook
+      - name: Install pinned Chromium and its host dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Component assertions and offline runtime proof
+        timeout-minutes: 5
+        run: pnpm test:stories
+
   # The single required status check. Branch protection requires this job, so
   # measurable jobs may skip only when the detector reports code=false.
   quality-gate:
@@ -580,6 +614,7 @@ jobs:
       - platform-tests
       - frontend
       - frontend-production
+      - storybook
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -595,6 +630,7 @@ jobs:
           R_PLATFORM: ${{ needs.platform-tests.result }}
           R_FRONTEND: ${{ needs.frontend.result }}
           R_FRONTEND_PRODUCTION: ${{ needs.frontend-production.result }}
+          R_STORYBOOK: ${{ needs.storybook.result }}
         run: |
           set -euo pipefail
           echo "changes:        $R_CHANGES (code=$CODE)"
@@ -605,6 +641,7 @@ jobs:
           echo "platform-tests: $R_PLATFORM"
           echo "frontend:       $R_FRONTEND"
           echo "frontend-production: $R_FRONTEND_PRODUCTION"
+          echo "storybook:      $R_STORYBOOK"
 
           # The detector itself is never allowed to skip or fail. If it did, we
           # do not know whether the measurable jobs were skipped on purpose or lost,
@@ -619,7 +656,7 @@ jobs:
           # upstream and GitHub cascaded it, which is a failure, not a pass.
           for pair in "lint:$R_LINT" "typecheck:$R_TYPECHECK" "runtime-floor:$R_FLOOR" \
                       "test:$R_TEST" "platform-tests:$R_PLATFORM" "frontend:$R_FRONTEND" \
-                      "frontend-production:$R_FRONTEND_PRODUCTION"; do
+                      "frontend-production:$R_FRONTEND_PRODUCTION" "storybook:$R_STORYBOOK"; do
             job=${pair%%:*}
             res=${pair#*:}
             if [ "$res" = "success" ]; then

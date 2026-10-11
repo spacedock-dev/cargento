@@ -1015,3 +1015,28 @@ Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,608,412 bytes
 Attention and Capacity layer; first-render medians are 136.8, 94.2 and 124.3 ms and poll-to-paint medians are 43.7, 46 and 60.1 ms;
 every budget passes. Production
 coverage is the pre-deletion baseline; native Windows and Linux are checked by the pull request.
+
+## Component stories
+
+Storybook is a development dependency and is never imported by the shipped entry. Its configuration
+lives under `frontend/.storybook` and its asserted examples under `frontend/stories`, outside the
+Tailwind source scan. No docs, MDX, onboarding or hosted service addon is installed. The static output
+is ignored and kept outside `frontend/src`. The component explorer reuses the page's styles, Tailwind
+plugin, dark palette and fifteen embedded font faces.
+
+On 2026-10-11 the npm registry dated Storybook 10.6.0 to September 2 and 10.6.1 to September 29.
+The two-week delay therefore selects 10.6.0 for `storybook`, `@storybook/react-vite` and
+`@storybook/addon-vitest`; no release-age exclusion was added. The eligible addon supports Vitest 4,
+so Vitest and its Playwright provider are pinned to 4.1.11 (August 18) with Playwright 1.63.0, the
+existing browser lock. Strict peers and the script-denied frozen install remain in force.
+The dates can be checked in the [registry publication record](https://registry.npmjs.org/storybook).
+
+Play functions test the words, roles, native elements, keyboard actions, focus and dimensions a reader
+observes. Every story runs with console and page errors and external requests treated as failures;
+a separate static-manager check covers the explorer shell as well. These checks make component
+changes reviewable in isolation. They do not replace the application browser proofs or measure live
+board refreshes, backend routes, installed packaging or fluidity. `pnpm build:check` is the proof that
+the built page matches its recorded source provenance. It hashes the complete package manifest
+and lockfile, so dependency edits require a new integrity record even when HTML and licenses
+remain identical. See [Component stories](../CONTRIBUTING.md#component-stories)
+for contributor commands and the current prompt-select fixture boundary.

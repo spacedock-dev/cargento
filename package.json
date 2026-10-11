@@ -14,7 +14,7 @@
     "preview": "vite preview --config frontend/vite.config.mts",
     "lint": "biome check --error-on-warnings",
     "format": "biome format --write",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project frontend/.storybook/tsconfig.json",
     "test": "vitest run && node --test frontend/build/*.test.mjs",
     "test:watch": "vitest",
     "test:browser": "playwright test",
@@ -40,7 +40,10 @@
     "test:css:browser": "node --test frontend/e2e/support/session-chrome.test.mjs frontend/e2e/support/project-chrome.test.mjs frontend/e2e/support/attention-chrome.test.mjs && node frontend/e2e/css-contract.mjs",
     "test:production:browser": "node frontend/e2e/production-proofs.mjs",
     "test:css:coverage": "node frontend/build/css-coverage.mjs check",
-    "test:styles": "node frontend/build/style-policy.mjs"
+    "test:styles": "node frontend/build/style-policy.mjs",
+    "storybook": "node frontend/storybook/run.mjs dev",
+    "build:storybook": "node frontend/storybook/run.mjs build",
+    "test:stories": "node frontend/storybook/run.mjs test"
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",
@@ -54,6 +57,8 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@playwright/test": "1.63.0",
+    "@storybook/addon-vitest": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
@@ -62,9 +67,12 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",
+    "@vitest/browser-playwright": "4.1.11",
     "jsdom": "30.1.2",
+    "playwright": "1.63.0",
+    "storybook": "10.6.0",
     "typescript": "6.0.3",
     "vite": "8.3.3",
-    "vitest": "5.0.3"
+    "vitest": "4.1.11"
   }
 }

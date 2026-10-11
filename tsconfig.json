@@ -36,5 +36,10 @@
     "frontend/**/*.mts",
     "vitest.config.mts",
     "playwright.config.ts"
+  ],
+  "exclude": [
+    "frontend/stories/**",
+    "frontend/.storybook/**",
+    "frontend/storybook/guard.mts"
   ]
 }
