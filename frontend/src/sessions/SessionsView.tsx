@@ -10,7 +10,7 @@ import { fragmentForRoute, type RouteInput } from '../router/grammar';
 import { selectObserved } from '../observed/select';
 import { selectHarnessSources } from '../store/selectors';
 import { useDisplayed, useNavigate, useShell } from '../shell/context';
-import { buildSessionsScreen, NOT_CHECKED, type SessionRow } from './rows';
+import { analysisAvailable, buildSessionsScreen, NOT_CHECKED, type SessionRow } from './rows';
 import { sessionInstruction, type PromptCandidate } from './intent';
 import { goalFocusFor } from './heldState';
 import {
@@ -420,15 +420,18 @@ export function SessionsView({ chosenFor }: SessionsViewProps = {}) {
     [data, model, chosenFor],
   );
   if (!screen) return null;
+  const canAnalyze = analysisAvailable(data as unknown as Row);
   return (
     <section className="next-operations" data-next-view-body="sessions">
       <header className="next-operations-header">
         <h1>Session operations</h1>
         {/* [DEC-27](docs/design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result) */}
         <p data-next-sessions-orientation>
-          Open a session, set its goal and press Analyze drift to see how far it moved from it.
+          {canAnalyze
+            ? 'Open a session, set its goal and press Analyze drift to see how far it moved from it.'
+            : 'Open a session to see what it is doing and where it stands.'}
+          {canAnalyze && screen.lede ? ` ${NOT_CHECKED}` : ''}
         </p>
-        {screen.lede ? <p>{NOT_CHECKED}</p> : null}
         <IntentHowTo payload={data as unknown as Row} project="">
           <p className="next-why-body">{BOARD_WHY}</p>
           <p className="next-why-body">

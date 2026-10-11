@@ -47,6 +47,17 @@ export function sessionsContext(payload: Row): SessionsContext {
   };
 }
 
+export function analysisAvailable(payload: Row): boolean {
+  const context = sessionsContext(payload);
+  const routes = payload['reading_routes'];
+  return (
+    context.annotate &&
+    !context.unreadable &&
+    isRecord(routes) &&
+    Object.values(routes).some((route) => isRecord(route) && Boolean(route['provider']))
+  );
+}
+
 /* The label each harness publishes about itself, by key. */
 export function harnessLabels(payload: Row): Map<string, string> {
   const labels = new Map<string, string>();

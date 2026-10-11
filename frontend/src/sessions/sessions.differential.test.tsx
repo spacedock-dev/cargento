@@ -47,7 +47,6 @@ function summarize(source: Element | DocumentFragment): Summary {
   return {
     header: (() => {
       const header = root.querySelector('.next-operations-header');
-      header?.querySelector('[data-next-sessions-orientation]')?.remove();
       const howto = [...(header?.querySelectorAll('details') ?? [])].find(
         (node) => node.querySelector('summary')?.textContent === 'How Intent and drift works',
       );
@@ -94,11 +93,27 @@ function legacySummary(payload: unknown): Summary {
   const header = template.content.querySelector('.next-operations-header');
   header?.querySelector(':scope > span')?.remove();
   header?.querySelectorAll('summary').forEach((node) => node.remove());
+  const data = payload as Record<string, unknown>;
+  const routes = data['reading_routes'];
+  const canAnalyze =
+    data['annotate'] === true &&
+    !data['annotate_unreadable'] &&
+    routes &&
+    typeof routes === 'object' &&
+    Object.values(routes).some((route) => route && typeof route === 'object' && route['provider']);
+  const unchecked = header?.querySelector(':scope > p');
+  const orientation = document.createElement('p');
+  orientation.textContent = canAnalyze
+    ? 'Open a session, set its goal and press Analyze drift to see how far it moved from it.' +
+      (unchecked ? ` ${unchecked.textContent}` : '')
+    : 'Open a session to see what it is doing and where it stands.';
+  unchecked?.remove();
+  header?.querySelector('h1')?.after(orientation);
   template.content
     .querySelectorAll('[data-next-fleet-fact="requests"],[data-next-fleet-fact="reported-blocks"]')
     .forEach((node) => node.remove());
   template.content.querySelectorAll('.next-operation-assignment').forEach((node) => {
-    node.textContent = node.textContent?.replace('ASSIGNMENT · ', 'Current task · ') ?? '';
+    node.textContent = node.textContent?.replace(/^ASSIGNMENT · /, 'Current task · ') ?? '';
   });
   return summarize(template.content);
 }

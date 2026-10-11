@@ -1,4 +1,8 @@
-import { projectWordDeviation, projectGlossEnabled } from '../../test/projectWordDeviation';
+import {
+  projectWordDeviation,
+  projectGlossEnabled,
+  projectInstructionHeading,
+} from '../../test/projectWordDeviation';
 import { describe, expect, it } from 'vitest';
 import { disclosureReadings, normalizeDisclosures } from '../../test/disclosures';
 import { compatSessKey, exactIdentity } from '../api/identity';
@@ -106,7 +110,7 @@ describe('the project page reads as the legacy page does, over generated boards'
     const REACH: readonly (readonly [string, RegExp])[] = [
       ['captain needed', /CAPTAIN NEEDED/],
       ['fo inspecting', /FO INSPECTING/],
-      ['fo continues', /FO CONTINUES/],
+      ['continues', /FO CONTINUES|CONTINUES · Continue the current task/],
       ['waiting on you', /WAITING ON YOU/],
       ['child handoff', /Evidence · child handoff/],
       ['assignment from state', /Exact workflow state/],
@@ -202,6 +206,8 @@ describe('the project page reads as the legacy page does, over generated boards'
       const legacy = projectWordDeviation(
         summarize(parseHtml(html), tab),
         projectGlossEnabled(board, label),
+        [board, context, notes, focusContext],
+        projectInstructionHeading(board, label, focus),
       );
 
       const contexts: Record<string, unknown> = {};
@@ -279,6 +285,8 @@ describe('the browser proof’s own board reads the same on both pages', () => {
         const legacy = projectWordDeviation(
           summarize(parseHtml(made.app.call<string>('nextProjectView', label)), tab),
           projectGlossEnabled(board, label),
+          [board, context],
+          projectInstructionHeading(board, label),
         );
         const page = mountProject({
           hash: fragment,

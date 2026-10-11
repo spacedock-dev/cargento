@@ -641,7 +641,8 @@ request state. PLAN therefore has no completion glyph, completion count, merge s
 state. No Spacedock declaration omits the wrapper. A first officer whose workflow has no fresh
 entities and an ensign whose plan lives with its first officer keep distinct empty messages. The
 cockpit keeps plans in Now alongside current activity and observed endings. Completed tasks and
-state changes live in Course. The stated goal stays in the briefing, and Console holds waiting
+state changes live in Course. The harness instruction stays in the briefing as Latest instruction,
+or Published instruction when undated, under [DEC-27](design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result). Console holds waiting
 requests, delegation, capacity and browser-local controls.
 
 ## NUI-7: project activity is a current-payload answer
@@ -1065,11 +1066,11 @@ was doing now, what came next, and whether it was blocked. The compressed remain
 recently observed sessions look too much like current operations. More ranking did not solve the
 information hierarchy.
 
-Session operations initially became the default route. The v2 design moves the entry point up to
-Projects, so the reader first finds the project and then its sessions. Sessions remains the fleet
-operations view, with four bounded counts: active now, working, exact requests, and reported
-blocks. `Active now` means working or needs-input state without an observed end, or an exact
-request. It is not the number of rows in the payload. That distinction prevents a 24-hour
+Session operations initially became the default route; v2 moved the entry point to Projects.
+[DEC-27](design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result)
+restores Sessions as the entry point, with active now and working as its two counters. Exact
+requests and reported blocks move to Attention. `Active now` means working or needs-input state
+without an observed end, or an exact request. It is not the number of rows in the payload. That distinction prevents a 24-hour
 observation window from reading as a list of open harness processes.
 
 The body makes the time boundary visible. Active now contains only exact sessions with active

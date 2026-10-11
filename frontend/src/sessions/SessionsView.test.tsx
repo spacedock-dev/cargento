@@ -168,11 +168,12 @@ describe('the groups', () => {
 
   it('says no session has been checked while checks are visible and none exists', async () => {
     await open(
-      board([{ harness: 'claude', sid: 'a', project: 'p', state: 'idle' }], { annotate: true }),
+      board([{ harness: 'claude', sid: 'a', project: 'p', state: 'idle' }], {
+        annotate: true,
+        reading_routes: { claude: { provider: 'claude' } },
+      }),
     );
-    expect(
-      screen.getByText('No session has been checked for drift yet; open one to check it.'),
-    ).toBeInTheDocument();
+    expect(document.querySelector('[data-next-sessions-orientation]')).toBeInTheDocument();
     document.body.innerHTML = '';
     await open(
       board(
@@ -181,7 +182,9 @@ describe('the groups', () => {
       ),
     );
     expect(
-      screen.queryByText('No session has been checked for drift yet; open one to check it.'),
+      document
+        .querySelector('[data-next-sessions-orientation]')
+        ?.textContent.match(/No session has been checked/),
     ).toBeNull();
   });
 
@@ -324,6 +327,42 @@ describe('the header counts and the screen are one reading of one payload', () =
 });
 
 describe('the Sessions first step', () => {
+  it.each([
+    { annotate: false, reading_routes: { claude: { provider: 'claude' } } },
+    {
+      annotate: true,
+      annotate_unreadable: 'Store unreadable',
+      reading_routes: { claude: { provider: 'claude' } },
+    },
+    { annotate: true, reading_routes: { claude: { provider: '' } } },
+  ])(
+    'keeps a truthful orientation and how-to when analysis is unavailable: %j',
+    async (capabilities) => {
+      await open(
+        board([{ harness: 'claude', sid: 'a', project: 'p', state: 'idle' }], capabilities),
+      );
+      const orientation = document.querySelector('[data-next-sessions-orientation]');
+      expect(orientation?.textContent).toBe(
+        'Open a session to see what it is doing and where it stands.',
+      );
+      expect(document.querySelectorAll('.next-operations-header > p')).toHaveLength(1);
+      expect(
+        screen.getByRole('button', { name: 'How Intent and drift works' }),
+      ).toBeInTheDocument();
+    },
+  );
+  it('merges the unchecked clause into one orientation paragraph when analysis is available', async () => {
+    await open(
+      board([{ harness: 'claude', sid: 'a', project: 'p', state: 'idle' }], {
+        annotate: true,
+        reading_routes: { claude: { provider: 'claude' } },
+      }),
+    );
+    expect(document.querySelector('[data-next-sessions-orientation]')?.textContent).toBe(
+      'Open a session, set its goal and press Analyze drift to see how far it moved from it. No session has been checked for drift yet; open one to check it.',
+    );
+    expect(document.querySelectorAll('.next-operations-header > p')).toHaveLength(1);
+  });
   it.each([false, true])(
     'keeps orientation and the shared how-to when a checked session exists: %s',
     async (checked) => {
@@ -338,14 +377,10 @@ describe('the Sessions first step', () => {
               departure_checked: checked,
             },
           ],
-          { annotate: true },
+          { annotate: true, reading_routes: { claude: { provider: 'claude' } } },
         ),
       );
-      expect(
-        screen.getByText(
-          'Open a session, set its goal and press Analyze drift to see how far it moved from it.',
-        ),
-      ).toBeInTheDocument();
+      expect(document.querySelector('[data-next-sessions-orientation]')).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'How Intent and drift works' }),
       ).toBeInTheDocument();

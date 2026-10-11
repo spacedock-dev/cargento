@@ -3,61 +3,14 @@ import { goldenFor, jsonSafe, normalise } from './golden.mjs';
 
 /* DEC-27's retracted controls and relocated explanation change only the recorded
    side. React observations retain every control and word, so regressions fail. */
-export function sessionDeviations(proof) {
+export function sessionDeviations(proof, payload = () => ({})) {
   const golden = goldenFor(proof);
   const seen = new Map();
-  const retract = (value, key = '') => {
-    if (typeof value === 'string') {
-      value = value.replaceAll('ASSIGNMENT', 'Current task');
-      if (key === 'header' || key === 'text')
-        return value
-          .replace(/Copy ID|Copy link|Copy command/g, '')
-          .replaceAll('COMMAND SURFACE', '')
-          .replaceAll('How rows are split', '')
-          .replaceAll('Goal sources', '')
-          .replace(
-            /No resume commandWhy(?:This session published no usable id this run|[^.]* publishes no re-entry command), so (?:there is no re-entry command to copy|there is none to copy)\./g,
-            '',
-          )
-          .replace(/No resume command · | · No resume command|No resume command/g, '')
-          .replace(
-            /(?:This session published no usable id this run|(?<=Why)[^.]* publishes no re-entry command), so (?:there is no re-entry command to copy|there is none to copy)\./g,
-            '',
-          )
-          .replace(
-            /What analysis does(?:When you analyze drift, Cargento lists where this session departed from your saved goal\. |Choose a goal or use your prompt, then analyze drift: Cargento lists where this session departed from it\. )It never writes into the session, so steering stays yours\./g,
-            '',
-          );
-      return value;
-    }
-    if (Array.isArray(value))
-      return value
-        .filter(
-          (item) =>
-            !(
-              typeof item === 'string' &&
-              /^Copy (session ID |a link to this session|re-entry command )/.test(item)
-            ),
-        )
-        .filter(
-          (item) =>
-            !(Array.isArray(item) && ['Copy ID', 'Copy link', 'Copy command'].includes(item[0])),
-        )
-        .map((item) => retract(item, key));
-    if (value && typeof value === 'object')
-      return Object.fromEntries(
-        Object.entries(value).map(([name, item]) => [
-          name,
-          retract(name === 'fleet' ? item.slice(0, 2) : item, name),
-        ]),
-      );
-    return value;
-  };
   return {
     ...golden,
-    recorded: (key) => retract(golden.recorded(key)),
+    recorded: (key) => normaliseSessionRecord(golden.recorded(key), payload()),
     observe(key) {
-      const value = retract(golden.observe(key));
+      const value = normaliseSessionRecord(golden.observe(key), payload());
       seen.set(key, value);
       return value;
     },
@@ -66,4 +19,117 @@ export function sessionDeviations(proof) {
       assert.deepEqual(jsonSafe(normalise(value)), seen.get(key), `${proof}: ${key}`);
     },
   };
+}
+
+export function normaliseSessionRecord(record, evidence = {}) {
+  const words = new Set();
+  const collect = (value) => {
+    if (
+      typeof value === 'string' &&
+      /ASSIGNMENT|Copy ID|Copy link|Copy command|COMMAND SURFACE|How rows are split|Goal sources|No resume command|What analysis does/.test(
+        value,
+      )
+    )
+      words.add(value.replace(/\s+/g, ' ').trim());
+    else if (Array.isArray(value)) value.forEach(collect);
+    else if (value && typeof value === 'object') Object.values(value).forEach(collect);
+  };
+  collect(evidence);
+  const escaped = [...words]
+    .sort((a, b) => b.length - a.length)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = escaped.length ? new RegExp(escaped.join('|'), 'g') : null;
+  const preserve = (value, change) => {
+    const held = [];
+    const masked = pattern
+      ? value.replace(pattern, (word) => `\uE000${held.push(word) - 1}\uE001`)
+      : value;
+    return change(masked).replace(/\uE000(\d+)\uE001/g, (_match, index) => held[Number(index)]);
+  };
+  const retract = (value, key = '', path = []) => {
+    if (typeof value === 'string') {
+      const sessionHeader =
+        key === 'header' &&
+        path.length === 1 &&
+        (Array.isArray(record?.groups) || Array.isArray(record?.attrs));
+      const driftCard = key === 'text' && path.length === 1 && Array.isArray(record?.resultStates);
+      const sessionRow = key === 'text' && path.includes('rows');
+      if (!sessionHeader && !driftCard && !sessionRow && !path.includes('parts')) return value;
+      return preserve(value, (value) => {
+        if (key === 'text' && path.includes('rows'))
+          value = value.replace(/ASSIGNMENT · /, 'Current task · ');
+        if (path.includes('parts') && path.includes('.next-session-evidence'))
+          value = value.replace(/^ASSIGNMENT/, 'Current task');
+        if (key === 'header' || key === 'text')
+          return value
+            .replace(/Copy ID|Copy link|Copy command/g, '')
+            .replaceAll('COMMAND SURFACE', '')
+            .replaceAll('How rows are split', '')
+            .replaceAll('Goal sources', '')
+            .replace(
+              /No resume commandWhy(?:This session published no usable id this run|[^.]* publishes no re-entry command), so (?:there is no re-entry command to copy|there is none to copy)\./g,
+              '',
+            )
+            .replace(/No resume command · | · No resume command|No resume command/g, '')
+            .replace(
+              /(?:This session published no usable id this run|(?<=Why)[^.]* publishes no re-entry command), so (?:there is no re-entry command to copy|there is none to copy)\./g,
+              '',
+            )
+            .replace(
+              /What analysis does(?:When you analyze drift, Cargento lists where this session departed from your saved goal\. |Choose a goal or use your prompt, then analyze drift: Cargento lists where this session departed from it\. )It never writes into the session, so steering stays yours\./g,
+              '',
+            );
+        return value;
+      });
+    }
+    if (Array.isArray(value))
+      return value
+        .filter(
+          (item) =>
+            !(
+              ['headerButtons', 'buttons', 'copyLabels'].includes(key) &&
+              typeof item === 'string' &&
+              /^Copy (session ID |a link to this session|re-entry command )/.test(item)
+            ),
+        )
+        .filter(
+          (item) =>
+            !(
+              ['buttons', 'controls'].includes(key) &&
+              Array.isArray(item) &&
+              ['Copy ID', 'Copy link', 'Copy command'].includes(item[0])
+            ),
+        )
+        .map((item) =>
+          retract(item, key, [
+            ...path,
+            ...(Array.isArray(item) && typeof item[0] === 'string' ? [item[0]] : []),
+          ]),
+        );
+    if (value && typeof value === 'object')
+      return Object.fromEntries(
+        Object.entries(value).map(([name, item]) => [
+          name,
+          retract(name === 'fleet' ? item.slice(0, 2) : item, name, [...path, name]),
+        ]),
+      );
+    return value;
+  };
+  const result = retract(record);
+  if (Array.isArray(result?.groups) && typeof result.header === 'string') {
+    const available =
+      evidence.annotate === true &&
+      !evidence.annotate_unreadable &&
+      Object.values(evidence.reading_routes || {}).some((route) => route?.provider);
+    const sentence = available
+      ? 'Open a session, set its goal and press Analyze drift to see how far it moved from it.'
+      : 'Open a session to see what it is doing and where it stands.';
+    const unchecked = 'No session has been checked for drift yet; open one to check it.';
+    result.header = result.header.replace(
+      'Session operations',
+      `Session operations${sentence}${available && result.header.includes(unchecked) ? ' ' : ''}`,
+    );
+    if (!available) result.header = result.header.replace(unchecked, '');
+  }
+  return result;
 }

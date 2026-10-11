@@ -5,7 +5,7 @@ import {
   type OutcomeLine,
 } from '../intent/annotation';
 import type { ObservedProject, ObservedSession } from '../observed';
-import { durationSince } from '../observed/values';
+import { compare, sessionKey, durationSince } from '../observed/values';
 import { PROMPT_SOURCES } from '../sessions/intent';
 
 /* Latest instruction is a list, not a field: zero to n rows, each with its own tag and its own source line. The
@@ -20,23 +20,43 @@ export interface GoalScope {
   readonly at: number | null;
 }
 
-/* Whose derived goal this is. A focused session answers for itself; with none, the project answers for the
-   group, and that goal is whichever session moved most recently. Pairing it with one session's typed words
-   would put another session's directive under DERIVED FROM THE HARNESS. */
+/* Session activity cannot date an instruction. Undated instructions stay available,
+   but the card does not claim a latest instruction when any candidate lacks a stamp. */
 export function goalScope(project: ObservedProject, focus: ObservedSession | null): GoalScope {
-  return focus
-    ? {
-        text: focus.ownGoalKnown ? focus.ownGoalText : 'This session published no instruction',
-        known: focus.ownGoalKnown,
-        src: focus.ownGoalSrcText.replace('workflow goal', 'workflow instruction'),
-        at: focus.ownGoalAt,
-      }
-    : {
-        text: project.goalKnown ? project.goalText : 'No task or workflow instruction published',
-        known: project.goalKnown,
-        src: project.goalSrcText.replace('workflow goal', 'workflow instruction'),
-        at: project.goalAt,
-      };
+  const candidates = project.sessions.filter((session) => session.ownGoalKnown);
+  candidates.sort(
+    (a, b) =>
+      (b.ownGoalAt ?? -Infinity) - (a.ownGoalAt ?? -Infinity) ||
+      compare(sessionKey(a), sessionKey(b)),
+  );
+  if (!focus && !candidates.some((session) => session.ownGoalAt !== null))
+    return {
+      text: project.goalKnown ? project.goalText : 'No task or workflow instruction published',
+      known: project.goalKnown,
+      src: project.goalSrcText.replace('workflow goal', 'workflow instruction'),
+      at: null,
+    };
+  const selected = focus ?? candidates[0];
+  return {
+    text: selected?.ownGoalKnown
+      ? selected.ownGoalText
+      : focus
+        ? 'This session published no instruction'
+        : 'No task or workflow instruction published',
+    known: selected?.ownGoalKnown ?? false,
+    src: selected?.ownGoalSrcText.replace('workflow goal', 'workflow instruction') ?? '',
+    at: selected?.ownGoalAt ?? null,
+  };
+}
+
+export function instructionHeading(
+  project: ObservedProject,
+  focus: ObservedSession | null,
+): string {
+  const candidates = focus ? [focus] : project.sessions.filter((session) => session.ownGoalKnown);
+  return candidates.length && candidates.every((session) => session.ownGoalAt !== null)
+    ? 'Latest instruction'
+    : 'Published instruction';
 }
 
 /** "Spacedock · workflow goal · observed 4m ago": the source, with when the directive was observed. */
@@ -76,8 +96,8 @@ export function projectGoal(
   if (annotation?.['goal']) {
     typed.push({
       tag: PROMPT_SOURCES.includes(annotation['goal_source'] as string)
-        ? 'FROM YOUR PROMPT'
-        : 'YOUR WORDS',
+        ? 'Your saved words · from your prompt'
+        : 'Your saved words',
       text: String(annotation['goal']),
       source: revision,
       known: true,
@@ -86,7 +106,7 @@ export function projectGoal(
   const lines: OutcomeLine[] = annotationLines(annotation);
   for (const line of lines) {
     typed.push({
-      tag: `YOUR WORDS · EXPECTED OUTCOME · LINE ${String(line.k)}`,
+      tag: `Your saved words · expected outcome · line ${String(line.k)}`,
       text: line.text,
       source: revision,
       known: true,

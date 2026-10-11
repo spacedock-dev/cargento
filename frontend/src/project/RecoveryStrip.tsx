@@ -10,14 +10,12 @@ import {
   resumeCommand,
 } from '../controls';
 import { useControls, useValueStore } from '../controls/kit';
-import { stageData } from '../steering/stage';
-import { isRecord } from '../observed';
 import { annotationOf } from '../intent/annotation';
 import { sessionKey } from '../observed/values';
 import type { ObservedSession } from '../observed';
 import { RouteAnchor } from '../sessions/SessionsView';
 import { sessKey, workingSessions } from './group';
-import { projectGoal } from './goal';
+import { instructionHeading, projectGoal } from './goal';
 import { briefingOf, noteKey, type ProjectModel } from './model';
 import { Value } from './parts';
 import { authorityVerb, recoveryFactSource, type Briefing, type Child } from './recovery';
@@ -99,7 +97,14 @@ function Execution({
   readonly briefing: Briefing;
   readonly compactIdle: boolean;
 }) {
-  if (compactIdle) return <strong>No execution observed · Captain not needed</strong>;
+  if (compactIdle)
+    return (
+      <strong>
+        {model.env.workflow
+          ? 'No execution observed · Captain not needed'
+          : 'No execution observed · You are not needed'}
+      </strong>
+    );
   const { group, harnesses } = model;
   const children: Child[] = [...briefing.children.active];
   if (briefing.children.latestReturn) children.push(briefing.children.latestReturn);
@@ -210,8 +215,14 @@ function Attention({
     : coverage.state !== 'complete' || system.length
       ? 'fo-inspecting'
       : 'fo-continues';
-  const stateLabel =
-    state === 'captain-needed'
+  const workflow = model.env.workflow === true;
+  const stateLabel = !workflow
+    ? state === 'captain-needed'
+      ? 'NEEDS YOU'
+      : state === 'fo-inspecting'
+        ? 'CHECKING'
+        : 'CONTINUES'
+    : state === 'captain-needed'
       ? 'CAPTAIN NEEDED'
       : state === 'fo-inspecting'
         ? 'FO INSPECTING'
@@ -223,9 +234,17 @@ function Attention({
     captain.length || needs
       ? ''
       : coverage.state === 'complete'
-        ? 'Captain not needed'
-        : 'Captain state unknown';
-  const heading = compactIdle ? 'FO CONTINUES · Continue current assignment' : stateLabel;
+        ? workflow
+          ? 'Captain not needed'
+          : 'You are not needed'
+        : workflow
+          ? 'Captain state unknown'
+          : 'Your attention is unknown';
+  const heading = compactIdle
+    ? workflow
+      ? 'FO CONTINUES · Continue current assignment'
+      : 'CONTINUES · Continue the current task'
+    : stateLabel;
   const row = (item: (typeof attention)[number]) => (
     <strong key={`${item.owner}\n${item.label}`}>{`${authorityVerb(item)} · ${item.label}`}</strong>
   );
@@ -254,11 +273,11 @@ function Attention({
       >
         {attention.map((item) => (
           <small key={`${item.owner}\n${item.label}`}>
-            {`${item.owner} · ${item.kind || 'attention'} · ${item.label} · ${String(field(item.evidence, 'source') || 'source unavailable')} · ${String(field(item.evidence, 'confidence') || 'confidence unavailable')}`}
+            {`${workflow ? item.owner : item.owner === 'CAPTAIN' ? 'YOU' : 'AGENT'} · ${item.kind || 'attention'} · ${item.label} · ${String(field(item.evidence, 'source') || 'source unavailable')} · ${String(field(item.evidence, 'confidence') || 'confidence unavailable')}`}
           </small>
         ))}
         {remainder ? (
-          <small>{`${String(remainder)} more FO ${remainder === 1 ? 'action' : 'actions'}`}</small>
+          <small>{`${String(remainder)} more ${workflow ? 'FO ' : ''}${remainder === 1 ? 'action' : 'actions'}`}</small>
         ) : null}
         <small data-next-cockpit-attention-coverage="">{`${coverage.label} · ${coverage.source}`}</small>
       </Disclosure>
@@ -288,7 +307,7 @@ function Goal({ model }: { readonly model: ProjectModel }) {
   return (
     <Card as="section" variant="project-goal" className="next-project-goal">
       <header>
-        <h2>Latest instruction</h2>
+        <h2>{instructionHeading(model.group.observed, focusObserved)}</h2>
         {!goal.typed.length && goal.scope.known ? (
           <span className="next-project-goal-source">{goal.derivedSource}</span>
         ) : null}
@@ -409,10 +428,7 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
     >
       <header>
         <strong>Where this project stands</strong>
-        {group.sessions.some(
-          (session) =>
-            isRecord(session['spacedock']) && session['spacedock']['role'] === 'first-officer',
-        ) || stageData(model.payload).enabled ? (
+        {model.env.workflow ? (
           <small className="next-cockpit-recovery-gloss">{AUTHORITY_GLOSS}</small>
         ) : null}
       </header>
@@ -451,7 +467,7 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
       <div className="next-cockpit-recovery-evidence">
         <span>Latest result</span>
         {latest.directionInAssignment ? (
-          <p>Direction shown in assignment</p>
+          <p>Direction shown in the current task</p>
         ) : latest.direction ? (
           <>
             <span>{exactLabel}</span>

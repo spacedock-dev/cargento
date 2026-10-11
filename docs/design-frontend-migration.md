@@ -16,6 +16,12 @@ that study first. The recorded answers the React page is held to are described i
 
 ## Held to recorded answers
 
+The DEC-27 correction keeps Sessions orientation in the compared header, qualified by the
+annotation store and reading routes. Project instruction order follows instruction timestamps;
+undated cards say Published instruction and saved rows say Your saved words. Ordinary projects
+use plain attention states. The wording adapters change named UI regions and protect published
+quoted values, including instructions containing an old label. The recorded fixtures stay intact.
+
 While the legacy page existed, each port was proved against it: the pure functions by running the
 legacy function next to its TypeScript twin over generated inputs, and each rendered surface by
 serving one board to both pages in one Chromium and comparing what a reader can read. Those

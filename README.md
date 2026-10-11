@@ -157,12 +157,14 @@ type the goal and the expected outcome, a checklist of up to six lines, you are 
 press, and read back what has been raised about that session and what became of the raise.
 Open a session, set a goal and press `Analyze drift`; `How Intent and drift works` beside Intent
 explains those steps, the reading's limits and when an outcome line gives a drift level.
-Sessions keeps that orientation and how-to visible after a session has been checked. Every goal
+Sessions keeps an orientation paragraph and how-to visible after a session has been checked.
+The paragraph explains analysis when annotations are on, the store is readable and a reading
+route names a provider; otherwise it explains how to inspect a session. Every goal
 cell, including saved words, opens its session at Intent.
 Console collects delegation, waiting requests,
 capacity and browser-local tripwires. The terminal bridge and semantic history remain prototypes;
 the [cockpit design contract](docs/design-next-ui.md#cockpit-reconciliation) records their limits.
-Sessions puts active work above recent history and gives each active session the same four facts: where it
+Sessions puts active work above recent history, counts active now and working, and gives each active session the same four facts: where it
 is, what it is doing now, what it does next, and whether it is blocked.
 Attention collects what needs a human, and the Intent log lists every board session plus retained
 annotations, with typed, cached deterministic and workflow goals labeled by source. Keyboard shortcuts `s`, `p` and `a` reach

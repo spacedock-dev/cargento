@@ -87,7 +87,6 @@ const summarizeList = () => {
   return {
     header: (() => {
       const header = root.querySelector('.next-operations-header').cloneNode(true);
-      header.querySelector('[data-next-sessions-orientation]')?.remove();
       const trigger = header.querySelector('[data-slot=popover-trigger]');
       const popup = [...document.querySelectorAll('[data-slot=popover-content]')].find(
         (popup) => popup.getAttribute('aria-labelledby') === trigger?.id,
@@ -289,7 +288,8 @@ const DEVIATIONS = [
 ];
 
 const browser = await chromium.launch();
-const golden = sessionDeviations('sessions-parity');
+let holder;
+const golden = sessionDeviations('sessions-parity', () => holder?.body || {});
 const board = await startSessionsBoard();
 const reactOrigins = [board.react.origin, board.react.viteOrigin];
 const shots = [];
@@ -306,8 +306,40 @@ try {
   await mkdir(SHOTS, { recursive: true });
   const react = await newPage();
   const real = await (await fetch(board.react.origin + '/api/data')).json();
-  const holder = { body: real };
+  holder = { body: real };
   await freeze(react, holder);
+
+  await step('orientation: annotations off, unreadable store and providerless board', async () => {
+    const o = await newPage();
+    const states = [
+      { annotate: false, reading_routes: { claude: { provider: 'claude' } } },
+      {
+        annotate: true,
+        annotate_unreadable: 'Store unreadable',
+        reading_routes: { claude: { provider: 'claude' } },
+      },
+      { annotate: true, reading_routes: { claude: { provider: '' } } },
+    ];
+    const fixture = { body: {} };
+    await freeze(o, fixture);
+    try {
+      for (const state of states) {
+        fixture.body = { ...real, ...state };
+        await load(o, board.react.origin, '#n=sessions');
+        assert.equal(
+          await o.page.locator('[data-next-sessions-orientation]').textContent(),
+          'Open a session to see what it is doing and where it stands.',
+        );
+        assert.equal(await o.page.locator('.next-operations-header > p').count(), 1);
+        assert.equal(
+          await o.page.getByRole('button', { name: 'How Intent and drift works' }).count(),
+          1,
+        );
+      }
+    } finally {
+      await o.close();
+    }
+  });
 
   await step('first step: four goal links need one click and land focus on Intent', async () => {
     const fixtures = [
@@ -341,7 +373,15 @@ try {
       },
     ].map((row) => ({ ...row, project: 'first/step' }));
     const o = await newPage();
-    const state = { body: { ...real, annotate: true, sessions: fixtures } };
+    const state = {
+      body: {
+        ...real,
+        annotate: true,
+        annotate_unreadable: '',
+        reading_routes: { claude: { provider: 'claude' } },
+        sessions: fixtures,
+      },
+    };
     await freeze(o, state);
     const clicks = [];
     try {
@@ -352,13 +392,11 @@ try {
         };
         await load(o, board.react.origin, '#n=sessions');
         assert.equal(
-          await o.page
-            .getByText(
-              'Open a session, set its goal and press Analyze drift to see how far it moved from it.',
-              { exact: true },
-            )
-            .count(),
-          1,
+          await o.page.locator('[data-next-sessions-orientation]').textContent(),
+          'Open a session, set its goal and press Analyze drift to see how far it moved from it.' +
+            (index % 2 === 0
+              ? ' No session has been checked for drift yet; open one to check it.'
+              : ''),
         );
         assert.equal(
           await o.page.getByRole('button', { name: 'How Intent and drift works' }).count(),

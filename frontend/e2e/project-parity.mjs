@@ -29,7 +29,11 @@
  * Timing: every fixed wait here means "give the page time to react", and a hosted runner has a few shared cores,
  * so each is tripled under CI and every comparison reads until two reads agree (`settled`) rather than once.
  */
-import { projectWordDeviation, projectGlossEnabled } from '../test/projectWordDeviation.ts';
+import {
+  projectWordDeviation,
+  projectGlossEnabled,
+  projectInstructionHeading,
+} from '../test/projectWordDeviation.ts';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -301,7 +305,19 @@ try {
     const project = decodeURIComponent(fragment.split(':')[1] || '');
     return {
       mine,
-      old: projectWordDeviation(golden.observe(key), projectGlossEnabled(holder.body, project)),
+      old: projectWordDeviation(
+        golden.observe(key),
+        projectGlossEnabled(holder.body, project),
+        [holder.body, holder.contexts],
+        projectInstructionHeading(
+          holder.body,
+          project,
+          holder.body.sessions?.find(
+            (row) =>
+              `${row.harness}:${row.sid}` === decodeURIComponent(fragment.split(':')[2] || ''),
+          ) ?? null,
+        ),
+      ),
     };
   }
 
@@ -346,6 +362,10 @@ try {
           'STEER · LOCAL ONLY',
           'FO is the first officer, the agent driving this workflow; Captain is you.',
           'Workflow stage conditions',
+          'FO INSPECTING',
+          'FO CONTINUES',
+          'CAPTAIN NEEDED',
+          'Captain state unknown',
         ])
           assert.ok(!text.includes(old), old);
         assert.equal(

@@ -85,7 +85,7 @@ describe('the recovery strip', () => {
     const page = open(WAITING as never);
     await page.settle();
     const strip = screen.getByLabelText('Recovery summary');
-    expect(within(strip).getByText('CAPTAIN NEEDED')).toBeTruthy();
+    expect(within(strip).getByText('NEEDS YOU')).toBeTruthy();
     expect(within(strip).getByText('ANSWER · Approve the plan?')).toBeTruthy();
     expect(within(strip).getByText('WAITING ON YOU')).toBeTruthy();
     // The exact request, the raise and the copy of the re-entry command, each on its own press.
@@ -97,18 +97,17 @@ describe('the recovery strip', () => {
     await page.settle();
     const strip = screen.getByLabelText('Recovery summary');
     expect(
-      within(strip).getAllByText(/Captain attention unavailable · project context request failed/)
-        .length,
+      within(strip).getAllByText(/Attention unavailable · project context request failed/).length,
     ).toBeGreaterThan(0);
-    expect(within(strip).queryByText('Captain not needed')).toBeNull();
+    expect(within(strip).queryByText('You are not needed')).toBeNull();
   });
 
   it('draws a project with nothing running and nothing asked as idle, and says why', async () => {
     const page = open(ENDED as never);
     await page.settle();
     const strip = screen.getByLabelText('Recovery summary');
-    expect(within(strip).getByText('FO CONTINUES · Continue current assignment')).toBeTruthy();
-    expect(within(strip).getByText('No execution observed · Captain not needed')).toBeTruthy();
+    expect(within(strip).getByText('CONTINUES · Continue the current task')).toBeTruthy();
+    expect(within(strip).getByText('No execution observed · You are not needed')).toBeTruthy();
   });
 });
 
@@ -124,7 +123,7 @@ describe('the Copy briefing control', () => {
     });
     expect(page.written).toHaveLength(1);
     expect(page.written[0]).toMatch(/^Cargento recovery briefing\nProject: app\nScope: Project\n/);
-    expect(page.written[0]).toContain('Captain attention: Authorize the dispatch?');
+    expect(page.written[0]).toContain('Your attention: Authorize the dispatch?');
     expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy();
   });
 
@@ -476,7 +475,7 @@ describe('plain project words', () => {
     expect(within(strip).getByText('Running now')).toBeInTheDocument();
     expect(within(strip).getByText('Needs you')).toBeInTheDocument();
     expect(within(strip).getByText('Latest result')).toBeInTheDocument();
-    expect(within(strip).getByText('Latest instruction')).toBeInTheDocument();
+    expect(within(strip).getByText('Published instruction')).toBeInTheDocument();
     const waiting = strip.querySelector('[data-next-cockpit-waiting]');
     expect(waiting?.textContent).toContain('Approve the plan?');
     expect(
@@ -536,5 +535,88 @@ describe('workflow vocabulary has a source', () => {
     expect(
       screen.getByText('FO is the first officer, the agent driving this workflow; Captain is you.'),
     ).toBeInTheDocument();
+    expect(document.querySelector('[data-next-cockpit-authority-state] > span')?.textContent).toBe(
+      'FO INSPECTING',
+    );
   });
+});
+
+describe('project instruction and authority evidence', () => {
+  const session = (sid: string, at: number | null, activity: number) => ({
+    harness: 'claude',
+    sid,
+    project: 'p',
+    state: 'working',
+    last_activity: activity,
+    instruction: { label: 'asked', text: `Fix COMMAND parsing ${sid}`, at },
+  });
+  it('chooses the newest instruction rather than the most active session', async () => {
+    const page = mountProject({
+      hash: '#n=project:p',
+      data: {
+        generated: 1000,
+        sessions: [session('old', 100, 900), session('new', 800, 200)],
+      },
+    });
+    await page.settle();
+    const card = document.querySelector('.next-project-goal');
+    expect(card?.querySelector('h2')?.textContent).toBe('Latest instruction');
+    expect(card?.textContent).toContain('Fix COMMAND parsing new');
+    expect(card?.textContent).not.toContain('Fix COMMAND parsing old');
+  });
+  it('does not claim an undated instruction is latest and labels saved words separately', async () => {
+    const page = mountProject({
+      hash: '#n=project:p:claude%3Aa',
+      data: {
+        generated: 1000,
+        sessions: [
+          {
+            ...session('a', null, 900),
+            annotation_goal: 'Save COMMAND exactly',
+            annotation_line_1: 'Keep STATED GOAL quoted',
+            annotation_revision: 1,
+          },
+        ],
+      },
+    });
+    await page.settle();
+    const card = document.querySelector('.next-project-goal');
+    expect(card?.querySelector('h2')?.textContent).toBe('Published instruction');
+    expect(card?.textContent).toContain('Your saved words');
+    expect(card?.textContent).toContain('Save COMMAND exactly');
+    expect(card?.textContent).toContain('Your saved words · expected outcome · line 1');
+    expect(card?.textContent).toContain('Keep STATED GOAL quoted');
+  });
+  it.each(['pending', 'complete', 'needed'])(
+    'uses plain authority states on an ordinary project: %s',
+    async (state) => {
+      const data = { generated: 1000, sessions: [session('a', 100, 900)] };
+      const context = {
+        semantic: {
+          projections: {
+            command_attention_coverage: { state: 'complete', scanned: 1, total: 1 },
+            command_attention:
+              state === 'needed'
+                ? [{ owner: 'CAPTAIN', question: 'Approve COMMAND?', kind: 'ask' }]
+                : [],
+          },
+        },
+      };
+      const page = mountProject({
+        hash: '#n=project:p',
+        data,
+        contexts: state === 'pending' ? {} : { 'p\n': context },
+      });
+      await page.settle();
+      const strip = screen.getByLabelText('Recovery summary');
+      expect(strip.textContent).not.toMatch(/\bFO\b|Captain|CAPTAIN|captain/);
+      expect(strip.querySelector('[data-next-cockpit-authority-state] > span')?.textContent).toBe(
+        state === 'pending'
+          ? 'CHECKING'
+          : state === 'needed'
+            ? 'NEEDS YOU'
+            : 'CONTINUES · Continue the current task',
+      );
+    },
+  );
 });

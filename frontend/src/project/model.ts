@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { stageData } from '../steering/stage';
+import { isRecord } from '../observed';
 import { nextNumber } from '../api/bootstrap';
 import { exactIdentity } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
@@ -70,6 +72,12 @@ export function buildProjectModel(
   const harnesses = harnessLabels(payload);
   const env: RecoveryEnv = {
     group,
+    workflow:
+      stageData(payload).enabled ||
+      group.sessions.some(
+        (session) =>
+          isRecord(session['spacedock']) && session['spacedock']['role'] === 'first-officer',
+      ),
     generated: nextNumber(payload['generated']),
     harnesses,
     entry: contextEntryOf(projectRead),
