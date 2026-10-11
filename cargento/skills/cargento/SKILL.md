@@ -6,6 +6,10 @@ license: Apache-2.0 AND OFL-1.1
 
 # Cargento
 
+Use Intent and drift to compare a session's recorded work with your goal. Open a session, set a
+goal and press `Analyze drift`. The `How Intent and drift works` button explains the steps, the
+reading's limits and why an expected outcome line is needed for a drift level.
+
 Cargento is an agnostic agent cartography and visualization tool: a local web dashboard mapping live coding-agent activity across **ten harnesses** on this machine — Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid — each row badged with its harness. A "Discovered harnesses" strip at the top shows all supported harnesses; ones with local session data are green/enabled, others gray/disabled. A harness's sessions only appear if its data is discovered. Transcript-backed sessions appear even if they never called TaskCreate; Claude task files may also surface a task-only session when its transcript is unavailable. Per session: a live state badge, what it's doing right now, running subagents (named pills), a current-turn elapsed/ETA estimate with progress bar, a ⚠️ warning (with tooltip) when a request runs or is estimated ≥15 min, one row per tracked task, and the recent token output rate. Fires desktop notifications when a session is blocked waiting on the human — Claude, Codex, Copilot, Cursor, OpenCode and Pi can report waits, within their stated coverage — and when any session registers a question through the ask lane. Sessions, Projects and Attention render the same data three ways — see Dashboard views below.
 
 Store locations are resolved per platform, and the documented relocation variables are honored: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME` (the CLI creates `.gemini` inside it; relocates the Antigravity store with it), `COPILOT_HOME`, `PI_CODING_AGENT_DIR`, and `PI_CODING_AGENT_SESSION_DIR`. When one is set it is authoritative — no fallback to the default location. Run `--diagnose` to see every path searched.
@@ -40,8 +44,9 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 
 The dark-only dashboard opens on **Sessions**, which keeps active work first and recent history
 below it. Its two counters show active now and working; exact requests and reported blocks are
-counted in Attention. One paragraph explains how to open a session. Where annotations are on,
-the store is readable and a reading route names a provider, it explains how to set a goal and
+counted in Attention. One paragraph and the `How Intent and drift works` button stay visible
+after a session has been checked. The paragraph explains how to open a session. Where annotations
+are on, the store is readable and a reading route names a provider, it explains how to set a goal and
 analyze drift, adding that no session has been checked while that is true. **Projects**, one
 click away, groups sessions by the label their harness publishes. **Intent log** lists every
 current board session and retained annotation/discard record once, including sessions without a
@@ -109,25 +114,23 @@ a separate prototype store; `--forget` does not delete it. The terminal is also 
 requires both interaction flags and registration from inside the selected session's tmux pane,
 and accepts no input. Its xterm assets are vendored and served from loopback.
 
-Exact session detail is reachable from Sessions, cockpit session links and the Intent log. Under
-the session's name and its state (working, needs input or idle), a session waiting on you shows its
-question first. Below that the page has two columns, one above the other on a narrow screen. The
-**Intent and drift** panel comes first: an **Intent** section with the goal and the expected
+Exact session detail is reachable from Sessions, cockpit session links and the Intent log. A
+session waiting on you shows its name, state and question first. Otherwise the page leads with
+the **Intent and drift** panel: an **Intent** section with the goal and the expected
 outcome lines you typed, then a **Drift** section with the `Analyze drift` control, what an
 analysis reads and sends under it, the reading, and every departure on record, asked for or not.
 While a direction you gave after your intent is unsettled, the question about it stands where
-`Analyze drift` would be (see below). The **Session activity** column beside it holds the agent's current
-activity, the session's numbered entries, the recorded request, tasks, subagents, token measurements
+`Analyze drift` would be (see below). **Session activity** follows it, with the session's name and
+state when it is not waiting on you, the agent's current activity, the session's numbered entries,
+the recorded request, tasks, subagents, token measurements
 and how the session landed. On a harness other than Claude Code or Pi the Drift section says "Cargento
 can't read work from this harness" where a drift level will go; `Analyze drift` stays wherever a
 reader is named. With no reader on this machine, the reason stands where the control would be. The
-page has at most one primary control, `Analyze drift`. No answer option is ever emphasised: a session blocked on
+page has at most one primary run control. No answer option is ever emphasised: a session blocked on
 you gives the primary to the terminal raise when one is offered, and otherwise nothing is primary
 while its question is open.
-Open a session, set a goal and press `Analyze drift`. The `How Intent and drift works` button
-beside Intent explains the steps and limits. `Not enough recorded yet` is normal until you add
-an expected outcome line. A link to a session the board no longer holds names that session and says it is not in
-the current payload.
+`Not enough recorded yet` is normal until you add an expected outcome line. A link to a session
+the board no longer holds names that session and says it is not in the current payload.
 
 The route lives in the URL fragment: `#n=sessions`, `#n=projects`, `#n=attention`, `#n=intent`,
 `#n=project:<encoded-project>` with the selected session and then the open tab appended when either
@@ -343,14 +346,15 @@ Binding is per session, and the board says when it is not exact. Where a harness
 short identity prefix, another session sharing that prefix would share these words, and the row says
 so rather than leaving you to assume otherwise.
 
-Below the two fields the Drift section runs in reading order: `Analyze drift` (or the question
-about a later direction), the reading, the notes about your saved words, and the departures on record. The agent's
-current activity leads the Session activity column beside it, and the session's entries follow it,
+Below the two fields the Drift section holds the run control (or the question about a later
+direction), the reading and the departures on record. Notes about your saved words are in More.
+The agent's current activity leads Session activity below it, and the session's entries follow it,
 numbered. The departures section appears only with `--unasked-readings` on, or once a reading or a
 departure is on record. How it landed follows the session's own facts further down. With saved
 words the list starts at #1, the entry where their evidence window opens; earlier entries are
-counted and not listed, and with nothing saved the whole record is numbered. The header's second
-row gives the count, and leaves it out when the record was not read. It lists the twenty most
+counted and not listed, and with nothing saved the whole record is numbered. The measured line
+gives the count, below a blocked session's header in Session activity and otherwise in the header,
+and leaves it out when the record was not read. It lists the twenty most
 recent entries in the window, the ten most recent messages the agent wrote, every check and file in
 the window and every later direction still to settle, each at its own number, and says how many it
 counted and did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you

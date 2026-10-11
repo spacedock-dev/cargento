@@ -23,10 +23,15 @@ Four steps, and only the first two are required.
 2. Say "open cargento". A local dashboard opens at `http://127.0.0.1:4553`, and it maps every
    harness it finds on the machine regardless of which one launched it. No account, no cloud
    service, no repository token. The server binds IPv4 loopback and nothing else.
-3. Read the first screen. Sessions separates active work from recent history and gives each active
+3. Use Intent and drift to compare a session's recorded work with your goal. Open a session, set a
+   goal and press `Analyze drift`. The `How Intent and drift works` button explains the steps, the
+   reading's limits and why an expected outcome line is needed for a drift level.
+
+   Sessions separates active work from recent history and gives each active
    session its goal beside what it is doing now, plus where it is, what it does next, and whether
-   it is blocked. A recorded departure brings a session forward without counting it as active. Projects, one click away, groups the sessions by the label their harness
-   publishes, with active projects first.
+   it is blocked. A recorded departure brings a session forward without counting it as active.
+   The orientation and how-to stay visible after a session has been checked. Projects, one click
+   away, groups the sessions by the label their harness publishes, with active projects first.
 4. Optionally connect two things, both one-time and both documented in
    [HOW_TO_USE.md](../HOW_TO_USE.md): the lifecycle hooks that let a blocked session raise a
    desktop notification, and the status-line hook that gives Antigravity its working state and
@@ -49,7 +54,7 @@ active now kept apart from what is only recent history.
 
 Backed by the ten-harness collector set (Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI,
 GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid), a one-line description of what
-each session is, the projects view that groups sessions by the repository they are working in, and
+each session is, the Projects view that groups sessions by the label their harness publishes, and
 the active-versus-recent split that shipped with the session operations board in 0.19.
 
 Where it stops: a row counts as active only when its harness published evidence that it is. A
@@ -96,6 +101,10 @@ The Claude Code live monitor is off by default and remembered for the session in
 It calls no model and raises no notification. An analysis result keeps the source beside each
 outcome line, groups written paths by folder, and states whether your words changed or new work
 arrived after it. Both levels are recomputed from the evidence and are never stored.
+A current result offers no rerun button; new work or changed intent gives one `Analyze again`
+control with that reason. A finding's `Show cited entries in Session activity` button jumps to
+its resolved entries, marked with the finding's words and their current numbers. Departure
+citations keep the neutral `Cited` tag.
 
 The Intent log brings every board session and retained annotation/discard record into one list,
 with typed goals/output, cached deterministic goals and published workflow titles labeled
