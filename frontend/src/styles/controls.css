@@ -1,31 +1,8 @@
 @layer legacy {
 /* Shared controls: copy, raise, disclosures, the More menu and the human-context
-   editor. Every colour reads the shell's token and falls back to the released
-   palette, so this sheet draws correctly before or without the shell's own tokens
-   and follows them once they exist. Layout is checked at 320 and 375 CSS px and
+   editor. Colours read the static theme directly. Layout is checked at 320 and 375 CSS px and
    at 200% zoom: nothing here sets a width a narrow screen cannot give, and long
    values (a resume command, a session id) wrap instead of scrolling the page. */
-:root {
-  --ctl-sunk: var(--sunk, #0f0f0a);
-  --ctl-panel: var(--panel, #24231b);
-  --ctl-raise: var(--raise, #323025);
-  --ctl-line: var(--line, #74725f);
-  --ctl-line-hi: var(--line-hi, #8a8874);
-  --ctl-rule: var(--rule, #35342a);
-  --ctl-ink: var(--ink, #f6f3ea);
-  --ctl-ink2: var(--ink2, #cdc7b4);
-  --ctl-ink3: var(--ink3, #a39c88);
-  --ctl-accent: var(--accent, #cfe884);
-  --ctl-amber: var(--amber, #f0b95e);
-  --ctl-radius: var(--r-control, 0.25rem);
-  --ctl-mono: var(--mono, ui-monospace, monospace);
-  --ctl-sans: var(--sans, system-ui, sans-serif);
-  --ctl-hatch: var(--hatch, repeating-linear-gradient(135deg, transparent 0 5px, rgba(163, 156, 136, 0.26) 5px 6px));
-  --ctl-measure: var(--measure, 33.75rem);
-  --ctl-pop-dur: var(--disclose-pop-dur, 160ms);
-  --ctl-ease: var(--disclose-ease, ease-in-out);
-}
-
 .ctl-visually-hidden {
   position: absolute;
   inline-size: 1px;
@@ -39,7 +16,7 @@
 }
 
 .ctl-menu > summary:focus-visible {
-  outline: 2px solid var(--ctl-accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -65,7 +42,7 @@
   cursor: pointer;
   inline-size: fit-content;
   max-inline-size: 100%;
-  color: var(--ctl-ink2);
+  color: var(--ink2);
 }
 .ctl-menu > summary::-webkit-details-marker {
   display: none;
@@ -79,8 +56,8 @@
   .ctl-menu::details-content {
     opacity: 0;
     transition:
-      opacity var(--ctl-pop-dur) var(--ctl-ease),
-      content-visibility var(--ctl-pop-dur) var(--ctl-ease) allow-discrete;
+      opacity var(--disclose-pop-dur) var(--disclose-ease),
+      content-visibility var(--disclose-pop-dur) var(--disclose-ease) allow-discrete;
   }
   .ctl-menu[open]::details-content {
     opacity: 1;
@@ -100,17 +77,17 @@
   justify-content: center;
   gap: 6px;
   padding: 0 10px;
-  border: 1px solid var(--ctl-line);
-  border-radius: var(--ctl-radius);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
   font-size: 0;
 }
 .ctl-menu > summary::before {
   content: attr(aria-label);
-  font: 0.8125rem var(--ctl-sans);
+  font: 0.8125rem var(--sans);
 }
 .ctl-menu > summary::after {
   content: '\25BE';
-  font: 0.8125rem var(--ctl-sans);
+  font: 0.8125rem var(--sans);
 }
 .ctl-menu-items {
   position: absolute;
@@ -122,8 +99,8 @@
   min-inline-size: min(210px, calc(100vw - 32px));
   max-inline-size: calc(100vw - 32px);
   padding: 8px;
-  border: 1px solid var(--ctl-line);
-  background: var(--ctl-panel);
+  border: 1px solid var(--line);
+  background: var(--panel);
 }
 .ctl-menu[open] > .ctl-menu-items {
   inset-block-start: 100%;
@@ -135,8 +112,8 @@
 .ctl-menu-status {
   display: block;
   padding: 8px;
-  border-block-end: 1px solid var(--ctl-rule);
-  color: var(--ctl-ink2);
+  border-block-end: 1px solid var(--rule);
+  color: var(--ink2);
   font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
@@ -149,15 +126,15 @@
 }
 .ctl-memo > span,
 .ctl-memo > label {
-  color: var(--ctl-ink2);
-  font: 0.8125rem var(--ctl-sans);
+  color: var(--ink2);
+  font: 0.8125rem var(--sans);
 }
 .ctl-memo > strong {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
 .ctl-memo small {
-  color: var(--ctl-ink2);
+  color: var(--ink2);
 }
 
 .ctl-wrap {

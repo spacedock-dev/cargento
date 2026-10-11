@@ -39,7 +39,7 @@ means no extra class is passed. State selectors and ancestor selectors count as 
 | NotificationControl | `next-notify-button` | `notify.css` muted colour moves to `tone`; the semantic class remains for continuity. |
 | ActivityViews, activity/ending cards | `next-activity-card` or `next-project-ending`, plus `next-project-tone--<tone>` | `native` leaves card display, padding, border, background, colour and font to `project.css`. |
 | ProjectsView, session/show more | `next-project-session`, `next-project-more` | `native` leaves row/grid chrome, last-child border and hover cues to `project.css`. |
-| RecoveryStrip, add human context | - | `project.css` empty-memo border, background, colour and font move to `context-add`; block layout is preserved. Native memo-field selectors remain for their separate fields. |
+| RecoveryStrip, add human context | - | `project.css` empty-memo border, background, colour and font move to `context-add`; block layout is preserved. The shared human-context field owns its separate fields. |
 | AnswerBlock, each answer | - | `answer` owns padding and pending chrome. Waiting-card contextual padding remains above ordinary answer padding. |
 | Header, reported blocks | `next-gate` | `native` leaves gate chrome to `shell.css`. |
 | Notices, retry/reload | - | `shell.css` margin remains layout. The retry variant owns its solid refusal border and wait cursor; shell proof covers the state. |
@@ -52,8 +52,8 @@ means no extra class is passed. State selectors and ancestor selectors count as 
 | ActivityFilter, each choice | `pc-graph-choice`, plus `selected` | `native` leaves filter chrome and selected border to `timeline.css`. |
 | ChangesPanel, toggle | - | `native` leaves header display, padding, background, colour, font and wrapping to `project.css`. |
 
-`sessions.css` and `project.css` also retain old session-copy/raise selectors that match none
-of these controls; they are outside this correction. All shared-action selectors were removed
+The stylesheet cleanup removed the old session-copy/raise selectors from `sessions.css` and
+`project.css`; they matched none of these controls. All shared-action selectors were removed
 by adoption. `terminal.css` and `drift.css` have no remaining adopted chrome override beyond the
 layout rows above. No rule was moved out of `legacy`, and no `!important` was added.
 

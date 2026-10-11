@@ -247,7 +247,7 @@ const MUTATIONS = {
     ['styles/controls.css', 'font: inherit;', 'font: var(--fs-label) var(--sans);'],
   ],
   'disclosure-cascade-colour': [
-    ['styles/controls.css', 'color: var(--ctl-ink2);', 'color: var(--ctl-ink);'],
+    ['styles/controls.css', 'color: var(--ink2);', 'color: var(--ink);'],
   ],
   'disclosure-target-removed': [
     ['ui/accordion.tsx', 'min-h-[44px] min-w-[44px]', 'min-h-0 min-w-0'],

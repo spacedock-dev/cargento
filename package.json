@@ -39,6 +39,7 @@
     "test:terminal:browser": "node frontend/e2e/terminal-parity.mjs && node frontend/e2e/timeline-filter.mjs",
     "test:css:browser": "node --test frontend/e2e/support/session-chrome.test.mjs frontend/e2e/support/project-chrome.test.mjs frontend/e2e/support/attention-chrome.test.mjs && node frontend/e2e/css-contract.mjs",
     "test:production:browser": "node frontend/e2e/production-proofs.mjs",
+    "test:css:coverage": "node frontend/build/css-coverage.mjs check",
     "test:styles": "node frontend/build/style-policy.mjs"
   },
   "dependencies": {

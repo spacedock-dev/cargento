@@ -437,7 +437,8 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   inventory define what the frontend preserves, including the browser-only checks that unit tests
   cannot establish.
 - Keep stylesheet edits inside the file of the surface you are changing (`frontend/src/<area>/<area>.css`; the
-  tokens and page chrome are `frontend/src/styles/shell.css`), including its media queries.
+  tokens are in `@theme static` in `frontend/src/styles/tailwind.css`; page chrome is in
+  `frontend/src/styles/shell.css`), including its media queries.
   [The stylesheet contract](docs/design-next-ui.md#nui-2-one-stylesheet-owns-the-interface) records the
   dark-only palette and the type floor, which the React sheets keep. Board sentences use
   `--fs-body` (0.9375rem); compact labels and source metadata sit on one tier, `--fs-label`
@@ -445,8 +446,9 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   font-size setting; the rem figures are computed against 16px, which is what makes a default
   browser render what it always did. Borders stay px on purpose: a hairline in rem blurs.
   Every `font-size` is one of the five scale steps, `inherit`, `100%` or zero: `frontend/src/styles/css.test.ts`
-  bans a pixel size, a step below 13px, an `@import`, a remote or relative `url()` (quoted or not), a
-  `prefers-color-scheme` rule, an unclosed rule and a `var()` no sheet declares. It reads declarations, so it
+  compiles the entry in memory and bans a pixel size, a step below 13px, a remaining `@import`, a remote or
+  relative `url()` (quoted or not), a `prefers-color-scheme` rule and a broken or cyclic `var()`. It reads the
+  compiled declarations, so it
   cannot see a rule that reaches an element through ancestors the selector never names. `pnpm test:css:browser`
   asks the browser's own cascade the same questions of every route and tab the fixture boards draw: nothing
   below the 13px step, sentences on the 15px step, absences sans and in the absence ink and never larger than
@@ -456,7 +458,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   `frontend/e2e/css-contract.mjs`; the sets are exact, so a new shape fails and so does a stale one. New sizes
   still need a named role.
 - Reach an ink through its role register, not through its hex. `--ink-label`, `--ink-value`,
-  `--ink-absence` and `--ink-caption` are declared in the one `:root` block of `shell.css`. Three of the
+  `--ink-absence` and `--ink-caption` are declared in the static theme of `tailwind.css`. Three of the
   four resolve to the same ink on purpose; the stylesheet contract says why, and why an absence separates
   on shape rather than on brightness. `pnpm test:css:browser` holds it on the rendered page: label,
   absence and caption share one register, the value ink is another, and the third ink is spent only on what is

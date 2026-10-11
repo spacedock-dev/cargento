@@ -72,7 +72,7 @@ const MUTATIONS = {
   ],
   'viewport-width': [
     'ui/popover.tsx',
-    'w-[min(var(--ctl-measure),calc(100vw-32px))] max-w-full',
+    'w-[min(var(--measure),calc(100vw-32px))] max-w-full',
     'w-[540px] min-w-[540px]',
   ],
   'link-target': ['styles/shell.css', '#app a,\n#app summary,', '#app summary,'],
@@ -86,7 +86,7 @@ const MUTATIONS = {
     "region.setAttribute('aria-live', 'polite');",
     "region.setAttribute('aria-live', 'off');",
   ],
-  'popup-chrome': ['ui/popover.tsx', 'bg-[var(--ctl-raise)]', 'bg-[var(--ctl-sunk)]'],
+  'popup-chrome': ['ui/popover.tsx', 'bg-[var(--raise)]', 'bg-[var(--sunk)]'],
   modal: [
     'controls/Disclosure.tsx',
     'open={open}\n        triggerId=',
