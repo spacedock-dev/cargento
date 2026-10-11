@@ -23,6 +23,7 @@ export interface ContextEntryLike {
 /** What the recovery functions read besides the group itself. */
 export interface RecoveryEnv {
   readonly group: ProjectGroup;
+  readonly workflow?: boolean;
   /** The payload's own clock, which every age here is measured against. */
   readonly generated: number | null;
   readonly harnesses: ReadonlyMap<string, string>;
@@ -84,10 +85,10 @@ export function captainDecisionCounts(semantic: unknown): DecisionCounts {
 }
 
 /** "pending 2 · consumed/applied 1", or the sentence for none. */
-export function recoveryDecisions(semantic: unknown): string {
+export function recoveryDecisions(semantic: unknown, workflow = true): string {
   const counts = captainDecisionCounts(semantic);
   const total = counts.pending + counts.unknown + counts.superseded + counts.applied;
-  if (!total) return 'No captain decisions observed';
+  if (!total) return workflow ? 'No captain decisions observed' : 'No decisions observed';
   const labels = {
     pending: 'pending',
     unknown: 'unknown',
@@ -111,12 +112,15 @@ export interface AttentionCoverage {
   readonly total: number | null;
 }
 
-export function attentionCoverage(entry: ContextEntryLike | undefined): AttentionCoverage {
+export function attentionCoverage(
+  entry: ContextEntryLike | undefined,
+  workflow = true,
+): AttentionCoverage {
   const observation = observationOf(entry);
   if (!observation || entry?.error) {
     return {
       state: 'unavailable',
-      label: 'Captain attention unavailable',
+      label: workflow ? 'Captain attention unavailable' : 'Attention unavailable',
       source: entry?.error ? 'project context request failed' : 'project context pending',
       scanned: null,
       total: null,
@@ -137,7 +141,7 @@ export function attentionCoverage(entry: ContextEntryLike | undefined): Attentio
   ) {
     return {
       state: 'unavailable',
-      label: 'Captain attention unavailable',
+      label: workflow ? 'Captain attention unavailable' : 'Attention unavailable',
       source: 'project context coverage unavailable',
       scanned: null,
       total: null,
@@ -306,12 +310,12 @@ export function commandAttention(env: RecoveryEnv): AttentionItem[] {
       evidence: item['evidence'] || {},
     });
   }
-  const coverage = attentionCoverage(env.entry);
+  const coverage = attentionCoverage(env.entry, env.workflow !== false);
   if (coverage.state === 'unavailable') {
     attention.push({
       owner: 'FO',
       kind: 'coverage_inspection',
-      label: 'refresh captain-attention scan',
+      label: env.workflow === false ? 'refresh attention scan' : 'refresh captain-attention scan',
       question: '',
       evidence: { source: coverage.source, confidence: 'unavailable' },
     });
@@ -319,7 +323,7 @@ export function commandAttention(env: RecoveryEnv): AttentionItem[] {
     attention.push({
       owner: 'FO',
       kind: 'coverage_inspection',
-      label: 'complete captain-attention scan',
+      label: env.workflow === false ? 'complete attention scan' : 'complete captain-attention scan',
       question: '',
       evidence: { source: coverage.source, confidence: 'bounded' },
     });
@@ -780,8 +784,8 @@ export function recoveryBriefing(input: BriefingInput): Briefing {
   const task = recoveryAssignment(env, semantic, observation, attention);
   const active = recoveryActive(env);
   const latest = recoveryLatest(env, semantic, env.entry?.error, task);
-  const decisions = recoveryDecisions(semantic);
-  const coverage = attentionCoverage(env.entry);
+  const decisions = recoveryDecisions(semantic, env.workflow !== false);
+  const coverage = attentionCoverage(env.entry, env.workflow !== false);
   const children = recoveryChildren(env);
   const captain = attention.filter(
     (item) =>
@@ -848,7 +852,7 @@ export function recoveryBriefing(input: BriefingInput): Briefing {
           ]
         : []),
     `Decisions: ${decisions}`,
-    `Captain attention: ${
+    `${env.workflow === false ? 'Your attention' : 'Captain attention'}: ${
       captain.length
         ? captain.map((item) => item.label).join('; ')
         : coverage.state === 'complete'

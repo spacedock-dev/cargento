@@ -16,6 +16,12 @@ that study first. The recorded answers the React page is held to are described i
 
 ## Held to recorded answers
 
+The DEC-27 correction keeps Sessions orientation in the compared header, qualified by the
+annotation store and reading routes. Project instruction order follows instruction timestamps;
+undated cards say Published instruction and saved rows say Your saved words. Ordinary projects
+use plain attention states. The wording adapters change named UI regions and protect published
+quoted values, including instructions containing an old label. The recorded fixtures stay intact.
+
 While the legacy page existed, each port was proved against it: the pure functions by running the
 legacy function next to its TypeScript twin over generated inputs, and each rendered surface by
 serving one board to both pages in one Chromium and comparing what a reader can read. Those
@@ -332,6 +338,9 @@ not fold them into one total.
 
 ## React shell, routes and controls
 
+Deviation (DEC-27, 2026-10-12): Sessions precedes Projects in the primary tab order. The
+shell proof normalizes that recorded array swap and still compares every route, label and origin.
+
 The shell is a React page, not a layer over the legacy one. One tree holds the page and
 five live regions as siblings, and the regions are never inside the subtree a route replaces, because
 a node that arrives carrying its text is the one a reader's software skips. Announcements are
@@ -369,6 +378,18 @@ select's popup outside the DOM, so the browser proof covers the focus, deferral 
 programmatically rather than reading the popup.
 
 ## Sessions, session detail, the timeline and the terminal
+
+Deviations (DEC-27, 2026-10-12): Sessions precedes Projects in primary navigation and retains
+its landing route. Every goal cell, including saved words, opens the session with the existing
+Intent focus rule. The header keeps its orientation and shared how-to on checked and unchecked
+boards; the row-splitting and goal-source sentences move intact into that popover. Exact requests
+and reported blocks move to Attention, while the two active/working counters and all row facts
+stay. Assignment labels on Sessions and session detail become Current task, and the Sessions
+command-surface eyebrow goes. The single-column header places the title, orientation, optional
+unchecked clause and how-to in reading order. The disclosure chrome reference replaces the two
+retired triggers with the measured row-filling how-to; its fonts, inks and borders remain unchanged. Recorded-side
+normalizers account for labels and counter placement; the proof asserts the first-step controls
+and counts one click on each of four active/recent, saved/drafted fixtures. Goldens stay unchanged.
 
 The observed model that Sessions, the header counts and session detail all stand on is a full port of
 the legacy `next-observed.js`, checked by executing the real legacy file next to it over hundreds of
@@ -478,6 +499,26 @@ the web assets calls the dismiss route), so none was built.
 
 ## Project views, steering and the Console
 
+Deviations (2026-10-12): The recovery strip uses Where this project stands, Current task,
+Running now, Needs you, Latest result and Latest instruction. Its source and absence labels say
+instruction rather than goal; the session's own words remain intact. The steering bar is
+Your note (this tab only), shortened to stay on one line at 375 px. Its explanatory sentence
+is unchanged. The authority gloss is conditional on a first-officer
+session or an enabled stage source, and Workflow stage conditions becomes Stage alerts with
+its enabled-source gate retained. Needs you still names a waiting session above the tabs.
+Task evidence uses Evidence · task source and Task evidence not published; the workflow
+continuation says FO CONTINUES · Continue current task. Instruction sources say latest
+instruction. Missing child tasks and sources say task unavailable and task source unavailable
+in the recovery and Decisions render layers, while internal sentinels and published values
+stay intact. Observed-model comparisons rename only the derived instruction-source fields;
+the Console proof normalises the recorded contributor region while preserving published values.
+Member rows request the Sessions goal link's Intent focus in one click. Project parity changes
+only the recorded labels and conditional gloss; chrome references retain measured styles and
+note the renamed instruction surface. The shorter task-source disclosure measures 173.969 px
+at both 1280 and 375 px, replacing the recorded 227.891 px text width; its styles and row
+filling are unchanged. The no-workflow fixture rejects old labels and counts
+member clicks. Goldens stay unchanged.
+
 The Projects list and history, project detail with its workflow plans, the scope tree and switcher, the
 recovery briefing, the human-context notes, Now and Course, the workstream panel, the steering bar, local
 and workflow-stage tripwires, the Decisions timeline with its lanes and the Console operating rail
@@ -511,6 +552,10 @@ calls them: `nextCockpitNowState`, `ActiveDelegation`, `NeedsYou`, `SystemDetail
 `MemoFields`, `ProjectStatus`, `RecoveryOutcome` and `nextProjectWorkstream`.
 
 ## Attention, notifications, capacity and the consent controls
+
+Deviation (DEC-27, 2026-10-12): Exact requests and reported blocks move here from Sessions,
+with their wording, figures and notes unchanged. Mounted and browser assertions check them
+beside the existing Attention evidence; the recorded queues and notification comparisons remain.
 
 The Attention view (exact-owner asks and checkpoints, gates, risks, outcomes and coverage), the
 notification control and owner, the capacity strip, the usage consent and the observer-model consent

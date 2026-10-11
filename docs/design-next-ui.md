@@ -30,14 +30,20 @@ prototype and this document disagree, this document is what shipped.
 
 ## Cockpit reconciliation
 
+The project labels distinguish the harness's latest instruction from a session's own goal.
+The browser-only draft is labelled Your note (this tab only). The first-officer
+and Captain gloss appears only with a first-officer session or an enabled stage source; stage
+alerts remain conditional on their source being enabled. Project member rows open the session
+at the Intent heading for an untouched draft, otherwise at its goal box, in one press.
+
 The project page uses the cockpit's information architecture: a left Scope rail, a persistent
-ASSIGNMENT / EXECUTION / COMMAND briefing with latest evidence and direction, and Now / Course /
+Where this project stands briefing with Current task, Running now, Needs you and Latest result, and Now / Course /
 Decisions / Console tabs beneath it. This preserves the recovery briefing while retaining v2's
 rule that every claim needs published evidence. The shared-label caveat stays with project identity.
 
 | Retained v2 surface | Cockpit home |
 |---|---|
-| Stated goal, source, and goal-gap reason | ASSIGNMENT in the briefing |
+| Latest instruction, source, and absence reason | Current task in the briefing |
 | Going on and observed endings, including six outcomes, glyphs and git readings | Now, alongside workflow evidence |
 | Observed state changes and unattended count | Course, beside semantic history and completed tasks |
 | Delegation, Waiting on you, Capacity, Tripwires | Console |
@@ -51,7 +57,7 @@ activity view or to every event without leaving it.
 
 RC-1 protects [P3's promise of one queue of everything blocked on the reader](promise-map.md#p3-is-anything-waiting-on-me).
 Putting all waiting evidence behind the Console tab would weaken that promise: a reader returning
-to Now could miss a session that needs them. COMMAND therefore names a waiting project session
+to Now could miss a session that needs them. Needs you therefore names a waiting project session
 above the tabs whenever one exists, with raise and copy-resume controls wherever supported.
 Console holds the full queue and its detail. Selecting another tab or focusing a non-waiting
 sibling must not hide the project wait. Both surfaces silent while a session waits is a defect;
@@ -561,7 +567,7 @@ installed copy is complete rather than relying on recursive copying to conceal a
 The header counts running sessions and all observed subagents from the shared derivation,
 including quiet subagents. Running requires working state, no observed end, and the published
 `active` flag. A reported-block button appears while a session is waiting on the reader in that
-model. Projects, Sessions, Attention and Intent log all have primary navigation links; the fourth arrived with the annotation work, which needed a surface whose rows outlive the board. Shortcuts `p`, `s`, and
+model. Sessions, Projects, Attention and Intent log have primary navigation links, in that order; the fourth arrived with the annotation work, which needed a surface whose rows outlive the board. Shortcuts `p`, `s`, and
 `a` are case-insensitive and do not run while a form control or editable content owns focus or
 Meta, Control, or Alt is held. `Escape` follows the same restrictions and returns from session
 detail to its project, and from any other view to Sessions. In a tripwire draft it cancels the
@@ -635,7 +641,8 @@ request state. PLAN therefore has no completion glyph, completion count, merge s
 state. No Spacedock declaration omits the wrapper. A first officer whose workflow has no fresh
 entities and an ensign whose plan lives with its first officer keep distinct empty messages. The
 cockpit keeps plans in Now alongside current activity and observed endings. Completed tasks and
-state changes live in Course. The stated goal stays in the briefing, and Console holds waiting
+state changes live in Course. The harness instruction stays in the briefing as Latest instruction,
+or Published instruction when undated, under [DEC-27](design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result). Console holds waiting
 requests, delegation, capacity and browser-local controls.
 
 ## NUI-7: project activity is a current-payload answer
@@ -860,7 +867,7 @@ happened.
 
 ## NUI-10: project controls demonstrate local state, not delivery
 
-The board carries STEER and TRIPWIRES because the dashboard needs the interaction shape,
+The board carries Your note (this tab only) and TRIPWIRES because the dashboard needs the interaction shape,
 but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
 escaped receipt says both that it was not delivered and that Cargento has no session write path. It
@@ -1059,11 +1066,11 @@ was doing now, what came next, and whether it was blocked. The compressed remain
 recently observed sessions look too much like current operations. More ranking did not solve the
 information hierarchy.
 
-Session operations initially became the default route. The v2 design moves the entry point up to
-Projects, so the reader first finds the project and then its sessions. Sessions remains the fleet
-operations view, with four bounded counts: active now, working, exact requests, and reported
-blocks. `Active now` means working or needs-input state without an observed end, or an exact
-request. It is not the number of rows in the payload. That distinction prevents a 24-hour
+Session operations initially became the default route; v2 moved the entry point to Projects.
+[DEC-27](design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result)
+restores Sessions as the entry point, with active now and working as its two counters. Exact
+requests and reported blocks move to Attention. `Active now` means working or needs-input state
+without an observed end, or an exact request. It is not the number of rows in the payload. That distinction prevents a 24-hour
 observation window from reading as a list of open harness processes.
 
 The body makes the time boundary visible. Active now contains only exact sessions with active

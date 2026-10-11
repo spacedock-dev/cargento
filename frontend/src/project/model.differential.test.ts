@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { instructionSourceDeviation } from '../../test/projectWordDeviation';
 import { nextNumber } from '../api/bootstrap';
 import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { completedTasks, progressValue, projectMembers, projectProgress } from './activity';
@@ -68,9 +69,11 @@ describe('the project model reads as the legacy model does', () => {
           );
           check(
             'members',
-            app.run('nextProjectMembers(__project.sessions, __project.risky || [])', {
-              project: legacyObserved,
-            }),
+            instructionSourceDeviation(
+              app.run('nextProjectMembers(__project.sessions, __project.risky || [])', {
+                project: legacyObserved,
+              }),
+            ),
             projectMembers(observed.sessions, observed.risky),
           );
           check(

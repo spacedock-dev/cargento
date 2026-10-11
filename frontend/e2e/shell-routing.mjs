@@ -137,7 +137,12 @@ const CANONICAL = new Map([
 
 /* A difference found by the comparison is a failure unless it is named here with its reason, so a
    justified deviation is a recorded fact and never a silent skip. Each entry is `{route, field, reason}`. */
-const DEVIATIONS = [];
+const DEVIATIONS = [
+  {
+    field: 'primary',
+    reason: 'Sessions precedes Projects under DEC-27; all routes and labels still compare.',
+  },
+];
 
 const browser = await chromium.launch();
 const golden = goldenFor('shell-routing');
@@ -156,7 +161,11 @@ try {
     for (const [name, fragment] of ROUTES) {
       const recorded = golden.observe(`routes: ${name}`);
       await load(react, board.react.origin, fragment);
-      const [l, r] = [recorded.shell, await observeShell(react.page)];
+      const l = {
+        ...recorded.shell,
+        primary: ['Sessions', 'Projects', ...recorded.shell.primary.slice(2)],
+      };
+      const r = await observeShell(react.page);
       for (const field of [
         'hash',
         'title',
@@ -760,8 +769,8 @@ try {
           seen.push(await o.page.evaluate(() => globalThis.document.activeElement.textContent));
         }
         assert.deepEqual(seen, [
-          'Projects',
           'Sessions',
+          'Projects',
           'Attention',
           'Intent log',
           '1 reported block',

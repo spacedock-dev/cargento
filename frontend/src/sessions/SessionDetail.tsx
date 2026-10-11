@@ -299,7 +299,7 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             <div className="next-session-evidence">
               {asked ? (
                 <section data-next-session-command-fact="assignment">
-                  <h2>ASSIGNMENT</h2>
+                  <h2>Current task</h2>
                   <InstructionLine
                     session={session}
                     generated={generated}

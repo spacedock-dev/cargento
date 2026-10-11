@@ -2,6 +2,7 @@ import { Card } from '../ui/card';
 import { buttonVariants } from '../ui/button';
 import { cn } from '../lib/utils';
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
+import { IntentHowTo } from '../intent/HowTo';
 import { CapacityStrip } from '../capacity';
 import { Disclosure, disclosureKey } from '../controls';
 import { gapNames, isScanOnly, type Row } from '../observed';
@@ -9,7 +10,7 @@ import { fragmentForRoute, type RouteInput } from '../router/grammar';
 import { selectObserved } from '../observed/select';
 import { selectHarnessSources } from '../store/selectors';
 import { useDisplayed, useNavigate, useShell } from '../shell/context';
-import { buildSessionsScreen, NOT_CHECKED, type SessionRow } from './rows';
+import { analysisAvailable, buildSessionsScreen, NOT_CHECKED, type SessionRow } from './rows';
 import { sessionInstruction, type PromptCandidate } from './intent';
 import { goalFocusFor } from './heldState';
 import {
@@ -179,7 +180,7 @@ function Identity({ row }: { readonly row: SessionRow }) {
         <span className="next-operation-assignment">{`LAST PROMPT · ${session.promptText}`}</span>
       ) : null}
       {assignment ? (
-        <span className="next-operation-assignment">{`ASSIGNMENT · ${assignment}`}</span>
+        <span className="next-operation-assignment">{`Current task · ${assignment}`}</span>
       ) : null}
       {session.sharedLabelKnown ? (
         <span className="next-operation-collision" title={DUPLICATE_LABEL_LIMIT}>
@@ -210,20 +211,16 @@ function GoalCellView({ row }: { readonly row: SessionRow }) {
   return (
     <span className="next-operation-fact" data-next-operation-fact="goal">
       <small>{goal.label}</small>
-      {goal.kind === 'typed' ? (
-        <strong>{goal.text}</strong>
-      ) : (
-        <RouteAnchor
-          route={row.route}
-          className={
-            goal.known ? 'next-operation-goal-link' : 'next-operation-goal-link next-absence'
-          }
-          extra={{ 'data-next-goal-focus': '' }}
-          before={onGoal}
-        >
-          {goal.text}
-        </RouteAnchor>
-      )}
+      <RouteAnchor
+        route={row.route}
+        className={
+          goal.known ? 'next-operation-goal-link' : 'next-operation-goal-link next-absence'
+        }
+        extra={{ 'data-next-goal-focus': '' }}
+        before={onGoal}
+      >
+        {goal.text}
+      </RouteAnchor>
     </span>
   );
 }
@@ -423,34 +420,28 @@ export function SessionsView({ chosenFor }: SessionsViewProps = {}) {
     [data, model, chosenFor],
   );
   if (!screen) return null;
+  const canAnalyze = analysisAvailable(data as unknown as Row);
   return (
     <section className="next-operations" data-next-view-body="sessions">
       <header className="next-operations-header">
-        <span>COMMAND SURFACE</span>
         <h1>Session operations</h1>
-        {screen.lede ? <p>{NOT_CHECKED}</p> : null}
-        <Disclosure
-          disclosureKey={disclosureKey({ project: null, scope: null, name: 'sessions-board-why' })}
-          summary="How rows are split"
-        >
+        {/* [DEC-27](docs/design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result) */}
+        <p data-next-sessions-orientation>
+          {canAnalyze
+            ? 'Open a session, set its goal and press Analyze drift to see how far it moved from it.'
+            : 'Open a session to see what it is doing and where it stands.'}
+          {canAnalyze && screen.lede ? ` ${NOT_CHECKED}` : ''}
+        </p>
+        <IntentHowTo payload={data as unknown as Row} project="">
           <p className="next-why-body">{BOARD_WHY}</p>
-        </Disclosure>
-        <Disclosure
-          disclosureKey={disclosureKey({
-            project: null,
-            scope: null,
-            name: 'sessions-goal-source',
-          })}
-          summary="Goal sources"
-        >
           <p className="next-why-body">
             {screen.context.annotate ? GOAL_SOURCES_ON : GOAL_SOURCES_OFF}
           </p>
-        </Disclosure>
+        </IntentHowTo>
       </header>
       <SourceGaps />
       <section className="next-operations-fleet" aria-label="Fleet facts">
-        {screen.counters.map((counter, index) => (
+        {screen.counters.slice(0, 2).map((counter, index) => (
           <section key={FACT_KEYS[index]} data-next-fleet-fact={FACT_KEYS[index]}>
             <span>{counter.label}</span>
             <strong>{counter.value}</strong>

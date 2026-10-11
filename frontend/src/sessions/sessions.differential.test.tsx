@@ -45,7 +45,17 @@ const norm = (node: Element | null): string =>
 function summarize(source: Element | DocumentFragment): Summary {
   const root = normalizeDisclosures(source);
   return {
-    header: norm(root.querySelector('.next-operations-header')),
+    header: (() => {
+      const header = root.querySelector('.next-operations-header');
+      const howto = [...(header?.querySelectorAll('details') ?? [])].find(
+        (node) => node.querySelector('summary')?.textContent === 'How Intent and drift works',
+      );
+      if (howto) {
+        const bodies = [...howto.querySelectorAll('.next-why-body')];
+        howto.replaceWith(...bodies);
+      }
+      return norm(header);
+    })(),
     fleet: [...root.querySelectorAll('[data-next-fleet-fact]')].map(
       (node) => [(node as HTMLElement).dataset['nextFleetFact'] ?? '', norm(node)] as const,
     ),
@@ -80,6 +90,31 @@ function legacySummary(payload: unknown): Summary {
   const template = document.createElement('template');
   template.innerHTML = legacy.sessionsHtml(payload);
   retractSessionCopies(template.content);
+  const header = template.content.querySelector('.next-operations-header');
+  header?.querySelector(':scope > span')?.remove();
+  header?.querySelectorAll('summary').forEach((node) => node.remove());
+  const data = payload as Record<string, unknown>;
+  const routes = data['reading_routes'];
+  const canAnalyze =
+    data['annotate'] === true &&
+    !data['annotate_unreadable'] &&
+    routes &&
+    typeof routes === 'object' &&
+    Object.values(routes).some((route) => route && typeof route === 'object' && route['provider']);
+  const unchecked = header?.querySelector(':scope > p');
+  const orientation = document.createElement('p');
+  orientation.textContent = canAnalyze
+    ? 'Open a session, set its goal and press Analyze drift to see how far it moved from it.' +
+      (unchecked ? ` ${unchecked.textContent}` : '')
+    : 'Open a session to see what it is doing and where it stands.';
+  unchecked?.remove();
+  header?.querySelector('h1')?.after(orientation);
+  template.content
+    .querySelectorAll('[data-next-fleet-fact="requests"],[data-next-fleet-fact="reported-blocks"]')
+    .forEach((node) => node.remove());
+  template.content.querySelectorAll('.next-operation-assignment').forEach((node) => {
+    node.textContent = node.textContent?.replace(/^ASSIGNMENT · /, 'Current task · ') ?? '';
+  });
   return summarize(template.content);
 }
 
@@ -93,7 +128,8 @@ async function reactSummary(payload: unknown): Promise<Summary> {
   return result;
 }
 
-/* Named differences, each with its reason. Empty today: every compared field agrees. */
+/* The header explanations now share the how-to and two counters live on Attention.
+   Their words and every row fact still compare; the first-step controls are asserted in SessionsView.test. */
 const DEVIATIONS: readonly {
   readonly seed: number;
   readonly path: string;

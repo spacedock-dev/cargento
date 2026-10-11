@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { compatSessKey } from '../api/identity';
 import { Disclosure, disclosureKey } from '../controls';
 import { readingRoute, routeRefusal } from '../drift/route';
@@ -15,32 +16,37 @@ export function IntentHowTo({
   payload,
   session,
   project,
+  children,
 }: {
   readonly payload: Row;
-  readonly session: Row;
+  readonly session?: Row;
   readonly project: string;
+  readonly children?: ReactNode;
 }) {
-  const harness = String(session['harness'] || '');
+  const harness = String(session?.['harness'] || '');
   const labels = harnessLabels(payload);
   const label = (key: string) =>
     labels.get(key) || ({ claude: 'Claude Code', pi: 'Pi' }[key] ?? key);
-  const route = readingRoute(payload, session);
+  const route = session ? readingRoute(payload, session) : null;
   const reader = route?.['provider']
     ? String(route['label'] || route['provider'])
-    : routeRefusal(payload, session);
-  const steer = STEER_HARNESSES.includes(harness)
-    ? 'available here'
-    : `${STEER_HARNESSES.map(label).join(' and ')} only`;
+    : session
+      ? routeRefusal(payload, session)
+      : 'availability is shown in each session';
+  const steer =
+    session && STEER_HARNESSES.includes(harness)
+      ? 'available here'
+      : `${STEER_HARNESSES.map(label).join(' and ')} only`;
   return (
     <Disclosure
       disclosureKey={disclosureKey({
         project,
-        scope: compatSessKey(session),
+        scope: session ? compatSessKey(session) : 'sessions',
         name: 'intent-howto',
       })}
       summary="How Intent and drift works"
       variant="popover"
-      focusKey={`intent-howto:${compatSessKey(session)}`}
+      focusKey={`intent-howto:${session ? compatSessKey(session) : 'sessions'}`}
     >
       <h3 className="text-body font-semibold">How Intent and drift works</h3>
       <p>1. Give the goal. Cargento drafts one from your first prompt; edit it if it is off.</p>
@@ -56,6 +62,7 @@ export function IntentHowTo({
         data-next-intent-howto-limit
       >{`Drift level: ${WORK_HARNESSES.map(label).join(' and ')} sessions only. Analyze drift here: ${reader}${reader.endsWith('.') ? '' : '.'} Steer back: ${steer}. Cargento never writes into sessions.`}</p>
       <p>“Not enough recorded yet” is normal until you add an expected outcome line.</p>
+      {children}
     </Disclosure>
   );
 }

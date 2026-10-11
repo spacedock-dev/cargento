@@ -47,6 +47,17 @@ export function sessionsContext(payload: Row): SessionsContext {
   };
 }
 
+export function analysisAvailable(payload: Row): boolean {
+  const context = sessionsContext(payload);
+  const routes = payload['reading_routes'];
+  return (
+    context.annotate &&
+    !context.unreadable &&
+    isRecord(routes) &&
+    Object.values(routes).some((route) => isRecord(route) && Boolean(route['provider']))
+  );
+}
+
 /* The label each harness publishes about itself, by key. */
 export function harnessLabels(payload: Row): Map<string, string> {
   const labels = new Map<string, string>();
@@ -189,8 +200,8 @@ export const NOT_CHECKED = 'No session has been checked for drift yet; open one 
 
 export interface GoalCell {
   readonly label: string;
-  /** Typed words render as plain text; anything else is a link that opens the session at its goal. */
-  readonly kind: 'off' | 'typed' | 'link';
+  /** Every available goal opens the session at its goal, including saved words. */
+  readonly kind: 'off' | 'link';
   readonly text: string;
   readonly known: boolean;
 }
@@ -232,7 +243,7 @@ export function goalCell(
           ? 'GOAL · YOUR LATEST PROMPT'
           : 'GOAL';
   return typed
-    ? { label, kind: 'typed', text, known: true }
+    ? { label, kind: 'link', text, known: true }
     : { label, kind: 'link', text: text || 'Add a goal', known: Boolean(text) };
 }
 

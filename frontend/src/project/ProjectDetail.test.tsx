@@ -81,11 +81,49 @@ describe('a focused session on the Now tab', () => {
 });
 
 describe('the recovery strip', () => {
+  it('names the task source in plain words and preserves the published instruction', async () => {
+    const scenario = WAITING as NonNullable<typeof WAITING>;
+    const sessions = (scenario.board['sessions'] as Record<string, unknown>[]).map((row) => ({
+      ...row,
+      instruction: { label: 'asked', text: 'Review the assignment source', at: 900 },
+    }));
+    const page = open({ ...scenario, board: { ...scenario.board, sessions } });
+    await page.settle();
+    const strip = screen.getByLabelText('Recovery summary');
+    expect(within(strip).getByText('Evidence · task source')).toBeInTheDocument();
+    expect(within(strip).getByText('Review the assignment source')).toBeInTheDocument();
+    expect(within(strip).getAllByText(/claude · latest instruction/).length).toBeGreaterThan(0);
+  });
+
+  it('calls missing child evidence a task while keeping published assignments intact', async () => {
+    const scenario = CALM as NonNullable<typeof CALM>;
+    const sessions = (scenario.board['sessions'] as Record<string, unknown>[]).map((row) => ({
+      ...row,
+      state: 'working',
+      subagent_hierarchy: [
+        { name: 'missing', active: true },
+        { name: 'published', active: true, assignment: 'Review the assignment source' },
+      ],
+    }));
+    const page = open({ ...scenario, board: { ...scenario.board, sessions } });
+    await page.settle();
+    const strip = screen.getByLabelText('Recovery summary');
+    expect(within(strip).getAllByText('task unavailable').length).toBeGreaterThan(0);
+    expect(strip.textContent).toContain('task source unavailable');
+    expect(within(strip).getAllByText('Review the assignment source').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('tab', { name: /Decisions/ }));
+    await page.settle();
+    const contributors = document.querySelector('.pc-unbound-context');
+    expect(contributors?.textContent).toContain('task unavailable');
+    expect(contributors?.textContent).toContain('task source unavailable');
+    expect(contributors?.textContent).toContain('Review the assignment source');
+  });
+
   it('names what the captain has to do, with its source, before anything is concluded', async () => {
     const page = open(WAITING as never);
     await page.settle();
     const strip = screen.getByLabelText('Recovery summary');
-    expect(within(strip).getByText('CAPTAIN NEEDED')).toBeTruthy();
+    expect(within(strip).getByText('NEEDS YOU')).toBeTruthy();
     expect(within(strip).getByText('ANSWER · Approve the plan?')).toBeTruthy();
     expect(within(strip).getByText('WAITING ON YOU')).toBeTruthy();
     // The exact request, the raise and the copy of the re-entry command, each on its own press.
@@ -97,18 +135,17 @@ describe('the recovery strip', () => {
     await page.settle();
     const strip = screen.getByLabelText('Recovery summary');
     expect(
-      within(strip).getAllByText(/Captain attention unavailable · project context request failed/)
-        .length,
+      within(strip).getAllByText(/Attention unavailable · project context request failed/).length,
     ).toBeGreaterThan(0);
-    expect(within(strip).queryByText('Captain not needed')).toBeNull();
+    expect(within(strip).queryByText('You are not needed')).toBeNull();
   });
 
   it('draws a project with nothing running and nothing asked as idle, and says why', async () => {
     const page = open(ENDED as never);
     await page.settle();
     const strip = screen.getByLabelText('Recovery summary');
-    expect(within(strip).getByText('FO CONTINUES · Continue current assignment')).toBeTruthy();
-    expect(within(strip).getByText('No execution observed · Captain not needed')).toBeTruthy();
+    expect(within(strip).getByText('CONTINUES · Continue the current task')).toBeTruthy();
+    expect(within(strip).getByText('No execution observed · You are not needed')).toBeTruthy();
   });
 });
 
@@ -124,7 +161,7 @@ describe('the Copy briefing control', () => {
     });
     expect(page.written).toHaveLength(1);
     expect(page.written[0]).toMatch(/^Cargento recovery briefing\nProject: app\nScope: Project\n/);
-    expect(page.written[0]).toContain('Captain attention: Authorize the dispatch?');
+    expect(page.written[0]).toContain('Your attention: Authorize the dispatch?');
     expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy();
   });
 
@@ -445,4 +482,179 @@ describe('disclosures keep their state by project and scope', () => {
       ).hasAttribute('data-open'),
     ).toBe(true);
   });
+});
+
+describe('plain project words', () => {
+  it('keeps the waiting session above the tabs and omits workflow language without a workflow', async () => {
+    const board = WAITING?.board as { sessions: Record<string, unknown>[] };
+    const page = open({
+      ...(WAITING as NonNullable<typeof WAITING>),
+      board: { ...board, sessions: board.sessions.map(({ spacedock: _workflow, ...row }) => row) },
+    });
+    await page.settle();
+    const strip = screen.getByLabelText('Recovery summary');
+    for (const label of [
+      'PROJECT RECOVERY BRIEFING',
+      'ASSIGNMENT',
+      'EXECUTION',
+      'COMMAND',
+      'LATEST EVIDENCE',
+      'STATED GOAL',
+      'STEER · LOCAL ONLY',
+      'FO is the first officer, the agent driving this workflow; Captain is you.',
+      'Workflow stage conditions',
+    ]) {
+      expect(document.querySelector('[data-next-view-body="project"]')?.textContent).not.toContain(
+        label,
+      );
+    }
+    expect(within(strip).getByText('Where this project stands')).toBeInTheDocument();
+    expect(within(strip).getByText('Current task')).toBeInTheDocument();
+    expect(within(strip).getByText('Running now')).toBeInTheDocument();
+    expect(within(strip).getByText('Needs you')).toBeInTheDocument();
+    expect(within(strip).getByText('Latest result')).toBeInTheDocument();
+    expect(within(strip).getByText('Published instruction')).toBeInTheDocument();
+    const waiting = strip.querySelector('[data-next-cockpit-waiting]');
+    expect(waiting?.textContent).toContain('Approve the plan?');
+    expect(
+      (waiting?.compareDocumentPosition(screen.getByRole('tablist')) ?? 0) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+  it('opens each project member at its Intent heading in one press', async () => {
+    const page = mountProject({
+      hash: '#n=projects',
+      data: {
+        generated: 1000,
+        annotate: true,
+        sessions: [
+          {
+            harness: 'claude',
+            sid: 'a',
+            project: 'p',
+            state: 'working',
+            first_prompt: 'Ship the queue',
+            first_prompt_at: 100,
+          },
+        ],
+      },
+    });
+    await page.settle();
+    fireEvent.click(document.querySelector('[data-next-project-session]') as Element);
+    await page.settle();
+    expect(page.router.getRoute()).toMatchObject({
+      view: 'session',
+      session: 'a',
+      from: 'projects',
+    });
+    expect(document.activeElement?.id).toBe('next-session-intent-heading');
+  });
+});
+
+describe('workflow vocabulary has a source', () => {
+  it.each(['first-officer', 'stage-source'])('shows the authority gloss with %s', async (kind) => {
+    const page = mountProject({
+      hash: '#n=project:p',
+      data: {
+        generated: 1000,
+        tripwires: { enabled: kind === 'stage-source' },
+        sessions: [
+          {
+            harness: 'claude',
+            sid: 'a',
+            project: 'p',
+            state: 'idle',
+            ...(kind === 'first-officer' ? { spacedock: { role: 'first-officer' } } : {}),
+          },
+        ],
+      },
+    });
+    await page.settle();
+    expect(
+      screen.getByText('FO is the first officer, the agent driving this workflow; Captain is you.'),
+    ).toBeInTheDocument();
+    expect(document.querySelector('[data-next-cockpit-authority-state] > span')?.textContent).toBe(
+      'FO INSPECTING',
+    );
+  });
+});
+
+describe('project instruction and authority evidence', () => {
+  const session = (sid: string, at: number | null, activity: number) => ({
+    harness: 'claude',
+    sid,
+    project: 'p',
+    state: 'working',
+    last_activity: activity,
+    instruction: { label: 'asked', text: `Fix COMMAND parsing ${sid}`, at },
+  });
+  it('chooses the newest instruction rather than the most active session', async () => {
+    const page = mountProject({
+      hash: '#n=project:p',
+      data: {
+        generated: 1000,
+        sessions: [session('old', 100, 900), session('new', 800, 200)],
+      },
+    });
+    await page.settle();
+    const card = document.querySelector('.next-project-goal');
+    expect(card?.querySelector('h2')?.textContent).toBe('Latest instruction');
+    expect(card?.textContent).toContain('Fix COMMAND parsing new');
+    expect(card?.textContent).not.toContain('Fix COMMAND parsing old');
+  });
+  it('does not claim an undated instruction is latest and labels saved words separately', async () => {
+    const page = mountProject({
+      hash: '#n=project:p:claude%3Aa',
+      data: {
+        generated: 1000,
+        sessions: [
+          {
+            ...session('a', null, 900),
+            annotation_goal: 'Save COMMAND exactly',
+            annotation_line_1: 'Keep STATED GOAL quoted',
+            annotation_revision: 1,
+          },
+        ],
+      },
+    });
+    await page.settle();
+    const card = document.querySelector('.next-project-goal');
+    expect(card?.querySelector('h2')?.textContent).toBe('Published instruction');
+    expect(card?.textContent).toContain('Your saved words');
+    expect(card?.textContent).toContain('Save COMMAND exactly');
+    expect(card?.textContent).toContain('Your saved words · expected outcome · line 1');
+    expect(card?.textContent).toContain('Keep STATED GOAL quoted');
+  });
+  it.each(['pending', 'complete', 'needed'])(
+    'uses plain authority states on an ordinary project: %s',
+    async (state) => {
+      const data = { generated: 1000, sessions: [session('a', 100, 900)] };
+      const context = {
+        semantic: {
+          projections: {
+            command_attention_coverage: { state: 'complete', scanned: 1, total: 1 },
+            command_attention:
+              state === 'needed'
+                ? [{ owner: 'CAPTAIN', question: 'Approve COMMAND?', kind: 'ask' }]
+                : [],
+          },
+        },
+      };
+      const page = mountProject({
+        hash: '#n=project:p',
+        data,
+        contexts: state === 'pending' ? {} : { 'p\n': context },
+      });
+      await page.settle();
+      const strip = screen.getByLabelText('Recovery summary');
+      expect(strip.textContent).not.toMatch(/\bFO\b|Captain|CAPTAIN|captain/);
+      expect(strip.querySelector('[data-next-cockpit-authority-state] > span')?.textContent).toBe(
+        state === 'pending'
+          ? 'CHECKING'
+          : state === 'needed'
+            ? 'NEEDS YOU'
+            : 'CONTINUES · Continue the current task',
+      );
+    },
+  );
 });

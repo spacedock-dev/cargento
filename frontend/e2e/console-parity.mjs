@@ -31,6 +31,7 @@ import { chromium } from '@playwright/test';
 import { BOARD, fragmentFor, openTracked, startConsoleWorld } from './console-board.mjs';
 import { refreshReact } from './support/browser.mjs';
 import { goldenFor } from './support/golden.mjs';
+import { normaliseProjectContributors } from './support/project-deviations.mjs';
 import { PRODUCTION as SHIPPED } from './support/world.mjs';
 
 const golden = goldenFor('console-parity');
@@ -44,10 +45,7 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const checkout = fileURLToPath(new URL('../../', import.meta.url)).replace(
-  /\/\.claude\/worktrees\/[^/]+\/?$/,
-  '/',
-);
+const checkout = fileURLToPath(new URL('../../', import.meta.url));
 const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
@@ -137,6 +135,7 @@ const MUTATIONS = {
 };
 
 const world = await startConsoleWorld({ mutations: MUTATIONS });
+let projectEvidence;
 const browser = await chromium.launch();
 const origins = [world.react.origin, world.react.viteOrigin];
 const opened = [];
@@ -366,14 +365,24 @@ let react;
 async function same(label, read, { ready = null } = {}) {
   if (ready) await react.page.waitForFunction(ready, null, { timeout: patience(20000) });
   const key = `${currentStep} :: ${label}`;
-  golden.observe(key);
+  const recorded = golden.observe(key);
   const mine = await settled(() => react.page.evaluate(read));
-  golden.verify(key, mine);
+  // The project surface calls enabled stage conditions Stage alerts; every card fact stays compared.
+  if (recorded?.label === 'STEER · LOCAL ONLY') {
+    assert.deepEqual(mine, { ...recorded, label: 'Your note (this tab only)' });
+  } else if (recorded?.heading === 'Workflow stage conditions') {
+    assert.deepEqual(mine, { ...recorded, heading: 'Stage alerts' });
+  } else if (typeof recorded?.unbound === 'string') {
+    assert.deepEqual(mine, normaliseProjectContributors(recorded, projectEvidence));
+  } else golden.verify(key, mine);
   return mine;
 }
 
 /* ================================================================================================ */
 try {
+  projectEvidence = await (
+    await fetch(`${world.react.origin}/api/data`, { signal: AbortSignal.timeout(5000) })
+  ).json();
   react = await newPage();
 
   /* =============================== DIFFERENTIAL =============================== */

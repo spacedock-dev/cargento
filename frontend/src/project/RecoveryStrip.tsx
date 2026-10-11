@@ -15,7 +15,7 @@ import { sessionKey } from '../observed/values';
 import type { ObservedSession } from '../observed';
 import { RouteAnchor } from '../sessions/SessionsView';
 import { sessKey, workingSessions } from './group';
-import { projectGoal } from './goal';
+import { instructionHeading, projectGoal } from './goal';
 import { briefingOf, noteKey, type ProjectModel } from './model';
 import { Value } from './parts';
 import { authorityVerb, recoveryFactSource, type Briefing, type Child } from './recovery';
@@ -24,7 +24,7 @@ import type { Row } from './raw';
 
 /* The strip that opens a project page: what the work is, who is doing it, what needs the captain, and the
    newest direction and result, each with where it came from. Every claim carries its source or its absence
-   ("Assignment evidence not published", "Actionable direction not observed"), and a scan that did not
+   ("Task evidence not published", "Actionable direction not observed"), and a scan that did not
    finish says so before anything is concluded from it. The reader's own browser-local note sits at the end
    and is never presented as something the agents observed. Ported from `nextCockpitRecoveryStrip`. */
 
@@ -33,6 +33,10 @@ export const AUTHORITY_GLOSS =
 
 function Source({ children }: { readonly children: ReactNode }) {
   return <span className="next-cockpit-source">{children}</span>;
+}
+
+function taskSource(source: string): string {
+  return source === 'assignment source unavailable' ? 'task source unavailable' : source;
 }
 
 function disclosureKeys(model: ProjectModel) {
@@ -45,7 +49,7 @@ function ChildEvidence({ child, model }: { readonly child: Child; readonly model
   const assignmentMissing = child.assignment === 'assignment unavailable';
   const resultMissing = child.result === 'result unavailable';
   const missing = [
-    assignmentMissing ? child.assignment : '',
+    assignmentMissing ? 'task unavailable' : '',
     resultMissing ? child.result : '',
   ].filter(Boolean);
   return (
@@ -59,7 +63,7 @@ function ChildEvidence({ child, model }: { readonly child: Child; readonly model
         focusKey={`cockpit-disclosure:child:${child.sourceSession}:${child.worker}:${child.lifecycle}`}
       >
         <small>
-          {assignmentMissing ? child.assignment : <Source>{child.assignment}</Source>}
+          {assignmentMissing ? 'task unavailable' : <Source>{child.assignment}</Source>}
           {child.result ? (
             <>
               {' · '}
@@ -68,7 +72,7 @@ function ChildEvidence({ child, model }: { readonly child: Child; readonly model
           ) : null}
           {' · '}
           {/unavailable/i.test(child.assignmentSource) ? (
-            `source ${child.assignmentSource}`
+            `source ${taskSource(child.assignmentSource)}`
           ) : (
             <Source>{`source ${child.assignmentSource}`}</Source>
           )}
@@ -97,7 +101,14 @@ function Execution({
   readonly briefing: Briefing;
   readonly compactIdle: boolean;
 }) {
-  if (compactIdle) return <strong>No execution observed · Captain not needed</strong>;
+  if (compactIdle)
+    return (
+      <strong>
+        {model.env.workflow
+          ? 'No execution observed · Captain not needed'
+          : 'No execution observed · You are not needed'}
+      </strong>
+    );
   const { group, harnesses } = model;
   const children: Child[] = [...briefing.children.active];
   if (briefing.children.latestReturn) children.push(briefing.children.latestReturn);
@@ -208,8 +219,14 @@ function Attention({
     : coverage.state !== 'complete' || system.length
       ? 'fo-inspecting'
       : 'fo-continues';
-  const stateLabel =
-    state === 'captain-needed'
+  const workflow = model.env.workflow === true;
+  const stateLabel = !workflow
+    ? state === 'captain-needed'
+      ? 'NEEDS YOU'
+      : state === 'fo-inspecting'
+        ? 'CHECKING'
+        : 'CONTINUES'
+    : state === 'captain-needed'
       ? 'CAPTAIN NEEDED'
       : state === 'fo-inspecting'
         ? 'FO INSPECTING'
@@ -221,9 +238,17 @@ function Attention({
     captain.length || needs
       ? ''
       : coverage.state === 'complete'
-        ? 'Captain not needed'
-        : 'Captain state unknown';
-  const heading = compactIdle ? 'FO CONTINUES · Continue current assignment' : stateLabel;
+        ? workflow
+          ? 'Captain not needed'
+          : 'You are not needed'
+        : workflow
+          ? 'Captain state unknown'
+          : 'Your attention is unknown';
+  const heading = compactIdle
+    ? workflow
+      ? 'FO CONTINUES · Continue current task'
+      : 'CONTINUES · Continue the current task'
+    : stateLabel;
   const row = (item: (typeof attention)[number]) => (
     <strong key={`${item.owner}\n${item.label}`}>{`${authorityVerb(item)} · ${item.label}`}</strong>
   );
@@ -252,11 +277,11 @@ function Attention({
       >
         {attention.map((item) => (
           <small key={`${item.owner}\n${item.label}`}>
-            {`${item.owner} · ${item.kind || 'attention'} · ${item.label} · ${String(field(item.evidence, 'source') || 'source unavailable')} · ${String(field(item.evidence, 'confidence') || 'confidence unavailable')}`}
+            {`${workflow ? item.owner : item.owner === 'CAPTAIN' ? 'YOU' : 'AGENT'} · ${item.kind || 'attention'} · ${item.label} · ${taskSource(String(field(item.evidence, 'source') || 'source unavailable'))} · ${String(field(item.evidence, 'confidence') || 'confidence unavailable')}`}
           </small>
         ))}
         {remainder ? (
-          <small>{`${String(remainder)} more FO ${remainder === 1 ? 'action' : 'actions'}`}</small>
+          <small>{`${String(remainder)} more ${workflow ? 'FO ' : ''}${remainder === 1 ? 'action' : 'actions'}`}</small>
         ) : null}
         <small data-next-cockpit-attention-coverage="">{`${coverage.label} · ${coverage.source}`}</small>
       </Disclosure>
@@ -286,7 +311,7 @@ function Goal({ model }: { readonly model: ProjectModel }) {
   return (
     <Card as="section" variant="project-goal" className="next-project-goal">
       <header>
-        <h2>STATED GOAL</h2>
+        <h2>{instructionHeading(model.group.observed, focusObserved)}</h2>
         {!goal.typed.length && goal.scope.known ? (
           <span className="next-project-goal-source">{goal.derivedSource}</span>
         ) : null}
@@ -406,21 +431,23 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
       aria-label="Recovery summary"
     >
       <header>
-        <strong>PROJECT RECOVERY BRIEFING</strong>
-        <small className="next-cockpit-recovery-gloss">{AUTHORITY_GLOSS}</small>
+        <strong>Where this project stands</strong>
+        {model.env.workflow ? (
+          <small className="next-cockpit-recovery-gloss">{AUTHORITY_GLOSS}</small>
+        ) : null}
       </header>
       <div
         data-next-cockpit-task=""
         {...(task.id ? { 'data-work-item': task.id } : {})}
         {...(task.known ? { 'data-next-cockpit-task-known': '' } : {})}
       >
-        <span>ASSIGNMENT</span>
+        <span>Current task</span>
         <strong>{taskText}</strong>
         {task.known && task.qualifier ? <small>{task.qualifier}</small> : null}
         {task.known && task.provenance ? (
           <Disclosure
             disclosureKey={key(`assignment:${task.id || task.sourceSession}`)}
-            summary="Evidence · assignment source"
+            summary="Evidence · task source"
             focusKey={`cockpit-disclosure:assignment:${task.id || task.sourceSession}`}
           >
             <small className="next-cockpit-source">
@@ -428,23 +455,23 @@ export function RecoveryStrip({ model }: { readonly model: ProjectModel }) {
             </small>
           </Disclosure>
         ) : task.known ? (
-          <small className="next-cockpit-evidence-missing">Assignment evidence not published</small>
+          <small className="next-cockpit-evidence-missing">Task evidence not published</small>
         ) : null}
         <Goal model={model} />
       </div>
       <div>
-        <span>EXECUTION</span>
+        <span>Running now</span>
         <Execution model={model} briefing={briefing} compactIdle={compactIdle} />
       </div>
       <div>
-        <span>COMMAND</span>
+        <span>Needs you</span>
         {waiting ? <Waiting session={waiting} project={model.route.project} /> : null}
         <Attention model={model} briefing={briefing} />
       </div>
       <div className="next-cockpit-recovery-evidence">
-        <span>LATEST EVIDENCE</span>
+        <span>Latest result</span>
         {latest.directionInAssignment ? (
-          <p>Direction shown in assignment</p>
+          <p>Direction shown in the current task</p>
         ) : latest.direction ? (
           <>
             <span>{exactLabel}</span>

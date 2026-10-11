@@ -29,7 +29,7 @@
     "test:shell:browser": "node frontend/e2e/shell-routing.mjs",
     "test:popover:browser": "node --test frontend/e2e/support/proof-copy.test.mjs && node frontend/e2e/popover-continuity.mjs",
     "test:controls:browser": "node --test frontend/e2e/support/proof-copy.test.mjs && node frontend/e2e/controls-continuity.mjs && node frontend/e2e/popover-continuity.mjs",
-    "test:sessions:browser": "node frontend/e2e/sessions-parity.mjs",
+    "test:sessions:browser": "node --test frontend/e2e/support/session-deviations.test.mjs && node frontend/e2e/sessions-parity.mjs",
     "test:intent:browser": "node frontend/e2e/intent-parity.mjs",
     "test:drift:browser": "node frontend/e2e/drift-parity.mjs",
     "test:console:browser": "node frontend/e2e/console-parity.mjs",

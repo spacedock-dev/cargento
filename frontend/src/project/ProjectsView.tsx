@@ -3,6 +3,8 @@ import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import type { ObservedProject } from '../observed';
+import { goalFocusFor } from '../sessions/heldState';
+import { useShell } from '../shell/context';
 import { selectObserved } from '../observed/select';
 import { useDisplayed } from '../shell/context';
 import { projectMembers } from './activity';
@@ -31,6 +33,7 @@ function MemberLine({
     session: session.sid,
   } as const;
   const target = useRouteTarget(route);
+  const { controls } = useShell();
   return (
     <Button
       variant="native"
@@ -41,7 +44,10 @@ function MemberLine({
       data-next-session={session.sid}
       data-next-route={routeToken(route)}
       data-next-focus={routeToken(route)}
-      onClick={target.onClick}
+      onClick={(event) => {
+        goalFocusFor(controls).request({ harness: session.harness, sid: session.sid });
+        target.onClick(event);
+      }}
     >
       <Dot session={session} />
       <span className="next-project-session-harness">{session.harness}</span>

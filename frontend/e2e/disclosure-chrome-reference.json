@@ -1,21 +1,7 @@
 {
   "commit": "7d4a23c3",
   "instances": {
-    "next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": {
-      "color": "rgb(205, 199, 180)",
-      "background-color": "rgba(0, 0, 0, 0)",
-      "border-top": "0px none rgb(205, 199, 180)",
-      "border-right": "0px none rgb(205, 199, 180)",
-      "border-bottom": "0px none rgb(205, 199, 180)",
-      "border-left": "0px none rgb(205, 199, 180)",
-      "display": "flex",
-      "padding": "0px",
-      "justify-content": "normal",
-      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
-      "font-size": "15px",
-      "line-height": "normal"
-    },
-    "next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": {
+    "next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": {
       "color": "rgb(205, 199, 180)",
       "background-color": "rgba(0, 0, 0, 0)",
       "border-top": "0px none rgb(205, 199, 180)",
@@ -815,28 +801,14 @@
     }
   },
   "inlineSizes": {
-    "#n=sessions | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
+    "#n=sessions | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 145.328
+        "fillsRow": true
       }
     ],
-    "#n=sessions | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
+    "#n=sessions [expanded] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 106.563
-      }
-    ],
-    "#n=sessions [expanded] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 145.328
-      }
-    ],
-    "#n=sessions [expanded] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 106.563
+        "fillsRow": true
       }
     ],
     "#n=attention | next-attention > next-attention-brief > next-attention-coverage > ctl-disclosure.next-attention-coverage-details |  | per-harness detail |  | disabled=false hidden=false": [
@@ -851,28 +823,14 @@
         "width": 127.281
       }
     ],
-    "#n=bogus | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
+    "#n=bogus | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 145.328
+        "fillsRow": true
       }
     ],
-    "#n=bogus | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
+    "#n=bogus [expanded] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 106.563
-      }
-    ],
-    "#n=bogus [expanded] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 145.328
-      }
-    ],
-    "#n=bogus [expanded] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 106.563
+        "fillsRow": true
       }
     ],
     "#n=project:alpha%2Fapp | next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 appChange scope |  | disabled=false hidden=false": [
@@ -2435,28 +2393,14 @@
         "width": 112.516
       }
     ],
-    "#n=sessions @375 | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
+    "#n=sessions @375 | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 145.328
+        "fillsRow": true
       }
     ],
-    "#n=sessions @375 | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
+    "#n=sessions @375 [expanded] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 106.563
-      }
-    ],
-    "#n=sessions @375 [expanded] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 145.328
-      }
-    ],
-    "#n=sessions @375 [expanded] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 106.563
+        "fillsRow": true
       }
     ],
     "#n=attention @375 | next-attention > next-attention-brief > next-attention-coverage > ctl-disclosure.next-attention-coverage-details |  | per-harness detail |  | disabled=false hidden=false": [
@@ -2827,76 +2771,34 @@
         "width": 112.516
       }
     ],
-    "#n=sessions [.next-capacity-window button #0] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
+    "#n=sessions [.next-capacity-window button #0] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 145.328
+        "fillsRow": true
       }
     ],
-    "#n=sessions [.next-capacity-window button #0] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
+    "#n=sessions [.next-capacity-window button #0] [expanded] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 106.563
+        "fillsRow": true
       }
     ],
-    "#n=sessions [.next-capacity-window button #0] [expanded] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
+    "#n=sessions [.next-capacity-window button #1] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 145.328
+        "fillsRow": true
       }
     ],
-    "#n=sessions [.next-capacity-window button #0] [expanded] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
+    "#n=sessions [.next-capacity-window button #1] [expanded] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 106.563
+        "fillsRow": true
       }
     ],
-    "#n=sessions [.next-capacity-window button #1] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
+    "#n=sessions [.next-capacity-window button #2] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 145.328
+        "fillsRow": true
       }
     ],
-    "#n=sessions [.next-capacity-window button #1] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
+    "#n=sessions [.next-capacity-window button #2] [expanded] | next-operations > next-operations-header > ctl-disclosure.ctl-disclosure--pop |  | How Intent and drift works |  | disabled=false hidden=false": [
       {
-        "fillsRow": false,
-        "width": 106.563
-      }
-    ],
-    "#n=sessions [.next-capacity-window button #1] [expanded] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 145.328
-      }
-    ],
-    "#n=sessions [.next-capacity-window button #1] [expanded] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 106.563
-      }
-    ],
-    "#n=sessions [.next-capacity-window button #2] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 145.328
-      }
-    ],
-    "#n=sessions [.next-capacity-window button #2] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 106.563
-      }
-    ],
-    "#n=sessions [.next-capacity-window button #2] [expanded] | next-operations > next-operations-header > ctl-disclosure |  | How rows are split |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 145.328
-      }
-    ],
-    "#n=sessions [.next-capacity-window button #2] [expanded] | next-operations > next-operations-header > ctl-disclosure |  | Goal sources |  | disabled=false hidden=false": [
-      {
-        "fillsRow": false,
-        "width": 106.563
+        "fillsRow": true
       }
     ],
     "#n=project:alpha%2Fapp:now | next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 appChange scope |  | disabled=false hidden=false": [
@@ -3736,10 +3638,10 @@
     "timeline @1280 | next-project-detail > next-cockpit-shell > ctl-disclosure.next-cockpit-scope-switcher |  | Viewing project \u00b7 appChange scope |  | disabled=false hidden=false": [
       null
     ],
-    "timeline @1280 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 assignment source |  | disabled=false hidden=false": [
+    "timeline @1280 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 task source |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
-        "width": 227.891
+        "width": 173.969
       }
     ],
     "timeline @1280 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-execution-root > next-cockpit-child-row > ctl-disclosure |  | Evidence \u00b7 child handoff |  | disabled=false hidden=false": [
@@ -3783,10 +3685,10 @@
         "width": 307.875
       }
     ],
-    "timeline @375 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 assignment source |  | disabled=false hidden=false": [
+    "timeline @375 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > ctl-disclosure |  | Evidence \u00b7 task source |  | disabled=false hidden=false": [
       {
         "fillsRow": false,
-        "width": 227.891
+        "width": 173.969
       }
     ],
     "timeline @375 | next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-execution-root > next-cockpit-child-row > ctl-disclosure |  | Evidence \u00b7 child handoff |  | disabled=false hidden=false": [
@@ -4357,5 +4259,7 @@
   "popoverSource": "47ed3654, native popover triggers measured over the same 87 route views on 2026-10-10; inline sizes measured from 7d4a23c3 over 87 route views on 2026-10-11",
   "deviations": [
     "DEC-27 replaces What analysis does with the Intent how-to Popover; the remaining disclosure chrome retains its measured contract."
-  ]
+  ],
+  "projectDeviation": "2026-10-12: Evidence · task source replaces Evidence · assignment source. Chromium measured 173.969 px at 1280 and 375 px, with unchanged row filling and chrome.",
+  "sessionsDeviation": "2026-10-12: the two Sessions header explanations share How Intent and drift works. Chromium measured identical trigger chrome and a trigger filling its row at desktop and 375px; retired trigger identities are removed."
 }

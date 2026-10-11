@@ -39,9 +39,11 @@ Pi relocation: `PI_CODING_AGENT_SESSION_DIR` is an authoritative direct session-
 ## Dashboard views
 
 The dark-only dashboard opens on **Sessions**, which keeps active work first and recent history
-below it. Above the rows it carries at most one sentence: while the annotation store is on and no
-session has been checked for drift, it says so, with no count. **Projects**, one click away, groups
-sessions by the label their harness publishes. **Intent log** lists every
+below it. Its two counters show active now and working; exact requests and reported blocks are
+counted in Attention. One paragraph explains how to open a session. Where annotations are on,
+the store is readable and a reading route names a provider, it explains how to set a goal and
+analyze drift, adding that no session has been checked while that is true. **Projects**, one
+click away, groups sessions by the label their harness publishes. **Intent log** lists every
 current board session and retained annotation/discard record once, including sessions without a
 project or a goal. It labels the typed goal and each expected outcome line, cached deterministic goal, and each
 published workflow goal separately. A missing workflow title supplies no goal. Saved deterministic
@@ -62,8 +64,10 @@ title, with its harness, state and age as a caption beneath; a row whose title w
 so in place of the title rather than falling back to an id. Where two sessions of one harness would
 otherwise render identically, the row carries the session key so you are not picking blind. A
 persistent briefing shows
-**ASSIGNMENT / EXECUTION / COMMAND**, latest evidence, and direction. Assignment retains the
-stated goal, its source, and the reason when no goal is available. Command keeps a project session
+**Where this project stands**, with **Current task**, **Running now**, **Needs you** and
+**Latest result**. **Latest instruction** selects by instruction time, with its source and the
+reason when no instruction is available. Without instruction times, the card says
+**Published instruction**. **Your saved words** labels saved words and expected outcome rows. Needs you keeps a project session
 waiting on you visible above the tabs, with raise and copy-resume controls where supported.
 
 **Now** pairs current activity with observed session endings, their outcome glyphs and git readings,
@@ -75,8 +79,9 @@ session's optional read-only terminal, the observer-model controls and the statu
 names the state of both capabilities. A capability that is on renders expanded and outside the
 disclosure, so nothing you can act on is behind a click. What you typed for a session, and
 everything read against it, lives on that session's own page (below), not on a tab here.
-Browser-local
-human context and old tripwire notes do not instruct an agent and remain inert.
+The **Your note (this tab only)** box, browser-local human context and old
+tripwire notes do not instruct an agent and remain inert. The first-officer gloss appears with a
+first-officer session or enabled stage source; stage alerts require an enabled stage source.
 
 Each tab names its own panel in a line beneath the strip, because two of the four open onto a
 heading that does not repeat the label. Course and Decisions also carry a cue on the tab
@@ -87,7 +92,7 @@ same claim as a zero. Every cue is spelled out for a screen reader beside its ma
 The composer for a note to yourself sits in the project header, above the tabs, rather than inside
 Tripwires. It is the same control wherever you reach it, and it still writes nothing into a session.
 
-Workflow stage conditions are separate typed controls in Course and Projects. Save one declared
+Stage alerts are separate typed controls in Course and Projects. Save one declared
 stage per exact workflow; the first current entity observed entering it trips the condition once.
 First sight, restart and evidence gaps establish a baseline rather than an entry. The card reports
 the current coverage and unavailable sources. Rearm permits another alert; saving the unchanged
@@ -365,7 +370,7 @@ the last 180 characters each printed and the paths of the files written, only af
 beside the button, and sends none where Cargento cannot name that destination. On every other harness those
 entries are instructions, dispatches and gate decisions and never an inspected file, test or
 deliverable. Your words also appear beside the goal the harness published,
-in the project view's stated goal block, each on its own row so the two claims are never merged, and
+in the project view's Latest instruction card (Published instruction when undated), each on its own row so the two claims are never merged, and
 the derived row says when the directive was observed.
 
 Long caveats keep their claim on the page and put the rest behind a summary you can open, on both

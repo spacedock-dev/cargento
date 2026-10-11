@@ -13,10 +13,10 @@ import { useProjectBriefing } from './projectBriefing';
 
 /* Every member of the top-level set gets an entry, and Attention is not optional: it was once absent
    here while the router, the title and the `a` shortcut all knew it, which left a whole screen reachable
-   only by typing a fragment. Projects and Sessions keep the positions a reader has already learned. */
+   only by typing a fragment. Sessions comes first so the first step is opening a session. */
 const PRIMARY = [
-  ['projects', 'Projects'],
   ['sessions', 'Sessions'],
+  ['projects', 'Projects'],
   ['attention', 'Attention'],
   ['intent', 'Intent log'],
 ] as const;

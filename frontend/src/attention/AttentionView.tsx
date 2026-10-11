@@ -146,6 +146,20 @@ function Board({
   return (
     <section className="next-attention" data-next-view-body="attention">
       <Title />
+      {collection ? (
+        <section className="next-operations-fleet" aria-label="Request and block facts">
+          {observed.counters.slice(2).map((counter, index) => (
+            <section
+              key={counter.label}
+              data-next-fleet-fact={index === 0 ? 'requests' : 'reported-blocks'}
+            >
+              <span>{counter.label}</span>
+              <strong>{counter.value}</strong>
+              <small>{counter.noteText}</small>
+            </section>
+          ))}
+        </section>
+      ) : null}
       <Card variant="attention-brief" className="next-attention-brief">
         <p>
           <span className="next-attention-brief-label">OBSERVED</span>
