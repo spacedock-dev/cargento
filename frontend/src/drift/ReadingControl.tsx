@@ -225,12 +225,6 @@ export function ReadingControl({
       : '';
   const readLine = hint && !again ? `${hint} ${BACKGROUND}` : '';
   const job = readingJob(payload, session);
-  const off = <TurnOff />;
-  const offRow = anyConsent(payload) ? (
-    <div className="next-cockpit-reading-ask">
-      <TurnOff />
-    </div>
-  ) : null;
   /* Only from a published annotation: with the store off there is no count to read, and "0 requests" would be
      a default standing in for one. */
   const counted = annotation ? <ReadingCount count={count} /> : null;
@@ -257,7 +251,6 @@ export function ReadingControl({
     return (
       <>
         <JobBox job={job} running={running} />
-        {offRow}
         {said(answered)}
         {counted}
         {budget}
@@ -282,7 +275,6 @@ export function ReadingControl({
         <div className="next-cockpit-reading-ask next-cockpit-reading-ask--none">
           <NoReader reason={noReader} />
           {steerButton}
-          {off}
         </div>
         {steerBox}
         {said(answered === noReader ? '' : answered)}
@@ -395,7 +387,6 @@ export function ReadingControl({
         />
         {changeLine}
         {lead ? null : steers}
-        {offRow}
         {accounts}
         {counted}
         {budget}
@@ -422,13 +413,9 @@ export function ReadingControl({
     >
       {partsList}
       {about ? <p className="next-cockpit-reading-why">{about}</p> : null}
-      {offRow}
     </Why>
   ) : (
-    <>
-      {offRow}
-      {aboutWhy}
-    </>
+    <>{aboutWhy}</>
   );
   return (
     <>

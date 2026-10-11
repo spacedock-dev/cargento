@@ -55,7 +55,7 @@ describe('the question before the press', () => {
     });
     await settle(page);
     expect(text('.next-cockpit-direction-said')).toBe(
-      'You gave a later direction at #1: "Do it the careful way".',
+      '1 later direction since saving your intent.',
     );
     expect(
       [...document.querySelectorAll('.next-cockpit-reading-ask button')].map((b) => b.textContent),
@@ -109,7 +109,7 @@ describe('the question before the press', () => {
     });
     await settle(page);
     expect(text('.next-cockpit-direction-said')).toBe(
-      'You gave 2 later directions since saving your intent, the selected direction at #2: "Second one."',
+      '2 later directions since saving your intent.',
     );
     const pick = document.querySelector('[data-next-direction-select]') as HTMLSelectElement;
     expect([...pick.options].map((o) => o.textContent)).toEqual([
@@ -119,7 +119,10 @@ describe('the question before the press', () => {
     await act(async () => {
       fireEvent.change(pick, { target: { value: 'f1' } });
     });
-    expect(text('.next-cockpit-direction-said')).toContain('at #1: "First one."');
+    expect(text('.next-cockpit-direction-said')).toBe(
+      '2 later directions since saving your intent.',
+    );
+    expect(pick.value).toBe('f1');
     expect(page.posts()).toBe(0);
   });
 
@@ -420,7 +423,7 @@ describe('Keep my intent', () => {
     );
   });
 
-  it('settles a sole direction the question quoted in full in one press, after opening it', async () => {
+  it('draws a sole short direction on the first press and settles it on the second', async () => {
     const page = mountSession({
       store: SAVED,
       session: SAVED_AT,
@@ -431,6 +434,10 @@ describe('Keep my intent', () => {
       },
     });
     await settle(page);
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(page.allPosts().map((p) => p.path)).toEqual(['/api/direction']);
+    expect(text('[data-next-cockpit-direction-whole]')).toContain('Short.');
     await press(control('direction-keep'));
     await settle(page);
     expect(page.allPosts().map((p) => p.path)).toEqual(['/api/direction', '/api/annotate']);
@@ -473,6 +480,9 @@ describe('Keep my intent', () => {
     );
     expect(page.allPosts().map((p) => p.path)).toEqual(['/api/direction']);
     first = false;
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(page.allPosts().filter((p) => p.path === '/api/annotate')).toHaveLength(0);
     await press(control('direction-keep'));
     await settle(page);
     expect(page.allPosts().map((p) => p.path)).toEqual([

@@ -15,6 +15,9 @@
 @source '../ui/**/*.{ts,tsx}';
 @source '../lib/**/*.{ts,tsx}';
 @source '../terminal/TerminalSurface.tsx';
+@source '../intent/{DirectionQuestion,GoalField,IntentPanel,OutcomeLines,SessionMore}.tsx';
+@source '../sessions/SessionDetail.tsx';
+@source '../drift/{ReadingResult,WorkListView}.tsx';
 @source not '../**/*.test.*';
 @source not '../controls/{gallery,GalleryBoard,galleryWorld}.*';
 @source not '../**/*.css';

@@ -153,9 +153,8 @@
    a reordering trick. The page scrolls as one document: no scroll container
    and nothing sticky, so docs/design-reader-state.md gains no row. */
 .next-session-detail{margin:12px 0 0;padding:0 0 34px;box-shadow:none}
-.next-session-columns{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:var(--sp-5);align-items:start}
-.next-session-panel{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
-.next-session-activity{grid-column:1;grid-row:1;min-width:0}
+.next-session-panel{display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
+.next-session-activity{min-width:0}
 .next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 
 /* Two rows: state, name and id; then the measured line with the controls on
@@ -219,10 +218,6 @@
 .next-session-evidence{margin-top:20px}
 .next-session-evidence h2{color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-session-controls button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-@media(max-width:1100px){
-  .next-session-columns{grid-template-columns:minmax(0,1fr)}
-  .next-session-panel,.next-session-activity{grid-column:1;grid-row:auto}
-}
 @media(max-width:760px){
   .next-session-detail{padding:0}
   .next-session-facts>div{grid-template-columns:90px minmax(0,1fr);gap:12px}

@@ -150,8 +150,7 @@ export const PRESS_LINES: Readonly<Record<string, string>> = {
   'revision-after-end': 'Your intent was saved after this session ended.',
 };
 export const PRESS_CODEX = 'Codex sessions can be analyzed only while a turn is running.';
-export const PRESS_CLAUDE =
-  "Last turn isn't recorded as finished. Run another turn to open Analyze.";
+export const PRESS_CLAUDE = 'Analyze opens while this session runs.';
 export const PRESS_EVENTS = 'Analyze opens while this session runs or once it ends.';
 
 export const FLIP_HOLD_MS = 10_000;

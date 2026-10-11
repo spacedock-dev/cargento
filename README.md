@@ -153,7 +153,7 @@ The dashboard opens on Sessions. The tabs run Sessions, Projects, Attention and 
 Projects groups sessions by the label their harness publishes, and each project opens a cockpit
 with a Scope rail and a persistent Where this project stands briefing,
 and Now, Course, Decisions and Console tabs. Each session's own page leads with drift: there you
-type the goal and the expected outcome, a checklist of up to six lines, you are holding that session to, check it for drift with one
+type the goal you are holding that session to, optionally add an expected outcome, and check it for drift with one
 press, and read back what has been raised about that session and what became of the raise.
 Open a session, set a goal and press `Analyze drift`; `How Intent and drift works` beside Intent
 explains those steps, the reading's limits and when an outcome line gives a drift level.

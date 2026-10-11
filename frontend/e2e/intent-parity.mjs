@@ -33,6 +33,7 @@ import { instrumentResources, recordClipboard, resources } from './sessions-boar
 import { openPage } from './support/browser.mjs';
 import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
 import { awaitRecordRead } from './support/record.mjs';
+import { intentEditorDeviations } from './support/intent-editor-deviations.mjs';
 import { copyProofPath } from './support/proof-copy.mjs';
 
 /* Every fixed wait here means "give the page time to react". A hosted runner has a few shared cores and
@@ -311,7 +312,7 @@ try {
   /* The React editor against the previous editor's recorded reading of the same state, under `key`. */
   async function versus(key, message) {
     const mine = await readEditor(react);
-    const old = golden.observe(key);
+    const old = intentEditorDeviations(golden.observe(key));
     assert.deepEqual(norm(mine), old, message);
     return old;
   }
@@ -319,7 +320,7 @@ try {
     await load(react, fragmentOf(sid));
     await prepare(react);
     const mine = await readEditor(react);
-    const old = golden.observe(`editor: ${label}`);
+    const old = intentEditorDeviations(golden.observe(`editor: ${label}`));
     assert.deepEqual(norm(mine), old, `the editor differs from the recorded editor (${label})`);
     return old;
   }
@@ -334,7 +335,9 @@ try {
       ]);
       assert.equal(state.fields[0].boxes[0], 'Fix the redirect for signed-in readers');
       assert.ok(
-        state.footer.buttons.every(([, inert]) => inert),
+        state.footer.buttons
+          .filter(([label]) => label === 'Save intent' || label === 'Undo changes')
+          .every(([, inert]) => inert),
         'Save and Undo are live over saved words',
       );
     },
@@ -351,8 +354,11 @@ try {
         await box.click();
         await o.page.keyboard.press(`${MOD}+a`);
         await o.page.keyboard.type('Ship the worker, then verify');
+        const first = o.page.locator('[data-next-cockpit-held-line-index="0"]');
+        await first.fill('Temporary line');
         await o.page.locator('[data-next-cockpit-action="held-line-add"]').click();
-        await o.page.keyboard.type('The queue drains');
+        await first.fill('');
+        await o.page.locator('[data-next-cockpit-held-line-index="1"]').fill('The queue drains');
       });
       assert.equal(typed.fields[0].marks, '');
       assert.equal(typed.fields[0].boxes[0], 'Ship the worker, then verify');
@@ -404,6 +410,7 @@ try {
         'the editor differs from the recorded editor over a pending line',
       );
       // An armed discard.
+      await react.page.getByRole('button', { name: 'More', exact: true }).click();
       await react.page
         .locator(
           '.next-cockpit-held-discard-offer [data-slot=accordion-trigger],.next-cockpit-held-discard-offer [data-slot=collapsible-trigger]',
@@ -514,6 +521,7 @@ try {
     async () => {
       await load(react, fragmentOf('intent-2'));
       await readEditor(react);
+      await react.page.locator('[data-next-cockpit-held-line-index="0"]').fill('Standing outcome');
       await react.page.locator('[data-next-cockpit-action="held-line-add"]').click();
       const line = react.page.locator('textarea[data-next-cockpit-held-line-index="1"]');
       await mark(react, 'textarea[data-next-cockpit-held-line-index="1"]', 'line');
@@ -796,12 +804,15 @@ try {
       await react.page.waitForSelector('[data-next-cockpit-direction-question]', {
         timeout: patience(15000),
       });
-      const said = await react.page.locator('.next-cockpit-direction-said').innerText();
-      const number =
-        /^You gave 2 later directions since saving your intent, the selected direction at #(\d+): /.exec(
-          said,
-        )?.[1];
-      assert.ok(number, `the question named no drawn number: ${said}`);
+      const said = await react.page.locator('.next-cockpit-direction-said').textContent();
+      assert.equal(norm(said), '2 later directions since saving your intent.');
+      const number = await react.page
+        .locator('[data-next-direction-select]')
+        .inputValue()
+        .then(async (id) =>
+          react.page.locator(`[data-next-entry-id="${id}"]`).getAttribute('data-next-entry'),
+        );
+      assert.ok(number, 'selected direction has no activity number');
       react.reset();
       await react.page.locator('[data-next-cockpit-action="direction-keep"]').click();
       await react.page.waitForSelector('[data-next-cockpit-direction-whole]');
@@ -849,6 +860,8 @@ try {
       const discard = react.page.locator('[data-next-cockpit-action="held-discard"]');
       react.reset();
       // Behind its own summary, as a reader finds it.
+      const more = react.page.getByRole('button', { name: 'More', exact: true });
+      if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click();
       await react.page
         .locator(
           '.next-cockpit-held-discard-offer [data-slot=accordion-trigger],.next-cockpit-held-discard-offer [data-slot=collapsible-trigger]',
@@ -882,6 +895,8 @@ try {
     await load(react, fragmentOf('intent-2'));
     await readEditor(react);
     const discard = react.page.locator('[data-next-cockpit-action="held-discard"]');
+    const more = react.page.getByRole('button', { name: 'More', exact: true });
+    if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click();
     await react.page
       .locator(
         '.next-cockpit-held-discard-offer [data-slot=accordion-trigger],.next-cockpit-held-discard-offer [data-slot=collapsible-trigger]',
@@ -959,6 +974,8 @@ try {
     async () => {
       await load(react, fragmentOf('intent-2'));
       await readEditor(react);
+      const more = react.page.getByRole('button', { name: 'More', exact: true });
+      if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click();
       const key = 'cargento.next.live-estimate:claude:intent-2';
       const sw = react.page.locator('.next-session-drift-switch');
       react.reset();
@@ -967,6 +984,7 @@ try {
       assert.equal(await sw.getAttribute('aria-checked'), 'true');
       assert.equal(await react.page.evaluate((k) => globalThis.localStorage.getItem(k), key), '1');
       await react.page.reload();
+      await react.page.getByRole('button', { name: 'More', exact: true }).click();
       await react.page.waitForSelector('.next-session-drift-switch');
       assert.equal(
         await react.page.locator('.next-session-drift-switch').getAttribute('aria-checked'),

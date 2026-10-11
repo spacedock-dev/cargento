@@ -57,6 +57,7 @@ describe('words typed while a save is open', () => {
       routes: { '/api/annotate': () => 'hold' },
     });
     await settle(page);
+    type(goalBox(), 'Changed goal');
     type(lineBoxes()[0] as HTMLTextAreaElement, 'Changed line');
     await press(control('held-save'));
     fireEvent.keyDown(lineBoxes()[0] as HTMLTextAreaElement, { key: 'Escape' });
@@ -142,7 +143,6 @@ describe('a reply that is not the one the page expected', () => {
       },
     });
     await settle(page);
-    await press(control('held-line-add'));
     type(lineBoxes()[0] as HTMLTextAreaElement, 'A line');
     await press(control('held-save'));
     await settle(page);

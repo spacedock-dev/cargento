@@ -2686,7 +2686,8 @@ the later-direction floor (item 9).
    2026-10-02 (owner): there is no "Looks right"; Save intent is enabled over the untouched draft
    and adopts it, so a drafted goal has one way to be saved, and Undo changes stays inert until
    there is an edit.
-3. The checklist. The expected outcome is up to six lines the reader types, each at most 240
+3. The checklist. The expected outcome starts with one optional empty line. Add a line and per-line
+   Remove appear after use; the checklist still holds up to six lines the reader types, each at most 240
    characters and one line, each read and shown as its own constraint under DEC-17's rules. Each
    line records its source: typed, or added from entry #n. The bounds, fixed by DRC-4685, the layer
    that first stores and sends outcome lines:
@@ -4562,14 +4563,14 @@ sentence about work the page cannot see stay reachable.
 | 2 | The resume command after the Copy buttons go | It lives on Attention, the waiting panel and the project rail only, not on the session page. | The promise map's P2 "way back" clause and its line beside departures, NUI-5, NUI-8 |
 | 3 | "Analyze again" | One run control per state. A second press appears only when new work was recorded or the intent changed after the result, and it names which. | The 2026-10-01 amendment "the result takes the button's place" (Q3) |
 | 4 | The Direction question | Its summary shrinks to one line with the count. Keep still draws every direction whole before settling, so it keeps its two presses. | Nothing; the 2026-09-28 ruling stands and is part of the click budget |
-| 5 | A typed goal on an ended session | The goal box says before the reader types that Cargento can only read the goal drafted from their prompt on an ended session. | The 2026-10-01 note on what a press says beside the button |
+| 5 | A typed goal on an ended session | The goal box says before the reader types that words saved now cannot be read against an ended session; intent saved before the end and the goal drafted from their prompt remain eligible. | The 2026-10-01 note on what a press says beside the button |
 | 6a | Use your prompt | Stays visible beside the goal. It is the only way to choose a different goal on an ended session. | Nothing |
 | 6b | Live monitor | Moves into More. It is off by default and needs no model. | DEC-26 item 4 (placement only) |
 | 6c | Discard everything | Moves into More and stays reachable. | Nothing; SECURITY.md still describes it |
 | 6d | What analysis does | Replaced by the "How Intent and drift works" popup. One explainer, not two. | Nothing |
 | 6e | Delegated work | Moves into More and stays reachable from Analyze drift. It is an honest limit. | Nothing |
 | 6f | Turn off readings | Moves into More. The promise map's off switch stays. | Nothing |
-| 6g | Add to my intent on each activity row | Shown on hover and on keyboard focus, always in the page. DEC-24 item 3 needs it. | Nothing |
+| 6g | Add to my intent on each activity row | Shown on hover, focus and focus within the row, and always visible when hover is unavailable or the pointer is coarse. Always in the page. DEC-24 item 3 needs it. | Nothing |
 | 6h | "No terminal to raise" and its "Why" | Shown only when the session is blocked on the reader. | DEC-20 (the raise is primary when a session is blocked) |
 
 The first view at rest holds about eight buttons, links and disclosure summaries: How Intent and
@@ -4603,8 +4604,61 @@ verification walk.
 
 A reader who adds no outcome line never sees a level on the pill: the analysis answers the Goal
 only. The how-to says so, and says that one line gives a level. "Not enough recorded yet" is a
-valid result, not an error. A typed goal on an ended session is still refused; the note in row 5
-says so before the reader types. Removing the departure rows' Copy command retracts a clause of the
+valid result, not an error. A goal typed and saved after the end is still refused; a typed goal
+saved before the end remains eligible. The note in row 5 says so before the reader types. Removing
+the departure rows' Copy command retracts a clause of the
 promise map, and this ruling authorises it. The click budget that follows from the rows is in the
 milestone: three clicks for an accepted draft, four with later directions, four or five for a
 typed goal.
+
+### Session first-view build, 2026-10-12
+
+The unblocked session header follows the goal and analysis panel, before Session activity; a blocked
+session retains its header raise and waiting panel above the goal. More has six groups at most:
+Live monitor with its explanation, saved-word caveats and Discard everything, Delegated work,
+Turn off readings, Saved with Clear, and settled or unread later directions. The privacy disclosure,
+model-request count and daily cap stay beside Analyze. The goal and primary fit at 1280 by 800 and
+375 by 667; 320 px and the 640 px layout representing 200% zoom retain wrapping and document scroll.
+
+The count-only Direction summary quotes no whole text, so even a sole short direction needs the
+opening press before the settlement press. The first-view browser proof injects one extra button
+and rejects it. The idle drafted fixture's visible panel text, excluding field values and closed
+bodies, has a 90-word ceiling. The opened how-to retains its separate 150-word ceiling.
+
+The fresh Claude Code fixture inventory below includes the session's project link and the Sessions
+breadcrumb. Before: 19 controls across the page, 13 in the 1280 by 800 viewport. After: 14 across
+the page, eight in that viewport. The activity disclosures remain below the first view; none of
+their sentences or controls are removed. The switch's accessible name is Live monitor.
+
+| Button, link or disclosure | Before | After |
+| -- | -- | -- |
+| Sessions breadcrumb | First view | First view |
+| Project link | First view | First view |
+| No terminal to raise: Why | First view | Blocked only |
+| How Intent and drift works | First view | First view |
+| Use your prompt | First view | First view |
+| Clear | First view | More |
+| Remove line 1 | First view | After outcome use |
+| + Add a line | First view | After outcome use |
+| Undo changes | First view | After a goal edit |
+| Save intent | First view | First view |
+| Live monitor | Below fold | More |
+| Analyze drift | Below fold | First view |
+| What is sent | Below fold | First view |
+| More | Absent | First view |
+| About this record | First view | Below fold |
+| Session facts | First view | Below fold |
+| Command-shape reports: off | First view | Below fold |
+| Why two cards | Below fold | Below fold |
+| Intent log | Below fold | Below fold |
+| What it keeps | Below fold | Below fold |
+
+Correction round, 2026-10-12: the surviving departure's Steer back precedes the result's evidence
+rows so it remains in the first view. Add a line shares the Save intent row,
+removing one separate row before Keep. A used outcome has Remove beside its box. Keep precedes
+the level and direction selector; the visible summary is the count, with its floor retained in
+the accessible sentence. A blocked header limits the visible title to two lines, retaining the
+full title in its text and title attribute, and moves its measured counts to Session activity.
+The first-view proof covers stored results, one and four
+unsettled directions, short and wrapped blocked headers, and touch activity actions at desktop
+and phone sizes; each placement and the touch fallback have a rejecting mutation.

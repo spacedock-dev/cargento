@@ -416,7 +416,8 @@ The timeline and the terminal are mounted in the project view's Decisions and Co
 Deviations (DEC-27, 2026-10-11): Sessions rows no longer offer Copy ID; session headers
 no longer offer Copy ID, Copy link or Copy command, and departure rows no longer offer Copy
 command. The header's resume absence and explanation go with that control. Terminal raise and
-its limits remain. Resume commands remain on Attention, the waiting panel and the project rail;
+its limits remain on blocked sessions; the unblocked absence and Why are retired from the recorded
+side. An unblocked header now follows the panel, before activity, with its evidence intact. Resume commands remain on Attention, the waiting panel and the project rail;
 Steer back still copies a correction. The unused absolute-session-link builder is retired.
 Recorded-side normalizers remove just these controls and the resume explanation; the current
 page still has to assert their absence. The fixture recordings are unchanged.
@@ -454,6 +455,26 @@ and open no picker. `PromptSelect.test.tsx` covers the held request and those ab
 375 and 320 px, with an `auto-prompt-width` mutation. The field chrome gate measures
 the reserved width explicitly; its reference table adds the approved 288 px desktop
 width for the two prompt identities. The recorded answers remain unchanged.
+
+DEC-27 trims the first view: one optional outcome line, its Add and Remove controls after use,
+Undo after a goal edit or prompt choice, and six groups in the session-scoped More disclosure. Saved reads-from and
+Clear move there with Live monitor, Discard everything, Delegated work, Turn off readings and
+neutral later-direction state. The idle monitor explanation and editor hint move with their owners.
+The count-only Direction summary draws no text, so every Keep requires the whole-text opening
+press before settlement. Activity Add stays mounted and becomes visible on hover or focus.
+The panel precedes activity at all widths, and the unblocked header moves into that activity area.
+The ended-session note appears beside the Goal field before typing. Claude's idle session without
+an observed stop says “Analyze opens while this session runs.” The route and browser projections
+replace only the former refusal sentence. Recorded-side projections adapt those placements and
+controls; field values, evidence and requests remain asserted.
+The idle drafted panel has a 90-word ceiling outside field values and closed bodies; the browser
+first-view proof checks the viewport, the control set, a one-button mutation and the limit paths.
+The CSS proof projects the relocated control identities on the reference side. More uses the
+existing tier-2 chrome and a 49.266 px natural width, with the same font-metric allowance as other
+summaries. Closed More bodies may be hidden; opened widths retain their recorded checks. At wide
+viewports, nudges keep 16 px margins and reading jobs and consent keep their 33.75 rem cap against
+the wider row. The relocated subtitle uses the 15 px prose step. No recording under
+`frontend/test/golden/` is edited.
 
 DEC-27 replaces What analysis does with the keyed How Intent and drift works popover beside
 the Intent heading. Its three steps explain the goal, Analyze and the correction. Its limit line

@@ -1849,7 +1849,7 @@
           },
           {
             "vitest": "frontend/src/intent/IntentDirections.test.tsx",
-            "test": "settles a sole direction the question quoted in full in one press, after opening it"
+            "test": "draws a sole short direction on the first press and settles it on the second"
           },
           {
             "vitest": "frontend/src/drift/KeepAnalyze.test.tsx",

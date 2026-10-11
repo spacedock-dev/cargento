@@ -51,7 +51,7 @@ export function WorkListView() {
             return (
               <div
                 key={`${entry.id}:${String(row.n)}`}
-                className="next-cockpit-work-row"
+                className="next-cockpit-work-row group"
                 role="listitem"
                 data-next-cockpit-work-type={type}
                 {...(row.n === null ? {} : { 'data-next-entry': String(row.n) })}
@@ -109,6 +109,7 @@ export function WorkListView() {
                   ) : null}
                   {row.add ? (
                     <Button
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:opacity-100"
                       variant="bare"
                       type="button"
                       data-next-cockpit-action="direction-add"

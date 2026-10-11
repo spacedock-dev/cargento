@@ -150,9 +150,11 @@ function ResultItem({
 function ResultAnswer({
   answer,
   midFlight,
+  primary,
 }: {
   readonly answer: Answer;
   readonly midFlight: boolean;
+  readonly primary?: ReactNode;
 }) {
   const { model } = useDrift();
   const lead = midFlight ? (
@@ -170,6 +172,7 @@ function ResultAnswer({
           <span>{RESULT_DEPARTS}</span>
           <span className="next-cockpit-result-count">{count}</span>
         </p>
+        {primary}
         {answer.departures.map((row) => (
           <Account key={row.key} row={row} />
         ))}
@@ -356,21 +359,23 @@ export function ReadingResult({
       {shape.cutoff ? <p className="next-cockpit-reading-why">{shape.cutoff}</p> : null}
     </>
   );
-  /* Stale, the callout holds the one "Analyze again" and Steer back keeps its own row below; otherwise the
-     press sits beside Steer back at the foot. Never both. A question stands in the press's place, and holds
-     both back. */
-  const press = question ? null : again(staleState ? null : slotted);
+  /* A changed reading keeps Analyze again in its callout. A surviving departure's primary precedes
+     the evidence rows; a secondary steer stays at the foot. A direction question holds both back. */
+  const leadSteer = !question && slotted?.lead ? slotted : null;
+  const press = question
+    ? null
+    : again(staleState ? null : leadSteer ? { ...leadSteer, button: null } : slotted);
   const steers =
     staleState && slotted && !question ? (
       <>
-        <div className="next-cockpit-reading-ask">{slotted.button}</div>
+        {leadSteer ? null : <div className="next-cockpit-reading-ask">{slotted.button}</div>}
         {slotted.box}
       </>
     ) : null;
   const foot = staleState ? steers : press;
   const callout = staleState && !question ? again(null) : null;
   return (
-    <div className="next-session-drift-check next-cockpit-result" data-next-result>
+    <div className="next-session-drift-check next-cockpit-result gap-1" data-next-result>
       {question}
       {stale ? (
         <Card
@@ -388,7 +393,19 @@ export function ReadingResult({
       {annotation['not_accurate'] === true ? (
         <p className="next-cockpit-result-marked">{RESULT_MARKED}</p>
       ) : null}
-      {answer ? <ResultAnswer answer={answer} midFlight={shape.scope === 'mid-flight'} /> : null}
+      {answer ? (
+        <ResultAnswer
+          answer={answer}
+          midFlight={shape.scope === 'mid-flight'}
+          primary={
+            leadSteer ? (
+              <div className="next-cockpit-reading-ask" data-next-result-primary>
+                {leadSteer.button}
+              </div>
+            ) : null
+          }
+        />
+      ) : null}
       {coverage ? (
         <p className="next-cockpit-reading-why" data-next-reading-coverage>
           {coverage}

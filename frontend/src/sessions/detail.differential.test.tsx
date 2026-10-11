@@ -42,12 +42,18 @@ function summarize(source: Element | DocumentFragment): DetailSummary {
     };
   const copy = article.cloneNode(true) as Element;
   copy.querySelector('.next-session-panel')?.remove();
+  const header = copy.querySelector('.next-session-detail-header');
+  if (header) copy.prepend(header);
   /* The numbered activity list and the header's drift pill and entry count belong to the Drift step: the legacy
      stub draws none of them, and `drift-parity.mjs` and the drift tests hold them to the real page. */
   for (const owned of copy.querySelectorAll('[data-next-cockpit-work], [data-next-drift-pill]')) {
     owned.remove();
   }
   const meta = copy.querySelector('.next-session-detail-meta');
+  // Compare retained counts in the recorded header order; the viewport proof owns their new placement.
+  if (meta && header && !header.contains(meta)) {
+    header.querySelector('.next-session-detail-bar')?.prepend(meta);
+  }
   if (meta) {
     meta.textContent = (meta.textContent ?? '')
       .split(' · ')

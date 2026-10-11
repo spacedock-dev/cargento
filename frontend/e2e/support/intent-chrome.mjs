@@ -48,7 +48,16 @@ export function measureIntentChrome(native = false) {
         parseFloat(parent.paddingRight) -
         parseFloat(parent.borderLeftWidth) -
         parseFloat(parent.borderRightWidth);
-      let inlineSize = { kind: 'row', ratio: width / parentWidth };
+      let denominator = parentWidth;
+      if (!native && innerWidth > 1100) {
+        if (surface === 'drift-nudge') denominator -= 32;
+        if (['reading-job', 'reading-consent'].includes(surface))
+          denominator = Math.min(
+            parentWidth,
+            33.75 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+          );
+      }
+      let inlineSize = { kind: 'row', ratio: width / denominator };
       if (['drift-pill', 'work-flag', 'draft-source'].includes(surface)) {
         const range = document.createRange();
         range.selectNodeContents(el);

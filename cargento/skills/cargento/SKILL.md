@@ -294,16 +294,17 @@ counts until anything in it writes again; a subagent write counts. Marks live in
 ### Recording what a session should achieve
 
 You can record a goal and an expected outcome against one session, in your own words. The
-expected outcome is a checklist of up to six lines, each one line of at most 240 characters, and
-the goal is one line of at most 240. Both are optional and set independently, and saving one
+expected outcome starts with one optional empty line and holds up to six lines, each at most 240
+characters. The goal is one line of at most 240. Both are optional and set independently, and saving one
 leaves the other alone. Open the session's page: the fields are the first thing in its drift
-block, for a session with or without a project. A line above them says what typing buys: a check
-happens when you ask for one, and Cargento never writes into the session. Each box shows how many
-of its 240 characters you have used as you type. The goal offers `clear` only when there is text;
-each outcome line has `remove`, and `add a line` adds another until there are six, where it stays
-on the page, refuses a seventh and says why (replace or merge a line instead). `save` appears only
-when what you typed differs from what is stored, the list saves as a whole, and Escape puts the
-stored words back. Each saved line shows where it came from: typed, or added from an entry. A
+block, for a session with or without a project. The how-to beside Intent says what an analysis
+reads and that Cargento never writes into the session. Each box shows how many of its 240 characters
+you have used as you type. More holds the goal's `Clear` control and the saved reads-from line.
+After an outcome line is used,
+`Remove` and `Add a line` appear; Add adds another until there are six, where it stays
+on the page, refuses a seventh and says why (replace or merge a line instead). `Save intent` stays
+visible and saves the drafted goal or your edits. `Undo changes` appears after a goal edit or prompt
+choice. The list saves as a whole, and Escape puts the stored words back. Each saved line shows where it came from: typed, or added from an entry. A
 reading reads each line on its own and shows one row per line.
 
 `POST /api/annotate` with a harness, a session id and `goal` or `lines` (a list of strings, the
@@ -429,12 +430,12 @@ figures beneath are one line per collection — the departures the reading raise
 the away checks raised, each counted from the rows shown beside it — then the board's raises,
 attempts and hand-overs, with no arithmetic between any of them. A count identifies a session worth
 reading and settles nothing else, and where the away checks have never read the session the figure
-says it was not measured rather than reading zero. The `clear` beside each box empties that box, and
+says it was not measured rather than reading zero. The goal's `Clear` in More empties that box, and
 the save after it keeps every earlier revision, so the raises quoting those words stay. Discarding
 the whole annotation withdraws them: the quotations go from the departure record too, and what
 stays is the fact that a check ran and a record of the discard itself, holding when it happened
 and no text at all. That record is why a discarded session still has a line in the Intent log,
-and why the board never describes it as a session nobody typed against. That act is the `Discard everything` control, behind the summary of the same name under the two boxes and offered only
+and why the board never describes it as a session nobody typed against. That act is the `Discard everything` control, inside More, behind the summary of the same name and offered only
 where a revision is stored; it takes two presses, and between them the board names what it will
 delete and what it will withdraw. That sentence is the control's own description, and it is
 written to the page's live region when the first press arms it, so it reaches a reader who is not
@@ -455,8 +456,8 @@ revisions say the words have moved, and legacy readings without a reading time s
 unknown. Consistent readings add no mark or rank, and there is no drift total. With annotations
 off the slot has no link and there is no Drift mark; the screen explains that once.
 
-One thing here evaluates on a cadence, and only when you turn it on: the Drift section's `Live
-monitor` switch, off by default and remembered per session in this browser only, never sent to the
+One thing here evaluates on a cadence, and only when you turn it on: the session page's `Live
+monitor` switch in More, off by default and remembered per session in this browser only, never sent to the
 server. With it on, a Claude Code session's page shows a live estimate (None or low, Medium, High or
 Extreme, or Not enough recorded yet), labelled `Live estimate` with the time it was computed and
 worked out after every turn from the recorded checks and written paths against your saved intent,

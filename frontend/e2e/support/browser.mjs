@@ -75,12 +75,17 @@ export async function startBoard({ root = REPOSITORY } = {}) {
  * A page that may only talk to `origins` (plus data: URLs), with a log of what it did.
  * `log.externalRequests` must stay empty; `log.nonGet` lists every request that was not a GET.
  */
-export async function openPage(browser, origins, { viewport, reducedMotion, locale } = {}) {
+export async function openPage(
+  browser,
+  origins,
+  { viewport, reducedMotion, locale, hasTouch } = {},
+) {
   const allowed = [].concat(origins);
   const context = await browser.newContext({
     ...BROWSER_CONTEXT,
     viewport,
     reducedMotion,
+    ...(hasTouch === undefined ? {} : { hasTouch }),
     ...(locale ? { locale } : {}),
   });
   const log = { consoleErrors: [], pageErrors: [], externalRequests: [], nonGet: [], requests: [] };

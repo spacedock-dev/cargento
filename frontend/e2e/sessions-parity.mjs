@@ -189,7 +189,9 @@ const summarizeDetail = () => {
     .filter(Boolean);
   const header = clone.querySelector('.next-session-detail-header');
   // The previous measured line ended in the activity list's own count, which the list that is not drawn here carries.
-  const meta = header.querySelector('.next-session-detail-meta');
+  const meta = clone.querySelector('.next-session-detail-meta');
+  if (meta && !header.contains(meta))
+    header.querySelector('.next-session-detail-bar').prepend(meta);
   if (meta) meta.textContent = meta.textContent.replace(/ · \d+ entr(?:y|ies)\b/, '');
   const ask = clone.querySelector('[data-next-session-section="ask"]');
   return {

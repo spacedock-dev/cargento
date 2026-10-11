@@ -8,13 +8,11 @@ import type { Row } from '../observed';
 import { goalFocusFor } from '../sessions/heldState';
 import { useDisplayed, useShell } from '../shell/context';
 import { annotationOf, annotateOn, heldCap } from './annotation';
-import { Caveats, LaterDirections } from './Caveats';
 import { DirectionQuestion } from './DirectionQuestion';
 import { chosenIsStale, goalKey, intentDraft, type DraftInput } from './derive';
 import { reconcileDirection } from './directions';
 import { IntentSection } from './IntentSection';
-import { LiveMonitorSwitch } from './LiveMonitorSwitch';
-import { DRIFT_SUBTITLE } from './sentences';
+import { SessionMore } from './SessionMore';
 import { PanelContext, useHeldVersion, useIntentCtx, type Panel } from './useIntent';
 import { workSource } from './work';
 
@@ -149,14 +147,12 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
           id="next-session-drift"
           aria-labelledby="next-session-drift-heading"
         >
-          <header className="next-session-drift-head">
-            <div className="next-session-drift-titles">
+          <header className="next-session-drift-head py-0">
+            <div className="next-session-drift-titles flex flex-wrap items-baseline gap-x-2">
               <h2 id="next-session-drift-heading" className="next-session-drift-heading">
                 Drift
               </h2>
-              <p className="next-session-drift-sub">{DRIFT_SUBTITLE}</p>
             </div>
-            <LiveMonitorSwitch />
           </header>
           {drift ?? (
             <>
@@ -164,10 +160,9 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
               <DriftSlotPlaceholder />
             </>
           )}
-          {annotating ? <LaterDirections /> : null}
-          {annotating ? <Caveats /> : null}
           {children}
         </Card>
+        <SessionMore />
       </aside>
     </PanelContext>
   );

@@ -88,7 +88,7 @@ function Controls({
           />
         ) : null}
       </div>
-      {missing.length ? (
+      {(observed.isNeeds || observed.askKnown) && missing.length ? (
         <div className="next-session-reentry-none">
           <span className="next-session-reentry-clause">{missing.join(' · ')}</span>
           {/* A popover: this row is a flex row ending at the controls, and an in-flow body widened the item to its paragraphs and dragged "Why" 492px left. */}
@@ -157,6 +157,20 @@ function CommandSurface({
   );
 }
 
+function SessionMetadata({
+  session,
+  labels,
+  generated,
+}: {
+  readonly session: Row;
+  readonly labels: ReadonlyMap<string, string>;
+  readonly generated: number | null;
+}) {
+  const drift = useDrift();
+  const meta = sessionMeta(session, labels, generated, drift.model.entryCount);
+  return meta ? <p className="next-session-detail-meta">{meta}</p> : null;
+}
+
 function Header({
   session,
   observed,
@@ -180,10 +194,10 @@ function Header({
   const ended = endedAt(session) !== null && !observed.askKnown;
   const word = ended ? 'ended' : observed.askKnown ? 'needs input' : state?.label;
   const label = observed.project;
-  const drift = useDrift();
-  const meta = sessionMeta(session, labels, generated, drift.model.entryCount);
   return (
-    <header className="next-session-detail-header">
+    <header
+      className={`next-session-detail-header${observed.isNeeds || observed.askKnown ? ' pb-0' : ''}`}
+    >
       <div className="next-session-detail-title">
         {state ? (
           <Badge variant="session-state" className="next-session-state">
@@ -194,7 +208,8 @@ function Header({
         <h1
           ref={titleRef}
           tabIndex={-1}
-          {...(observed.titleKnown ? {} : { className: 'next-session-absent' })}
+          className={`${observed.titleKnown ? '' : 'next-session-absent'}${observed.isNeeds || observed.askKnown ? ' line-clamp-2' : ''}`}
+          title={observed.titleText}
         >
           {observed.titleText}
         </h1>
@@ -210,7 +225,9 @@ function Header({
         </p>
       </div>
       <div className="next-session-detail-bar">
-        {meta ? <p className="next-session-detail-meta">{meta}</p> : null}
+        {!(observed.isNeeds || observed.askKnown) ? (
+          <SessionMetadata session={session} labels={labels} generated={generated} />
+        ) : null}
         <DriftPill />
         <Controls session={session} observed={observed} route={route} />
       </div>
@@ -265,13 +282,15 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
       data-tone={observed.tone}
     >
       <DriftProvider session={session} payload={payload} project={route.project}>
-        <Header
-          session={session}
-          observed={observed}
-          route={route}
-          labels={labels}
-          generated={generated}
-        />
+        {observed.isNeeds || observed.askKnown ? (
+          <Header
+            session={session}
+            observed={observed}
+            route={route}
+            labels={labels}
+            generated={generated}
+          />
+        ) : null}
         {observed.askKnown ? (
           <AnswerBlock
             payload={payload}
@@ -280,7 +299,7 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             title={askingTitle(labels, session)}
           />
         ) : null}
-        <div className="next-session-columns">
+        <div className="next-session-columns grid grid-cols-1 gap-5 items-start">
           <DriftSlot
             session={session}
             payload={payload}
@@ -290,6 +309,18 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             <DeparturesSection />
           </DriftSlot>
           <div className="next-session-activity" data-next-session-activity>
+            {!(observed.isNeeds || observed.askKnown) ? (
+              <Header
+                session={session}
+                observed={observed}
+                route={route}
+                labels={labels}
+                generated={generated}
+              />
+            ) : null}
+            {observed.isNeeds || observed.askKnown ? (
+              <SessionMetadata session={session} labels={labels} generated={generated} />
+            ) : null}
             <h2 className="next-session-activity-heading">Session activity</h2>
             <CommandSurface session={session} observed={observed} generated={generated} />
             {/* The numbered record every "#<n>" on this page names, right after CURRENT ACTIVITY. */}
