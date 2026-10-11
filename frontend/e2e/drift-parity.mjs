@@ -607,11 +607,12 @@ try {
           return scroll.call(this, options);
         };
       });
-      const choose = async (key, id, number, words) => {
-        const requests = [...react.log.requests];
+      const choose = async (key, id, number, words, activation) => {
+        const requests = [...react.log.nonGet];
         const before = await resources(react.page);
         const posts = react.script.posts.length;
-        await react.page.locator(`[data-next-finding="${key}"]`).click();
+        await react.page.locator(`[data-next-finding="${key}"]`).focus();
+        await react.page.keyboard.press(activation);
         const row = react.page.locator(`[data-next-entry-id="${id}"]`);
         await row.locator('[data-next-finding-entry]').waitFor();
         assert.match(await row.innerText(), new RegExp(`Cited for “${words}” · #${number}`));
@@ -623,13 +624,25 @@ try {
           }),
           true,
         );
+        // A board GET may coincide with a jump; only a mutation or launch would violate the contract.
+        await react.page.evaluate(() => fetch('/api/data'));
         assert.deepEqual(await resources(react.page), before);
         assert.equal(react.script.posts.length, posts);
-        assert.deepEqual(react.log.requests, requests);
+        assert.deepEqual(react.log.nonGet, requests);
         assert.equal(await react.page.locator('[data-next-finding-entry]').count(), 1);
       };
-      await choose('goal', 'c1', 1, 'It stopped running the tests.');
-      await choose('line_1', 'c2', 2, 'Tests pass');
+      const names = await react.page
+        .locator('[data-next-finding]')
+        .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
+      assert.deepEqual(names, [
+        'Show cited entries in Session activity for Goal: Ship the queue worker',
+        'Show cited entries in Session activity for Expected outcome line 1: Tests pass',
+      ]);
+      assert.equal(new Set(names).size, names.length);
+      for (const name of names)
+        assert.equal(await react.page.getByRole('button', { name, exact: true }).count(), 1);
+      await choose('goal', 'c1', 1, 'It stopped running the tests.', 'Enter');
+      await choose('line_1', 'c2', 2, 'Tests pass', 'Space');
       assert.equal(
         await react.page.locator('[data-next-entry-id="c1"] [data-next-finding-entry]').count(),
         0,
@@ -650,7 +663,7 @@ try {
       );
       await load(react);
       await read(react);
-      await choose('goal', 'c1', 2, 'It stopped running the tests.');
+      await choose('goal', 'c1', 2, 'It stopped running the tests.', 'Enter');
       await setState(react, () =>
         stored(g, {
           facts: RECORD(g),
@@ -670,10 +683,10 @@ try {
       );
       await load(react);
       await read(react);
-      assert.match(
-        await react.page.locator('[data-next-result-goal]').innerText(),
-        /Nothing resolvable was cited/,
-      );
+      const unresolved = react.page.locator('[data-next-result-goal]');
+      await unresolved.getByRole('button', { name: 'Evidence', exact: true }).click();
+      await unresolved.getByText(/Nothing resolvable was cited/).waitFor();
+      assert.match(await unresolved.innerText(), /Nothing resolvable was cited/);
       assert.equal(await react.page.locator('[data-next-finding]').count(), 0);
       assert.equal(await react.page.locator('[data-next-finding-entry]').count(), 0);
       await react.page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -1032,6 +1045,43 @@ try {
       return 'one request';
     },
   );
+
+  await step('a keyboard-started analysis keeps focus on its result after completion', async () => {
+    const gate = deferred();
+    await apply(react, (g) =>
+      claude(g, {
+        routes: {
+          '/api/reading': async () => {
+            await gate.promise;
+            return { body: { ok: true, job: JOB(g) } };
+          },
+        },
+      }),
+    );
+    await load(react);
+    await read(react);
+    const ask = react.page.locator('[data-next-cockpit-action="reading-ask"]');
+    await ask.focus();
+    await react.page.keyboard.press('Enter');
+    await apply(react, (g) =>
+      claude(g, {
+        payload: { reading_jobs: { [`${HARNESS}:${SID}`]: JOB(g) } },
+        routes: react.script.routes,
+      }),
+    );
+    gate.release();
+    await tick(react);
+    const title = react.page.locator('.next-cockpit-reading-job-title');
+    await title.waitFor();
+    assert.equal(await title.evaluate((node) => node === document.activeElement), true);
+    await apply(react, (g) => stored(g));
+    await tick(react);
+    const heading = react.page.locator('[data-next-result-heading]');
+    await heading.waitFor();
+    assert.equal(await heading.evaluate((node) => node === document.activeElement), true);
+    assert.equal(await heading.evaluate((node) => node.tagName), 'H3');
+    assert.equal(await react.page.locator('[data-next-cockpit-action="reading-ask"]').count(), 0);
+  });
 
   await step(
     'Cancel names the job, sends one request, and the server’s cancelling flag survives a reload',
@@ -1418,7 +1468,7 @@ try {
     'Analyze, the consent step and Steer back are operated from the keyboard alone',
     async () => {
       await apply(react, (g) =>
-        steerState(g, {
+        claude(g, {
           payload: { reading: UNCONSENTED },
           routes: { '/api/reading': () => ({ body: { ok: true, produced: false } }) },
         }),

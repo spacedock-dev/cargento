@@ -2,6 +2,7 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
+import { useFocusKey } from '../controls';
 import { ActionButton } from '../intent/ActionButton';
 import { markNotAccurate } from './actions';
 import { useDrift } from './context';
@@ -144,15 +145,22 @@ function ResultItem({
 function FindingJump({ row }: { readonly row: Criterion }) {
   const { chooseFinding } = useDrift();
   if (!row.citedIds.length) return null;
+  const constraint =
+    row.key === 'goal'
+      ? 'Goal'
+      : isOutcomeLine(row.key)
+        ? `Expected outcome line ${row.key === 'output' ? '1' : row.key.slice(5)}`
+        : 'What the agent claimed';
   return (
     <Button
       type="button"
       variant="bare"
       data-next-cockpit-action="finding-jump"
       data-next-finding={row.key}
+      aria-label={`Show cited entries in Session activity for ${constraint}: ${row.clause}`}
       onClick={() => chooseFinding(row.key)}
     >
-      Show cited entries in Session activity
+      Show cited entries
     </Button>
   );
 }
@@ -165,12 +173,24 @@ function ResultAnswer({
   answer,
   midFlight,
   primary,
+  focusKey,
 }: {
   readonly answer: Answer;
   readonly midFlight: boolean;
   readonly primary?: ReactNode;
+  readonly focusKey: string | null;
 }) {
-  const { model } = useDrift();
+  const { ctx, model } = useDrift();
+  // The completed result replaces the job title in the same focus lane as the original Analyze press.
+  const headingRef = useFocusKey<HTMLHeadingElement>(ctx.shell.controls.focusLane, focusKey);
+  const headingProps = {
+    ref: headingRef,
+    tabIndex: -1,
+    'data-next-result-heading': true,
+    'data-next-focus': focusKey ?? undefined,
+  };
+  const ring =
+    'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-[var(--accent)] focus-visible:outline-offset-1';
   const lead = midFlight ? (
     <>
       <span className="next-cockpit-result-scope">So far:</span>{' '}
@@ -181,11 +201,11 @@ function ResultAnswer({
     const count = `${String(answer.count)} departure${answer.count === 1 ? '' : 's'}`;
     body = (
       <>
-        <p className="next-cockpit-result-headline">
+        <h3 {...headingProps} className={`next-cockpit-result-headline ${ring}`}>
           {lead}
           <span>{RESULT_DEPARTS}</span>
           <span className="next-cockpit-result-count">{count}</span>
-        </p>
+        </h3>
         {primary}
         {answer.departures.map((row) => (
           <Account key={row.key} row={row} />
@@ -195,24 +215,24 @@ function ResultAnswer({
   } else if (answer.kind === 'failed-check') {
     const where = resultWhere(answer.failed, model.numbers, true);
     body = (
-      <p className="next-cockpit-result-line">
+      <h3 {...headingProps} className={`next-cockpit-result-line ${ring}`}>
         {lead}
         {where ? `A check failed at ${where}.` : 'A check failed.'}
-      </p>
+      </h3>
     );
   } else if (answer.kind === 'not-reached') {
     body = (
-      <p className="next-cockpit-result-line">
+      <h3 {...headingProps} className={`next-cockpit-result-line ${ring}`}>
         {lead}
         Not reached at this stop.
-      </p>
+      </h3>
     );
   } else {
     body = (
-      <p className="next-cockpit-result-line">
+      <h3 {...headingProps} className={`next-cockpit-result-line ${ring}`}>
         {lead}
         {answer.kind === 'cant-tell' ? RESULT_CANT_TELL : RESULT_NOTHING_FOUND}
-      </p>
+      </h3>
     );
   }
   return <div className="next-cockpit-result-answer">{body}</div>;
@@ -413,6 +433,7 @@ export function ReadingResult({
         <ResultAnswer
           answer={answer}
           midFlight={shape.scope === 'mid-flight'}
+          focusKey={staleState || question ? null : `reading:${model.key}`}
           primary={
             leadSteer ? (
               <div className="next-cockpit-reading-ask" data-next-result-primary>

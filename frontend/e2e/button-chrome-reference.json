@@ -336,6 +336,20 @@
       "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
       "font-size": "15px",
       "line-height": "normal"
+    },
+    {
+      "color": "rgb(246, 243, 234)",
+      "background-color": "rgb(15, 15, 10)",
+      "border-top": "1px solid rgb(116, 114, 95)",
+      "border-right": "1px solid rgb(116, 114, 95)",
+      "border-bottom": "1px solid rgb(116, 114, 95)",
+      "border-left": "1px solid rgb(116, 114, 95)",
+      "display": "flex",
+      "padding": "9px 14px",
+      "justify-content": "normal",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
+      "line-height": "normal"
     }
   ],
   "instances": {
@@ -443,9 +457,13 @@
     "next-operations > next-capacity > next-capacity-row > next-capacity-window |  | Read Claude Code weekly window | aria-pressed=false | disabled=false hidden=false": 23,
     "next-operations > next-capacity > next-capacity-row > next-capacity-window |  | Read Claude Code billing cycle window | aria-pressed=false | disabled=false hidden=false": 23,
     "next-operations > next-capacity > next-capacity-row > next-capacity-window |  | Read Claude Code weekly window | aria-pressed=true | disabled=false hidden=false": 23,
-    "next-operations > next-capacity > next-capacity-row > next-capacity-window |  | Read Claude Code billing cycle window | aria-pressed=true | disabled=false hidden=false": 23
+    "next-operations > next-capacity > next-capacity-row > next-capacity-window |  | Read Claude Code billing cycle window | aria-pressed=true | disabled=false hidden=false": 23,
+    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-result.next-session-drift-check > next-cockpit-reading-row > next-cockpit-result-body |  | Show cited entries in Session activity for Goal: <clause> | data-next-cockpit-action=finding-jump | disabled=false hidden=false": 24,
+    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-cockpit-result.next-session-drift-check > next-cockpit-result-checklist > next-cockpit-result-lines > next-cockpit-reading-row > next-cockpit-result-body |  | Show cited entries in Session activity for Expected outcome line 1: <clause> | data-next-cockpit-action=finding-jump | disabled=false hidden=false": 24
   },
   "deviations": [
-    "DEC-27 removes session header and departure Copy controls and Sessions row Copy ID. Shared controls remain measured elsewhere."
+    "DEC-27 removes session header and departure Copy controls and Sessions row Copy ID. Shared controls remain measured elsewhere.",
+    "DEC-27 finding jumps are new bare Button instances, held to profile 24 measured by css-contract on 78f0796c; their constraint identities remain explicit while stored clauses vary.",
+    "DEC-27 retires the current-result Analyze again identity through firstViewChromeKey; the stale-result run identity remains required."
   ]
 }

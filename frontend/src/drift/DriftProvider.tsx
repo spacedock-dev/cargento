@@ -91,6 +91,8 @@ export function DriftProvider({
     chosen?.session === key && chosen.readAt === model.raw?.['read_at']
       ? (model.shape?.criteria.find((row) => row.key === chosen.key && row.citedIds.length) ?? null)
       : null;
+  // Invalidation ends the press, so returning to its session or citations cannot restore its marks.
+  if (chosen && !finding) setChosen(null);
   const value: DriftValue = {
     ctx,
     model,
