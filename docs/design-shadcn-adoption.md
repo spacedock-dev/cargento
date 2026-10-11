@@ -819,5 +819,6 @@ Ten new helper tests reject non-finite widths, row shrinkage, changed ink, missi
 and unwanted live roles while allowing the stated text-metric tolerance.
 
 Hand-written CSS falls from 140,163 to 137,209 bytes, a reduction of 2,954 bytes with the counted
-paths unchanged. The shipped bundle and fluidity receipt are left for measurement at the stack
-head. Native Windows, Linux, screen readers, Firefox and WebKit are not measured locally.
+paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,619,344 bytes, 22,020 more than the
+Intent and Drift layer; first-render medians are 143.7, 93.6 and 143.9 ms and poll-to-paint medians are 43.8, 44.7 and 61.9 ms;
+every budget passes. Native Windows, Linux, screen readers, Firefox and WebKit are not measured locally.
