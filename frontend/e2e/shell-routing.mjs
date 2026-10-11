@@ -803,15 +803,7 @@ try {
         await o.page.goto(board.react.origin + `/#n=project:${A}`);
         await reactReady(o.page);
         const tabs = o.page.getByRole('tab');
-        await tabs.nth(0).focus();
-        for (const [key, index, fragment] of [
-          ['ArrowLeft', 3, `:console`],
-          ['ArrowRight', 0, ''],
-          ['ArrowRight', 1, ':course'],
-          ['End', 3, ':console'],
-          ['Home', 0, ''],
-        ]) {
-          await o.page.keyboard.press(key);
+        const assertActive = async (index, fragment) => {
           await o.page.waitForFunction(
             ({ index, hash }) =>
               location.hash === hash &&
@@ -824,7 +816,59 @@ try {
             await tabs.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('tabindex'))),
             [0, 1, 2, 3].map((i) => (i === index ? '0' : '-1')),
           );
+        };
+        await tabs.nth(0).focus();
+        for (const [key, index, fragment] of [
+          ['ArrowLeft', 3, `:console`],
+          ['ArrowRight', 0, ''],
+          ['ArrowRight', 1, ':course'],
+          ['End', 3, ':console'],
+          ['Home', 0, ''],
+        ]) {
+          await o.page.keyboard.press(key);
+          await assertActive(index, fragment);
         }
+        for (const [key, start, focused, target, fragment] of [
+          ['End', '', 3, 3, ':console'],
+          ['Home', ':console', 0, 0, ''],
+          ['ArrowRight', '', 3, 0, ''],
+          ['ArrowLeft', ':console', 0, 3, ':console'],
+        ]) {
+          await load(o, board.react.origin, `#n=project:${A}${start}`);
+          await tabs.nth(focused).focus();
+          await assertActive(focused, focused === 0 ? '' : ':console');
+          await o.page.goBack();
+          await o.page.waitForFunction(
+            ({ index, hash }) =>
+              location.hash === hash &&
+              document.querySelectorAll('[role=tab]')[index] === document.activeElement &&
+              document.activeElement.getAttribute('aria-selected') === 'false',
+            { index: focused, hash: `#n=project:${A}${start}` },
+            { timeout: patience(5000) },
+          );
+          await tabs.nth(focused).evaluate((node) => {
+            node.addEventListener(
+              'keydown',
+              (event) => {
+                node.proofKeyEvent = event;
+              },
+              { once: true },
+            );
+          });
+          await o.page.keyboard.press(key);
+          await assertActive(target, fragment);
+          assert.equal(
+            await tabs.nth(focused).evaluate((node) => {
+              const cancelled = node.proofKeyEvent.defaultPrevented;
+              delete node.proofKeyEvent;
+              return cancelled;
+            }),
+            true,
+            key,
+          );
+        }
+        await tabs.nth(0).focus();
+        await assertActive(0, '');
         const result = await tabs.nth(0).evaluate(async (node) => {
           const before = location.hash;
           const presses = [];
@@ -851,7 +895,7 @@ try {
           JSON.stringify(result),
         );
         assert.ok(result.routeHeld && result.focusHeld, JSON.stringify(result));
-        return 'five route activations and twelve uncancelled modified keys';
+        return 'five route activations, four cancelled activations after Back and twelve uncancelled modified keys';
       } finally {
         await o.close();
       }

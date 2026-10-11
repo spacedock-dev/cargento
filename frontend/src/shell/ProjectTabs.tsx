@@ -51,6 +51,7 @@ export function ProjectTabs({
   readonly children: (tab: ProjectTab) => ReactNode;
 }) {
   const navigate = useNavigate();
+  const { controls } = useShell();
   const tabs = cockpitTabs(route.focus);
   const selected = route.tab && tabs.includes(route.tab) ? route.tab : 'now';
   const open = (tab: ProjectTab) =>
@@ -64,6 +65,17 @@ export function ProjectTabs({
         className="next-cockpit-tabs"
         role="tablist"
         aria-label="Project cockpit views"
+        onKeyDown={(event) => {
+          if (event.key !== 'Home' && event.key !== 'End') return;
+          if (event.altKey || event.ctrlKey || event.metaKey) return;
+          const target = event.key === 'Home' ? tabs[0] : tabs[tabs.length - 1];
+          if (!target) return;
+          // Back can change selection without moving focus; Base UI skips an already-highlighted boundary.
+          event.preventDefault();
+          event.preventBaseUIHandler();
+          open(target);
+          controls.focusLane.focus(`cockpit-tab:${target}`);
+        }}
       >
         {tabs.map((tab) => (
           <Tab key={tab} tab={tab} selected={tab === selected} cue={cue ? cue(tab) : null} />

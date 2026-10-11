@@ -61,6 +61,34 @@ describe('the project tab strip', () => {
     expect(hash(page)).toBe('#n=project:alpha%2Fapp');
   });
 
+  it.each([
+    { key: 'End', start: '', focused: 'Console', target: 'Console', suffix: ':console' },
+    { key: 'Home', start: ':console', focused: 'Now', target: 'Now', suffix: '' },
+    { key: 'ArrowRight', start: '', focused: 'Console', target: 'Now', suffix: '' },
+    { key: 'ArrowLeft', start: ':console', focused: 'Now', target: 'Console', suffix: ':console' },
+  ])(
+    'activates $key after Back leaves focus on $focused',
+    async ({ key, start, focused, target, suffix }) => {
+      const page = await open(`#n=project:alpha%2Fapp${start}`);
+      act(() => tab(focused).focus());
+      expect(tab(focused).getAttribute('aria-selected')).toBe('true');
+      await page.back();
+      expect(page.history.env.getHash()).toBe(`#n=project:alpha%2Fapp${start}`);
+      expect(document.activeElement).toBe(tab(focused));
+      expect(tab(focused).getAttribute('aria-selected')).toBe('false');
+
+      let notCancelled = true;
+      await act(async () => {
+        notCancelled = fireEvent.keyDown(tab(focused), { key });
+      });
+      expect(page.history.env.getHash()).toBe(`#n=project:alpha%2Fapp${suffix}`);
+      expect(notCancelled).toBe(false);
+      expect(document.activeElement).toBe(tab(target));
+      expect(tab(target).getAttribute('aria-selected')).toBe('true');
+      expect(tab(target).getAttribute('tabindex')).toBe('0');
+    },
+  );
+
   it('leaves a modified arrow or Home/End to the browser, as the legacy page does', async () => {
     const page = await open('#n=project:alpha%2Fapp');
     const before = page.history.entries().length;
