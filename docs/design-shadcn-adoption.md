@@ -878,6 +878,7 @@ Development browser proofs pass Attention (16 steps including captures), Capacit
 shell (29), Controls (22) and Popover (10). No recorded fixture changes.
 
 Hand-written CSS falls from 137,209 to 136,243 bytes, a reduction of 966 bytes, with the counted
-paths unchanged. The lead owns the stack-head bundle rebuild and fluidity measurement. This
-layer's local development checks do not certify production bytes, native Windows or Linux,
-screen readers, Firefox or WebKit.
+paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,621,296 bytes, 1,640 more than the
+Project and Console layer; first-render medians are 146, 94.3 and 126.4 ms and poll-to-paint medians are 44.5, 45.8 and 62.5 ms;
+every budget passes. This
+layer's local development checks do not certify native Windows or Linux, screen readers, Firefox or WebKit.
