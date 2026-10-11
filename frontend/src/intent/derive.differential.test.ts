@@ -396,4 +396,26 @@ describe('the Intent derivations agree with the legacy page over generated state
     expect(heldKey(session, 'goal')).toBe(legacy.call('nextCockpitHeldKey', session, 'goal'));
     expect(heldKey({}, 'lines')).toBe(legacy.call('nextCockpitHeldKey', {}, 'lines'));
   });
+
+  it('shows loading only for this session and leaves the held menu untouched', () => {
+    const held = createHeld({ clock: createFakeClock(), announcer: createAnnouncer() });
+    const session = { harness: 'claude', sid: 's1', first_prompt: 'Ship', first_prompt_at: 100 };
+    const input: DraftInput = {
+      held,
+      session,
+      annotation: annotationOf(session),
+      payload: { annotate: true },
+      contexts: new Map(),
+    };
+    const menu = { pending: true, open: true, choices: [] };
+    held.prompts.set('claude:other', menu);
+    expect(promptMenu(input).pending).toBe(false);
+    held.prompts.set('claude:s1', menu);
+    const version = held.getVersion();
+    expect(promptMenu(input).pending).toBe(true);
+    expect(held.prompts.get('claude:s1')).toBe(menu);
+    expect(held.getVersion()).toBe(version);
+    held.prompts.set('claude:s1', { ...menu, pending: false });
+    expect(promptMenu(input).pending).toBe(false);
+  });
 });

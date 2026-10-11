@@ -414,6 +414,7 @@ export function promptClip(text: unknown, limit: number): string {
 export interface PromptMenu {
   /** The native select is drawn at all: only where something could fill it. */
   readonly visible: boolean;
+  readonly pending: boolean;
   readonly options: readonly {
     readonly value: string;
     readonly label: string;
@@ -432,7 +433,7 @@ export interface PromptMenu {
    so it is named the earliest. An excerpt says so in the option itself. */
 export function promptMenu(input: DraftInput): PromptMenu {
   const { held, contexts, payload, session } = input;
-  const hidden: PromptMenu = { visible: false, options: [], value: '' };
+  const hidden: PromptMenu = { visible: false, pending: false, options: [], value: '' };
   if (!annotateOn(payload) || storeUnreadable(payload)) return hidden;
   if (!['claude', 'codex'].includes(String(session['harness'] || ''))) return hidden;
   const choices = promptChoices(held, contexts, session);
@@ -470,7 +471,12 @@ export function promptMenu(input: DraftInput): PromptMenu {
       selected: holds && chosen?.factId === choice.factId,
     };
   });
-  return { visible: true, options, value: options.find((option) => option.selected)?.value ?? '' };
+  return {
+    visible: true,
+    pending: held.prompts.get(compatSessKey(session))?.pending === true,
+    options,
+    value: options.find((option) => option.selected)?.value ?? '',
+  };
 }
 
 /* Of several, the sentence quotes the selected direction, which is the earliest unless the reader picked

@@ -104,7 +104,8 @@
       "font-size": "15px",
       "font-weight": "500",
       "line-height": "normal",
-      "text-align": "start"
+      "text-align": "start",
+      "inline-size": "288px"
     },
     "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field[drafted] | textarea. | data-next-cockpit-held-kind=goal | disabled=false": {
       "color": "rgb(246, 243, 234)",
@@ -134,7 +135,8 @@
       "font-size": "15px",
       "font-weight": "500",
       "line-height": "normal",
-      "text-align": "start"
+      "text-align": "start",
+      "inline-size": "288px"
     },
     "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field.next-cockpit-held-lines > next-cockpit-held-list > next-cockpit-held-line | textarea. | data-next-cockpit-held-line-index=1 | disabled=false": {
       "color": "rgb(246, 243, 234)",

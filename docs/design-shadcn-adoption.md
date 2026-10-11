@@ -664,7 +664,7 @@ chrome explicitly, while surface sheets retain grid columns, flex placement and 
 | Goal and outcome line | Textarea intent owns value ink, panel background, 7 px padding, 1.55 line height and vertical resizing. An untouched drafted goal uses sunk background. Intent keeps grid placement. |
 | Pending direction | The same intent recipe, with a 44 px floor. Content sizing no longer overrides a remembered drag. |
 | Correction to copy | Textarea correction owns the former panel/value recipe and 120 px floor. Its existing composition and paint-pause owner stays in place. |
-| Prompt, stage and direction select | NativeSelect owns token border and sunk background, sans control type and a 44 px floor. The prompt retains its medium weight and label-row placement. All three reserve 28 px for the ten-pixel chevron. |
+| Prompt, stage and direction select | NativeSelect owns token border and sunk background, sans control type and a 44 px floor. The prompt retains its medium weight and label-row placement; its wrapper reserves 18rem, capped by the label's available width, and the select fills it through idle, loading and loaded states. All three reserve 28 px for the ten-pixel chevron. |
 | Gallery draft | Textarea draft replaces the deleted ctl-draft chrome; the gallery select uses NativeSelect. |
 
 `field-chrome-reference.json` records sixteen identities from the pre-swap page at `bd79507d`,
@@ -674,7 +674,9 @@ tripwire, a workflow stage choice, later-direction fields and a correction box. 
 semantic owners and attributes, including the drafted flag, and no clock or count text. The gate
 compares every reached field with that reference. Its explicit select adjustments replace UA
 chrome with tokens and raise the direction choice from 13.3333 px Arial to the 15 px control tier.
-Other measured field chrome is unchanged. Focus rings are shared two-pixel solid outlines, including
+The two prompt identities also record the approved 288 px desktop width, measured explicitly
+so an intrinsic-width regression fails the gate. Other measured field chrome is unchanged.
+Focus rings are shared two-pixel solid outlines, including
 forced colours; the four former UA-ring exceptions are deleted.
 
 The gallery checks field type, 44 px targets, focus, forced colours, chevron clearance and fixed

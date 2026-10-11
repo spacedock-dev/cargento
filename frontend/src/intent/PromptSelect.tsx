@@ -37,8 +37,14 @@ export function PromptSelect() {
     if (typeof select.showPicker === 'function') {
       event.preventDefault();
       select.focus();
+      if (ctx.held.prompts.get(compatKey(session))?.pending) return;
       void loadPromptChoices(ctx, input, projectKey).then(() => {
-        if (!select.isConnected || ctx.held.prompts.get(compatKey(session))?.open !== true) return;
+        if (
+          !select.isConnected ||
+          ctx.held.prompts.get(compatKey(session))?.open !== true ||
+          !promptChoices(ctx.held, input.contexts, session).length
+        )
+          return;
         try {
           select.showPicker();
         } catch {
@@ -58,7 +64,8 @@ export function PromptSelect() {
         className="next-intent-prompt-select"
         data-next-cockpit-prompt-select
         data-next-focus={focusKey}
-        value={menu.value}
+        value={menu.pending ? '' : menu.value}
+        aria-busy={menu.pending}
         onPointerDown={open}
         onKeyDown={open}
         onBlur={() => closePromptMenu(ctx, session)}
@@ -73,7 +80,7 @@ export function PromptSelect() {
           );
         }}
       >
-        <option value="">Use your prompt</option>
+        <option value="">{menu.pending ? 'Loading your prompts' : 'Use your prompt'}</option>
         {menu.options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

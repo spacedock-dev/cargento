@@ -43,6 +43,7 @@ export function measureFieldChrome() {
           'font-weight',
           'line-height',
           'text-align',
+          ...(el.hasAttribute('data-next-cockpit-prompt-select') ? ['inline-size'] : []),
         ].map((property) => [property, css.getPropertyValue(property)]),
       ),
     };

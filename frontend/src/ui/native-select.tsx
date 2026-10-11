@@ -12,7 +12,7 @@ type NativeSelectProps = ComponentProps<'select'> & {
   appearance?: 'prompt' | 'stage' | 'direction' | 'gallery';
 };
 const surfaces = {
-  prompt: 'block w-auto py-0 ps-[12px] pe-[28px] font-medium',
+  prompt: 'block w-full py-0 ps-[12px] pe-[28px] font-medium',
   stage: 'inline-block w-full py-[6.4px] ps-[6.4px] pe-[28px] font-medium',
   direction: 'block w-full py-[6px] ps-[8px] pe-[28px]',
   gallery: 'inline-block w-full py-[4px] ps-[8px] pe-[28px] leading-[1.5]',
@@ -22,7 +22,10 @@ export function NativeSelect({ className, appearance = 'stage', ...props }: Nati
   return (
     <div
       data-slot="native-select-wrapper"
-      className={cn('relative min-w-0 max-w-full', appearance === 'prompt' ? 'w-fit' : 'w-full')}
+      className={cn(
+        'relative min-w-0 max-w-full',
+        appearance === 'prompt' ? 'w-[18rem]' : 'w-full',
+      )}
     >
       <select
         data-slot="native-select"
