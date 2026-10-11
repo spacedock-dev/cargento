@@ -353,11 +353,9 @@
 
 /* ===== The shared controls and disclosure, where the legacy rules name their old elements ===== */
 .next-operations-header>.ctl-disclosure{grid-column:-2 / -1}
-/* Above the row's link overlay, or a press on Copy would open the session instead. */
-.next-operation-identity [data-copy-kind]{position:relative;z-index:1;margin-top:8px}
-.next-session-controls [data-copy-kind],.next-session-controls [data-control="raise"]{margin:0}
-.next-departure-reentry [data-copy-kind],.next-departure-reentry [data-control="raise"]{margin:0}
-.next-session-controls [data-copy-kind]:focus-visible,.next-session-controls [data-control="raise"]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.next-session-controls [data-control="raise"]{margin:0}
+.next-departure-reentry [data-control="raise"]{margin:0}
+.next-session-controls [data-control="raise"]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 /* The unreadable-source note this page adds above the fleet facts: a stated absence, not a list. */
 .next-sessions-sources{margin:14px 0 0;padding:0;list-style:none;color:var(--ink-absence);font-family:var(--sans);font-size:var(--fs-body);line-height:1.5}

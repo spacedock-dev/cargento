@@ -39,7 +39,13 @@ describe('the Intent how-to', () => {
         hash: `#n=session:alpha%2Fapp:${harness}:s1`,
         payload: {
           reading_routes: {
-            [harness]: reader ? ROUTE : { provider: '', note: 'No reader on this machine.' },
+            [harness]: reader
+              ? {
+                  ...ROUTE,
+                  provider: harness === 'pi' ? 'codex' : 'claude',
+                  label: harness === 'pi' ? 'Codex' : 'Claude Code',
+                }
+              : { provider: '', note: 'No reader on this machine.' },
           },
         },
       });
@@ -56,7 +62,9 @@ describe('the Intent how-to', () => {
       expect(popup.textContent).toContain('3. Read where the work left your goal.');
       expect(popup.textContent).toContain('Levels: Claude Code and Pi only.');
       expect(popup.textContent).toContain(
-        reader ? 'Analyze: Claude Code.' : 'Analyze: No reader on this machine.',
+        reader
+          ? `Analyze: ${harness === 'pi' ? 'Codex' : 'Claude Code'}.`
+          : 'Analyze: No reader on this machine.',
       );
       expect(popup.textContent).toContain(
         steer ? 'Steer back: available here.' : 'Steer back: Claude Code only.',

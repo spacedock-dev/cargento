@@ -3549,7 +3549,10 @@ at most 174 words (175 ceiling), the idle fixture 82 (85 ceiling), and the parti
   A row without a saved goal
   keeps "Choose a goal or use your prompt, then analyze drift..."; an unsaved prompt draft is
   not described as saved. Amended 2026-10-02 (NU-10): under a stored reading the introduction is
-  not drawn, because the step it explains is done.
+  not drawn, because the step it explains is done. Amended 2026-10-11 by
+  [DEC-27](#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result): the
+  "What analysis does" disclosure is replaced by the "How Intent and drift works" popover beside the
+  Intent heading; one explainer, not two.
 - The later-direction block is one summary naming its state: "Later directions: none since your
   save", "Later directions: settled 5m ago", or "Later directions: unknown (record unread)". The
   unread state is in the summary, so it is never a silent all-clear
