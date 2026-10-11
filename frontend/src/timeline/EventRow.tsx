@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import type { ReactNode } from 'react';
 import { Disclosure } from '../controls/Disclosure';
 import { formatDuration } from '../shell/format';
@@ -65,7 +66,7 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
   const author = fact.by === 'person:captain' ? 'Captain' : fact.by;
   const disposition = gateApplicationDisposition(fact);
   return (
-    <div className="pc-entry-details">
+    <Card as="div" variant="timeline-details" className="pc-entry-details">
       <div>
         <b>Why included</b> · {event.rationale || 'Inclusion reason not published.'}
       </div>
@@ -143,7 +144,7 @@ function Details({ event, scope }: { readonly event: TimelineEvent; readonly sco
           </div>
         </Disclosure>
       ) : null}
-    </div>
+    </Card>
   );
 }
 

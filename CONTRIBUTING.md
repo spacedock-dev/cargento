@@ -198,6 +198,13 @@ owns their chrome reference and native decisions.
 The CSS proof compares their chrome and rendered width ratios with the pre-swap page. The
 [Sessions record](docs/design-shadcn-adoption.md#sessions-layer) owns the native decisions and audit.
 
+Project, Console, Timeline, shell and terminal chrome reuse those display components. ProjectTabs
+uses route-controlled Base UI Tabs with automatic activation; keep the original labelled panel,
+focus keys and modified-key behavior. Static stale and terminal absence messages use
+`announce={false}`, and the xterm host stays outside the components. The
+[family record](docs/design-shadcn-adoption.md#project-console-timeline-shell-and-terminal-layer)
+owns the cascade audit and width reference.
+
 Utilities beat `legacy` regardless of specificity: express surface chrome in variants or props
 and leave layout in the surface sheet. Update the exact count when deleting rules; a PR cannot
 raise its own allowance.

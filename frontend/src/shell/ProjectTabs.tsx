@@ -1,5 +1,5 @@
-import { Button } from '../ui/button';
-import type { KeyboardEvent, ReactNode } from 'react';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import type { ReactNode } from 'react';
 import { useFocusKey } from '../controls/useFocusKey';
 import { cockpitTabs, type ProjectRoute, type ProjectTab } from '../router/grammar';
 import { useNavigate, useShell } from './context';
@@ -10,20 +10,16 @@ function Tab({
   tab,
   selected,
   cue,
-  onSelect,
-  onKeyDown,
 }: {
   readonly tab: ProjectTab;
   readonly selected: boolean;
   readonly cue: ReactNode;
-  readonly onSelect: () => void;
-  readonly onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
   const { controls } = useShell();
   const ref = useFocusKey<HTMLButtonElement>(controls.focusLane, `cockpit-tab:${tab}`);
   return (
-    <Button
-      variant="native"
+    <TabsTrigger
+      value={tab}
       ref={ref}
       type="button"
       role="tab"
@@ -33,12 +29,10 @@ function Tab({
       aria-controls={`next-cockpit-panel-${tab}`}
       aria-selected={selected}
       tabIndex={selected ? 0 : -1}
-      onClick={onSelect}
-      onKeyDown={onKeyDown}
     >
       {label(tab)}
       {cue}
-    </Button>
+    </TabsTrigger>
   );
 }
 
@@ -63,38 +57,30 @@ export function ProjectTabs({
   const open = (tab: ProjectTab) =>
     navigate({ view: 'project', project: route.project, focus: route.focus ?? null, tab });
 
-  const onKeyDown = (current: ProjectTab) => (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    // Alt/Cmd+Arrow is the browser's Back and Forward and Ctrl/Cmd+Home/End its scroll: the legacy page returns before its tab handler.
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
-    const index = Math.max(0, tabs.indexOf(current));
-    const next =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? tabs.length - 1
-          : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-    const target = tabs[next];
-    if (!target) return;
-    event.preventDefault();
-    open(target);
-    controls.focusLane.focus(`cockpit-tab:${target}`);
-  };
-
   return (
-    <>
-      <nav className="next-cockpit-tabs" role="tablist" aria-label="Project cockpit views">
+    <Tabs value={selected} onValueChange={(value) => open(value as ProjectTab)}>
+      <TabsList
+        activateOnFocus
+        render={<nav />}
+        className="next-cockpit-tabs"
+        role="tablist"
+        aria-label="Project cockpit views"
+        onKeyDown={(event) => {
+          if (event.key !== 'Home' && event.key !== 'End') return;
+          if (event.altKey || event.ctrlKey || event.metaKey) return;
+          const target = event.key === 'Home' ? tabs[0] : tabs[tabs.length - 1];
+          if (!target) return;
+          // Back can change selection without moving focus; Base UI skips an already-highlighted boundary.
+          event.preventDefault();
+          event.preventBaseUIHandler();
+          open(target);
+          controls.focusLane.focus(`cockpit-tab:${target}`);
+        }}
+      >
         {tabs.map((tab) => (
-          <Tab
-            key={tab}
-            tab={tab}
-            selected={tab === selected}
-            cue={cue ? cue(tab) : null}
-            onSelect={() => open(tab)}
-            onKeyDown={onKeyDown(tab)}
-          />
+          <Tab key={tab} tab={tab} selected={tab === selected} cue={cue ? cue(tab) : null} />
         ))}
-      </nav>
+      </TabsList>
       <div
         role="tabpanel"
         id={`next-cockpit-panel-${selected}`}
@@ -102,6 +88,6 @@ export function ProjectTabs({
       >
         {children(selected)}
       </div>
-    </>
+    </Tabs>
   );
 }

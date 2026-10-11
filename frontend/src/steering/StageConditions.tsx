@@ -1,3 +1,4 @@
+import { Card as SurfaceCard } from '../ui/card';
 import { NativeSelect } from '../ui/native-select';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
@@ -212,7 +213,7 @@ function CardView({
   const rearm = useFocusKey<HTMLButtonElement>(controls.focusLane, `stage:${id}:rearm`);
   const remove = useFocusKey<HTMLButtonElement>(controls.focusLane, `stage:${id}:remove`);
   return (
-    <article className="next-stage-rule" data-stage-rule={id}>
+    <SurfaceCard as="article" variant="stage-rule" className="next-stage-rule" data-stage-rule={id}>
       <h3>{model.workflow}</h3>
       <p>{model.scopeLine}</p>
       {model.savedLine === null ? null : <p>{model.savedLine}</p>}
@@ -285,6 +286,6 @@ function CardView({
         )}
       </div>
       <p role="status">{cue}</p>
-    </article>
+    </SurfaceCard>
   );
 }

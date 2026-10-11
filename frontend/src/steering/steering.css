@@ -26,7 +26,7 @@
 .next-project-detail-rail :is(a,button,input):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .next-cockpit-decision-summary{margin:0;padding:9px 12px;border-bottom:1px solid var(--rule);color:var(--ink2);font:var(--fs-label) var(--sans)}
 .next-stage-conditions { margin: 1rem 0; }
-.next-stage-rule { border: 1px solid var(--rule); border-radius: var(--r-card); padding: 1rem; margin: .75rem 0; }
+.next-stage-rule{ margin: .75rem 0}
 .next-stage-rule p { margin: .4rem 0; }
 .next-stage-editor { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 .next-stage-editor button { font: inherit; padding: .4rem; }

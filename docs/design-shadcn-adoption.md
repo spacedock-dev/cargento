@@ -757,3 +757,68 @@ counted paths unchanged. The whole Vitest suite passes 1,486 tests and the build
 The final verification report records the browser-proof results. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,598,216 bytes, 1,092 more than the
 Sessions layer; first-render medians are 147.8, 93.3 and 126.2 ms and poll-to-paint medians are 44.1, 44.4 and 61.2 ms;
 every budget passes. Native Windows, Linux, screen readers, Firefox and WebKit were not measured locally.
+
+## Project, Console, Timeline, shell and terminal layer
+
+Tabs is copied through the pinned Base UI registry procedure. Only Root, List and Trigger are
+retained; no new package remains after removing the CLI's temporary npm `cn` dependency. Its
+header records the upstream content digest. This family reuses the existing Card, Badge and Alert.
+
+ProjectTabs controls Tabs from the route and enables automatic activation on List. Arrow keys
+wrap and activate the destination route; Home and End activate the first and last tab. Base UI
+leaves Alt, Control and Meta presses uncancelled. The browser proof checks five real keyboard
+activations, each tab's tabindex and twelve modified presses. The original nav, tab buttons,
+labelled panel, ids, cues and focus keys remain. Root uses display:contents; the existing plain
+panel keeps its children and their owners. No TabsContent is vendored because a second panel
+lifecycle would duplicate the route's ownership. Unit keyboard assertions await Base UI's focus
+microtask rather than assuming synchronous focus.
+
+### Project and Console cascade audit
+
+| Surface | Component chrome and retained layout |
+|---|---|
+| Project rows | Card owns grid display, full width, padding, line border, tone edge, radius, background and hover/focus border states. The sheet keeps columns, gaps, children and history labels. |
+| Recovery and goal | Card owns grid display and the recovery boundary, plus the goal's column layout, gap, zero side padding, top rule and transparent surface. Cell layout, margins and words stay in the sheet. |
+| Course and stage rules | Card owns course row padding and lower rule, and stage rule padding, border and radius. Badge owns course tag ink, mono label type, weight, normal line height and tracking. Semantic children and editor owners stay in place. |
+| Console rail | Card owns panel column layout, gap, padding and first/last boundaries, plus waiting card padding, amber edge, radius and background. The rail's width and responsive placement remain in the sheet. |
+| Timeline evidence | Card owns the evidence grid, gap, padding, left rule, background and type. Alert owns the stale paragraph's reading measure and normal-weight type. Margins, lanes, ordered evidence and disclosures remain unchanged. |
+| Shell notices | Alert owns wrapping, padding, tone edge, background and sentence type. Reset and build notices retain their muted edge; every notice keeps its original polite status role. |
+| Terminal chrome | Card owns the aside's column layout, border, radius, background, overflow and type. Badge owns the read-only tag's margin and ink. Alert owns absence padding and reading measure. |
+
+The shell header and breadcrumbs keep their headings, navigation links and existing shared
+controls. Timeline lanes and their rules, recovery cell dividers, source facts and rail child
+boundaries remain part of semantic groups rather than independent Separators. Tab counts retain
+their labelled cue markup; they are evidence, not independent pills. The terminal checking status
+stays native because its conditional lifecycle belongs to the terminal owner. Static terminal
+absence and stale timeline messages pass announce=false. The xterm host is untouched; the terminal
+proof still accounts for exactly its two same-origin assets on first open. Native progress
+and title tooltips remain. No reader-state owner or stored key moves, and no legacy rule leaves
+its cascade layer.
+
+`project-chrome-reference.json` records 63 identities from `f7b7f11f`, the starting commit before
+this swap. Its archive was built once under this worktree's ignored screenshots directory.
+The 87-view sweep and supplementary course, stage, stale timeline, open terminal, reset, build
+and failed-refresh states record the native selectors. Verification reads the adopted slots.
+Keys name surfaces, viewport bands, semantic states and inheritance contexts, never clocks,
+counts or absolute widths. The gate compares ink, background, four borders, display, padding,
+radius, type and roles. Row width is a fraction of the nearest rendered parent's content width,
+with a 0.015 allowance; text width uses visible text plus chrome, with a 15 percent allowance
+for font metrics. Visually hidden cue glosses do not contribute to that width. Non-finite ratios
+fail. The development CSS proof passes across 87 views and 516 adopted instances, including the
+existing Button, disclosure, field, Sessions and Intent gates.
+
+The whole Vitest suite passes 1,487 tests in 132 files; build tests pass 23. Development browser
+proofs pass Project (19 steps), Console (29), Terminal (19), Timeline filtering (13), shell (29),
+Controls (22), Popover (10), Sessions (18), Intent (20), Drift (30), Attention (15) and Capacity (17).
+The shell retains its existing first-payload absence departure; no recording changes.
+Six scratch-copy chrome mutations fail the family gate: Card padding and row width each produce
+four differences, Badge ink twenty, static Alert role two, tab-strip width twelve and shell Alert
+padding six. Disabling the route callback fails the real keyboard activation step; restoring the
+source passes that step. Removing display-class normalization fails the mounted differential.
+Ten new helper tests reject non-finite widths, row shrinkage, changed ink, missing identities
+and unwanted live roles while allowing the stated text-metric tolerance.
+
+Hand-written CSS falls from 140,163 to 137,209 bytes, a reduction of 2,954 bytes with the counted
+paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,619,656 bytes, 21,440 more than the
+Intent and Drift layer; first-render medians are 144.2, 93.8 and 143.1 ms and poll-to-paint medians are 44.2, 44.6 and 61.6 ms;
+every budget passes. Native Windows, Linux, screen readers, Firefox and WebKit are not measured locally.

@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { CopyControl, RaiseControl, resumeCommand } from '../controls';
 import type { ObservedProject, ObservedSession } from '../observed';
 import { RouteLink } from '../shell/RouteLink';
@@ -16,7 +17,7 @@ function Waiting({
   const command = resumeCommand(harness, String(session.resume_id || ''));
   const copyId = sid.trim();
   return (
-    <article className="next-rail-wait" data-next-wait-session={sid}>
+    <Card as="article" variant="rail-wait" className="next-rail-wait" data-next-wait-session={sid}>
       <div className="next-rail-wait-heading">
         <RouteLink
           route={{ view: 'session', project, harness, session: sid }}
@@ -43,7 +44,7 @@ function Waiting({
           <CopyControl kind="id" harness={harness} sid={copyId} value={copyId} />
         ) : null}
       </div>
-    </article>
+    </Card>
   );
 }
 
@@ -55,7 +56,12 @@ export function WaitingPanel({ project }: { readonly project: ObservedProject })
     ? `${String(project.needs.length)} of ${String(project.sessions.length)}`
     : 'none';
   return (
-    <section className="next-rail-panel" data-next-rail-panel="waiting">
+    <Card
+      as="section"
+      variant="rail-panel"
+      className="next-rail-panel"
+      data-next-rail-panel="waiting"
+    >
       <RailHeader label="WAITING ON YOU" note={note} />
       {project.needs.length ? (
         project.needs.map((session, index) => (
@@ -69,6 +75,6 @@ export function WaitingPanel({ project }: { readonly project: ObservedProject })
       ) : (
         <p className="next-rail-reason">Nothing in this project has asked for you.</p>
       )}
-    </section>
+    </Card>
   );
 }

@@ -61,7 +61,7 @@ function shapeNode(element: Element): Shape {
     classes: [...element.classList]
       .filter(
         (name) =>
-          !element.matches('button,a') ||
+          !element.matches('button,a,[data-slot=card],[data-slot=badge],[data-slot=alert]') ||
           (/^(next-|ctl-|pc-|selected$)/.test(name) && !/^next-action(?:--.*)?$/.test(name)),
       )
       .sort(),

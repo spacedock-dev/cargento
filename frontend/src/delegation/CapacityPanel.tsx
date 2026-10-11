@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import type { ReactNode } from 'react';
 import type { CapacityWindow, Observed, Row } from '../observed';
 import { isRecord } from '../observed';
@@ -102,7 +103,12 @@ export function CapacityPanel({
   const windows = new Map(model.windows.map((window) => [window.key, window]));
   const rows = capacityRows(payload);
   return (
-    <section className="next-rail-panel" data-next-rail-panel="capacity">
+    <Card
+      as="section"
+      variant="rail-panel"
+      className="next-rail-panel"
+      data-next-rail-panel="capacity"
+    >
       <RailHeader label="CAPACITY" note="each window on its own clock" sentence />
       {rows.length ? (
         rows.map((row, index) => (
@@ -121,6 +127,6 @@ export function CapacityPanel({
         </>
       )}
       {usage}
-    </section>
+    </Card>
   );
 }

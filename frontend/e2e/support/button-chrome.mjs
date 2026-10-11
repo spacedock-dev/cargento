@@ -60,7 +60,11 @@ export function measureButtonChrome(normaliseKey, disclosures = false) {
       .filter(
         (name) =>
           el.hasAttribute(name) &&
-          !(disclosures && name === 'aria-disabled' && el.getAttribute(name) === 'false'),
+          !(
+            (disclosures || el.dataset.slot === 'tabs-trigger') &&
+            name === 'aria-disabled' &&
+            el.getAttribute(name) === 'false'
+          ),
       )
       .map((name) => `${name}=${el.getAttribute(name)}`)
       .join(' ');

@@ -63,6 +63,7 @@ export async function startConsoleWorld({
   // false serves the shipped page (the project views the slots are wired into) instead of the harness. The production
   // run serves it by default, so every console surface is proven on the page readers get; development keeps the harness.
   harness = !PRODUCTION,
+  sourceRoot = REPOSITORY,
 } = {}) {
   // Without a mutation the shipped page is the tracked `react.html` itself, so no scratch copy is made.
   const ownsRepository = !harness && !mutation && PRODUCTION;
@@ -77,14 +78,14 @@ export async function startConsoleWorld({
   }
   try {
     if (!ownsRepository) {
-      await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
+      await cp(join(sourceRoot, 'frontend'), join(copy, 'frontend'), {
         recursive: true,
         filter: (path) =>
           !path.includes('/fixtures') &&
           !path.includes('/test-results') &&
           !path.includes('__pycache__'),
       });
-      await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+      await cp(join(sourceRoot, 'cargento'), join(copy, 'cargento'), {
         recursive: true,
         filter: (path) =>
           !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),

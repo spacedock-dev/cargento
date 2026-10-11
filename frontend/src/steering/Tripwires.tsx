@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { FormEvent, KeyboardEvent } from 'react';
 import { DraftInput } from '../controls/DraftField';
@@ -21,7 +22,9 @@ export function Tripwires({ project }: { readonly project: string }) {
   useHeldVersion(held);
   const rules = runtime.storage.guardrails.rules(project);
   return (
-    <section
+    <Card
+      as="section"
+      variant="rail-panel"
       className="next-control next-guardrails next-rail-panel"
       data-next-guardrails
       data-next-rail-panel="tripwires"
@@ -69,7 +72,7 @@ export function Tripwires({ project }: { readonly project: string }) {
         C1 would let an observer act on these. Until it ships they are a note to yourself, held in
         this browser.
       </p>
-    </section>
+    </Card>
   );
 }
 

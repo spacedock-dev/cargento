@@ -37,8 +37,7 @@
 .next-project-group>header p{margin:0;color:var(--ink2);font-size:var(--fs-label)}
 .next-projects-brief{display:grid;gap:10px;margin-top:10px}
 .next-projects-empty{margin:0;padding:12px 0;color:var(--ink2);font:var(--fs-body)/1.55 var(--sans)}
-.next-project-row{display:grid;grid-template-columns:300px minmax(0,1fr) 12px;gap:20px;padding:16px 18px;border:1px solid var(--line);border-left:2px solid var(--project-tone);border-radius:var(--r-card);background:var(--panel);cursor:pointer}
-.next-project-row:hover,.next-project-row:focus-within{border-color:var(--line-hi);border-left-color:var(--project-tone)}
+.next-project-row{grid-template-columns:300px minmax(0,1fr) 12px;gap:20px;cursor:pointer}
 .next-project-row:focus-visible,.next-project-session:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .next-project-project{display:flex;flex-direction:column;gap:7px;min-width:0}
 .next-project-name{min-width:0;overflow-wrap:anywhere;font-family:var(--mono);font-size:var(--fs-body);font-weight:700}
@@ -63,7 +62,6 @@
 }
 .next-project-chevron{align-self:center;color:var(--ink2);font-family:var(--sans);visibility:hidden}
 .next-project-row:hover .next-project-chevron,.next-project-row:focus-within .next-project-chevron{visibility:visible}
-.next-project-row--history{padding:12px 18px;border-left:1px solid var(--line);background:transparent}
 .next-project-row--history .next-project-name,.next-project-group--history h2{color:var(--ink2)}
 .next-project-row--history .next-project-summary{color:var(--ink2)}
 .next-project-detail-layout{display:grid;grid-template-columns:minmax(0,1fr) 356px}
@@ -71,7 +69,6 @@
 .next-project-detail-header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 12px}
 .next-project-detail-name{margin:0;font-family:var(--mono);font-size:var(--fs-head);font-weight:700;letter-spacing:-.02em;overflow-wrap:anywhere}
 .next-project-detail-count,.next-project-detail-collision{flex-basis:100%;margin:0}
-.next-project-goal{display:flex;flex-direction:column;gap:9px;padding:15px 17px;border:1px solid var(--rule);border-radius:var(--r-card);background:var(--panel)}
 .next-project-goal>header{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .next-project-goal h2,.next-project-activity>h2{margin:0;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-project-goal-source{color:var(--ink2);font-family:var(--sans);font-size:var(--fs-label)}
@@ -220,9 +217,7 @@
 .next-cockpit-waiting a{color:var(--ink);text-decoration-color:var(--line);text-underline-offset:4px}
 .next-cockpit-recovery .next-project-value--absent{font:var(--fs-label)/1.55 var(--sans);letter-spacing:0}
 .next-cockpit-course{display:grid;gap:0;padding:12px}
-.next-course-episode,.next-course-direction{padding:13px 0;border-bottom:1px solid var(--rule)}
 .next-course-episode>header,.next-course-direction>header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 10px}
-.next-course-episode>header>span:last-child,.next-course-direction>header>span:last-child{color:var(--ink-label);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-course-episode>strong{display:block;margin-top:5px;font-size:var(--fs-body);font-weight:600}
 .next-course-episode p,.next-course-episode ul,.next-course-direction p{margin:6px 0 0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-course-episode ul{padding-left:20px}
@@ -258,7 +253,7 @@
 .next-cockpit-scope-meta{display:flex;min-width:0;overflow:hidden;align-items:center;gap:6px;color:var(--ink2);font:var(--fs-label) var(--mono);white-space:nowrap}
 .next-cockpit-scope-tree .next-cockpit-scope-state,.next-cockpit-scope-options .next-cockpit-scope-state{display:flex;align-items:center;gap:6px;color:inherit;font:inherit}
 .next-cockpit-scope-tree .next-cockpit-scope-state--working,.next-cockpit-scope-options .next-cockpit-scope-state--working{color:var(--ink2)}
-.next-cockpit-recovery{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:1px solid var(--rule)}
+.next-cockpit-recovery{grid-template-columns:repeat(3,minmax(0,1fr))}
 .next-cockpit-recovery>header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 12px;border-bottom:1px solid var(--rule);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-cockpit-recovery>div{min-width:0;padding:10px 12px;border-right:1px solid var(--rule);font:var(--fs-label) var(--sans)}
 .next-cockpit-recovery>div:nth-child(4),
@@ -326,7 +321,7 @@
 .next-cockpit-empty,.next-cockpit-evidence-missing{font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-content .next-cockpit-evidence-missing{margin:6px 0;color:var(--ink-caption);font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-content .next-course-evidence{font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
-.next-cockpit-recovery .next-project-goal{margin-top:12px;padding:10px 0;border:0;border-top:1px solid var(--rule);border-radius:0;background:transparent}
+.next-cockpit-recovery .next-project-goal{margin-top:12px}
 .next-cockpit-recovery .next-project-goal-text{font:var(--fs-body)/1.55 var(--sans)}
 .next-cockpit-recovery .next-project-goal-text.next-project-value--absent,
 .next-cockpit-recovery .next-project-goal-gap{font:var(--fs-body)/1.55 var(--sans)}
@@ -356,12 +351,11 @@
   .next-cockpit-recovery>div:last-child,.next-cockpit-now-state>div:last-child{border-bottom:0}
   .next-cockpit-recovery-evidence{grid-column:1}
 }
-
 /* Where the React tree differs from the legacy markup, so a legacy rule no longer reaches its target.
    Each is held to the legacy page's computed value by `project-parity.mjs`.
    - The panel sits inside the tab strip's `div[role=tabpanel]`, so the legacy child combinator
      (.next-cockpit-content>.next-cockpit-panel) matches nothing; the 12 px side inset is restated for it.
    - The shell sheet gives the tab strip a 24 px top margin; the legacy strip has none. */
-.next-cockpit-content>[role="tabpanel"]>.next-cockpit-panel{padding-left:12px;padding-right:12px}
-.next-cockpit-content>.next-cockpit-tabs{margin-top:0}
+.next-cockpit-content>[data-slot="tabs"]>[role="tabpanel"]>.next-cockpit-panel{padding-left:12px;padding-right:12px}
+.next-cockpit-content>[data-slot="tabs"]>.next-cockpit-tabs{margin-top:0}
 }

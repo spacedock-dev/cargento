@@ -1,3 +1,4 @@
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
@@ -72,7 +73,9 @@ function ProjectRow({
   const identity = <strong className="next-project-name">{project.key}</strong>;
   const count = <div className="next-project-summary">{project.countLine}</div>;
   return (
-    <article
+    <Card
+      as="article"
+      variant="project-row"
       className={`next-project-row next-project-tone--${project.tone}${history ? ' next-project-row--history' : ''}`}
       data-next-project-row=""
       data-next-project={project.key}
@@ -130,7 +133,7 @@ function ProjectRow({
       <span className="next-project-chevron" aria-hidden="true">
         ›
       </span>
-    </article>
+    </Card>
   );
 }
 

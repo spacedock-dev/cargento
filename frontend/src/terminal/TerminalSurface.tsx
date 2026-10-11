@@ -1,3 +1,6 @@
+import { Badge } from '../ui/badge';
+import { Alert } from '../ui/alert';
+import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { nextFiniteNumber } from '../api/bootstrap';
@@ -67,7 +70,7 @@ function Absence({
     );
   }
   return (
-    <div className="pc-terminal-absence">
+    <Alert as="div" variant="terminal-absence" announce={false} className="pc-terminal-absence">
       <p className="pc-substrate-empty">{absence.message}</p>
       {absence.serverReason ? (
         <p className="pc-substrate-empty">
@@ -75,7 +78,7 @@ function Absence({
         </p>
       ) : null}
       {absence.recipe ? <RegistrationRecipe project={project} scope={scope} /> : null}
-    </div>
+    </Alert>
   );
 }
 
@@ -119,10 +122,15 @@ function OpenTerminal({
     return element ? owner.attach(element, terminalKey) : undefined;
   }, [owner, terminalKey]);
   return (
-    <aside className="pc-terminal" aria-label="Read-only terminal output">
+    <Card
+      as="aside"
+      variant="terminal-frame"
+      className="pc-terminal"
+      aria-label="Read-only terminal output"
+    >
       <div className="pc-terminal-bar">
         <Title lookup={lookup} />
-        <span>read-only</span>
+        <Badge variant="terminal-tag">read-only</Badge>
         <Button
           type="button"
           id="pc-terminal-jump"
@@ -138,7 +146,7 @@ function OpenTerminal({
       </div>
       {/* No React children: the retained screen is put in here by the owner, and React must never reconcile it away. */}
       <div id="pc-terminal-viewport" className="pc-terminal-viewport" ref={viewport} />
-    </aside>
+    </Card>
   );
 }
 

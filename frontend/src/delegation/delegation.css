@@ -2,9 +2,6 @@
 /* The Console's operating rail (delegation, waiting, capacity) and the setup disclosures. Each rule is the legacy sheet's own, copied so the two pages draw alike while the
    Python dashboard stays the rollback. */
 .next-project-detail-rail{width:356px;max-width:100%;min-width:0;border-left:1px solid var(--rule);background:var(--sunk);display:flex;flex-direction:column}
-.next-rail-panel{display:flex;flex-direction:column;gap:12px;padding:18px 22px;border-bottom:1px solid var(--rule)}
-.next-rail-panel:first-child{padding-top:20px}
-.next-rail-panel:last-child{border-bottom:0}
 .next-rail-header{display:flex;align-items:baseline;gap:9px}
 .next-rail-header h2{margin:0;color:var(--ink-label);font:600 var(--fs-label) var(--mono);letter-spacing:.07em}
 .next-rail-meta{margin-left:auto;color:var(--ink2);font:var(--fs-label) var(--mono);text-align:right}
@@ -24,7 +21,6 @@
 .next-delegation-withheld strong[data-next-absent]{font-family:var(--sans)}
 .next-delegation-withheld small{color:var(--ink2);font-size:var(--fs-label);line-height:1.5}
 .next-delegation-trend{color:var(--ink2);font:var(--fs-label) var(--mono)}
-.next-rail-wait{display:flex;flex-direction:column;gap:8px;padding:12px 13px;border:1px solid var(--rule);border-left:2px solid var(--amber);border-radius:var(--r-card);background:var(--panel)}
 .next-rail-wait-heading{display:flex;align-items:baseline;gap:9px}
 .next-rail-wait-heading a{min-width:0;color:var(--ink);font-size:var(--fs-body);font-weight:500;line-height:1.55;overflow-wrap:anywhere;text-decoration:none}
 .next-rail-wait-heading a:hover{text-decoration:underline}
