@@ -54,7 +54,7 @@ export function IntentHowTo({
       </p>
       <p
         data-next-intent-howto-limit
-      >{`Levels: ${WORK_HARNESSES.map(label).join(' and ')} only. Analyze: ${reader}${reader.endsWith('.') ? '' : '.'} Steer back: ${steer}. Cargento never writes into sessions.`}</p>
+      >{`Drift level: ${WORK_HARNESSES.map(label).join(' and ')} sessions only. Analyze drift here: ${reader}${reader.endsWith('.') ? '' : '.'} Steer back: ${steer}. Cargento never writes into sessions.`}</p>
       <p>“Not enough recorded yet” is normal until you add an expected outcome line.</p>
     </Disclosure>
   );

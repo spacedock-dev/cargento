@@ -60,11 +60,11 @@ describe('the Intent how-to', () => {
       expect(popup.textContent).toContain('1. Give the goal.');
       expect(popup.textContent).toContain('2. Press Analyze drift.');
       expect(popup.textContent).toContain('3. Read where the work left your goal.');
-      expect(popup.textContent).toContain('Levels: Claude Code and Pi only.');
+      expect(popup.textContent).toContain('Drift level: Claude Code and Pi sessions only.');
       expect(popup.textContent).toContain(
         reader
-          ? `Analyze: ${harness === 'pi' ? 'Codex' : 'Claude Code'}.`
-          : 'Analyze: No reader on this machine.',
+          ? `Analyze drift here: ${harness === 'pi' ? 'Codex' : 'Claude Code'}.`
+          : 'Analyze drift here: No reader on this machine.',
       );
       expect(popup.textContent).toContain(
         steer ? 'Steer back: available here.' : 'Steer back: Claude Code only.',
