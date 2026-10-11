@@ -694,8 +694,8 @@ change from a section border to a decorative child.
 The Sessions browser comparison locates adopted surfaces by slot and retains the original logical
 health-part name in its recorded summary. Text, evidence order, disclosure state and action lists
 remain compared. No recorded fixture changes. Hand-written CSS falls from 143,898 to 142,131 bytes,
-with the counted paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,596,232 bytes, 3,576 more than the
-form controls layer; first-render medians are 140.5, 93.2 and 127.5 ms and poll-to-paint medians are 44.4, 46.1 and 62.7 ms;
+with the counted paths unchanged. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,597,124 bytes, 4,468 more than the
+form controls layer; first-render medians are 141, 94.3 and 127.6 ms and poll-to-paint medians are 43.4, 44.7 and 61.2 ms;
 every budget passes.
 
 The dev CSS sweep passes with 234 adopted instances across 87 views. Scoped mutations fail the
