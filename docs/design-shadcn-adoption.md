@@ -754,6 +754,6 @@ row width alone, Badge ink, Alert padding and an unwanted live-region role each 
 gate. Dropping the consent step in a scratch copy fails the existing Drift consent proof at its
 missing-card assertion. Hand-written CSS falls from 142,131 to 140,163 bytes, a reduction of 1,968 bytes, with the
 counted paths unchanged. The whole Vitest suite passes 1,486 tests and the build tests pass 23.
-The final verification report records the browser-proof results. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,597,324 bytes, 1,092 more than the
-Sessions layer; first-render medians are 141.4, 95 and 142.9 ms and poll-to-paint medians are 44.5, 44.4 and 62 ms;
+The final verification report records the browser-proof results. Measured on 2026-10-11 in three fresh fluidity runs: the page is 1,598,216 bytes, 1,092 more than the
+Sessions layer; first-render medians are 147.8, 93.3 and 126.2 ms and poll-to-paint medians are 44.1, 44.4 and 61.2 ms;
 every budget passes. Native Windows, Linux, screen readers, Firefox and WebKit were not measured locally.
