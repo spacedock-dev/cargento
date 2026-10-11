@@ -1590,8 +1590,11 @@ function checks() {
       const identity = `${view} | ${key}`;
       seen.add(identity);
       const expected = DISCLOSURE_TABLE.inlineSizes[identity];
-      // Clock labels normalize their identity, but proportional digits still change their real width.
-      const tolerance = key.includes('<clock>') ? 8 : 1.5;
+      // Clock labels normalize their identity, but the digits still change their real width: a
+      // two-digit hour is about 9.5 px wider than a one-digit hour, and a Linux run that crossed
+      // that boundary failed against the 8 px allowance this used to carry. A collapsed trigger
+      // is far narrower than one digit, so 12 px keeps the gate meaningful.
+      const tolerance = key.includes('<clock>') ? 12 : 1.5;
       if (
         !expected ||
         !expected.some(
