@@ -1312,6 +1312,8 @@ two lanes are the same strength, and a shared value name would have been defensi
 
 ## DEC-20: the first screen shows goal beside direction, and drift has one home
 
+Amended 2026-10-11 by [DEC-27](#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result): Sessions comes first in the tab order, the Sessions header carries one permanent orientation sentence and the how-to button (replacing "one screen-level sentence on a default run"), and a row's goal cell is a link on a typed goal too.
+
 Decided 2026-09-23 (DRC-4633), on the Actions Front and Center project. DRC-4636 to DRC-4642 build
 it. The session page (item 4, the session page half of item 3, and the primary control) is built by
 DRC-4639 and DRC-4642. The landing view and its one screen-level sentence are built by DRC-4636,
@@ -2646,6 +2648,8 @@ with no recorded result never takes a pass's or a write's place in the prompt ei
 else in item 4 stands: every answer about checks still comes from the full scan.
 
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
+
+Amended 2026-10-11 by [DEC-27](#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result): item 3's Expected outcome is one optional empty line by default, and the Direction question's summary shrinks to one line while Keep keeps its two presses.
 
 Decided 2026-09-24 (DRC-4675). It brings the Session Drift Detection design's option C, "Unified
 intent and drift panel", into the rulings. The panel is built by DRC-4680, the copied-correction
@@ -4206,6 +4210,8 @@ types one.
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 
+Amended 2026-10-11 by [DEC-27](#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result): the live monitor switch moves into More (placement only), and an intent with no outcome line is stated in the how-to as a valid "Not enough recorded yet".
+
 Decided 2026-09-24 (DRC-4691). DRC-4692 defines and validates the levels on recorded Claude Code
 sessions. DRC-4696 builds the live estimate in the panel and the header, and amends the skill body's
 sentence "Nothing here evaluates on a cadence" when it ships, not before, because the skill body
@@ -4524,3 +4530,75 @@ what was agreed then; this amendment does not rewrite them. These are regression
 those two canonical examples, not universal reading budgets or runtime citation limits. A
 valid reading with two or more citations keeps every surviving support and its recorded times,
 even when its explanation needs more words than the one-citation example.
+
+## DEC-27: the first view of a session is the goal, Analyze drift and the result
+
+Decided 2026-10-11 (DRC-4855), on the Actions Front and Center project, in the milestone "Intent
+and drift first". DRC-4856 to DRC-4866 build it. The owner signed every row below as recommended.
+
+The question was what a new reader sees first. A reviewer who tried Cargento on recorded sessions
+said the interface is too complicated, that people do not know where to start, and that only three
+things matter: the goal, a view of where the session drifted from it, and the analysis. They asked
+for an experiment that keeps those three and removes the rest. The owner's direction of the same
+day asked for the Copy ID, Copy link and Copy command buttons to go, a how-to popup beside the
+feature, and a path to a result in as few clicks as possible.
+
+Two principles decide every row. The first view of a session is the goal, one Analyze drift control
+and the result; anything else is quiet or one press away. A privacy promise or an honest limit
+moves and is never deleted: Discard everything, "What is sent", the off switch for readings and the
+sentence about work the page cannot see stay reachable.
+
+### The signed table
+
+| # | Item | Ruling | Amends |
+| -- | -- | -- | -- |
+| 1 | Expected outcome | One optional empty line by default, labelled optional. "Add a line" and per-line Remove appear after use. The field stays: the level and the copied correction are built from it. | DEC-24 item 3 |
+| 2 | The resume command after the Copy buttons go | It lives on Attention, the waiting panel and the project rail only, not on the session page. | The promise map's P2 "way back" clause and its line beside departures, NUI-5, NUI-8 |
+| 3 | "Analyze again" | One run control per state. A second press appears only when new work was recorded or the intent changed after the result, and it names which. | The 2026-10-01 amendment "the result takes the button's place" (Q3) |
+| 4 | The Direction question | Its summary shrinks to one line with the count. Keep still draws every direction whole before settling, so it keeps its two presses. | Nothing; the 2026-09-28 ruling stands and is part of the click budget |
+| 5 | A typed goal on an ended session | The goal box says before the reader types that Cargento can only read the goal drafted from their prompt on an ended session. | The 2026-10-01 note on what a press says beside the button |
+| 6a | Use your prompt | Stays visible beside the goal. It is the only way to choose a different goal on an ended session. | Nothing |
+| 6b | Live monitor | Moves into More. It is off by default and needs no model. | DEC-26 item 4 (placement only) |
+| 6c | Discard everything | Moves into More and stays reachable. | Nothing; SECURITY.md still describes it |
+| 6d | What analysis does | Replaced by the "How Intent and drift works" popup. One explainer, not two. | Nothing |
+| 6e | Delegated work | Moves into More and stays reachable from Analyze drift. It is an honest limit. | Nothing |
+| 6f | Turn off readings | Moves into More. The promise map's off switch stays. | Nothing |
+| 6g | Add to my intent on each activity row | Shown on hover and on keyboard focus, always in the page. DEC-24 item 3 needs it. | Nothing |
+| 6h | "No terminal to raise" and its "Why" | Shown only when the session is blocked on the reader. | DEC-20 (the raise is primary when a session is blocked) |
+
+The first view at rest holds about eight buttons, links and disclosure summaries: How Intent and
+drift works, Use your prompt, the goal box, Save intent, Analyze drift (or the control the rules
+make primary), What is sent, More, and the way back to Sessions. The optional outcome line is a
+field and is not counted.
+
+### The Sessions screen
+
+Keep the "running" and "waiting on you" counters; move the "exact requests" and "reported blocks"
+counters to Attention. Merge the two header disclosures, "How rows are split" and "Goal sources",
+into the how-to. Keep all six columns: cutting NEXT or BLOCKED would change what the promise map
+says about what a session plans next and whether it is blocked, and that is a promise change for
+the owner to make on its own. The header carries one permanent orientation sentence and the
+how-to button, which amends DEC-20's state table ("one screen-level sentence on a default run").
+Sessions comes before Projects in the tab order.
+
+### Measured 2026-10-11
+
+The deterministic analysis level for an intent with a goal and no outcome line, on a synthetic
+reading with no evidence: `levels.analysis_level(reading, evidence, outcome_lines=0)` returns
+`not_enough` with the reason `no-outcome-line`, which the page words "Not enough recorded yet"
+(DEC-26 item 1, rule L7: zero outcome lines is too little whatever the Goal says). A reading that
+exists but is not well formed also returns `not_enough`, with `reading-malformed`. The model
+reading itself poses the Goal and each outcome line as separate constraints (the shape contract's
+rule 6), so an analysis runs on a goal alone and answers the Goal. What the model says to a goal
+alone was not measured: that takes a model call under the reader's Allow and is part of the
+verification walk.
+
+### What it costs
+
+A reader who adds no outcome line never sees a level on the pill: the analysis answers the Goal
+only. The how-to says so, and says that one line gives a level. "Not enough recorded yet" is a
+valid result, not an error. A typed goal on an ended session is still refused; the note in row 5
+says so before the reader types. Removing the departure rows' Copy command retracts a clause of the
+promise map, and this ruling authorises it. The click budget that follows from the rows is in the
+milestone: three clicks for an accepted draft, four with later directions, four or five for a
+typed goal.
