@@ -13,7 +13,7 @@ function gateWith(held: { value: boolean }) {
   return { gate, commit };
 }
 
-describe('commit gate for an open native choice', () => {
+describe('commit gate for an open choice', () => {
   it('commits at once when nothing holds the board', () => {
     const { gate, commit } = gateWith({ value: false });
     expect(gate.submit('a')).toBe('committed');

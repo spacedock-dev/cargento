@@ -358,7 +358,7 @@
         "proofs": [
           {
             "vitest": "frontend/src/controls/displayGate.test.ts",
-            "test": "defers up to twelve background paints while a native select is open, then keeps painting without re-arming"
+            "test": "defers up to twelve background paints while a Base UI Select is open, then keeps painting without re-arming"
           },
           {
             "vitest": "frontend/src/store/commit-gate.test.ts",
@@ -370,11 +370,11 @@
           },
           {
             "browser": "frontend/e2e/controls-continuity.mjs",
-            "step": "a native select keeps its node, focus and option list while the poll is deferred"
+            "step": "a Base UI Select keeps its node, value and open popup while the poll is deferred"
           },
           {
             "browser": "frontend/e2e/shell-routing.mjs",
-            "step": "refresh: an open native list holds a poll paint"
+            "step": "refresh: an open Base UI list holds a poll paint"
           }
         ]
       },
@@ -616,7 +616,7 @@
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
-            "step": "the native select reads the prompts once per opening"
+            "step": "the Base UI Select reads the prompts once per opening"
           }
         ]
       },
@@ -907,7 +907,7 @@
           },
           {
             "browser": "frontend/e2e/console-parity.mjs",
-            "step": "a stage condition: one request per press, its choice and cue kept, and the native select stays"
+            "step": "a stage condition: one request per press, its choice and cue kept, and the Base UI Select stays"
           },
           {
             "browser": "frontend/e2e/console-parity.mjs",
@@ -1524,20 +1524,20 @@
           },
           {
             "browser": "frontend/e2e/console-parity.mjs",
-            "step": "a stage condition: one request per press, its choice and cue kept, and the native select stays"
+            "step": "a stage condition: one request per press, its choice and cue kept, and the Base UI Select stays"
           }
         ]
       },
-      "An open `<select>` option list": {
+      "An open Select popup": {
         "status": "proven",
         "proofs": [
           {
-            "vitest": "frontend/src/controls/choiceProbe.test.ts",
-            "test": "releases on a select change and on its blur, once each, and never for another control"
+            "vitest": "frontend/src/controls/choiceProbe.test.tsx",
+            "test": "catches up once after a choice or Escape, ignores unrelated controls, and disconnects on disposal"
           },
           {
             "vitest": "frontend/src/controls/displayGate.test.ts",
-            "test": "defers up to twelve background paints while a native select is open, then keeps painting without re-arming"
+            "test": "defers up to twelve background paints while a Base UI Select is open, then keeps painting without re-arming"
           },
           {
             "browser": "frontend/e2e/controls-continuity.mjs",
@@ -1545,11 +1545,11 @@
           },
           {
             "browser": "frontend/e2e/controls-continuity.mjs",
-            "step": "a real click opens the native popup and the board stays held until the pick"
+            "step": "one click opens the popup below the trigger and keyboard choice releases the held board"
           },
           {
             "browser": "frontend/e2e/controls-continuity.mjs",
-            "step": "a select blur catches up once; a manual refresh paints over an open list"
+            "step": "Escape closes only the choice and catches up once; a manual refresh keeps the open popup"
           }
         ]
       },
@@ -1720,7 +1720,7 @@
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
-            "step": "the native select reads the prompts once per opening, fills the box, and Save adopts it naming the fact"
+            "step": "the Base UI Select reads the prompts once per opening, fills the box, and Save adopts it naming the fact"
           }
         ]
       },

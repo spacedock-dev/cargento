@@ -60,9 +60,9 @@ Stories are excluded from page coverage and the CSS budget. They live outside Ta
 source paths. `pnpm build:check` checks the page and its source provenance; dependency edits
 require a refreshed integrity record even when the rendered page bytes stay unchanged.
 
-The prompt picker story currently uses `NativeSelect appearance="prompt"` with a reserved fixture
-width. Its idle, loading and loaded examples exercise the select's native semantics and busy message;
-replace that fixture with the owning prompt component when it lands. The fixture does not certify the
+The Select story uses shadcn Base UI Select with a reserved fixture width. It exercises opening,
+keyboard choice, titled long labels, disabled and loading items, and keyboard scrolling through thirty
+choices. The page's PromptSelect tests and Intent browser proof own the async prompt loader. The fixture does not certify the
 page's prompt loader. Component stories supplement the application browser proofs, which still own
 routing, refresh continuity, backend behavior and installed-page checks.
 
@@ -215,15 +215,16 @@ viewports, popup chrome and announcements through Chrome's accessibility tree. L
 exposed in Base UI's modal modes too, so its modal mutation also requires ordinary outside content
 to remain exposed. Render a Close part inside a popup only if a future ruling adopts modal mode.
 
-NativeSelect keeps a real `select` with its ref and handlers on that node, so `displayGate` can
-hold background paints while it has focus. Input and Textarea stay uncontrolled; pass first words
+Select composes the Base UI trigger, popup and option parts. Keep the controlled value and existing
+change owner at the call site. The trigger carries the focus key, and `displayGate` holds background
+paints only while its popup is open, including focus in the portal. Escape closes the popup first. Input and Textarea stay uncontrolled; pass first words
 as `defaultValue` and read edits through the existing owners. Do not add content-driven sizing:
 field memory restores the reader's dragged height. Associate visible Label elements with native
 fields. The CSS proof compares real fields with the pre-swap reference and checks their type,
 44 px targets, rings and chevron clearance at desktop, 375 and 320 px, including forced colours.
 Controls and Intent proofs exercise native undo/redo, IME, caret, scroll and dragged size. The
 [form record](docs/design-shadcn-adoption.md#form-controls-layer) owns the cascade audit and the
-explicit UA-select departures.
+explicit Base UI Select departures.
 
 Sessions uses Badge, Card, Separator and Alert with explicit surface recipes. Preserve article and
 section roots when composing Card, keep health notes as notes, and keep answer failures polite. Intent,

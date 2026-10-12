@@ -1,4 +1,7 @@
-import { act } from '@testing-library/react';
+import { openSelect } from '../../test/select';
+import { userEvent } from 'storybook/test';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../ui/select';
+import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { REGION_IDS } from './announcer';
 import { BOARD, flush, mountShell } from './testing';
@@ -110,42 +113,52 @@ describe('a disclosure the reader just toggled holds a background paint for its 
   });
 });
 
-describe('an open native list holds a poll paint, and closing it shows the board', () => {
-  it('keeps the shown board while a select inside the page holds focus, then catches up on blur', async () => {
+function Choice() {
+  return (
+    <Select items={{ one: 'One', two: 'Two' }}>
+      <SelectTrigger aria-label="Shell choice">
+        <SelectValue placeholder="Choose" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="one">One</SelectItem>
+        <SelectItem value="two">Two</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
+describe('an open list holds a poll paint, and closing it shows the board', () => {
+  it('keeps the shown board while a popup from the page is open, then catches up on Escape', async () => {
     const page = mountShell({ data: BOARD });
     await page.settle();
-    const shown = () => page.shell.display.getSnapshot().data?.generated;
-    const select = document.createElement('select');
-    select.append(new Option('one'), new Option('two'));
-    document.getElementById('app')?.append(select);
-    select.focus();
-    expect(document.activeElement).toBe(select);
+    const slot = document.createElement('div');
+    document.getElementById('app')?.append(slot);
+    const choice = render(<Choice />, { container: slot });
+    const user = userEvent.setup();
+    await openSelect(screen.getByRole('combobox'));
+    expect(screen.getByRole('combobox').getAttribute('aria-expanded')).toBe('true');
     page.backend.data = { ...BOARD, generated: 2000 };
     await act(async () => {
       await page.shell.runtime.refresh();
     });
     expect(page.shell.runtime.store.getSnapshot().data?.generated).toBe(2000);
-    expect(shown()).toBe(1000);
-    await act(async () => {
-      select.blur();
-      await flush();
-    });
-    expect(shown()).toBe(2000);
-    select.remove();
+    expect(page.shell.display.getSnapshot().data?.generated).toBe(1000);
+    await user.keyboard('{Escape}');
+    await page.settle();
+    expect(page.shell.display.getSnapshot().data?.generated).toBe(2000);
+    choice.unmount();
   });
 
-  it('does not hold a poll for a select outside the page, which cannot be the reader’s choice', async () => {
+  it('does not hold a poll for a popup outside the page, which cannot be the reader’s choice', async () => {
     const page = mountShell({ data: BOARD });
     await page.settle();
-    const outside = document.createElement('select');
-    outside.append(new Option('one'));
-    document.body.append(outside);
-    outside.focus();
+    const choice = render(<Choice />);
+    await openSelect(screen.getByRole('combobox'));
     page.backend.data = { ...BOARD, generated: 2000 };
     await act(async () => {
       await page.shell.runtime.refresh();
     });
     expect(page.shell.display.getSnapshot().data?.generated).toBe(2000);
-    outside.remove();
+    choice.unmount();
   });
 });

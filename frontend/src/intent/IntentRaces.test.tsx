@@ -1,3 +1,4 @@
+import { openSelect, chooseSelect } from '../../test/select';
 import { act, fireEvent } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { json } from './testing';
@@ -80,14 +81,10 @@ describe('a prompt chosen and then cleared', () => {
       },
     });
     await settle(page);
-    const select = document.querySelector('[data-next-cockpit-prompt-select]') as HTMLSelectElement;
-    await act(async () => {
-      fireEvent.pointerDown(select);
-    });
+    const select = document.querySelector('[data-next-cockpit-prompt-select]') as HTMLButtonElement;
+    await openSelect(select);
     await page.settle();
-    await act(async () => {
-      fireEvent.change(select, { target: { value: 'p1' } });
-    });
+    await chooseSelect(select, 'p1');
     await press(control('held-clear', 'goal'));
     expect(goalBox().value).toBe('');
     type(goalBox(), 'Fix the redirect');
@@ -112,21 +109,14 @@ describe('a prompt chosen and then cleared', () => {
       },
     });
     await settle(page);
-    const select = document.querySelector('[data-next-cockpit-prompt-select]') as HTMLSelectElement;
-    await act(async () => {
-      fireEvent.pointerDown(select);
-    });
+    const select = document.querySelector('[data-next-cockpit-prompt-select]') as HTMLButtonElement;
+    await openSelect(select);
     await page.settle();
-    await act(async () => {
-      fireEvent.change(select, { target: { value: 'p1' } });
-    });
+    await chooseSelect(select, 'p1');
     const ctx = intentCtxFor(page.shell);
     expect(ctx.held.chosen.size).toBe(1);
     page.state.routes['/api/project-context'] = () => json({ prompt_choices: [] });
-    await act(async () => {
-      fireEvent.blur(select);
-      fireEvent.pointerDown(select);
-    });
+    await openSelect(select);
     await page.settle();
     await page.settle();
     expect(ctx.held.chosen.size).toBe(0);

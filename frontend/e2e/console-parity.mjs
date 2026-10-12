@@ -15,7 +15,7 @@
  * compared. The BEHAVIOUR half holds the React page to what a unit test cannot see: the steering
  * box's node, text, caret and native undo surviving the board's own revisions and a change of tab, the text and
  * caret coming back after a route away and back, the tripwire box staying open, Escape cancelling it without
- * leaving the page, a stage condition's focus and its native select across a poll, request counts over a mount,
+ * leaving the page, a stage condition's focus and its Base UI Select across a poll, request counts over a mount,
  * a poll, a tab change and StrictMode, the retained terminal across tab switches, 320/375/640(200% zoom)/1280
  * CSS px layouts with no horizontal page scroll, and keyboard operation.
  *
@@ -258,17 +258,11 @@ const readCourse = () => {
       id: card.dataset.stageRule,
       title: norm(card.querySelector('h3')),
       lines: [...card.querySelectorAll(':scope > p')].map(norm),
-      options: [...card.querySelectorAll('option')].map((option) => [
-        option.value,
-        option.selected,
-        option.disabled,
-      ]),
-      selectDisabled: card.querySelector('select') ? card.querySelector('select').disabled : null,
-      buttons: [...card.querySelectorAll('button')].map((button) => [
-        button.dataset.stageAction,
-        norm(button),
-        button.disabled,
-      ]),
+      choice: card.querySelector('[data-stage-choice]')?.nextElementSibling.value ?? null,
+      selectDisabled: card.querySelector('[data-stage-choice]')?.disabled ?? null,
+      buttons: [...card.querySelectorAll('button:not([data-slot=select-trigger])')].map(
+        (button) => [button.dataset.stageAction, norm(button), button.disabled],
+      ),
       cue: norm(card.querySelector('[role="status"]')),
     })),
     fallback: [...section.querySelectorAll(':scope > p')].map(norm).slice(1),
@@ -371,7 +365,12 @@ async function same(label, read, { ready = null } = {}) {
   if (recorded?.label === 'STEER · LOCAL ONLY') {
     assert.deepEqual(mine, { ...recorded, label: 'Your note (this tab only)' });
   } else if (recorded?.heading === 'Workflow stage conditions') {
-    assert.deepEqual(mine, { ...recorded, heading: 'Stage alerts' });
+    const cards = recorded.cards.map(({ options, ...card }) => ({
+      ...card,
+      choice:
+        card.selectDisabled === null ? null : (options.find((option) => option[1])?.[0] ?? ''),
+    }));
+    assert.deepEqual(mine, { ...recorded, heading: 'Stage alerts', cards });
   } else if (typeof recorded?.unbound === 'string') {
     assert.deepEqual(mine, normaliseProjectContributors(recorded, projectEvidence));
   } else golden.verify(key, mine);
@@ -563,7 +562,8 @@ try {
         );
         return same(`Course after ${action}`, readCourse);
       };
-      await react.page.locator('[data-stage-choice]').selectOption('review');
+      await react.page.locator('[data-stage-choice]').click();
+      await react.page.getByRole('option', { name: 'review', exact: true }).click();
       const saved = await act('save', 'Saved.');
       assert.match(saved.cards[0].lines.join(' '), /Saved stage: review/);
       const rearmed = await act('rearm', 'Rearmed; baseline reset.');
@@ -874,13 +874,14 @@ try {
   );
 
   await step(
-    'a stage condition: one request per press, its choice and cue kept, and the native select stays',
+    'a stage condition: one request per press, its choice and cue kept, and the Base UI Select stays',
     async () => {
       await load(react, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' });
       const select = react.page.locator('[data-stage-choice]');
       await mark('[data-stage-choice]', 'choice');
-      await select.selectOption('review');
-      // A poll lands while the reader has the select: the node, its value and its focus stay.
+      await select.click();
+      await react.page.getByRole('option', { name: 'review', exact: true }).click();
+      // A poll paints with the closed trigger focused: the node, value and focus stay.
       await select.focus();
       await refreshNow();
       await waitRevisions(1);
@@ -889,11 +890,11 @@ try {
         true,
         'the select was replaced by a revision',
       );
-      assert.equal(await select.inputValue(), 'review');
+      assert.equal(await select.textContent(), 'review');
       await react.page.getByRole('tab', { name: 'Decisions' }).click();
       await react.page.getByRole('tab', { name: 'Course' }).click();
       assert.equal(
-        await react.page.locator('[data-stage-choice]').inputValue(),
+        await react.page.locator('[data-stage-choice]').textContent(),
         'review',
         'the choice was lost with the tab',
       );
@@ -969,7 +970,8 @@ try {
     const other = await newPage();
     await load(other, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' });
     await load(react, fragmentFor('course', BOARD.live), { wait: '.next-stage-conditions' });
-    await other.page.locator('[data-stage-choice]').selectOption('done');
+    await other.page.locator('[data-stage-choice]').click();
+    await other.page.getByRole('option', { name: 'done', exact: true }).click();
     await other.page.locator('[data-stage-action="save"]').click();
     await other.page.waitForFunction(
       () =>

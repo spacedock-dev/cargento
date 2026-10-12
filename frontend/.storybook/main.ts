@@ -30,6 +30,7 @@ const config: StorybookConfig = {
           '@base-ui/react/button',
           '@base-ui/react/collapsible',
           '@base-ui/react/popover',
+          '@base-ui/react/select',
           '@base-ui/react/separator',
           '@base-ui/react/tabs',
           '@base-ui/react/merge-props',

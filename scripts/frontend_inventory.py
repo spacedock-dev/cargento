@@ -107,7 +107,14 @@ def _native_component_gap(root: Path, tag: str, row: dict[str, Any]) -> str | No
         or not path.resolve().is_relative_to(root)
     ):
         return f"native_fields {tag}: missing component"
-    if not re.search(rf"<{tag}\b", path.read_text(encoding="utf-8")):
+    source = path.read_text(encoding="utf-8")
+    if tag == "select":
+        parts = ("Root", "Trigger", "Value", "Popup", "List", "Item", "ItemText")
+        if "@base-ui/react/select" not in source or any(
+            f"<SelectPrimitive.{part}" not in source for part in parts
+        ):
+            return "native_fields select: the component no longer composes the Base UI Select"
+    elif not re.search(rf"<{tag}\b", source):
         return f"native_fields {tag}: the component no longer renders its native element"
     return None
 
@@ -128,8 +135,8 @@ def _native_listed_gaps(root: Path, tag: str, row: dict[str, Any], kind: str) ->
 
 
 def native_field_gaps(root: Path, data: dict[str, Any]) -> list[str]:
-    """Keep adopted chrome attached to native owners and their browser proofs."""
-    if "native_fields" not in data and not (root / "frontend/src/ui/native-select.tsx").is_file():
+    """Keep adopted field chrome attached to its state owners and browser proofs."""
+    if "native_fields" not in data and not (root / "frontend/src/ui/select.tsx").is_file():
         return []
     fields = data.get("native_fields")
     if not isinstance(fields, dict) or set(fields) != {"select", "input", "textarea"}:

@@ -1139,21 +1139,26 @@ try {
   );
 
   await step(
-    'refresh: an open native list holds a poll paint, and the board catches up once when it closes',
+    'refresh: an open Base UI list holds a poll paint, and the board catches up once when it closes',
     async () => {
-      const o = await clocked();
+      const source = (body) => ({
+        ...body,
+        annotate: true,
+        sessions: body.sessions.map((row) => ({
+          ...row,
+          first_prompt: 'A prompt to choose',
+          first_prompt_at: body.generated - 10,
+        })),
+      });
+      const o = await clocked(`#n=session:${A}:claude:shared-sid`, source);
       try {
-        await o.page.evaluate(() => {
-          const select = globalThis.document.createElement('select');
-          select.id = 'probe';
-          select.append(new globalThis.Option('one'), new globalThis.Option('two'));
-          globalThis.document.getElementById('app').append(select);
-          select.focus();
-        });
+        const select = o.page.locator('[data-next-cockpit-prompt-select]');
+        await select.click();
+        await o.page.getByRole('listbox').waitFor();
         assert.match(await o.page.locator('.next-running').innerText(), /2 running/);
         o.state.mutate = (body) => ({
-          ...body,
-          sessions: body.sessions.map((row) => ({ ...row, state: 'idle', active: false })),
+          ...source(body),
+          sessions: source(body).sessions.map((row) => ({ ...row, state: 'idle', active: false })),
         });
         await o.poll();
         assert.match(
@@ -1161,8 +1166,9 @@ try {
           /2 running/,
           'the held board did not repaint under an open list',
         );
-        assert.equal(await o.page.evaluate(() => globalThis.document.activeElement.id), 'probe');
-        await o.page.locator('#probe').evaluate((select) => select.blur());
+        assert.equal(await select.getAttribute('aria-expanded'), 'true');
+        await o.page.keyboard.press('Escape');
+        assert.match(o.page.url(), /#n=session:/);
         await o.page.waitForFunction(() =>
           /0 running/.test(globalThis.document.querySelector('.next-running').textContent),
         );

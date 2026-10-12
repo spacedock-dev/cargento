@@ -1,96 +1,76 @@
-import { NativeSelect } from '../ui/native-select';
-import { Label } from '../ui/label';
+import { useState } from 'react';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import { useFocusKey } from '../controls';
-import { goalKey, promptMenu } from './derive';
+import { goalKey, promptMenu, promptChoices } from './derive';
 import { choosePrompt } from './edit';
 import { closePromptMenu, loadPromptChoices } from './prompts';
 import { usePanel } from './useIntent';
-import { promptChoices } from './derive';
 
-/* "Use your prompt": one native select in the goal's label row. Picking one fills the box as a pending
-   adoption and saves nothing. A native select so the browser's own list drops over the page and moves
-   nothing; a poll redraw cannot shut it mid-choice because the display gate defers a background paint while a
-   select holds focus. Its options are fetched once per opening, by the reader's own opening gesture. */
+/* Two different absences, said apart. A long session's focused record holds only its newest events, so
+   the reader's own prompts can all lie outside it; that is a limit of what is read, not a claim that
+   none were written. */
+const EMPTY_NONE =
+  'None of your prompts are in the recent part of this session that Cargento reads.';
+const EMPTY_FAILED = 'Cargento could not read your prompts from this session.';
+
+/* Open before the async read: a browser picker requested after that read loses the click's user
+   activation. Base UI keeps the same popup while loading and across board revisions.
+   docs/design-shadcn-adoption.md#form-controls-layer owns that reversal. */
 export function PromptSelect() {
   const { ctx, input, session, projectKey } = usePanel();
   const menu = promptMenu(input);
+  const [open, setOpen] = useState(false);
   const focusKey = `${goalKey(session)}:prompt`;
-  const ref = useFocusKey<HTMLSelectElement>(ctx.shell.controls.focusLane, focusKey);
-  if (!menu.visible) return null;
-  const open = (event: {
-    readonly type: string;
-    readonly key?: string;
-    preventDefault(): void;
-    readonly currentTarget: HTMLSelectElement;
-  }) => {
-    const select = event.currentTarget;
-    if (event.type === 'keydown' && event.key === 'Escape') {
-      closePromptMenu(ctx, session);
-      return;
-    }
-    if (
-      event.type === 'keydown' &&
-      !['ArrowDown', 'ArrowUp', ' ', 'Enter'].includes(event.key ?? '')
-    ) {
-      return;
-    }
-    if (typeof select.showPicker === 'function') {
-      event.preventDefault();
-      select.focus();
-      if (ctx.held.prompts.get(compatKey(session))?.pending) return;
-      void loadPromptChoices(ctx, input, projectKey).then(() => {
-        if (
-          !select.isConnected ||
-          ctx.held.prompts.get(compatKey(session))?.open !== true ||
-          !promptChoices(ctx.held, input.contexts, session).length
-        )
-          return;
-        try {
-          select.showPicker();
-        } catch {
-          select.focus();
-        }
-      });
-    } else {
-      void loadPromptChoices(ctx, input, projectKey);
-    }
-  };
+  const ref = useFocusKey<HTMLButtonElement>(ctx.shell.controls.focusLane, focusKey);
+  // A last offer disappearing must state the absence in the popup the reader already opened.
+  if (!menu.visible && !open) return null;
   return (
-    <Label className="next-intent-prompt-pick">
-      <span className="next-visually-hidden">Fill the goal from one of your prompts</span>
-      <NativeSelect
-        appearance="prompt"
-        ref={ref}
-        className="next-intent-prompt-select"
-        data-next-cockpit-prompt-select
-        data-next-focus={focusKey}
-        value={menu.pending ? '' : menu.value}
-        aria-busy={menu.pending}
-        onPointerDown={open}
-        onKeyDown={open}
-        onBlur={() => closePromptMenu(ctx, session)}
-        onChange={(event) => {
-          if (!event.currentTarget.value) return;
-          closePromptMenu(ctx, session);
-          choosePrompt(
-            ctx,
-            input,
-            event.currentTarget.value,
-            promptChoices(ctx.held, input.contexts, session),
-          );
+    <div className="next-intent-prompt-pick ms-auto flex min-w-0 max-w-full w-[18rem] max-[760px]:w-full">
+      <Select
+        value={menu.value || null}
+        open={open}
+        items={menu.options}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) void loadPromptChoices(ctx, input, projectKey);
+          else closePromptMenu(ctx, session);
+        }}
+        onValueChange={(value) => {
+          if (!value) return;
+          choosePrompt(ctx, input, value, promptChoices(ctx.held, input.contexts, session));
         }}
       >
-        <option value="">{menu.pending ? 'Loading your prompts' : 'Use your prompt'}</option>
-        {menu.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </NativeSelect>
-    </Label>
+        <SelectTrigger
+          ref={ref}
+          className="next-intent-prompt-select ps-[12px] font-medium"
+          data-next-cockpit-prompt-select
+          data-next-focus={focusKey}
+          aria-label="Fill the goal from one of your prompts"
+          aria-busy={menu.pending}
+          title={
+            menu.options.find((option) => option.value === menu.value)?.label ?? 'Use your prompt'
+          }
+        >
+          <SelectValue placeholder="Use your prompt" />
+        </SelectTrigger>
+        <SelectContent>
+          {menu.pending ? (
+            <SelectItem value="__loading" disabled>
+              Loading your prompts
+            </SelectItem>
+          ) : menu.options.length ? (
+            menu.options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))
+          ) : (
+            <SelectItem value="__empty" disabled>
+              {menu.failed ? EMPTY_FAILED : EMPTY_NONE}
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
   );
-}
-
-function compatKey(row: Record<string, unknown>): string {
-  return `${String(row['harness'] || '')}:${String(row['sid'] || row['session'] || '')}`;
 }

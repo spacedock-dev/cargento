@@ -4,6 +4,7 @@ import { sessionHome, type RouteInput } from '../router/grammar';
 export interface KeyEventLike {
   readonly key: string;
   readonly tagName: string;
+  readonly role?: string | null;
   readonly isContentEditable?: boolean;
   readonly metaKey?: boolean;
   readonly ctrlKey?: boolean;
@@ -28,6 +29,7 @@ const SHORTCUTS: Readonly<Record<string, RouteInput>> = {
    shortcut listener sits on the window so every document-level handler has run before it. */
 export function shortcutTarget(event: KeyEventLike, route: RouteInput): RouteInput | null {
   if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return null;
+  if (event.role && ['combobox', 'listbox', 'option'].includes(event.role)) return null;
   if (FIELDS.includes(event.tagName.toLowerCase()) || event.isContentEditable) return null;
   if (event.key === 'Escape') {
     const home = route.view === 'session' ? sessionHome(route) : 'sessions';

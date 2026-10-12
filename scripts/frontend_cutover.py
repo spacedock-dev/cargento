@@ -500,7 +500,10 @@ DIFFERENCES = (
         "wrapper counts open streams. The shared instrumentation is otherwise the baseline's "
         "text, checked by a test."
     ),
-    "The editor step also holds an opened disclosure and the prompt select and checks native undo.",
+    (
+        "The editor step checks native undo and an opened disclosure; a separate pass holds "
+        "a nonempty prompt choice and its open Base UI popup through the bounded poll gate."
+    ),
     (
         "A second navigation series is read after a forced collection, taken after the "
         "baseline-comparable one so it cannot disturb it."
@@ -563,8 +566,9 @@ def compose(root: Path, run_paths: list[Path], *, date: str, commit: str) -> dic
                 "reported as zero."
             ),
             (
-                "A native select popup cannot be opened through the debugger protocol here; the "
-                "open-popup hold is proven by the controls browser proof named in the cutover "
+                "The Base UI popup and nonempty selected prompt are measured through DOM roles; "
+                "the open-popup position and close paths are also proven by the controls browser "
+                "proof named in the cutover "
                 "receipt."
             ),
         ],

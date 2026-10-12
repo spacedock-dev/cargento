@@ -47,7 +47,6 @@
 .next-cockpit-held-footer>.next-cockpit-held-cue{flex:1 1 100%}
 .next-cockpit-held-remove{min-inline-size:44px}
 .next-cockpit-held-tools{display:flex;align-items:center;gap:4px 8px;margin-left:auto}
-.next-intent-prompt-pick{margin-left:auto;display:flex;min-width:0;max-inline-size:min(18rem,100%)}
 .next-direction-select{display:grid;gap:4px;min-inline-size:0;max-inline-size:100%}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1}

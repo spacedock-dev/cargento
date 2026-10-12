@@ -17,6 +17,8 @@
 @source '../terminal/TerminalSurface.tsx';
 @source '../intent/{DirectionQuestion,GoalField,IntentPanel,OutcomeLines,SessionMore}.tsx';
 @source '../sessions/SessionDetail.tsx';
+@source '../steering/StageConditions.tsx';
+@source '../intent/PromptSelect.tsx';
 @source '../drift/{ReadingResult,WorkListView}.tsx';
 @source not '../**/*.test.*';
 @source not '../controls/{gallery,GalleryBoard,galleryWorld}.*';
@@ -119,6 +121,7 @@
   --collapsible-panel-height: auto;
   --transform-origin: center;
   --available-height: 100vh;
+  --anchor-width: auto;
 }
 
 /* Tailwind's default `dark:` variant emits a `prefers-color-scheme` rule, and this page is dark only.

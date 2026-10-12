@@ -46,6 +46,14 @@ legacy page said; they say nothing the React page was not also asserted to do. S
 port was "run next to" or "compared with" the legacy page describe how it was proved while that page
 existed.
 
+Base UI Select is a deliberate departure from native option DOM (owner, 2026-10-12). The Intent
+editor comparison retires its native-menu column and excludes the combobox trigger from action
+buttons; its browser role proof checks offered labels, order and pending adoption. The Console
+comparison projects the selected native option onto the controlled value and disabled trigger.
+The mounted stage comparison still enumerates every offered option, with effective disabled state,
+over 80 generated boards. Goldens remain unchanged. [The Intent record](#the-intent-log-and-the-intent-panel)
+records the popup, width, Escape and refresh behavior and the four adjusted field reference rows.
+
 Accordion adoption keeps recorded labels, text and independent open-state observations, while
 proofs locate the new triggers and panels by their slots. A session-facts part retains its recorded
 logical part name after the former `details` tag becomes an Accordion root. The fixture files are
@@ -368,14 +376,12 @@ announcement and the notification control are each built in the step that owns t
 
 Shared controls keep reader state the redraw would otherwise discard. A keyed focus lane restores
 the same control or a named fallback without scrolling an offscreen one, a field memory keeps an
-unsaved draft, caret, undo and composition across live updates, and an open native select holds the
-poll commit for at most twelve consecutive attempts and catches up once on change or blur.
+unsaved draft, caret, undo and composition across live updates, and an open Base UI Select holds the
+background board paint for at most twelve consecutive attempts and catches up once when the popup closes. React retains its value and open state through manual refresh and paints past the cap.
 Disclosures keep their node and derive open state from the subscribed keyed store, hold background
 commits for 220 ms around the 200 ms motion, and skip the hold under reduced motion. The
 [reader-state record](design-reader-state.md#disclosure-write-precedence) owns write precedence,
-independent grouping, native fragment revelation and popover dismissal. Headless Chromium draws a
-select's popup outside the DOM, so the browser proof covers the focus, deferral and catch-up contract around it and picks the option
-programmatically rather than reading the popup.
+independent grouping, native fragment revelation and popover dismissal. The Base UI popup exposes listbox and option roles, so Chromium now inspects the open list, its position, keyboard choice and close paths directly.
 
 ## Sessions, session detail, the timeline and the terminal
 
@@ -445,16 +451,35 @@ instead (one direction read, nothing saved), `intentForReading`, the live monito
 reading-feedback lane. The per-entry Add to my intent buttons of the legacy activity list are drawn by the
 Drift step's numbered activity list.
 
-Deviations: the prompt select now reserves `min(18rem, 100%)` from its first paint,
-so loading the choices does not widen the Goal row. During the reader's opening
-request its placeholder says "Loading your prompts" and carries `aria-busy`;
-the held-state subscription paints that cue while the select keeps focus without
-releasing a background board paint. Empty or failed reads restore "Use your prompt"
-and open no picker. `PromptSelect.test.tsx` covers the held request and those absences;
-`intent-parity.mjs` checks idle, first-frame pending and loaded widths at 1280,
-375 and 320 px, with an `auto-prompt-width` mutation. The field chrome gate measures
-the reserved width explicitly; its reference table adds the approved 288 px desktop
-width for the two prompt identities. The recorded answers remain unchanged.
+Deviations (owner, 2026-10-12): prompt, stage and direction choices now use shadcn Base UI Select.
+The prompt opens immediately, shows "Loading your prompts" as a disabled item while fetching,
+and keeps that popup open for choices or a stated absence for an empty read or a failed read after an empty or failed
+read. The trigger stays "Use your prompt" at rest and carries `aria-busy` during the request.
+Its width is 18rem on wide screens and the remaining label-row width on narrow screens. The Goal label and trigger retain one row on narrow screens, preserving the first-view positions of Analyze, results, direction questions and Steer back. The popup drops
+below the trigger, scrolls without shifting the page, and clamps each titled item to two lines.
+Escape closes only the popup before any disclosure or route dismissal. A choice fills a pending
+adoption and saves nothing. The request still runs once per opening, never on a poll or mount.
+
+`PromptSelect.test.tsx` covers same-popup loading, arrival, absence and dismissal.
+`intent-parity.mjs` checks first-frame opening and stable widths at 1280, 375 and 320 px, with
+`auto-prompt-width` and `wide-select` mutations. The four select rows in
+`field-chrome-reference.json` now name trigger buttons: two prompt identities, workflow stage
+and later direction. They record flex display and inline chevron padding explicitly, while
+retaining border, ink, font and the 288 px desktop prompt width. Other field rows are unchanged.
+The Button chrome sweep excludes these triggers because the field sweep owns them.
+
+The StageConditions mounted differential projects a trigger and its portalled options onto the
+recorded choice inventory, including effective disabled state inherited from a disabled root.
+That text comparison forces the real popups open to enumerate unavailable choices too; the
+interaction tests separately open enabled choices by gesture. The editor comparison retires its
+native option-DOM column and excludes the new trigger from ordinary action buttons; the popup's
+role proof checks offered prompt labels, order and pending adoption. The Console comparison projects the selected native option onto the controlled value and disabled trigger; its Save, Rearm and Remove proof chooses real options by role. The mounted stage differential still compares every offered value and disabled state across 80 boards. No golden file changes.
+
+The controls proof measures popup node, position, value and options across held polls, and keeps
+it open across manual refresh and the twelve-poll cap. The fluidity driver measures a nonempty
+chosen prompt and open popup over thirteen fallback polls, separately from native editor focus
+and undo. A synthetic transcript for its current session supplies the real prompt endpoint;
+cohort rows retain the baseline shape. The coordinator owns the fresh fluidity runs and receipt. Removing the native prompt-wrapper rule lowers hand-written CSS by 100 bytes to 123,040; its coverage key is retired with the rule.
 
 DEC-27 trims the first view: one optional outcome line, its Add and Remove controls after use,
 Undo after a goal edit or prompt choice, and six groups in the session-scoped More disclosure. Saved reads-from and

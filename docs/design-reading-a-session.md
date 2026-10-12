@@ -1793,6 +1793,20 @@ redraw does not shut the list mid-choice.
   back up under the caret. The select, the box and the Expected outcome field below it now hold
   their places at rest, after a pick, after typing and after a redraw, at 1440, 760 and 375.
 
+### Amended 2026-10-12 (owner): Base UI Select
+
+The owner replaced all native choices with shadcn Base UI Select. The 2026-10-02 native-list
+mechanism above is historical: after an async prompt read, browser activation had expired and
+`showPicker()` could return without opening a list. The first press now opens a popup immediately
+with "Loading your prompts" as a disabled item, then choices or a stated absence (none in the part read, or the read failed) in
+the same popup. It drops below the trigger and moves no page content.
+
+The chosen fact, pending adoption and save meaning remain the same. Arrow keys navigate the list;
+confirmation chooses and returns focus to the trigger. Escape closes only the popup. The trigger
+keeps its existing focus key and 18rem wide-screen width, filling the remaining label-row width on narrow screens.
+React retains its open state through a refresh; the bounded board hold protects its anchor while
+open. [Reader state](design-reader-state.md#an-open-option-list) owns the current mechanism.
+
 ### Amended 2026-10-04 (owner): an adopted goal is read whole
 
 The owner, 2026-10-04, after

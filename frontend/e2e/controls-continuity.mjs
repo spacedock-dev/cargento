@@ -1,7 +1,7 @@
 /* global document, getComputedStyle, MutationObserver, requestAnimationFrame -- used inside page.evaluate, which runs in the browser */
 /*
  * Real-Chromium proof that the shared controls keep what a persistent React node alone cannot:
- * unsaved text, caret, undo history, IME composition, a native <select>, disclosure continuity and
+ * unsaved text, caret, undo history, IME composition, a Base UI Select, disclosure continuity and
  * motion, focus and scroll, across live data from the REAL backend (GET /api/data and the SSE stream).
  *
  * The dashboard is served by the real Python launcher over the shell's synthetic board with the real
@@ -427,72 +427,75 @@ if (new URLSearchParams(location.search).has('late')) {
 
   // ---------------------------------------------------------------------------------------------
   await step(
-    'a native select keeps its node, focus and option list while the poll is deferred, and catches up once on change',
+    'a Base UI Select keeps its node, value and open popup while the poll is deferred, and catches up once on choice',
     async () => {
       await load();
       const select = page.locator('#stage-choice');
       await mark('#stage-choice', 'select');
-      await select.selectOption({ index: 1 });
-      const chosenBefore = await select.inputValue();
-      await select.focus();
-      const optionsBefore = await select.locator('option').allTextContents();
+      await select.click();
+      await page.getByRole('option').first().click();
+      const chosenBefore = await readout('choice').textContent();
+      await select.click();
+      await page.getByRole('listbox').waitFor();
+      await mark('[data-slot=select-content]', 'popup');
+      const popupBefore = await page.getByRole('listbox').boundingBox();
+      const optionsBefore = await page.getByRole('option').allTextContents();
       const shownBefore = await displayed();
       const commitsBefore = await commits();
       await settleRefresh(5);
-      assert.equal(await displayed(), shownBefore, 'the board repainted under a focused select');
+      assert.equal(await displayed(), shownBefore, 'the board repainted under an open choice');
       assert.ok((await accepted()) >= shownBefore + 5, 'the store did not accept the polls');
       assert.deepEqual(
-        await select.locator('option').allTextContents(),
+        await page.getByRole('option').allTextContents(),
         optionsBefore,
         'the option list changed under the reader',
       );
       assert.equal(await same('#stage-choice', 'select'), true);
-      assert.equal(
-        await select.inputValue(),
-        chosenBefore,
-        'the chosen native option survived the deferred polls',
+      assert.equal(await same('[data-slot=select-content]', 'popup'), true);
+      assert.deepEqual(
+        await page.getByRole('listbox').boundingBox(),
+        popupBefore,
+        'the open popup moved during a poll',
       );
-      assert.equal(await page.evaluate(() => document.activeElement?.id), 'stage-choice');
-      assert.equal(await commits(), commitsBefore, 'a deferred paint notified a subscriber');
+      assert.equal(await readout('choice').textContent(), chosenBefore);
+      assert.equal(await select.getAttribute('aria-expanded'), 'true');
+      assert.equal(await commits(), commitsBefore);
       assert.equal(await page.evaluate(() => globalThis.__gallery.gate.deferredCount()), 5);
-      // `selectOption` fires the input and change events a pick fires without the platform's popup, which
-      // opens on ArrowDown on macOS and not elsewhere; the click step below drives the real popup.
-      await select.selectOption({ index: 1 });
-      await page.waitForFunction(
-        () => document.querySelector('[data-readout="choice"]')?.textContent !== '',
-      );
-      const stored = await accepted();
-      assert.equal(
-        await displayed(),
-        stored,
-        'change did not catch the board up to the newest payload',
-      );
+      await page.getByRole('option').nth(1).click();
+      await page.waitForFunction(() => globalThis.__gallery.gate.hasPending() === false);
+      assert.equal(await displayed(), await accepted(), 'a choice did not catch up');
       assert.equal((await commits()) - commitsBefore, 1, 'the catch-up was not exactly one commit');
       assert.equal(await same('#stage-choice', 'select'), true);
       assert.equal(await page.evaluate(() => document.activeElement?.id), 'stage-choice');
-      assert.notEqual(await readout('choice').textContent(), '');
+      assert.notEqual(await readout('choice').textContent(), chosenBefore);
     },
   );
 
   await step(
-    'a select blur catches up once; a manual refresh paints over an open list',
+    'Escape closes only the choice and catches up once; a manual refresh keeps the open popup',
     async () => {
       await load();
       const select = page.locator('#stage-choice');
-      await select.focus();
+      await select.click();
       const commitsBefore = await commits();
       await settleRefresh(3);
       assert.equal((await commits()) - commitsBefore, 0);
-      await select.blur();
+      await page.keyboard.press('Escape');
       await page.waitForFunction(() => globalThis.__gallery.gate.hasPending() === false);
       assert.equal((await commits()) - commitsBefore, 1);
       assert.equal(await displayed(), await accepted());
-      await select.focus();
+      assert.equal(await select.getAttribute('aria-expanded'), 'false');
+      await select.click();
+      await page.getByRole('listbox').waitFor();
+      await mark('[data-slot=select-content]', 'manual-popup');
       await settleRefresh(2);
       const heldAt = await displayed();
       await refresh(true);
-      assert.ok((await displayed()) > heldAt, 'a manual refresh did not paint over the open list');
+      assert.ok((await displayed()) > heldAt);
       assert.equal(await page.evaluate(() => globalThis.__gallery.gate.hasPending()), false);
+      assert.equal(await select.getAttribute('aria-expanded'), 'true');
+      assert.equal(await same('[data-slot=select-content]', 'manual-popup'), true);
+      await page.keyboard.press('Escape');
     },
   );
 
@@ -501,43 +504,43 @@ if (new URLSearchParams(location.search).has('late')) {
     async () => {
       await load();
       const select = page.locator('#stage-choice');
-      await select.focus();
+      await select.click();
+      await page.getByRole('listbox').waitFor();
+      await mark('[data-slot=select-content]', 'cap-popup');
       const start = await displayed();
       await settleRefresh(12);
       assert.equal(await displayed(), start, 'a hold ended before the twelfth');
       assert.equal(await page.evaluate(() => globalThis.__gallery.gate.deferredCount()), 12);
       await refresh();
-      const first = await displayed();
-      assert.equal(first, await accepted(), 'the thirteenth did not paint');
+      assert.equal(await displayed(), await accepted(), 'the thirteenth did not paint');
       await refresh();
-      assert.equal(
-        await displayed(),
-        await accepted(),
-        'the cap was re-armed while the list stayed focused',
-      );
+      assert.equal(await displayed(), await accepted(), 'the cap was re-armed');
       assert.equal(await page.evaluate(() => globalThis.__gallery.gate.deferredCount()), 12);
-      await page.evaluate(() => document.activeElement?.blur());
+      assert.equal(await select.getAttribute('aria-expanded'), 'true');
+      assert.equal(await same('[data-slot=select-content]', 'cap-popup'), true);
+      await page.keyboard.press('Escape');
     },
   );
 
   await step(
-    'a real click opens the native popup and the board stays held until the pick',
+    'one click opens the popup below the trigger and keyboard choice releases the held board',
     async () => {
-      // Headless Chromium draws the popup outside the DOM and swallows keys sent to it, so its contents
-      // cannot be read here. What is checked is the contract around it: the click focuses the select,
-      // the polls are held while it is open, and the pick (`selectOption` fires the real input and change
-      // events) catches the board up.
       await load();
       const select = page.locator('#stage-choice');
       const shown = await displayed();
       await select.click();
+      await page.getByRole('listbox').waitFor();
+      const triggerBox = await select.boundingBox();
+      const popupBox = await page.getByRole('listbox').boundingBox();
+      assert.ok(popupBox.y >= triggerBox.y + triggerBox.height);
       await settleRefresh(3);
-      assert.equal(await page.evaluate(() => document.activeElement?.id), 'stage-choice');
-      assert.equal(await displayed(), shown, 'a poll painted while the select was open');
-      await select.selectOption({ index: 2 });
+      assert.equal(await displayed(), shown);
+      await page.keyboard.press('End');
+      await page.keyboard.press('Enter');
       await page.waitForFunction(
         () => document.querySelector('[data-readout="choice"]')?.textContent !== '',
       );
+      assert.equal(await select.getAttribute('aria-expanded'), 'false');
       assert.equal(await displayed(), await accepted());
     },
   );

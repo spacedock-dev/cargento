@@ -606,7 +606,7 @@
         "docs/frontend-fluidity.json",
         "frontend/e2e/popover-continuity.mjs"
       ],
-      "contract": "Disclosure open state, popover position, focus, IME, native SELECT lifetime and input drafts survive source refresh; actual browser checks supplement VM assertions."
+      "contract": "Disclosure open state, popover position, focus, IME, Base UI Select popup lifetime and input drafts survive source refresh; actual browser checks supplement VM assertions."
     }
   ],
   "routes": [
@@ -878,16 +878,16 @@
       "disposition": "store-held"
     },
     {
-      "name": "An open `<select>` option list",
+      "name": "An open Select popup",
       "owner": "DRC-4823",
       "oracles": [
-        "frontend/src/controls/choiceProbe.test.ts",
+        "frontend/src/controls/choiceProbe.test.tsx",
         "frontend/src/controls/displayGate.test.ts",
         "frontend/e2e/controls-continuity.mjs",
         "frontend/e2e/intent-parity.mjs",
         "frontend/e2e/css-contract.mjs"
       ],
-      "contract": "Retain native select and poll commit deferral: at most 12 consecutive holds, change/blur catch up once; manual/action paint remains explicit.",
+      "contract": "React retains the controlled value and open popup. Defer background board paints while actually open for at most 12 consecutive holds; popup closure catches up once. Manual and cap paints retain popup identity.",
       "disposition": "retained-deferral"
     },
     {
@@ -954,7 +954,7 @@
         "frontend/src/intent/IntentDiscard.test.tsx",
         "frontend/e2e/console-parity.mjs"
       ],
-      "contract": "Keep scope/criterion+entry disclosure identities and armed-discard warning; native prompt select has one focus key. Terminal resource retention is owned by4824, not ordinary route unmount.",
+      "contract": "Keep scope/criterion+entry disclosure identities and armed-discard warning; Base UI prompt trigger has one focus key. Terminal resource retention is owned by4824, not ordinary route unmount.",
       "disposition": "stable-identity"
     },
     {
@@ -1424,7 +1424,7 @@
   ],
   "native_fields": {
     "select": {
-      "component": "frontend/src/ui/native-select.tsx",
+      "component": "frontend/src/ui/select.tsx",
       "owners": [
         "frontend/src/steering/StageConditions.tsx",
         "frontend/src/intent/PromptSelect.tsx",
@@ -1433,7 +1433,9 @@
       "oracles": [
         "frontend/src/controls/displayGate.test.ts",
         "frontend/e2e/controls-continuity.mjs",
-        "frontend/e2e/css-contract.mjs"
+        "frontend/e2e/css-contract.mjs",
+        "frontend/src/intent/PromptSelect.test.tsx",
+        "frontend/src/controls/choiceProbe.test.tsx"
       ]
     },
     "input": {

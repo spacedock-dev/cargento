@@ -1,5 +1,5 @@
 import { Card as SurfaceCard } from '../ui/card';
-import { NativeSelect } from '../ui/native-select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useEffect, useLayoutEffect, useRef, type MouseEvent } from 'react';
@@ -208,7 +208,7 @@ function CardView({
 }) {
   const controls = useControls();
   const id = model.id;
-  const choice = useFocusKey<HTMLSelectElement>(controls.focusLane, `stage:${id}:choice`);
+  const choice = useFocusKey<HTMLButtonElement>(controls.focusLane, `stage:${id}:choice`);
   const save = useFocusKey<HTMLButtonElement>(controls.focusLane, `stage:${id}:save`);
   const rearm = useFocusKey<HTMLButtonElement>(controls.focusLane, `stage:${id}:rearm`);
   const remove = useFocusKey<HTMLButtonElement>(controls.focusLane, `stage:${id}:remove`);
@@ -226,24 +226,39 @@ function CardView({
           <>
             <Label>
               Alert once when an observed entity enters{' '}
-              <NativeSelect
-                ref={choice}
-                data-stage-choice={id}
+              <Select
                 value={model.editor.choice}
                 disabled={model.editor.disabled}
-                onChange={(event) => onChoose(event.currentTarget.value)}
+                items={model.editor.options}
+                onValueChange={(value) => {
+                  if (value !== null) onChoose(value);
+                }}
               >
-                {model.editor.options.map((option, index) => (
-                  <option
-                    // A source can publish one stage name twice, so the name is not an identity.
-                    key={`${String(index)}\u0000${option.value}`}
-                    value={option.value}
-                    {...(option.stale ? { disabled: true } : {})}
-                  >
-                    {option.label}
-                  </option>
-                ))}
-              </NativeSelect>
+                <SelectTrigger
+                  ref={choice}
+                  data-stage-choice={id}
+                  data-next-focus={`stage:${id}:choice`}
+                  aria-label="Alert once when an observed entity enters"
+                  title={
+                    model.editor.options.find((option) => option.value === model.editor?.choice)
+                      ?.label ?? model.editor.choice
+                  }
+                  className="font-medium ps-[6.4px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent data-stage-options={id}>
+                  {model.editor.options.map((option, index) => (
+                    <SelectItem
+                      key={`${String(index)}\u0000${option.value}`}
+                      value={option.value}
+                      disabled={option.stale}
+                    >
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Label>
             <Button
               variant="bare"

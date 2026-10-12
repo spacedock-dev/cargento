@@ -1,3 +1,4 @@
+import { openSelect } from '../../test/select';
 import { act, fireEvent } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { json } from './testing';
@@ -44,9 +45,7 @@ describe('the Intent surfaces start nothing on their own', () => {
     // The reader opens the prompt menu: a read, never a write.
     const select = document.querySelector('[data-next-cockpit-prompt-select]');
     if (select) {
-      await act(async () => {
-        fireEvent.pointerDown(select);
-      });
+      await openSelect(select as HTMLElement);
     }
     await page.go('#n=intent');
     await page.go('#n=sessions');

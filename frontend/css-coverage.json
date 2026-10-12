@@ -903,7 +903,6 @@
     "|.next-intent-draft-marks|display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px8px;min-width:0",
     "|.next-intent-key a|color:var(--ink);text-decoration-color:var(--line);text-underline-offset:4px",
     "|.next-intent-key|font-family:var(--mono);font-size:var(--fs-label);color:var(--ink-label);font-weight:600;letter-spacing:.07em",
-    "|.next-intent-prompt-pick|margin-left:auto;display:flex;min-width:0;max-inline-size:min(18rem,100%)",
     "|.next-intent-revision|color:var(--ink2);font:500var(--fs-body)/1.55var(--sans);max-width:var(--measure)",
     "|.next-intent-why|color:var(--ink2);font:500var(--fs-body)/1.55var(--sans);max-width:var(--measure)",
     "|.next-intent-words|font:var(--fs-body)/1.5var(--sans);color:var(--ink2);overflow-wrap:anywhere",

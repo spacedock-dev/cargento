@@ -41,10 +41,9 @@ const inventory = () =>
         );
       })
       .map((el) => ({
-        label:
-          el.tagName === 'SELECT'
-            ? 'Use your prompt'
-            : (el.getAttribute('aria-label') || el.textContent).replace(/\s+/g, ' ').trim(),
+        label: el.hasAttribute('data-next-cockpit-prompt-select')
+          ? 'Use your prompt'
+          : (el.getAttribute('aria-label') || el.textContent).replace(/\s+/g, ' ').trim(),
         top: Math.round(el.getBoundingClientRect().top),
         inActivity: Boolean(el.closest('[data-next-session-activity]')),
         inFirstView:
@@ -187,7 +186,11 @@ try {
       const words = [];
       while (walker.nextNode()) {
         const parent = walker.currentNode.parentElement;
-        if (!parent || parent.closest('textarea,select,[hidden],.next-visually-hidden')) continue;
+        if (
+          !parent ||
+          parent.closest('textarea,[data-slot=select-trigger],[hidden],.next-visually-hidden')
+        )
+          continue;
         if (parent.getClientRects().length) words.push(walker.currentNode.textContent);
       }
       return words.join(' ').trim().split(/\s+/).length;

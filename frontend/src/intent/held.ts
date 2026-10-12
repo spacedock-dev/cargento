@@ -40,6 +40,8 @@ export interface PromptList {
   readonly pending: boolean;
   readonly open: boolean;
   readonly choices: readonly PromptChoice[];
+  /** The read itself failed, as distinct from a read that found none of the reader's prompts. */
+  readonly failed?: boolean;
 }
 
 /* A later direction opened for review as one pending outcome line. Its box carries no `maxlength`, so

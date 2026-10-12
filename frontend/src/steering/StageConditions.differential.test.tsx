@@ -9,6 +9,15 @@ import { mountPanels } from './testing';
    `nextStageConditions` runs over a generated `tripwires` section and so does the component; both are reduced
    to the same sequence (each heading, sentence, option, and button with its state) and compared. A
    difference is a bug here unless it is named in the DEVIATIONS the step records. */
+// The recorded page emitted all options even for a disabled select. Expose every real Base UI
+// popup in this text comparison; interaction tests separately open enabled choices by gesture.
+vi.mock('../ui/select', async (original) => {
+  const ui = await original<typeof import('../ui/select')>();
+  return {
+    ...ui,
+    Select: (props: Parameters<typeof ui.Select>[0]) => <ui.Select {...props} open />,
+  };
+});
 const legacy = loadLegacySteering();
 const CASES = 80;
 const SEEDS = CASES;
@@ -18,38 +27,59 @@ const norm = (text: string | null): string => (text ?? '').replace(/\s+/g, ' ').
 function summarize(root: ParentNode) {
   const section = root.querySelector('.next-stage-conditions');
   if (!section) return null;
-  return [...section.querySelectorAll('h2,h3,p,option,select,button,article')].map((node) => {
-    const element = node as HTMLElement;
-    const tag = element.tagName.toLowerCase();
-    if (tag === 'option') {
-      const option = element as HTMLOptionElement;
-      return {
-        tag,
-        value: option.value,
-        text: norm(option.textContent),
-        selected: option.selected,
-        disabled: option.disabled,
-      };
-    }
-    if (tag === 'select') {
-      return {
-        tag,
-        id: element.dataset['stageChoice'],
-        disabled: (element as HTMLSelectElement).disabled,
-      };
-    }
-    if (tag === 'button') {
-      return {
-        tag,
-        id: element.dataset['stageId'],
-        action: element.dataset['stageAction'],
-        text: norm(element.textContent),
-        disabled: (element as HTMLButtonElement).disabled,
-      };
-    }
-    if (tag === 'article') return { tag, rule: element.dataset['stageRule'] };
-    return { tag, role: element.getAttribute('role'), text: norm(element.textContent) };
-  });
+  return [...section.querySelectorAll('h2,h3,p,option,select,button,article')]
+    .map((node) => {
+      const element = node as HTMLElement;
+      const tag = element.tagName.toLowerCase();
+      if (tag === 'option') {
+        const option = element as HTMLOptionElement;
+        return {
+          tag,
+          value: option.value,
+          text: norm(option.textContent),
+          selected: option.selected,
+          disabled: option.disabled || (option.parentElement as HTMLSelectElement).disabled,
+        };
+      }
+      if (tag === 'select') {
+        return {
+          tag,
+          id: element.dataset['stageChoice'],
+          disabled: (element as HTMLSelectElement).disabled,
+        };
+      }
+      if (element.matches('[data-slot="select-trigger"]')) {
+        const popup = [...document.querySelectorAll<HTMLElement>('[data-stage-options]')].find(
+          (node) => node.dataset['stageOptions'] === element.dataset['stageChoice'],
+        );
+        return [
+          {
+            tag: 'select',
+            id: element.dataset['stageChoice'],
+            disabled: (element as HTMLButtonElement).disabled,
+          },
+          ...[...(popup?.querySelectorAll('[role="option"]') ?? [])].map((option) => ({
+            tag: 'option',
+            value: option.getAttribute('data-value'),
+            text: norm(option.textContent),
+            selected: option.getAttribute('aria-selected') === 'true',
+            disabled: option.getAttribute('aria-disabled') === 'true',
+          })),
+        ];
+      }
+      if (tag === 'button') {
+        return {
+          tag,
+          id: element.dataset['stageId'],
+          action: element.dataset['stageAction'],
+          text: norm(element.textContent),
+          disabled: (element as HTMLButtonElement).disabled,
+        };
+      }
+      if (tag === 'article') return { tag, rule: element.dataset['stageRule'] };
+      return { tag, role: element.getAttribute('role'), text: norm(element.textContent) };
+    })
+    .flat();
 }
 
 afterEach(() => vi.unstubAllGlobals());
