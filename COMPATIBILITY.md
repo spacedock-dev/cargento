@@ -35,12 +35,13 @@ This file owns the Python floor. The dashboard server is stdlib-only Python 3.11
 `datetime.UTC` setting the floor, and it runs identically regardless of which harness launched it.
 `sqlite3.Connection.blobopen` holds it there too, since the Antigravity collector uses it to read
 the last 64 bytes of a generation blob without materialising a row that can run past 700 KB.
-The floor is restated in eleven other places across eight files, which must all move together:
+The floor is restated in twelve other places across nine files, which must all move together:
 `README.md`, `CONTRIBUTING.md` (three times, in the prerequisites, in the `runtime-floor` bullet of
 the quality-gate list, and in the dashboard implementation constraints),
 `cargento/skills/cargento/SKILL.md`, `docs/promise-map.md`, `.github/PULL_REQUEST_TEMPLATE.md`,
 `AGENTS.md`'s quality-gate paragraph, and `pyproject.toml` (`[tool.ruff] target-version` and
-`[tool.mypy] python_version`), plus the Python 3.11 direct-launch smoke in
+`[tool.mypy] python_version`), the version check in the installer launcher
+`cargento/bin/cargento`, plus the Python 3.11 direct-launch smoke in
 `.github/workflows/quality-gate.yml`. The documentation-matches-code test guards three of them, the
 `SKILL.md` copy and both `pyproject.toml` fields, and the runtime-floor job exercises the shipped
 entry point on Python 3.11. The rest are on you.

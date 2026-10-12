@@ -25,6 +25,7 @@ The user-facing workflow lives in `cargento/skills/cargento/`. Every user-facing
 cargento/                           # plugin root: Claude Code, Codex, Antigravity
 ├── .claude-plugin/plugin.json      # Claude Code manifest
 ├── .codex-plugin/plugin.json       # Codex manifest
+├── bin/cargento                    # launcher the Spacedock installer links as `cargento` and `spacedock-compass`
 ├── plugin.json                     # Antigravity / AGY manifest
 ├── hooks/hooks.json                # Claude Code lifecycle hooks (its path, by convention)
 ├── hooks/codex-hooks.json          # Codex lifecycle hooks (declared in its manifest)
@@ -598,6 +599,10 @@ resume, before any verifier or credential, `assert-checkout` asks again before a
 an unreadable `main` refuses rather than passing, and `scripts/tests/test_release_transition.py` rehearses it
 against temporary repositories. Do not edit or delete the file to get a release through; the owner lifts
 it in a reviewed pull request. The `cargento-release` skill owns the procedure.
+
+After a release lands, `scripts/publish-cli.sh vX.Y.Z` attaches the installer archives Spacedock reads
+(`cargento_X.Y.Z_<os>_<arch>.tar.gz` and `checksums.txt`, built by `scripts/package-cli.sh`); the
+`cargento-release` skill owns that step too.
 
 Which number to cut is a separate question from how to cut it, and the `cargento-release` skill owns it: it reads the surfaces changed since the last tag rather than the commit prefixes, and its own history section carries the measured reason why. It also owns the pre-flight checks, the post-tag verification, and the optional Slack announcement. Invoke it rather than reasoning from the commit log by hand. To release:
 

@@ -282,6 +282,14 @@ git rev-parse "v$VERSION^{commit}" && git rev-parse origin/stable   # tag moved,
 gh release view "v$VERSION" --json name,tagName,url
 ```
 
+Then attach the archives the Spacedock installer reads, built from the tag, and confirm they are there:
+
+```bash
+scripts/publish-cli.sh "v$VERSION" --dry-run   # names the five files it will upload
+scripts/publish-cli.sh "v$VERSION"
+gh release view "v$VERSION" --json assets --jq '[.assets[].name]'
+```
+
 The bump commit is the one outcome that is conditional: the workflow skips it when the manifests
 already carry the tagged version, which is the initial-release path and the resume path. Step 1's
 parity check is what makes it unconditional on every normal release.
