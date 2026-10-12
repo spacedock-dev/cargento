@@ -574,7 +574,7 @@ Version fields are **owned by the tag-driven Release workflow** — never edit t
 
 **Releases are on hold** while a `RELEASE_HOLD` file is tracked at the repository root. React is the
 only dashboard page: the legacy page and its `--frontend legacy` rollback were removed, and the hold
-lasts until the final browser, Python-only install and backend-connected development checks pass on
+lasts until the Python-only install and backend-connected development checks pass on
 one build of `main`. The guard is not prose:
 `scripts/release_transition.py resolve` refuses while the file is on `main`, for a fresh release and a
 resume, before any verifier or credential, `assert-checkout` asks again before anything is published,

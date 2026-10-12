@@ -333,7 +333,7 @@ is not a missing hold.
 
 The file records why the hold exists and what lifts it. The legacy frontend and its rollback are
 removed (only the script parts frozen for the recorded Intent and drift replay remain), so the
-current hold lasts until the final browser, Python-only install and backend-connected development
+current hold lasts until the Python-only install and backend-connected development
 checks pass on one build of `main`. Only the repository owner lifts it, by deleting the file in a
 reviewed pull request. This skill never deletes it, and never edits it to make a release pass.
 
