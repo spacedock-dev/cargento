@@ -97,14 +97,25 @@ export function WorkListView() {
                 </span>
                 <div className="next-cockpit-work-body">
                   <div className="next-cockpit-work-head">
+                    <span className="next-cockpit-work-actor">{row.head.actor}</span>
+                    {/* A check's or a file's line reads "Agent · check · <notes>" as one sentence: the
+                        separators stay in the text for a screen reader and for a copy, and the notes sit
+                        at the right edge, where a reader's own flag sits. */}
                     {'report' in row.head ? (
-                      <span className="next-cockpit-work-result">{row.head.report}</span>
-                    ) : (
+                      <span className="next-visually-hidden"> · </span>
+                    ) : null}
+                    <span className="next-cockpit-work-type">{row.head.type}</span>
+                    {'notes' in row.head && row.head.notes.length ? (
                       <>
-                        <span className="next-cockpit-work-actor">{row.head.actor}</span>
-                        <span className="next-cockpit-work-type">{row.head.type}</span>
+                        <span className="next-visually-hidden"> · </span>
+                        <span
+                          className="ml-auto text-right text-muted-foreground [font-family:var(--mono)] text-label [&+[data-variant=work-flag]]:ml-0"
+                          data-next-entry-notes
+                        >
+                          {row.head.notes.join(' · ')}
+                        </span>
                       </>
-                    )}
+                    ) : null}
                     {row.flags.includes('later') ? (
                       <Badge
                         variant="work-flag"

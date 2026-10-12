@@ -830,7 +830,6 @@
     "|.next-cockpit-work-limit|margin:0;color:var(--ink-absence);font:var(--fs-body)/1.5var(--sans)",
     "|.next-cockpit-work-mix|margin:0;color:var(--ink2);font:500var(--fs-body)/1.55var(--sans);max-width:var(--measure)",
     "|.next-cockpit-work-n|color:var(--ink2);font:var(--fs-label)var(--mono);font-variant-numeric:tabular-nums",
-    "|.next-cockpit-work-result|grid-column:1/-1;color:var(--ink2);font:var(--fs-body)/1.5var(--sans)",
     "|.next-cockpit-work-rows|display:flex;flex-direction:column;gap:5px",
     "|.next-cockpit-work-row|display:grid;grid-template-columns:4chminmax(0,1fr);align-items:baseline;gap:3px10px;padding-left:9px;border-left:1pxsolidvar(--rule)",
     "|.next-cockpit-work-source|grid-column:1/-1;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere",

@@ -36,4 +36,26 @@ describe('the session activity list', () => {
       expect(add.hidden).toBe(false);
     }
   });
+
+  it('reads a check as one sentence and draws its notes at the right edge, as a flag is', async () => {
+    const page = mountDrift({
+      facts: [
+        fact('p1', 900),
+        check('c1', 910, '', { result_source: '', before_last_change: true }),
+      ],
+      session,
+    });
+    await page.settle();
+    await page.settle();
+    const row = document.querySelector<HTMLElement>('[data-next-entry-id="c1"]') as HTMLElement;
+    const head = row.querySelector('.next-cockpit-work-head') as HTMLElement;
+    expect(head.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Agent · check · ran, result not recorded · before the last change',
+    );
+    const notes = head.querySelector<HTMLElement>('[data-next-entry-notes]');
+    expect(notes?.textContent).toBe('ran, result not recorded · before the last change');
+    expect(notes?.className).toContain('ml-auto');
+    expect(head.querySelector('.next-cockpit-work-actor')?.textContent).toBe('Agent');
+    expect(head.querySelector('.next-cockpit-work-type')?.textContent).toBe('check');
+  });
 });

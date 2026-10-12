@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1673419,
+    "bytes": 1673923,
     "file": "react.html",
-    "sha256": "b902af977e5a6e7c0f00e685299c9a6ef9273c9fcc314d0fb213919ba0563981"
+    "sha256": "3e9f27cba485ea36b0e8d49df707b116828e3fb72d210c76859b8a612ffb0b40"
   },
   "format": 1,
   "frontend": "react",
@@ -548,7 +548,7 @@
       },
       {
         "file": "frontend/src/drift/WorkListView.tsx",
-        "sha256": "f233a8a9c729cc1d27476993bab7412b20f3306f7278ccb1ef833a65b5c7e605"
+        "sha256": "aef07f0856e52592924a75bd9a2db54fc0690365aecfc56f54d24897f586a010"
       },
       {
         "file": "frontend/src/drift/actions.ts",
@@ -564,7 +564,7 @@
       },
       {
         "file": "frontend/src/drift/drift.css",
-        "sha256": "a6132b7978bcc9a357a6be8f680f4996c0d79112f45528a9337c33a552602200"
+        "sha256": "7e966f842e3c6a11f3c2cec2ca88f01b2ec3ead30a601a2053030ec7541d5633"
       },
       {
         "file": "frontend/src/drift/editor.ts",
@@ -632,7 +632,7 @@
       },
       {
         "file": "frontend/src/drift/workList.ts",
-        "sha256": "ea84de8aee71e2693595d981897a974f22c8d0acb708442d49e2d45d37c3f251"
+        "sha256": "903b9fd4ae827af812689851a2682af6af1ac5e2bb0c2da3098ee62d7357f356"
       },
       {
         "file": "frontend/src/intent/ActionButton.tsx",

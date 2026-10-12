@@ -61,17 +61,26 @@ const CHECK_RESULTS: Readonly<Record<string, string>> = {
   'failed marker': 'failed, per a failure line in its output',
 };
 
-export function toolReportLine(entry: WorkEntry): string {
-  if (entry.subject !== 'check') return 'Agent · file written';
+/* A check's or a file's own line in parts: who, what it was, and the notes about its result. The row draws the
+   notes at the right edge, as a reader's flag is, and `toolReportLine` is the same words in one line. */
+export function toolReportParts(entry: WorkEntry): {
+  readonly actor: string;
+  readonly type: string;
+  readonly notes: readonly string[];
+} {
+  if (entry.subject !== 'check') return { actor: 'Agent', type: 'file written', notes: [] };
   const key = `${entry.result} ${entry.resultSource}`;
-  const parts = [
-    'Agent',
-    'check',
+  const notes = [
     Object.hasOwn(CHECK_RESULTS, key) ? (CHECK_RESULTS[key] as string) : 'ran, result not recorded',
   ];
-  if (entry.earlierFailed) parts.push('an earlier run failed');
-  if (entry.beforeLastChange) parts.push('before the last change');
-  return parts.join(' · ');
+  if (entry.earlierFailed) notes.push('an earlier run failed');
+  if (entry.beforeLastChange) notes.push('before the last change');
+  return { actor: 'Agent', type: 'check', notes };
+}
+
+export function toolReportLine(entry: WorkEntry): string {
+  const { actor, type, notes } = toolReportParts(entry);
+  return [actor, type, ...notes].join(' · ');
 }
 
 function humanLabel(value: string): string {
@@ -234,7 +243,14 @@ export interface WorkRow {
   readonly entry: WorkEntry;
   readonly n: number | null;
   /** A check's or a file's own line, or the actor and the type's word. */
-  readonly head: { readonly report: string } | { readonly actor: string; readonly type: string };
+  readonly head:
+    | {
+        readonly report: string;
+        readonly actor: string;
+        readonly type: string;
+        readonly notes: readonly string[];
+      }
+    | { readonly actor: string; readonly type: string };
   readonly flags: readonly ('later' | 'cited')[];
   readonly source: string;
   readonly at: string;
@@ -310,7 +326,7 @@ export function workList(input: WorkListInput): WorkList {
       n: n ?? null,
       head:
         entry.type === 'tool_report'
-          ? { report: toolReportLine(entry) }
+          ? { report: toolReportLine(entry), ...toolReportParts(entry) }
           : {
               actor: entryActor(entry),
               type: copied
