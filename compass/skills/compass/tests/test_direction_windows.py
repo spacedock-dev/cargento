@@ -383,11 +383,14 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         self.session.rows.append(duplicate)
         self.session.save(self.path)
         self.assertLess(self.path.stat().st_size, project_context.SEMANTIC_BACKFILL_MAX_BYTES)
+        # The fact cap is what this test measures, so the wall-clock allowance must not end the read first:
+        # under coverage tracing the default two seconds stopped it at 1,281 facts on CI.
+        config = dataclasses.replace(self.config, direction_scan_max_seconds=600.0)
         source = project_context.transcript_user_facts(
-            self.config, self.state, str(self.path), "claude", SHORT, goal_choices=True
+            config, self.state, str(self.path), "claude", SHORT, goal_choices=True
         )
         self.assertEqual(project_context.TRANSCRIPT_USER_FACTS_MAX, len(source))
-        app = SimpleNamespace(config=self.config, state=self.state)
+        app = SimpleNamespace(config=config, state=self.state)
         choices = annotation_store.prompt_choices(
             _row(), http_api._prompt_facts(app, _row(), [fact]), 240
         )
