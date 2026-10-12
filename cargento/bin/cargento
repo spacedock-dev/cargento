@@ -1,0 +1,16 @@
+#!/bin/sh
+# Launch the Cargento dashboard server from the tree this script ships in.
+set -eu
+self="$0"
+while [ -L "$self" ]; do
+	link="$(readlink "$self")"
+	case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+done
+root="$(cd "$(dirname "$self")/.." && pwd)"
+python="${CARGENTO_PYTHON:-python3}"
+if ! "$python" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+	found="$("$python" --version 2>&1 || echo "no $python")"
+	echo "cargento: needs Python 3.11 or newer; found: $found. Install a newer python3 or set CARGENTO_PYTHON." >&2
+	exit 127
+fi
+exec "$python" "$root/skills/cargento/server.py" "$@"
