@@ -203,7 +203,14 @@ describe('every recorded POST is sent once, as recorded, and answered as recorde
   for (const fixture of writes) {
     it(`${fixture.name}`, async () => {
       const { sent, client } = replayOf(fixture);
-      const method = POST_METHODS[fixture.request.path] as PostMethod;
+      const method = (
+        fixture.request.path === '/api/direction' &&
+        typeof fixture.request.body === 'object' &&
+        fixture.request.body !== null &&
+        'fact_ids' in fixture.request.body
+          ? 'postDirections'
+          : POST_METHODS[fixture.request.path]
+      ) as PostMethod;
       const call = client[method] as (body: unknown) => Promise<ApiResult<unknown>>;
       const result = await call(fixture.request.body ?? {});
       expect(sent).toHaveLength(1);

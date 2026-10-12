@@ -145,6 +145,10 @@ export interface DirectionReceipt {
   readonly reason?: 'not_found' | 'out_of_reach' | 'unavailable';
 }
 
+export interface DirectionBatchReceipt {
+  readonly results?: readonly DirectionReceipt[];
+}
+
 export interface CorrectionReceipt {
   readonly ok?: boolean;
   readonly parts?: unknown;

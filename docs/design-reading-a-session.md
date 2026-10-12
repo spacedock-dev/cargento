@@ -3820,13 +3820,52 @@ A failed lookup still checks the listed record to distinguish a known earlier re
 from an out-of-reach one. The real scratch audit exposed the repeated composition cost
 after the individual Add reads had all succeeded.
 
-Keep opens missing sources through four concurrent lanes under the existing 15-second
-control deadline. The real scratch board had 21 unsettled directions: reading them
-serially exhausted that deadline even though each row opened on its own. A clock-driven
-regression proves 22 two-second source replies are all drawn before a second press can
-settle them. A failed lane stops admitting more work, waits for the other active lanes,
-and preserves successful reads for a retry. It neither increases the request deadline
-nor grants reading consent.
+`POST /api/direction` accepts either the existing `fact_id` or `fact_ids`, a
+nonempty list of at most 64 nonempty strings, each at most 256 characters. Sending
+both forms, an invalid item or an oversized list answers HTTP 400 before a source
+scan. The existing body-size, session and loopback guards still apply. A batch
+answers HTTP 200 with `{"results": [...]}`: one result per requested id, in request
+order, including repeated ids. Each result has exactly the single-id shape:
+`ok`, `fact_id`, `text`, `clipped`, `fits` and `goal_choice` on success; `ok: false`,
+`reason` and `why` on refusal. One backward walk shares its byte allowance, clock
+and file-stamp checks across all ids. Each id's fingerprint is checked throughout
+the consumed allowance. No source words are cached between requests.
+
+Keep uses one batch for all missing source words under its existing 15-second
+control deadline, including when its second press may analyze. Goal and per-row
+Add retain the simpler single-id request. A partial batch draws successful words
+and states the refusal beside Keep and in the polite live region. Nothing is
+settled or analyzed while any direction is missing or clipped. Successful words
+stay held in the page for a retry; recovering the missing words asks for another
+review press before settlement. More than 64 missing directions is explicitly
+refused without a request, rather than split into repeated scans.
+
+Measured on 2026-10-13 with the same-size synthetic 73 MB and 105 MB fixtures,
+one-MiB tool-result lines and 64 compact requests at the newest end. Fixture
+construction and identity collection are excluded. Every request opened all its
+requested ids and read 67,108,864 bytes once:
+
+| Fixture bytes | Ids | Bytes read | Milliseconds |
+|---:|---:|---:|---:|
+| 73,407,766 | 1 | 67,108,864 | 494.030 |
+| 73,407,766 | 5 | 67,108,864 | 504.218 |
+| 73,407,766 | 20 | 67,108,864 | 495.186 |
+| 73,407,766 | 64 | 67,108,864 | 504.404 |
+| 104,868,016 | 1 | 67,108,864 | 497.351 |
+| 104,868,016 | 5 | 67,108,864 | 492.056 |
+| 104,868,016 | 20 | 67,108,864 | 488.315 |
+| 104,868,016 | 64 | 67,108,864 | 489.128 |
+
+The single-id scan measured about half a second, as in the previous run below.
+A batch of 64 took at most 1.02 times its fixture's single-id cost.
+The behavioural timing regression derives its limit from the measured single-id
+read, with threefold scheduling headroom, and separately requires one scan.
+A mounted page regression shows all twenty answers after one single-source reply
+interval and settles only on the next press. Mutations of per-id requests,
+per-id ambiguity, unreached refusal and request order each fail their regressions.
+On the real scratch board, a fresh load with a seeded intent showed all twenty
+unsettled directions 1,135 milliseconds after the first Keep press. None was
+clipped, the review announcement appeared, and nothing was settled.
 
 Measured locally on 2026-10-12 with synthetic one-MiB tool-result lines:
 

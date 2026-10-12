@@ -5407,7 +5407,29 @@ def direction_text(
 def direction_lookup(
     config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_id: str
 ) -> DirectionLookup:
-    """Search newest first, checking conflicting identities throughout the allowance.
+    """Open one fact through the same stateless scan as a batch."""
+    return direction_lookups(config, state, harness, sid, [fact_id])[0]
+
+
+def _direction_result(
+    match: tuple[bytes, DirectionText, dict[str, Any]] | None,
+    ambiguous: bool,
+    stable: bool,
+    bounded: bool,
+    scanned: int,
+) -> DirectionLookup:
+    if not stable or ambiguous:
+        return DirectionLookup(DirectionText(""), "not_found", scanned)
+    if match is not None:
+        _, words, fact = match
+        return DirectionLookup(words, "", scanned, float(fact["at"]), fact)
+    return DirectionLookup(DirectionText(""), "out_of_reach" if bounded else "not_found", scanned)
+
+
+def direction_lookups(
+    config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_ids: list[str]
+) -> list[DirectionLookup]:
+    """Verify every requested identity in one scan, retaining request order.
 
     docs/design-reading-a-session.md#long-session-direction-and-prompt-reads
     owns the bounded ambiguity guarantee and the unsearched-source limit.
@@ -5419,20 +5441,22 @@ def direction_lookup(
     )
     stamp = transcript_stamp(path) if path else None
     if not path or stamp is None:
-        return DirectionLookup(DirectionText(""))
-    matches: dict[bytes, DirectionText] = {}
-    at: float | None = None
-    source_fact: dict[str, Any] | None = None
+        return [DirectionLookup(DirectionText("")) for _ in fact_ids]
+    wanted = set(fact_ids)
+    matches: dict[str, tuple[bytes, DirectionText, dict[str, Any]]] = {}
+    ambiguous: set[str] = set()
 
     def visit(raw: bytes) -> None:
-        nonlocal at, source_fact
         for record, fact, _ in _instruction_facts(config, raw, harness, sid):
-            if fact["fact_id"] == fact_id:
-                matches[_direction_signature(record, harness)] = _direction_words(
-                    config, record, harness
-                )
-                at = float(fact["at"])
-                source_fact = fact
+            fact_id = str(fact["fact_id"])
+            if fact_id not in wanted:
+                continue
+            signature = _direction_signature(record, harness)
+            previous = matches.get(fact_id)
+            if previous is not None and previous[0] != signature:
+                ambiguous.add(fact_id)
+            elif previous is None:
+                matches[fact_id] = (signature, _direction_words(config, record, harness), fact)
 
     if harness in record_pages.HARNESSES:
         scan = record_pages.scan_source(
@@ -5453,13 +5477,13 @@ def direction_lookup(
             ):
                 visit(line.encode())
         except OSError:
-            return DirectionLookup(DirectionText(""))
+            return [DirectionLookup(DirectionText("")) for _ in fact_ids]
         scanned, bounded, stable = 0, False, True
-    if not stable or transcript_stamp(path) != stamp or len(matches) > 1:
-        return DirectionLookup(DirectionText(""), "not_found", scanned)
-    if len(matches) == 1:
-        return DirectionLookup(next(iter(matches.values())), "", scanned, at, source_fact)
-    return DirectionLookup(DirectionText(""), "out_of_reach" if bounded else "not_found", scanned)
+    stable = stable and transcript_stamp(path) == stamp
+    return [
+        _direction_result(matches.get(fact_id), fact_id in ambiguous, stable, bounded, scanned)
+        for fact_id in fact_ids
+    ]
 
 
 def _direction_signature(record: Any, harness: str) -> bytes:

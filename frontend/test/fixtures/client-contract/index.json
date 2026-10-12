@@ -335,6 +335,20 @@
     },
     {
       "method": "POST",
+      "name": "direction-batch-invalid",
+      "route": "/api/direction",
+      "sha256": "7442e878d26022e3d10b6d136ad2aefad327c58d939c5a8dadd3a187f4f92609",
+      "status": 400
+    },
+    {
+      "method": "POST",
+      "name": "direction-batch-mixed",
+      "route": "/api/direction",
+      "sha256": "b2531b0620876050f1572c82ada15f34c2da91e1ae6d138cac8d3de02f2dd7f7",
+      "status": 200
+    },
+    {
+      "method": "POST",
       "name": "direction-forbidden-origin",
       "route": "/api/direction",
       "sha256": "834565ce30bcc2bdba75a8f28e1502c48065e19f9866074d817b06d5cb7021a1",

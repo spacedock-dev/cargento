@@ -293,6 +293,7 @@ describe('no adapter ever retries an action', () => {
     {
       postAnnotate: (c) => c.postAnnotate(identity),
       postDirection: (c) => c.postDirection({ ...identity, fact_id: 'f' }),
+      postDirections: (c) => c.postDirections({ ...identity, fact_ids: ['f', 'g'] }),
       postReading: (c) =>
         c.postReading({ ...identity, provider: 'claude', press: true, observer_model: 1 }),
       postReadingCancel: (c) =>

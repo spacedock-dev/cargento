@@ -119,6 +119,8 @@ export const KEEP_REFUSED =
   'Nothing was settled and no analysis was started: your intent changed since this page was drawn, or the store refused the mark. Review your intent and press again.';
 export const KEEP_READ_FIRST =
   'Nothing was settled yet. Each direction Keep settles is now shown whole. Read it, then press again.';
+export const KEEP_BATCH_LIMIT =
+  'Keep can open up to 64 directions at once. Nothing was settled and no analysis was started.';
 export const KEEP_UNOPENED =
   'Nothing was settled and no analysis was started: Compass could not open the whole text of every direction Keep would settle, so it cannot show you what you would keep. Press again to retry.';
 export const KEEP_UNCONFIRMED =

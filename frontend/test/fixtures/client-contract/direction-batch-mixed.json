@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "name": "direction-batch-mixed",
+  "notes": "One batch returns the single-id answer shapes, including repeated ids, in request order.",
+  "request": {
+    "body": {
+      "fact_ids": [
+        "fact:missing",
+        "fact:4aae9c22a7d95d9a",
+        "fact:4aae9c22a7d95d9a"
+      ],
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/direction",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "results": [
+        {
+          "ok": false,
+          "reason": "not_found",
+          "why": "Compass could not find that later direction in the session's current record. Nothing was opened."
+        },
+        {
+          "clipped": false,
+          "fact_id": "fact:4aae9c22a7d95d9a",
+          "fits": true,
+          "goal_choice": {
+            "at": 1899998200.0,
+            "cut": false,
+            "fact_id": "fact:4aae9c22a7d95d9a",
+            "text": "Keep the diff small and leave the tests alone."
+          },
+          "ok": true,
+          "text": "Keep the diff small and leave the tests alone."
+        },
+        {
+          "clipped": false,
+          "fact_id": "fact:4aae9c22a7d95d9a",
+          "fits": true,
+          "goal_choice": {
+            "at": 1899998200.0,
+            "cut": false,
+            "fact_id": "fact:4aae9c22a7d95d9a",
+            "text": "Keep the diff small and leave the tests alone."
+          },
+          "ok": true,
+          "text": "Keep the diff small and leave the tests alone."
+        }
+      ]
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "684",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

@@ -368,10 +368,11 @@ describe('Add it to my intent', () => {
 });
 
 describe('Keep my intent', () => {
-  it('lets a reader review twenty-two slow source reads before the Keep deadline, then settles only after another press', async () => {
-    const facts = Array.from({ length: 22 }, (_, n) =>
+  it('a reader with twenty later directions on a week-long session sees them all in about the time of one', async () => {
+    const facts = Array.from({ length: 20 }, (_, n) =>
       fact(`slow${String(n)}`, 600 + n, `Synthetic direction ${String(n)}.`),
     );
+    const singleCost = 2000;
     const page = mountSession({
       store: SAVED,
       session: SAVED_AT,
@@ -383,29 +384,79 @@ describe('Keep my intent', () => {
     });
     await settle(page);
     await press(control('direction-keep'));
-    for (let round = 0; round < 6; round++) {
-      const answering = page.state.held.filter((entry) => entry.path === '/api/direction').length;
-      await page.advance(2000);
-      for (let n = 0; n < answering; n++) {
-        await page.release(
-          '/api/direction',
-          json({ ok: true, text: 'Synthetic complete direction.', clipped: false }),
-        );
-      }
-    }
-    await settle(page);
-    expect(document.querySelectorAll('.next-cockpit-direction-whole-item')).toHaveLength(22);
-    expect(control('direction-keep')?.getAttribute('aria-busy')).not.toBe('true');
-    expect(page.posts('/api/annotate')).toBe(0);
-    expect(text('#next-cockpit-cue-status')).toBe(
-      'Nothing was settled yet. Each direction Keep settles is now shown whole. Read it, then press again.',
+    expect(page.posts('/api/direction')).toBe(1);
+    expect(page.allPosts()[0]?.body?.['fact_ids']).toHaveLength(20);
+    await page.advance(singleCost);
+    await page.release(
+      '/api/direction',
+      json({
+        results: facts.map((f) => ({
+          ok: true,
+          text: `${f.summary} Complete words.`,
+          clipped: false,
+        })),
+      }),
     );
+    await settle(page);
+    expect(document.querySelectorAll('.next-cockpit-direction-whole-item')).toHaveLength(20);
+    expect(text('.next-cockpit-direction-whole')).toContain(
+      'Synthetic direction 19. Complete words.',
+    );
+    expect(page.posts('/api/annotate')).toBe(0);
     await press(control('direction-keep'));
     await settle(page);
     expect(page.posts('/api/annotate')).toBe(1);
     expect(text('#next-cockpit-cue-status')).toBe(
-      'Kept your intent and settled all 22 directions. No analysis was started.',
+      'Kept your intent and settled all 20 directions. No analysis was started.',
     );
+  });
+
+  it('shows the directions it could open in a partial batch, refuses settlement, and asks for another review after retry', async () => {
+    let retry = false;
+    const page = mountSession({
+      store: SAVED,
+      session: SAVED_AT,
+      routes: {
+        '/api/project-context': record(
+          fact('f1', 600, 'First.'),
+          fact('f2', 700, 'Second.'),
+          fact('f3', 800, 'Third.'),
+        ),
+        '/api/direction': () =>
+          json({
+            results: retry
+              ? [
+                  { ok: true, text: 'Second complete.', clipped: false },
+                  { ok: true, text: 'Third complete.', clipped: false },
+                ]
+              : [
+                  { ok: true, text: 'First complete.', clipped: false },
+                  { ok: false, reason: 'out_of_reach' },
+                  { ok: false, reason: 'not_found' },
+                ],
+          }),
+        '/api/annotate': () => stored(1, { outcome: 'unchanged' }),
+      },
+    });
+    await settle(page);
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(text('.next-cockpit-direction-whole')).toContain('First complete.');
+    expect(text('.next-cockpit-direction-question')).toContain(
+      'Nothing was settled and no analysis was started.',
+    );
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(page.posts('/api/annotate')).toBe(0);
+    retry = true;
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(page.allPosts().at(-1)?.body?.['fact_ids']).toEqual(['f2', 'f3']);
+    expect(document.querySelectorAll('.next-cockpit-direction-whole-item')).toHaveLength(3);
+    expect(page.posts('/api/annotate')).toBe(0);
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(page.posts('/api/annotate')).toBe(1);
   });
   it('tells a reader how many of their several later directions were settled', async () => {
     const page = mountSession({

@@ -11,9 +11,11 @@ import { fakeBackend } from '../test/storage_backends';
 function DirectionsExample({
   reason,
   count = 2,
+  partial = false,
 }: {
   readonly reason?: 'not_found' | 'out_of_reach';
   readonly count?: number;
+  readonly partial?: boolean;
 }) {
   const [shell] = useState(() => {
     const clock = createFakeClock();
@@ -27,6 +29,7 @@ function DirectionsExample({
       source_session: { harness: 'claude', sid: 's1' },
       by: 'person:reader',
     }));
+    let directionBatches = 0;
     return createShell({
       env: createFakeEnvironment({ clock }),
       router: createRouter(history.env),
@@ -35,7 +38,7 @@ function DirectionsExample({
       search: '',
       doc: null,
       reducedMotion: () => true,
-      fetch: async (url) => {
+      fetch: async (url, init) => {
         const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
         if (url.startsWith('/api/data'))
           return json({
@@ -61,22 +64,41 @@ function DirectionsExample({
         if (url.startsWith('/api/project-context')) return json({ semantic: { facts } });
         if (url.startsWith('/api/session-record'))
           return json({ state: 'ok', entries: [], next: null, reached_start: true });
-        if (url === '/api/direction')
-          return json(
-            reason
-              ? { ok: false, reason }
-              : {
-                  ok: true,
+        if (url === '/api/direction') {
+          const request = JSON.parse(String(init?.body)) as { fact_ids?: string[] };
+          if (
+            !partial &&
+            request.fact_ids &&
+            (++directionBatches !== 1 || request.fact_ids.length !== count)
+          )
+            return json({ results: [] });
+          const answer = reason
+            ? { ok: false, reason }
+            : {
+                ok: true,
+                text: 'Build synthetic outcome 2.',
+                clipped: false,
+                goal_choice: {
+                  fact_id: 'f2',
+                  at: 800,
                   text: 'Build synthetic outcome 2.',
-                  clipped: false,
-                  goal_choice: {
-                    fact_id: 'f2',
-                    at: 800,
-                    text: 'Build synthetic outcome 2.',
-                    cut: false,
-                  },
+                  cut: false,
                 },
+              };
+          return json(
+            request.fact_ids
+              ? {
+                  results: request.fact_ids.map((id) =>
+                    partial && id === 'f2'
+                      ? { ok: false, reason: 'out_of_reach' }
+                      : reason
+                        ? answer
+                        : { ...answer, text: `Build synthetic outcome ${id.slice(1)}.` },
+                  ),
+                }
+              : answer,
           );
+        }
         return json({});
       },
     });
@@ -166,12 +188,43 @@ export const TwentyTwoDirections: Story = {
     await expect(canvasElement.querySelector('[data-next-action-feedback]')).toHaveTextContent(
       'Nothing was settled yet. Each direction Keep settles is now shown whole. Read it, then press again.',
     );
+    await expect(
+      canvasElement.querySelectorAll('.next-cockpit-direction-whole-text')[21],
+    ).toHaveTextContent('Build synthetic outcome 22.');
     await expect(document.activeElement).toBe(
       canvasElement.querySelector('[data-next-cockpit-direction-whole]'),
     );
     await expect(canvas.getByRole('button', { name: 'Keep my intent' })).not.toHaveAttribute(
       'aria-busy',
       'true',
+    );
+  },
+};
+
+export const PartialBatch: Story = {
+  args: { partial: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole('button', { name: 'Keep my intent' });
+    await failedPress(
+      canvasElement,
+      'direction-keep',
+      'That direction is beyond the part of the record Compass could search. Nothing was settled and no analysis was started.',
+    );
+    await waitFor(() =>
+      expect(canvasElement.querySelectorAll('.next-cockpit-direction-whole-item')).toHaveLength(1),
+    );
+    await expect(
+      canvasElement.querySelector('.next-cockpit-direction-whole-text'),
+    ).toHaveTextContent('Build synthetic outcome 1.');
+    await userEvent.click(canvas.getByRole('button', { name: 'Keep my intent' }));
+    await waitFor(() =>
+      expect(canvasElement.querySelector('[data-next-action-feedback]')).toHaveTextContent(
+        'Nothing was settled and no analysis was started.',
+      ),
+    );
+    await expect(canvasElement.querySelectorAll('.next-cockpit-direction-whole-item')).toHaveLength(
+      1,
     );
   },
 };

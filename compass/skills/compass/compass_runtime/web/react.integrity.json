@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1718887,
+    "bytes": 1719455,
     "file": "react.html",
-    "sha256": "0bde86fb3647618a51063c89c75aaffe43bc2f81d29a4ed5ca605da62969046d"
+    "sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83"
   },
   "format": 1,
   "frontend": "react",
@@ -279,7 +279,7 @@
       },
       {
         "file": "frontend/src/api/client.ts",
-        "sha256": "bb40b2c02704222fd7810dbf6dc2ce833736eecd9075f909dd909c7c69019682"
+        "sha256": "3ff87a6d54b4c1ca4585c778c7ec219d5b1eaaf75362cf92d89d9ddf70e14583"
       },
       {
         "file": "frontend/src/api/identity.ts",
@@ -287,7 +287,7 @@
       },
       {
         "file": "frontend/src/api/types.ts",
-        "sha256": "4cc26553aee8e19a0dce91472e7edf0723cded4c4fc974ff16ecd8622450d010"
+        "sha256": "2a180c1197836e41f1689fdf0629ebdf497fe9514cac879d197bf5e6807dba6d"
       },
       {
         "file": "frontend/src/attention/AttentionAnnouncer.tsx",
@@ -735,7 +735,7 @@
       },
       {
         "file": "frontend/src/intent/directions.ts",
-        "sha256": "a670ccae5cff2b5ce2a5e8bcdb7c95dd889b4a7afd2dda933db0232eb5f33ddd"
+        "sha256": "d7e7e5ebf7ae71cfe31ea5e38aa623f715ebb033323bbbc92957aa5f45ea3bea"
       },
       {
         "file": "frontend/src/intent/edit.ts",
@@ -783,11 +783,11 @@
       },
       {
         "file": "frontend/src/intent/sentences.ts",
-        "sha256": "de08f0f1a8239d1185e04191e66bbc5fd9ceb1a94b1bf891b39d694ac14ad817"
+        "sha256": "1dc112e71eef4c9d0a02af9ce9901937260a880f313a61132fe6be6117c20998"
       },
       {
         "file": "frontend/src/intent/testing.tsx",
-        "sha256": "44cd9ffa73ca50eb99b306a5be8cc29dcc01c13556b427d610049e07f448087f"
+        "sha256": "10858a3d72d8faeb28074220df03f9a3043bee30f004ebcf96c59220e0783911"
       },
       {
         "file": "frontend/src/intent/useIntent.ts",

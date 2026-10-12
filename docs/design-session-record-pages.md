@@ -85,6 +85,10 @@ unchanged, including size. It never stops at the first match: a conflicting sour
 identity later in the consumed allowance must still be able to refuse the words.
 The direction and opening-source allowances, reason tokens, measured costs and
 limits belong to the [long-session Intent contract](design-reading-a-session.md#long-session-direction-and-prompt-reads).
+A `POST /api/direction` batch feeds every requested id through one such walk,
+sharing its allowance and file-stamp checks without retaining source words on the
+server. Each id is checked for conflicting copies throughout the consumed range.
+The linked Intent contract owns the request bounds and ordered result shapes.
 Record pagination and its public response remain unchanged.
 
 ## Why semantic history could stay thin

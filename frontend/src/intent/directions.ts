@@ -44,6 +44,7 @@ import {
   KEEP_REFUSED,
   KEEP_UNCONFIRMED,
   KEEP_UNOPENED,
+  KEEP_BATCH_LIMIT,
 } from './sentences';
 import { laterDirections, workSource, type WorkEntry } from './work';
 
@@ -454,46 +455,56 @@ async function readWhole(
   ctx.held.wholes.set(key, held);
   let refusal = KEEP_UNOPENED;
   let refused = false;
-  const missing = pending.filter((entry) => !held.texts.has(String(entry.id || '')));
-  let next = 0;
-  let firstRefusal = missing.length;
-  /* Twenty-one serial long-session reads exceeded the control's 15-second deadline on the
-     real scratch board. Four bounded lanes fit twenty-two two-second reads inside it, without
-     lifting either timeout. Successful reads stay held for a retry; nothing is settled here. */
-  async function readNext(): Promise<void> {
-    while (next < missing.length && !refused && !signal.aborted) {
-      const index = next++;
-      const id = String(missing[index]?.id || '');
-      let opened: { text: string; clipped: boolean } | null = null;
-      let why = KEEP_UNOPENED;
-      try {
-        const reply = answered(
-          await ctx.shell.runtime.client.postDirection({ ...identity, fact_id: id }, signal),
-        );
-        const body = reply.kind === 'answered' && reply.ok ? reply.body : null;
-        if (body?.ok === false) why = directionFailure('keep', body.reason);
-        if (body && body.ok === true && typeof body.text === 'string') {
-          opened = { text: body.text, clipped: body.clipped === true };
-        }
-      } catch {
-        opened = null;
-      }
-      if (!opened) {
+  const alreadyShown = new Set(
+    pending
+      .map((entry) => String(entry.id || ''))
+      .filter((id) => held.drawn.has(id) && !held.texts.get(id)?.clipped),
+  );
+  const missing = pending.filter(
+    (entry) =>
+      !held.texts.has(String(entry.id || '')) || held.texts.get(String(entry.id || ''))?.clipped,
+  );
+  // One scan checks all identities, including conflicting copies after a match.
+  if (missing.length > 64) return { kind: 'refused', message: KEEP_BATCH_LIMIT };
+  if (missing.length) {
+    try {
+      const reply = answered(
+        await ctx.shell.runtime.client.postDirections(
+          { ...identity, fact_ids: missing.map((entry) => String(entry.id || '')) },
+          signal,
+        ),
+      );
+      const results = reply.kind === 'answered' && reply.ok ? reply.body?.results : null;
+      if (!Array.isArray(results) || results.length !== missing.length) {
         refused = true;
-        if (index < firstRefusal) {
-          firstRefusal = index;
-          refusal = why;
-        }
       } else {
-        held.texts.set(id, opened);
+        for (const [index, entry] of missing.entries()) {
+          const body = results[index];
+          const id = String(entry.id || '');
+          if (body?.ok === true && typeof body.text === 'string') {
+            held.texts.set(id, { text: body.text, clipped: body.clipped === true });
+            if (body.clipped === true) refused = true;
+          } else {
+            if (!refused && body?.ok === false) refusal = directionFailure('keep', body.reason);
+            refused = true;
+          }
+        }
       }
+    } catch {
+      refused = true;
     }
   }
-  await Promise.all(Array.from({ length: Math.min(4, missing.length) }, () => readNext()));
-  if (signal.aborted && next < missing.length) refused = true;
-  if (refused) return { kind: 'refused', message: refusal };
+  if (signal.aborted || pending.some((entry) => held.texts.get(String(entry.id || ''))?.clipped))
+    refused = true;
+  if (refused) {
+    held.drawn = new Set(
+      pending.map((entry) => String(entry.id || '')).filter((id) => held.texts.has(id)),
+    );
+    held.revision = revision;
+    return { kind: 'refused', message: refusal };
+  }
   const ids = pending.map((entry) => String(entry.id || ''));
-  if (ids.every((id) => held.drawn.has(id))) return { kind: 'read' };
+  if (ids.every((id) => alreadyShown.has(id))) return { kind: 'read' };
   held.drawn = new Set(ids);
   held.revision = revision;
   return { kind: 'shown' };

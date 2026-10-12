@@ -1408,6 +1408,38 @@ class DirectionRouteTest(_ClaudeSession):
         for answer in answers:
             self.assertEqual(expected, answer)
 
+    def test_a_reader_can_open_a_batch_with_the_single_answer_shapes_in_request_order(self) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        ids = ["missing", fact_id, fact_id]
+        with self._serving() as port:
+            single = self._open(port, fact_id)[1]
+            with mock.patch.object(
+                project_context, "direction_lookups", wraps=project_context.direction_lookups
+            ) as scan:
+                status, body = self._post(
+                    port, "/api/direction", {"harness": "claude", "sid": SHORT, "fact_ids": ids}
+                )
+        self.assertEqual(200, status)
+        self.assertEqual(1, scan.call_count)
+        self.assertEqual("not_found", body["results"][0]["reason"])
+        self.assertEqual([single, single], body["results"][1:])
+
+    def test_a_reader_cannot_send_an_unbounded_or_mixed_direction_batch(self) -> None:
+        cases: tuple[dict[str, Any], ...] = (
+            {"fact_ids": []},
+            {"fact_ids": ["x"] * 65},
+            {"fact_ids": ["x" * 257]},
+            {"fact_ids": [1]},
+            {"fact_ids": "x"},
+            {"fact_ids": ["x"], "fact_id": "x"},
+        )
+        with self._serving() as port:
+            for fields in cases:
+                status, _ = self._post(
+                    port, "/api/direction", {"harness": "claude", "sid": SHORT, **fields}
+                )
+                self.assertEqual(400, status)
+
     def test_a_reader_gets_a_distinct_reason_when_a_later_direction_is_beyond_the_search(
         self,
     ) -> None:

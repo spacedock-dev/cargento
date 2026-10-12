@@ -1412,6 +1412,22 @@ def adoption_scenarios(recorder: Recorder, scratch: Scratch) -> None:
         )
         recorder.capture(
             rig,
+            "direction-batch-mixed",
+            post(
+                "/api/direction",
+                {**SESSION, "fact_ids": ["fact:missing", later["fact_id"], later["fact_id"]]},
+            ),
+            "One batch returns the single-id answer shapes, including repeated ids, "
+            "in request order.",
+        )
+        recorder.capture(
+            rig,
+            "direction-batch-invalid",
+            post("/api/direction", {**SESSION, "fact_ids": ["x"] * 65}),
+            "More than 64 ids is refused before scanning.",
+        )
+        recorder.capture(
+            rig,
             "annotate-direction-added",
             post(
                 "/api/annotate",

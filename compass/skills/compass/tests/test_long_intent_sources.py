@@ -6,6 +6,7 @@ import dataclasses
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -97,6 +98,116 @@ class LongIntentSourcesTest(unittest.TestCase):
         self.assertEqual("Build synthetic step 3. Keep the tests.", words.text)
         page = record_pages.read(self.config, str(self.path), "claude", "long", cursor_key=b"test")
         self.assertEqual(self.facts[-1]["fact_id"], page["entries"][0]["fact_id"])
+
+    def test_a_reader_with_twenty_later_directions_on_a_week_long_session_sees_them_all_in_about_the_time_of_one(
+        self,
+    ) -> None:
+        path = self.root / "twenty.jsonl"
+        rows = [self.record(n) for n in range(10, 30)]
+        # Shared image-filled week-long fixture; only the compact requests differ.
+        with path.open("wb") as handle:
+            with self.path.open("rb") as original:
+                while chunk := original.read(1024 * 1024):
+                    handle.write(chunk)
+            handle.write("".join(json.dumps(row) + "\n" for row in rows).encode())
+        facts = [
+            next(
+                iter(
+                    project_context._instruction_facts(
+                        self.config, json.dumps(row).encode(), "claude", "long"
+                    )
+                )
+            )[1]
+            for row in rows
+        ]
+        ids = [str(fact["fact_id"]) for fact in facts]
+        with mock.patch.object(observer, "resolve_transcript", return_value=str(path)):
+            start = time.monotonic()
+            single = project_context.direction_lookup(
+                self.config, self.state, "claude", "long", ids[0]
+            )
+            single_cost = time.monotonic() - start
+            start = time.monotonic()
+            with mock.patch.object(
+                record_pages, "scan_source", wraps=record_pages.scan_source
+            ) as scan:
+                batch = project_context.direction_lookups(
+                    self.config, self.state, "claude", "long", ids
+                )
+            batch_cost = time.monotonic() - start
+        self.assertEqual(1, scan.call_count)
+        self.assertEqual(
+            [row["message"]["content"][0]["text"] for row in rows],
+            [result.words.text for result in batch],
+        )
+        self.assertEqual([single.scanned_bytes] * 20, [result.scanned_bytes for result in batch])
+        self.assertLess(batch_cost, single_cost * 3)
+
+    def test_a_reader_gets_each_batch_answer_in_the_order_they_requested_even_with_conflicting_copies(
+        self,
+    ) -> None:
+        path = self.root / "batch-ambiguity.jsonl"
+        altered = self.record(3)
+        altered["message"]["content"][0]["text"] += " Conflicting ending."
+        path.write_text("".join(json.dumps(row) + "\n" for row in [*self.rows, altered]))
+        ids = [
+            self.facts[1]["fact_id"],
+            self.facts[2]["fact_id"],
+            self.facts[0]["fact_id"],
+            self.facts[1]["fact_id"],
+            "missing",
+        ]
+        with mock.patch.object(observer, "resolve_transcript", return_value=str(path)):
+            results = project_context.direction_lookups(
+                self.config, self.state, "claude", "long", ids
+            )
+        self.assertEqual(
+            [
+                "Build synthetic step 2. Keep the tests.",
+                "",
+                "Build synthetic step 1. Keep the tests.",
+                "Build synthetic step 2. Keep the tests.",
+                "",
+            ],
+            [result.words.text for result in results],
+        )
+        self.assertEqual(
+            ["", "not_found", "", "", "not_found"], [result.reason for result in results]
+        )
+
+    def test_a_reader_gets_out_of_reach_for_each_batch_id_the_shared_clock_did_not_reach(
+        self,
+    ) -> None:
+        config = dataclasses.replace(self.config, direction_scan_max_seconds=0)
+        with mock.patch.object(observer, "resolve_transcript", return_value=str(self.path)):
+            results = project_context.direction_lookups(
+                config, self.state, "claude", "long", [fact["fact_id"] for fact in self.facts]
+            )
+        self.assertEqual(["out_of_reach"] * 3, [result.reason for result in results])
+        self.assertEqual([0] * 3, [result.scanned_bytes for result in results])
+
+    def test_a_reader_gets_no_batch_words_when_the_source_changes_after_the_shared_scan(
+        self,
+    ) -> None:
+        path = self.root / "batch-changing.jsonl"
+        path.write_text("".join(json.dumps(row) + "\n" for row in self.rows))
+        original = record_pages.scan_source
+
+        def append(*args: Any, **kwargs: Any) -> record_pages.SourceScan:
+            scan = original(*args, **kwargs)
+            with path.open("a") as handle:
+                handle.write("\n")
+            return scan
+
+        with (
+            mock.patch.object(observer, "resolve_transcript", return_value=str(path)),
+            mock.patch.object(record_pages, "scan_source", side_effect=append),
+        ):
+            results = project_context.direction_lookups(
+                self.config, self.state, "claude", "long", [fact["fact_id"] for fact in self.facts]
+            )
+        self.assertEqual(["not_found"] * 3, [result.reason for result in results])
+        self.assertFalse(any(result.words.text for result in results))
 
     def test_a_reader_can_choose_recent_prompts_as_well_as_an_adopted_opening_prompt(self) -> None:
         facts = project_context.transcript_user_facts(

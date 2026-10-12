@@ -2485,6 +2485,8 @@ class _RequestHandler(BaseHTTPRequestHandler):
         fact_id: str,
         adopt_source: str | None = None,
         refusal: dict[str, str] | None = None,
+        lookup: runtime_project_context.DirectionLookup | None = None,
+        listed_facts: list[dict[str, Any]] | None = None,
     ) -> tuple[float, str, bool] | None:
         """A later direction's time, whole raw text and whether it was cut, or None.
 
@@ -2503,7 +2505,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         floor = annotation_store.direction_floor(entry, row, adopt_source)
         if floor is None:
             return None
-        lookup = runtime_project_context.direction_lookup(
+        lookup = lookup or runtime_project_context.direction_lookup(
             application.config, application.state, harness, sid, fact_id
         )
         if refusal is not None and lookup.reason:
@@ -2514,7 +2516,14 @@ class _RequestHandler(BaseHTTPRequestHandler):
             # and time; recomposing the project for each Keep source exceeded
             # the control deadline on the real long-session scratch board.
             listed = next(
-                (f for f in self._session_facts(row) if f.get("fact_id") == fact_id), None
+                (
+                    f
+                    for f in (
+                        listed_facts if listed_facts is not None else self._session_facts(row)
+                    )
+                    if f.get("fact_id") == fact_id
+                ),
+                None,
             )
             listed_at = runtime_reading.valid_prompt_time(listed.get("at")) if listed else None
             if (
@@ -2579,7 +2588,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
 
     def _direction(self) -> None:
-        """Open one later direction's whole text for review (DRC-4682).
+        """Open later directions' whole text for review (DRC-4682).
 
         Reads and writes nothing but the reply: the page opens the direction
         as a pending outcome line, and only the `add_direction` arm of
@@ -2611,14 +2620,60 @@ class _RequestHandler(BaseHTTPRequestHandler):
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        harness, sid, fact_id = payload.get("harness"), payload.get("sid"), payload.get("fact_id")
-        if not all(isinstance(part, str) and part for part in (harness, sid, fact_id)):
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if not all(isinstance(part, str) and part for part in (harness, sid)):
+            self._reject(400)
+            return
+        batch = "fact_ids" in payload
+        ids = payload.get("fact_ids") if batch else [payload.get("fact_id")]
+        if (
+            not isinstance(ids, list)
+            or not ids
+            or (batch and ("fact_id" in payload or len(ids) > 64))
+            or not all(
+                isinstance(part, str) and part and (not batch or len(part) <= 256) for part in ids
+            )
+        ):
             self._reject(400)
             return
         row = self._session_row(str(harness), str(sid))
+        lookups = (
+            runtime_project_context.direction_lookups(
+                config, application.state, str(harness), str(sid), ids
+            )
+            if batch and row is not None
+            else [None] * len(ids)
+        )
+        listed_facts = (
+            self._session_facts(row)
+            if batch
+            and row is not None
+            and any(lookup and not lookup.words.text.strip() for lookup in lookups)
+            else None
+        )
+        answers = [
+            self._direction_answer(row, str(harness), fact_id, lookup, listed_facts)
+            for fact_id, lookup in zip(ids, lookups, strict=True)
+        ]
+        answer = {"results": answers} if batch else answers[0]
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
+    def _direction_answer(
+        self,
+        row: dict[str, Any] | None,
+        harness: str,
+        fact_id: str,
+        lookup: runtime_project_context.DirectionLookup | None,
+        listed_facts: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        config = self.server.application.config
         refusal = {"reason": "not_found"}
         found = (
-            self._later_direction(row, str(fact_id), refusal=refusal) if row is not None else None
+            self._later_direction(
+                row, fact_id, refusal=refusal, lookup=lookup, listed_facts=listed_facts
+            )
+            if row is not None
+            else None
         )
         if found is None:
             answer: dict[str, Any] = {
@@ -2651,7 +2706,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 and not records.harness_control(found[1])
                 else None,
             }
-        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+        return answer
 
     def _correction(self) -> None:
         """Compose Steer back's correction for one session (DRC-4681).
