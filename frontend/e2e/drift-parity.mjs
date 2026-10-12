@@ -209,11 +209,19 @@ const summarizeCard = () => {
     ]),
     levels: [...card.querySelectorAll('.next-session-drift-seg[data-on]')].length,
     pill: norm(document.querySelector('[data-next-drift-pill]')),
-    work: norm(document.querySelector('[data-next-cockpit-work]')),
-    entries: [...document.querySelectorAll('[data-next-entry]')].map((node) => [
-      node.dataset.nextEntry,
-      node.dataset.nextEntryId,
-    ]),
+    // The page draws the activity list newest first and the recorded answer oldest first: restate the rows in
+    // number order, on a copy, before comparing. The departure is recorded in docs/design-frontend-migration.md.
+    work: (() => {
+      const panel = document.querySelector('[data-next-cockpit-work]');
+      if (!panel) return norm(panel);
+      const copy = panel.cloneNode(true);
+      const rows = copy.querySelector('.next-cockpit-work-rows');
+      if (rows) for (const row of [...rows.children].reverse()) rows.append(row);
+      return norm(copy);
+    })(),
+    entries: [...document.querySelectorAll('[data-next-entry]')]
+      .reverse()
+      .map((node) => [node.dataset.nextEntry, node.dataset.nextEntryId]),
     meta: norm(document.querySelector('.next-session-detail-meta')),
   };
 };

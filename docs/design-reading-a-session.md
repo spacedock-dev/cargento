@@ -4599,7 +4599,7 @@ sentence about work the page cannot see stay reachable.
 | 6d | What analysis does | Replaced by the "How Intent and drift works" popup. One explainer, not two. | Nothing |
 | 6e | Delegated work | Moves into More and stays reachable from Analyze drift. It is an honest limit. | Nothing |
 | 6f | Turn off readings | Moves into More. The promise map's off switch stays. | Nothing |
-| 6g | Add to my intent on each activity row | Shown on hover, focus and focus within the row, and always visible when hover is unavailable or the pointer is coarse. Always in the page. DEC-24 item 3 needs it. | Nothing |
+| 6g | Add to my intent on each activity row | Always visible on a row that holds a later direction. Amended 2026-10-12: a control that appears only on hover is one a reader never learns is there. DEC-24 item 3 needs it. | Nothing |
 | 6h | "No terminal to raise" and its "Why" | Shown only when the session is blocked on the reader. | DEC-20 (the raise is primary when a session is blocked) |
 
 The first view at rest holds about eight buttons, links and disclosure summaries: How Intent and

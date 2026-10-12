@@ -961,6 +961,18 @@ not model accuracy. Earlier failed measurements stay failed. A future study resu
 final runtime again rather than reuse a pre-migration source binding.
 
 
+### Activity list order
+
+The retired page listed the numbered activity oldest first and showed "Add to my intent" only on hover.
+The owner ruled on 2026-10-12 that the list reads newest first and that the button is always drawn. The
+numbers do not change: they stay the oldest-first ones every "#<n>" and citation names, so the column
+reads from the highest down to #1. `frontend/src/drift/WorkListView.test.tsx` holds both. The drift
+parity proof restates the rows in number order on a copy before it compares them with the recorded
+answer, which is unchanged. The list is ordered by time over every kind of entry; a check or a message
+the agent wrote sits between the prompts either side of it. Where the rows look grouped, the record read
+for the session holds no entry of the other kind in that stretch: the agent's messages come from a
+bounded transcript tail and are never stored, so they reach back only as far as that tail does.
+
 ### Popover snapshot ancestry
 
 Popover bodies move through a portal inside the app root, retaining their mounted content while

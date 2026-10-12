@@ -12,7 +12,12 @@ import { useEffect, useRef } from 'react';
    column's own heading, so it has none of its own. The record's footer is tiered: where the harness's work
    results are read, one clause stays in view and the mix, the bounds, the scan and the full limit sit behind
    "About this record"; where none are read, the limit is the absence and stays in view. The route's
-   tool-output sentence is not repeated here: "What is sent" beside the control owns it. */
+   tool-output sentence is not repeated here: "What is sent" beside the control owns it.
+
+   Newest first: the rows are drawn from the last entry to the first, so a reader opens on what just happened.
+   The numbers stay the ones the list assigns oldest-first, which every "#<n>" on the page and every citation
+   names, so the column reads #32 down to #1. "Add to my intent" is always drawn: a control shown only on
+   hover is one a reader does not know is there. */
 export function WorkListView() {
   const { ctx, model, finding, jump } = useDrift();
   const panel = useRef<HTMLDivElement>(null);
@@ -70,13 +75,13 @@ export function WorkListView() {
       {list.unnumbered ? <p className="next-cockpit-work-absent">{list.unnumbered}</p> : null}
       {list.rows.length ? (
         <div className="next-cockpit-work-rows" role="list">
-          {list.rows.map((row) => {
+          {[...list.rows].reverse().map((row) => {
             const { entry } = row;
             const type = entry.type;
             return (
               <div
                 key={entry.id}
-                className="next-cockpit-work-row group"
+                className="next-cockpit-work-row"
                 role="listitem"
                 data-next-cockpit-work-type={type}
                 {...(row.n === null ? {} : { 'data-next-entry': String(row.n) })}
@@ -140,7 +145,7 @@ export function WorkListView() {
                   ) : null}
                   {row.add ? (
                     <Button
-                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 [@media(pointer:coarse)]:opacity-100"
+                      className="self-start"
                       variant="bare"
                       type="button"
                       data-next-cockpit-action="direction-add"
