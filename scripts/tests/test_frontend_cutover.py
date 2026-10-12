@@ -497,20 +497,22 @@ class MappedReceiptTest(unittest.TestCase):
         self.assertEqual([], result["problems"])
         self.assertIn("production artifact: an unproven corner", result["gaps"])
 
-    def test_the_committed_receipt_records_the_production_bundle_proof_without_a_gap(self) -> None:
+    def test_the_committed_receipt_records_the_retired_production_bundle_proof_without_a_gap(
+        self,
+    ) -> None:
         block = self.receipt["production_artifact"]
         self.assertNotIn("gap", block)
-        self.assertEqual("pnpm test:production:browser", block["production_bundle"]["command"])
+        self.assertNotIn("production_bundle", block, "the gate no longer runs the bundle proofs")
+        self.assertIn("Storybook", block["retired"])
         result = self.result(self.receipt)
         self.assertFalse(any(g.startswith("production artifact") for g in result["gaps"]))
 
-    def test_the_production_bundle_proof_cannot_be_silently_dropped(self) -> None:
+    def test_the_retired_production_bundle_proof_stays_a_named_existing_proof(self) -> None:
         def problems(mutate: Any) -> list[str]:
             receipt = self.mutated()
             mutate(receipt["production_artifact"])
             return list(self.result(receipt)["problems"])
 
-        # The installed smoke alone used to satisfy the block, so each of these is a mutation that used to pass.
         runner = cutover.PRODUCTION_RUNNER
         dropped = problems(
             lambda block: block.update(
@@ -518,37 +520,8 @@ class MappedReceiptTest(unittest.TestCase):
             )
         )
         self.assertTrue(any(runner in p for p in dropped), dropped)
-        missing = problems(lambda block: block.pop("production_bundle"))
-        self.assertTrue(any("no production_bundle" in p for p in missing), missing)
-        renamed = problems(lambda block: block["production_bundle"].update(ci_job="No such job"))
-        self.assertTrue(any("has no job named" in p for p in renamed), renamed)
-        command = problems(lambda block: block["production_bundle"].update(command="pnpm test"))
-        self.assertTrue(any("command must be" in p for p in command), command)
-
-    def test_the_production_shards_must_name_every_parity_proof_once(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            (root / ".github/workflows").mkdir(parents=True)
-            (root / "frontend/e2e").mkdir(parents=True)
-            shutil.copy(ROOT / cutover.WORKFLOW, root / cutover.WORKFLOW)
-            shards = json.loads((ROOT / cutover.PRODUCTION_SHARDS).read_text())
-            self.assertEqual([], cutover._shard_problems(ROOT))
-            edits: list[tuple[Any, str]] = [
-                (lambda data: data["a"].remove("test:shell:browser"), "runs no test:shell:browser"),
-                (
-                    lambda data: data["b"].append("test:shell:browser"),
-                    "lists a proof in two shards",
-                ),
-                (lambda data: data["b"].append("test:dev:browser"), "not a parity proof"),
-            ]
-            for edit, expected in edits:
-                data = copy.deepcopy(shards)
-                edit(data)
-                (root / cutover.PRODUCTION_SHARDS).write_text(json.dumps(data), encoding="utf-8")
-                found = cutover._shard_problems(root)
-                self.assertTrue(any(expected in problem for problem in found), found)
-            (root / cutover.PRODUCTION_SHARDS).unlink()
-            self.assertTrue(any("missing" in p for p in cutover._shard_problems(root)))
+        unsaid = problems(lambda block: block.pop("retired"))
+        self.assertTrue(any("retired" in p for p in unsaid), unsaid)
 
     def test_every_surface_class_names_its_four_columns(self) -> None:
         for name, entry in self.receipt["classes"].items():
@@ -859,56 +832,6 @@ class ProofIsRealTest(unittest.TestCase):
     def test_a_commented_out_browser_step_is_not_a_step(self) -> None:
         text = "await step('live one', f);\n// await step('dead one', f);\n/* await step('dead two', f); */\n"
         self.assertEqual(["live one"], cutover.step_names(text))
-
-
-class WorkflowStepTest(unittest.TestCase):
-    """The production-bundle command counts only as a step's run value in the named job."""
-
-    def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        (self.root / ".github/workflows").mkdir(parents=True)
-        shutil.copytree(ROOT / "frontend/e2e", self.root / "frontend/e2e")
-        self.receipt = load(cutover.RECEIPT)
-        self.workflow = (ROOT / cutover.WORKFLOW).read_text(encoding="utf-8")
-        self.commands = cutover._package_commands(ROOT)
-
-    def problems(self, workflow: str) -> list[str]:
-        (self.root / cutover.WORKFLOW).write_text(workflow, encoding="utf-8")
-        return cutover._bundle_problems(
-            self.root, self.receipt["production_artifact"], self.commands
-        )
-
-    def test_the_real_workflow_runs_the_command_in_its_job(self) -> None:
-        self.assertEqual([], self.problems(self.workflow))
-
-    def test_an_echoed_comment_is_not_a_step(self) -> None:
-        run = "run: pnpm test:production:browser --shard ${{ matrix.shard }}"
-        self.assertIn(run, self.workflow)
-        for fake in (
-            "run: echo skipped # pnpm test:production:browser --shard ${{ matrix.shard }}",
-            "run: echo pnpm test:production:browser",
-            "run: |\n          # pnpm test:production:browser\n          true",
-        ):
-            problems = self.problems(self.workflow.replace(run, fake))
-            self.assertTrue(any("no step whose run value runs" in p for p in problems), fake)
-
-    def test_a_substring_in_a_comment_or_another_job_is_not_the_job_running_it(self) -> None:
-        run = "run: pnpm test:production:browser --shard ${{ matrix.shard }}"
-        dead = self.workflow.replace(run, "run: true")
-        problems = self.problems(dead + "\n# pnpm test:production:browser\n")
-        self.assertTrue(any("no step whose run value runs" in p for p in problems))
-
-    def test_a_missing_job_or_an_unreadable_workflow_fails(self) -> None:
-        renamed = self.workflow.replace("name: Frontend production bundle", "name: Elsewhere")
-        self.assertTrue(any("has no job named" in p for p in self.problems(renamed)))
-        self.assertTrue(any("not YAML" in p for p in self.problems("a: [unclosed")))
-        (self.root / cutover.WORKFLOW).unlink()
-        found = cutover._bundle_problems(
-            self.root, self.receipt["production_artifact"], self.commands
-        )
-        self.assertTrue(any("missing or is not YAML" in p for p in found))
 
 
 class FluidityFixtureTest(unittest.TestCase):

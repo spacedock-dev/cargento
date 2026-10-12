@@ -1733,7 +1733,7 @@
           },
           {
             "vitest": "frontend/src/intent/IntentAdoption.test.tsx",
-            "test": "reads the prompts once per opening, by the reader\u2019s gesture, and never from a poll"
+            "test": "reads the prompts once per opening, by the reader’s gesture, and never from a poll"
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
@@ -2576,7 +2576,7 @@
         "proofs": [
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "keyboard: Tab reaches a row\u2019s link, Enter opens the session, Escape returns, as recorded"
+            "step": "keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, as recorded"
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
@@ -2967,13 +2967,7 @@
         "fluidity": "poll_to_paint_median"
       }
     ],
-    "production_bundle": {
-      "switch": "CARGENTO_E2E_BUNDLE=production",
-      "command": "pnpm test:production:browser",
-      "ci_job": "Frontend production bundle (ubuntu-latest, shard ${{ matrix.shard }})",
-      "shards": "frontend/e2e/production-shards.json",
-      "runs": "the eleven parity proofs (storage, shell, controls, sessions, intent, drift, project, console, attention, capacity, terminal and timeline)"
-    },
+    "retired": "The browser parity proofs, including those against the shipped bundle, are retired from the pull request gate (owner, 2026-10-12): the interface is verified by Storybook. The proof files and package scripts stay and run on demand. The shipped bundle is still rebuilt from its sources and compared with the tracked file by the production bundle job.",
     "limits": "The Python backend serves the React side without Vite in production mode. Served the tracked minified react.html itself (no scratch copy, no mutation): the shell, sessions, intent, drift, project, attention, console, capacity, and terminal and timeline proofs. Each drives its surface through the shipped page's own mount point (the strip in the Sessions view, the consent and observer controls and the terminal in the Console tab, the timeline in the Decisions tab), and a `shipped page` step in the capacity proof fails if the strip or the consent is not inside its view. A mutation run is served a production build of a scratch copy made by the same packaging code. Still harness-hosted, because the shipped page cannot reach them with a fixture: the controls proof mounts the controls gallery, which composes combinations of the shared controls (a stack of draft fields, selects and disclosures, composition and undo cases) that no one project or session page draws together, so those controls are proven in the shipped composition only through the sessions, project, intent, drift, attention and shell proofs, not by the gallery's own cases; and the storage proof's React side is the storage codec bundled minified in the browser, not a served page. On the shipped page three harness-only readings are replaced by what a reader can observe, and the proofs say so where they do it: the terminal owner's internal counters become the renderer count and the open terminal sockets (the owner's last-opened key is asserted only in development), the console's accepted-board count becomes the count of board answers, and a manual refresh becomes another tab's revision announcement. StrictMode double effects exist only in development, so the production run proves the same counts without the double mount, and the development run of every proof stays in CI."
   },
   "gates": {

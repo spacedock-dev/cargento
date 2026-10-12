@@ -63,8 +63,9 @@ require a refreshed integrity record even when the rendered page bytes stay unch
 The Select story uses shadcn Base UI Select with a reserved fixture width. It exercises opening,
 keyboard choice, titled long labels, disabled and loading items, and keyboard scrolling through thirty
 choices. The page's PromptSelect tests and Intent browser proof own the async prompt loader. The fixture does not certify the
-page's prompt loader. Component stories supplement the application browser proofs, which still own
-routing, refresh continuity, backend behavior and installed-page checks.
+page's prompt loader. Stories are how the interface is verified. The browser proofs, retired from the
+gate, remain runnable on demand for routing, refresh continuity, backend behavior and installed-page
+investigation, but no pull request needs them.
 
 ### Frontend development
 
@@ -105,7 +106,7 @@ terminal assets remain local. The packaging boundaries are in the
 [AGENTS.md](AGENTS.md#pre-pr-checks) for the frontend checks. TypeScript checks source and dependency
 types, Biome lints (JavaScript, TypeScript and React rules) and checks formatting through one
 `pnpm lint`, with `pnpm format` rewriting what it reports, Vitest with Testing Library checks visible
-behavior, and Playwright checks the built page in Chromium. The rule set and what it deliberately
+behavior, and Storybook checks components and views in Chromium. The rule set and what it deliberately
 does not cover are in the [migration contract](docs/design-frontend-migration.md#lint-and-format). Vite and its React plugin own the build and hot
 refresh. Shared controls use vendored shadcn components backed by Base UI; routing and state remain
 owned by the page. Node and pnpm are build tools: the shipped
@@ -113,7 +114,9 @@ Python dashboard still requires neither.
 
 The typed client is tested against fixtures captured from the real server. After changing a route's
 response, run `python3 scripts/regen_client_fixtures.py` and commit the result; `--check` shows
-whether anything is stale. `pnpm test:storage:browser` proves in Chromium that the React storage codecs read
+whether anything is stale. The browser proofs described in the rest of this paragraph and the next are
+retired from CI and from the pre-PR suite (owner, 2026-10-12): they stay runnable on demand, nothing
+requires them, and Storybook verifies the interface. `pnpm test:storage:browser` proves in Chromium that the React storage codecs read
 and write what the retired page did with its storage. `pnpm test:shell:browser` checks the React shell's routes
 against what that page did, and `pnpm test:controls:browser`
 checks that focus, drafts, composition and open selects survive live updates. `pnpm test:sessions:browser`
@@ -191,7 +194,7 @@ To update an existing component, preview the pinned CLI's registry diff with
 [CLI reference](https://ui.shadcn.com/docs/cli#add). Compare the fetched upstream content with the local file
 before applying changes; preserve the local recipes and reader-state contracts, and refresh the
 upstream digest in the header when taking new upstream content. Repeat the import, scale and
-formatting steps above, then run the affected component and browser proofs.
+formatting steps above, then run the affected stories with `pnpm test:stories`.
 
 Each copied component starts with an upstream header naming the component, CLI version, registry URL
 and SHA-256 of the fetched registry item's `content` before edits. Record why local changes were made.
@@ -286,13 +289,13 @@ same directories through the relative symlinks under `.agents/skills/`.
   label, which is visible in the PR timeline.
 - `platform-tests`, the unit suite re-run natively on macOS, with one dashboard leg and three script
   shards. Ubuntu is covered by the coverage job and the runtime floor, which both run the whole suite there.
-- `Frontend (macos-latest)`, with exact Node and pnpm pins, lint, strict types, unit tests and a clean
-  preview build. It runs browser checks against an installed Python-only copy, plus owned development
-  lifecycle, real Python/Vite hot-refresh, storage conformance, React shell routing, shared-controls
-  continuity and session checks.
-- `Frontend production bundle`, which rebuilds and compares the tracked artifact on Linux, then runs
-  all twelve production parity proofs in two shards. The separate `Frontend proofs` job has been retired;
-  its development-server proofs remain runnable locally through the pre-PR suite.
+- `Frontend (macos-latest)`, with exact Node and pnpm pins, lint, strict types, unit tests, owned
+  development startup and cleanup tests, and a clean preview build.
+- `Frontend production bundle`, which rebuilds and compares the tracked artifact on Linux and runs no
+  proof.
+- `Storybook (ubuntu-latest)`, which builds the offline explorer and runs every story's assertions in
+  pinned Chromium. The interface is verified here. The Playwright browser proofs were retired from CI
+  and from the pre-PR suite on 2026-10-12; they remain runnable on demand.
 
 CI exercises macOS and Linux. Windows is no longer exercised by CI for the dashboard unit suite or
 frontend. The local pre-PR command list remains unchanged.

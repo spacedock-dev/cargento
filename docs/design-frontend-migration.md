@@ -32,7 +32,8 @@ recorded once and the React page stays held to the recording:
   `frontend/test/legacy_goldens.ts`. A harness there stands in for the legacy functions. A key is a
   hash of the harness, the method, its arguments and the state the earlier calls left it in, so a
   call with no recorded answer fails with the name of the call, never passes.
-- The browser parity proofs replay `frontend/test/golden/e2e/<proof>.json` through
+- The browser parity proofs (retired from CI and the pre-PR suite on 2026-10-12, and kept to run on
+  demand; Storybook now verifies the interface) replay `frontend/test/golden/e2e/<proof>.json` through
   `frontend/e2e/support/golden.mjs`. A key is the step name plus its label, an unread key fails the
   run, and a reading taken twice fails it. Several keys still contain the words "legacy page" or "both
   pages" because that text is the step name the key was recorded under.
