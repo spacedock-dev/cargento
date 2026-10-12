@@ -114,7 +114,7 @@ await mkdir(scratch, { recursive: true });
 const copy = await mkdtemp(join(scratch, 'proof-'));
 let world, browser, opened;
 try {
-  for (const directory of ['frontend', 'cargento'])
+  for (const directory of ['frontend', 'compass'])
     await cp(join(REPOSITORY, directory), join(copy, directory), {
       recursive: true,
       filter: copyProofPath,
@@ -558,7 +558,7 @@ try {
       await howto.click();
       await waitOpen(name);
       const panel = page.getByRole('dialog', { name, exact: true });
-      assert.match(await panel.innerText(), /Cargento never writes into sessions/);
+      assert.match(await panel.innerText(), /Compass never writes into sessions/);
       assert.match(await panel.innerText(), /Not enough recorded yet/);
       assert.ok((await panel.innerText()).split(/\s+/).length <= 150, 'how-to word ceiling');
       const box = await panel.boundingBox();

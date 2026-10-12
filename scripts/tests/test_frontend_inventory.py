@@ -21,7 +21,7 @@ class AMigrationMaintainerSeesAnUnownedContractTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         storage = self.root / "frontend/src/storage"
         storage.mkdir(parents=True)
-        (storage / "keys.ts").write_text("const KEY = 'cargento.fixture.preference';\n")
+        (storage / "keys.ts").write_text("const KEY = 'compass.fixture.preference';\n")
         (self.root / "docs").mkdir()
         (self.root / "frontend/src").mkdir(exist_ok=True)
         (self.root / "frontend/src/one.ts").write_text("export function holdDraft() {}\n")
@@ -35,7 +35,7 @@ class AMigrationMaintainerSeesAnUnownedContractTest(unittest.TestCase):
             "schema": 1,
             "parts": [self.row("one.js")],
             "reader_state": [self.row("Reader draft", disposition="store-held")],
-            "storage": [self.row("cargento.fixture.preference", format="string")],
+            "storage": [self.row("compass.fixture.preference", format="string")],
             "surfaces": [self.row("Draft editor")],
             "routes": [self.row("Session permalink")],
         }
@@ -103,15 +103,15 @@ class AMigrationMaintainerSeesAnUnownedContractTest(unittest.TestCase):
         self.assertNotEqual(0, self.cite("`frontend/src/one.ts`: `holdDraft.nowhere`").returncode)
         self.assertEqual(
             0,
-            self.cite("`frontend/src/one.ts`: `holdDraft`, `cargento.next.some-key`").returncode,
+            self.cite("`frontend/src/one.ts`: `holdDraft`, `compass.next.some-key`").returncode,
         )
 
     def test_a_new_persisted_preference_requires_a_format_contract(self) -> None:
         keys = self.root / "frontend/src/storage/keys.ts"
-        keys.write_text(keys.read_text() + "const EXTRA = 'cargento.fixture.new';\n")
+        keys.write_text(keys.read_text() + "const EXTRA = 'compass.fixture.new';\n")
         result = self.run_check()
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("cargento.fixture.new", result.stderr)
+        self.assertIn("compass.fixture.new", result.stderr)
 
     def test_a_row_that_names_a_file_that_is_gone_refuses_the_map(self) -> None:
         (self.root / "tests/oracle.py").unlink()

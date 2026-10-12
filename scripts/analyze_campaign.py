@@ -54,8 +54,8 @@ CONDITIONAL_PRIORITY_HANDOFF_PATH = str(
     Path(MANIFEST_PATH).with_name("closure-conditional-priority-handoff.json")
 )
 CLAUSE_ZERO_RESEAL_PATH = str(Path(MANIFEST_PATH).with_name("closure-clause-zero-reseal.json"))
-LEDGER_PATH = authority.canonical_path(".cargento", "analyze-closure-spend.json")
-REPLAY_PATH = authority.canonical_path(".cargento", "drift-replay", "spend.json")
+LEDGER_PATH = authority.canonical_store_path("analyze-closure-spend.json")
+REPLAY_PATH = authority.canonical_store_path("drift-replay", "spend.json")
 QUALIFICATION_PATH = authority.LEDGER_PATH
 LANES = ("replay", "qualification", "live")
 LIMITS = {"replay": 190, "qualification": 31, "live": 18}
@@ -80,39 +80,41 @@ class AwaitingReviewError(authority.LedgerError):
 def active_campaign() -> Campaign | None:  # noqa: PLR0911 - fixed finite generation surfaces refuse independently
     """An existing fixed manifest or account receipt cannot be bypassed by removing one."""
     if (
-        os.path.lexists(CONDITIONAL_PRIORITY_MANIFEST_PATH)
-        or os.path.lexists(CONDITIONAL_PRIORITY_HANDOFF_PATH)
-        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs/5"))
+        os.path.lexists(str(CONDITIONAL_PRIORITY_MANIFEST_PATH))
+        or os.path.lexists(str(CONDITIONAL_PRIORITY_HANDOFF_PATH))
+        or (LEDGER_PATH and os.path.lexists(str(LEDGER_PATH + ".epochs/5")))
     ):
         return ConditionalPriorityCampaign()
     if (
-        os.path.lexists(CLAUSE_ISOLATION_MANIFEST_PATH)
-        or os.path.lexists(CLAUSE_ISOLATION_HANDOFF_PATH)
-        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs/4"))
+        os.path.lexists(str(CLAUSE_ISOLATION_MANIFEST_PATH))
+        or os.path.lexists(str(CLAUSE_ISOLATION_HANDOFF_PATH))
+        or (LEDGER_PATH and os.path.lexists(str(LEDGER_PATH + ".epochs/4")))
     ):
         return ClauseIsolationCampaign()
     if (
-        os.path.lexists(CLAUSE_CONTINUATION_MANIFEST_PATH)
-        or os.path.lexists(CLAUSE_CONTINUATION_HANDOFF_PATH)
-        or os.path.lexists(CLAUSE_ZERO_RESEAL_PATH)
-        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs/3"))
+        os.path.lexists(str(CLAUSE_CONTINUATION_MANIFEST_PATH))
+        or os.path.lexists(str(CLAUSE_CONTINUATION_HANDOFF_PATH))
+        or os.path.lexists(str(CLAUSE_ZERO_RESEAL_PATH))
+        or (LEDGER_PATH and os.path.lexists(str(LEDGER_PATH + ".epochs/3")))
     ):
         return ClauseContinuationCampaign()
     if (
-        os.path.lexists(LOGIN_RESUME_MANIFEST_PATH)
-        or os.path.lexists(LOGIN_RESUME_HANDOFF_PATH)
-        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs/2"))
+        os.path.lexists(str(LOGIN_RESUME_MANIFEST_PATH))
+        or os.path.lexists(str(LOGIN_RESUME_HANDOFF_PATH))
+        or (LEDGER_PATH and os.path.lexists(str(LEDGER_PATH + ".epochs/2")))
     ):
         return LoginResumeCampaign()
     if (
-        os.path.lexists(SUCCESSOR_MANIFEST_PATH)
-        or os.path.lexists(SUCCESSOR_HANDOFF_PATH)
-        or (LEDGER_PATH and os.path.lexists(LEDGER_PATH + ".epochs"))
+        os.path.lexists(str(SUCCESSOR_MANIFEST_PATH))
+        or os.path.lexists(str(SUCCESSOR_HANDOFF_PATH))
+        or (LEDGER_PATH and os.path.lexists(str(LEDGER_PATH + ".epochs")))
     ):
         return SuccessorCampaign()
-    if os.path.lexists(MANIFEST_PATH) or (
+    if os.path.lexists(str(MANIFEST_PATH)) or (
         LEDGER_PATH
-        and (os.path.lexists(LEDGER_PATH) or os.path.lexists(LEDGER_PATH + ".reservations"))
+        and (
+            os.path.lexists(str(LEDGER_PATH)) or os.path.lexists(str(LEDGER_PATH + ".reservations"))
+        )
     ):
         return Campaign()
     return None
@@ -145,7 +147,7 @@ def verified_transport_binding(
 ) -> dict[str, Any]:
     """Bind the verified CLI and actual argv without launching a provider."""
     import score_abstention  # noqa: PLC0415 - operator CLI verification/capture
-    from cargento_runtime import reading_route  # noqa: PLC0415 - runtime already admitted
+    from compass_runtime import reading_route  # noqa: PLC0415 - runtime already admitted
 
     destination = reading_route.destination("claude")
     if destination != reading_route.VENDORS["claude"]:
@@ -166,7 +168,7 @@ def verified_transport_binding(
 
 
 def validate_transport_binding(value: Any) -> None:
-    from cargento_runtime import reading_route  # noqa: PLC0415 - admitted native transport
+    from compass_runtime import reading_route  # noqa: PLC0415 - admitted native transport
 
     if (
         not isinstance(value, dict)
@@ -446,7 +448,7 @@ class Campaign:
                 self.manifest["phase"] != "prepared"
                 or self.manifest.get("activation_anchor")
                 or os.path.lexists(self.path)
-                or os.path.lexists(self.receipts)
+                or os.path.lexists(str(self.receipts))
             ):
                 raise authority.LedgerError("the campaign genesis cannot be initialized again")
             _history(self.manifest)
@@ -1010,7 +1012,7 @@ class SuccessorCampaign(Campaign):
                 or self.manifest["phase"] != "prepared"
                 or self.manifest.get("activation_anchor")
                 or "epochs" in parent
-                or os.path.lexists(self.epoch_dir.parent)
+                or os.path.lexists(str(self.epoch_dir.parent))
                 or len(authority.read(QUALIFICATION_PATH)["calls"]) != 30
             ):
                 raise authority.LedgerError("the successor epoch cannot be initialized again")
@@ -1320,7 +1322,7 @@ class LoginResumeCampaign(SuccessorCampaign):
                 self.manifest["phase"] != "prepared"
                 or self.manifest.get("activation_anchor")
                 or len(root.get("epochs", [])) != 1
-                or os.path.lexists(self.epoch_dir)
+                or os.path.lexists(str(self.epoch_dir))
                 or len(authority.read(QUALIFICATION_PATH)["calls"]) != 32
             ):
                 raise authority.LedgerError("login recovery cannot be initialized again")
@@ -1391,8 +1393,8 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
     epoch_id = 3
 
     def _epoch_entries(self) -> set[str]:
-        if os.path.lexists(CLAUSE_ZERO_RESEAL_PATH) or os.path.lexists(
-            self.epoch_dir / "RESEAL.json"
+        if os.path.lexists(str(CLAUSE_ZERO_RESEAL_PATH)) or os.path.lexists(
+            str(self.epoch_dir / "RESEAL.json")
         ):
             return super()._epoch_entries() | {"RESEAL.json"}
         return super()._epoch_entries()
@@ -1473,7 +1475,7 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
         ):
             raise authority.LedgerError("zero-charge reseal lost original or corrected authority")
         try:
-            with (self.epoch_dir / "TRANSITION.json").open("rb") as handle:
+            with Path(str(self.epoch_dir / "TRANSITION.json")).open("rb") as handle:
                 original = handle.read(2 * 1024 * 1024 + 1)
         except OSError as error:
             raise authority.LedgerError(
@@ -1487,8 +1489,8 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
         return record
 
     def _read_transition(self) -> Any:
-        if not os.path.lexists(CLAUSE_ZERO_RESEAL_PATH) and not os.path.lexists(
-            self.epoch_dir / "RESEAL.json"
+        if not os.path.lexists(str(CLAUSE_ZERO_RESEAL_PATH)) and not os.path.lexists(
+            str(self.epoch_dir / "RESEAL.json")
         ):
             return super()._read_transition()
         record = self._zero_reseal_review()
@@ -1520,15 +1522,15 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
                 or len(epochs) != 3
                 or epochs[2] != record["before"]["epoch"]
                 or len(authority.read(QUALIFICATION_PATH)["calls"]) != 34
-                or os.path.lexists(self.epoch_dir / "RESEAL.json")
+                or os.path.lexists(str(self.epoch_dir / "RESEAL.json"))
                 or self.epoch_dir.parent.is_symlink()
                 or self.epoch_dir.is_symlink()
                 or not self._bounded_entries(self.epoch_dir, {"TRANSITION.json", "reservations"})
                 or (
-                    os.path.lexists(self.receipts)
+                    os.path.lexists(str(self.receipts))
                     and (
                         self.receipts.is_symlink()
-                        or not self.receipts.is_dir()
+                        or not Path(str(self.receipts)).is_dir()
                         or not self._bounded_entries(self.receipts, set())
                     )
                 )
@@ -1676,7 +1678,7 @@ class ClauseContinuationCampaign(LoginResumeCampaign):
                 self.manifest["phase"] != "prepared"
                 or self.manifest.get("activation_anchor")
                 or len(root.get("epochs", [])) != 2
-                or os.path.lexists(self.epoch_dir)
+                or os.path.lexists(str(self.epoch_dir))
                 or len(authority.read(QUALIFICATION_PATH)["calls"]) != 34
             ):
                 raise authority.LedgerError("clause continuation cannot be initialized again")
@@ -1868,7 +1870,7 @@ class ClauseIsolationCampaign(SuccessorCampaign):
                 self.manifest["phase"] != "prepared"
                 or self.manifest.get("activation_anchor")
                 or len(root.get("epochs", [])) != 3
-                or os.path.lexists(self.epoch_dir)
+                or os.path.lexists(str(self.epoch_dir))
                 or len(authority.read(QUALIFICATION_PATH)["calls"]) != 36
             ):
                 raise authority.LedgerError("clause isolation cannot be initialized again")
@@ -2126,7 +2128,7 @@ class ConditionalPriorityCampaign(SuccessorCampaign):
                 self.manifest["phase"] != "prepared"
                 or self.manifest.get("activation_anchor")
                 or len(root.get("epochs", [])) != 4
-                or os.path.lexists(self.epoch_dir)
+                or os.path.lexists(str(self.epoch_dir))
                 or len(authority.read(QUALIFICATION_PATH)["calls"]) != 38
             ):
                 raise authority.LedgerError("conditional priority cannot be initialized again")

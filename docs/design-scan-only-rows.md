@@ -18,7 +18,7 @@ unmarked row would mean either 'did not finish' or 'cannot be seen from here'";
 `sessions.base_session`'s says that a row which cannot carry `finished_at` "says so through
 `acquisition` instead".
 
-It said so to nobody. A grep for the name under `cargento_runtime/web/` returned nothing, and the
+It said so to nobody. A grep for the name under `compass_runtime/web/` returned nothing, and the
 result on the board was measured before this shipped, with a fabricated payload driving the real
 bundle. A Goose idle row and a Claude idle row with no stop observed rendered the same five cells,
 character for character (each row is quoted whole, cell separators added):
@@ -35,7 +35,7 @@ defined to prevent.
 The alternative on the table was removing `acquisition` and the method that sets it, on the grounds
 that a disclosure reaching no pixel is dead weight. It was rejected because the code has already
 committed to the disclosure in two docstrings and one design record, and deleting the field makes
-all three false in the other direction: they would then describe a reading Cargento declines to
+all three false in the other direction: they would then describe a reading Compass declines to
 take rather than one it takes and hides. The honest repair for a documented disclosure that does not
 happen is to make it happen.
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cargento — Visibility 2x2</title>
+<title>Compass — Visibility 2x2</title>
 <style>
 :root{
   color-scheme: light;
@@ -196,7 +196,7 @@ td.num{font:11px ui-monospace,Menlo,monospace; color:var(--text-muted); text-ali
 </head>
 <body>
 <header>
-  <h1>Cargento <span>· Visibility 2×2 working set</span></h1>
+  <h1>Compass <span>· Visibility 2×2 working set</span></h1>
   <nav role="tablist">
     <button role="tab" data-v="map" aria-selected="true">2×2 map</button>
     <button role="tab" data-v="out" aria-selected="false">By outcome</button>
@@ -224,7 +224,7 @@ td.num{font:11px ui-monospace,Menlo,monospace; color:var(--text-muted); text-ali
     <div class="legend" id="legend"></div>
     <p class="bandnote" id="bandnote"></p>
     <div class="gridwrap">
-      <div class="plotbox"><svg id="plot" viewBox="0 0 1000 700" role="img" aria-label="Impact versus how hard the information is for a user to obtain, across Cargento visibility signals"></svg></div>
+      <div class="plotbox"><svg id="plot" viewBox="0 0 1000 700" role="img" aria-label="Impact versus how hard the information is for a user to obtain, across Compass visibility signals"></svg></div>
       <aside class="panel" id="panel"></aside>
     </div>
   </section>
@@ -235,7 +235,7 @@ td.num{font:11px ui-monospace,Menlo,monospace; color:var(--text-muted); text-ali
   </section>
 
   <section class="view" id="v-jour">
-    <p class="note">Columns are the narrative spine already drawn in the Figma story map, and each one carries the question a user is actually asking at that point in the day. The <b>Promise</b> row is what Cargento claims to answer today, and it is the row that faces users: <a href="../promise-map.md">docs/promise-map.md</a> owns its wording, the proof behind each claim, and the limits. Rows below it are a proposed build sequence: each release only depends on the one above it.</p>
+    <p class="note">Columns are the narrative spine already drawn in the Figma story map, and each one carries the question a user is actually asking at that point in the day. The <b>Promise</b> row is what Compass claims to answer today, and it is the row that faces users: <a href="../promise-map.md">docs/promise-map.md</a> owns its wording, the proof behind each claim, and the limits. Rows below it are a proposed build sequence: each release only depends on the one above it.</p>
     <div class="jgrid" id="jgrid"></div>
   </section>
 
@@ -387,8 +387,8 @@ function drawPanel(){
   const it = SEL ? DATA.items.find(i=>i.id===SEL) : null;
   if(!it){
     p.innerHTML=`<h2>Pick a signal</h2>
-    <p class="meta">Height is how much the user can <em>do</em> with it. Distance to the right is whether a normal user could get it quickly today without Cargento. Far right means Cargento creates access that did not exist, so the shaded top-right corner is where the product earns its position.</p>
-    <p class="meta"><b>The one-line rule:</b> the fact is easy, the fleet is hard. Whether one session is blocked is on screen already. Which of twelve is blocked is not. Cargento's moat is aggregation, synthesis and memory, never access.</p>
+    <p class="meta">Height is how much the user can <em>do</em> with it. Distance to the right is whether a normal user could get it quickly today without Compass. Far right means Compass creates access that did not exist, so the shaded top-right corner is where the product earns its position.</p>
+    <p class="meta"><b>The one-line rule:</b> the fact is easy, the fleet is hard. Whether one session is blocked is on screen already. Which of twelve is blocked is not. Compass's moat is aggregation, synthesis and memory, never access.</p>
     <p class="meta">After the blind audit, the four that matter:<br><br>
     <b>E4</b> ended with uncommitted work. Highest risk-adjusted score, and the one question the pane sweep cannot answer.<br>
     <b>C5</b> loop and thrash. Outranks C2 because it needs a narrower inference to be right.<br>
@@ -425,7 +425,7 @@ function drawPanel(){
         ` <span class="axhint">${it.riskAdjustedImpact} after a -${it.detectorRisk} detector-risk discount</span>`:''}</dd>
       <dt>Can a user get this today? <span class="axhint">the workshop axis</span></dt>
         <dd>${it.access} / 100 <span class="axhint">${it.kind==='action'?'read as: how hard to DO today':''}</span></dd>
-      <dt>Build effort <span class="axhint">Cargento's cost, not the user's</span></dt><dd>${it.build??'—'} / 100</dd>
+      <dt>Build effort <span class="axhint">Compass's cost, not the user's</span></dt><dd>${it.build??'—'} / 100</dd>
       ${it.inferred?`<dt>What is being inferred <span class="axhint">${it.detectorConfidence} confidence achievable</span></dt>
         <dd class="needs">${esc(it.inferred)}</dd>`:''}
       ${it.subsetOf?`<dt>Subset of</dt><dd>${it.subsetOf.map(chip).join(' ')}
@@ -502,7 +502,7 @@ function drawOut(){
 
 /* ================= journey ================= */
 const RELEASES=[
-  {id:'done', name:'Shipped', sub:'Cargento 0.6.0'},
+  {id:'done', name:'Shipped', sub:'Compass 0.6.0'},
   {id:'r1', name:'Release 1', sub:'no new data — turn what we have into decisions'},
   {id:'r2', name:'Release 2', sub:'new sources: quota, and stuck-detection'},
   {id:'r3', name:'Release 3', sub:'act, not just observe'},
@@ -596,7 +596,7 @@ document.getElementById('theme').onclick=()=>{
   d.dataset.theme = d.dataset.theme==='dark'?'light':'dark'; render();};
 document.getElementById('export').onclick=()=>{
   const by={}; DATA.items.forEach(i=>(by[i.archetype]=by[i.archetype]||[]).push(i));
-  let md=`# Cargento — Visibility 2x2 candidates\n\n`;
+  let md=`# Compass — Visibility 2x2 candidates\n\n`;
   DATA.archetypes.forEach(a=>{
     md+=`## ${a.name} — so the user can ${a.verb}\n${a.blurb}\n\n`;
     (by[a.id]||[]).sort((x,y)=>y.impact-x.impact).forEach(i=>{

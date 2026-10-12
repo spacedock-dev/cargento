@@ -1,7 +1,7 @@
 name: Plugin Compatibility
 
 # Canary: installs the LATEST published Codex, Claude Code, Gemini CLI, and
-# Antigravity CLI releases and smoke-tests cargento's native package layout
+# Antigravity CLI releases and smoke-tests compass's native package layout
 # in each — detecting upstream compatibility changes as soon as they ship.
 # Adapted from DataRecce/recce-team (single-plugin, no MCP, no hooks).
 #
@@ -105,45 +105,45 @@ jobs:
         run: |
           set -euo pipefail
           # Only the plugin. The repository root is no longer a Claude
-          # marketplace — cargento is listed in spacedock-dev/marketplace — so
+          # marketplace — compass is listed in spacedock-dev/marketplace — so
           # `validate .` here would fail on a missing manifest.
-          claude plugin validate ./cargento --strict
+          claude plugin validate ./compass --strict
 
       - name: Install and inspect the plugin with Codex
         run: |
           set -euo pipefail
           codex plugin marketplace add "$GITHUB_WORKSPACE"
-          codex plugin add cargento@cargento-marketplace --json | tee /tmp/cargento-install.json
-          codex plugin list | tee /tmp/cargento-codex-plugins.txt
-          grep -F 'cargento@cargento-marketplace' /tmp/cargento-codex-plugins.txt
+          codex plugin add compass@compass-marketplace --json | tee /tmp/compass-install.json
+          codex plugin list | tee /tmp/compass-codex-plugins.txt
+          grep -F 'compass@compass-marketplace' /tmp/compass-codex-plugins.txt
 
-          INSTALL_PATH=$(jq -er '.installedPath' /tmp/cargento-install.json)
-          EXPECTED_SKILLS=$(find cargento/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l)
+          INSTALL_PATH=$(jq -er '.installedPath' /tmp/compass-install.json)
+          EXPECTED_SKILLS=$(find compass/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l)
           ACTUAL_SKILLS=$(find "$INSTALL_PATH/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l)
           test "$ACTUAL_SKILLS" -eq "$EXPECTED_SKILLS"
-          test -f "$INSTALL_PATH/skills/cargento/SKILL.md"
-          test -f "$INSTALL_PATH/skills/cargento/agents/openai.yaml"
-          test -f "$INSTALL_PATH/skills/cargento/server.py"
+          test -f "$INSTALL_PATH/skills/compass/SKILL.md"
+          test -f "$INSTALL_PATH/skills/compass/agents/openai.yaml"
+          test -f "$INSTALL_PATH/skills/compass/server.py"
 
           # The later steps validate and launch THIS copy, not the checkout.
-          echo "CARGENTO_INSTALL_PATH=$INSTALL_PATH" >> "$GITHUB_ENV"
+          echo "COMPASS_INSTALL_PATH=$INSTALL_PATH" >> "$GITHUB_ENV"
 
       - name: Validate and install the plugin with Antigravity CLI
         run: |
           set -euo pipefail
-          agy plugin validate ./cargento | tee /tmp/cargento-agy.txt
+          agy plugin validate ./compass | tee /tmp/compass-agy.txt
           # Anchor on the success shape ("N processed"); a plain substring
           # grep also matches AGY's "skipped (not found)" failure output.
-          SKILLS=$(find cargento/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
-          grep -E "skills[[:space:]]+: ${SKILLS} processed" /tmp/cargento-agy.txt
+          SKILLS=$(find compass/skills -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
+          grep -E "skills[[:space:]]+: ${SKILLS} processed" /tmp/compass-agy.txt
 
           # Isolated HOME so the runner's real AGY state is never touched.
           export HOME="$RUNNER_TEMP/agy-home"
           mkdir -p "$HOME"
-          agy plugin install "$GITHUB_WORKSPACE/cargento"
-          agy plugin list | tee /tmp/cargento-agy-plugins.txt
-          jq -e '.imports | map(.name) | index("cargento") != null' /tmp/cargento-agy-plugins.txt
-          jq -e '.imports[] | select(.name == "cargento") | .components | index("skills") != null' /tmp/cargento-agy-plugins.txt
+          agy plugin install "$GITHUB_WORKSPACE/compass"
+          agy plugin list | tee /tmp/compass-agy-plugins.txt
+          jq -e '.imports | map(.name) | index("compass") != null' /tmp/compass-agy-plugins.txt
+          jq -e '.imports[] | select(.name == "compass") | .components | index("skills") != null' /tmp/compass-agy-plugins.txt
 
       - name: Install the extension with Gemini CLI
         env:
@@ -151,23 +151,23 @@ jobs:
           GEMINI_CLI_TRUST_WORKSPACE: 'true'
         run: |
           set -euo pipefail
-          # cargento-gemini, not cargento: both Claude Code and Gemini CLI load
+          # compass-gemini, not compass: both Claude Code and Gemini CLI load
           # extension hooks from <root>/hooks/hooks.json and neither lets that
           # path move, so Gemini has its own root. Installing the plugin root
           # instead would hand Gemini Claude's event vocabulary, which is the
           # defect this split fixed.
-          gemini extensions install "$GITHUB_WORKSPACE/cargento-gemini" --consent
+          gemini extensions install "$GITHUB_WORKSPACE/compass-gemini" --consent
           cd "$RUNNER_TEMP"
           # Strip ANSI color codes so the anchors below are stable, and
           # anchor on the "✓ name (version)" loaded marker — a bare name
           # grep is satisfied by the checkout path in "Source:" lines.
-          gemini extensions list 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee /tmp/cargento-gemini-extensions.txt
-          grep -E '^✓ cargento \([0-9]+\.[0-9]+\.[0-9]+\)' /tmp/cargento-gemini-extensions.txt
-          grep -F 'Enabled (User): true' /tmp/cargento-gemini-extensions.txt
+          gemini extensions list 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tee /tmp/compass-gemini-extensions.txt
+          grep -E '^✓ compass \([0-9]+\.[0-9]+\.[0-9]+\)' /tmp/compass-gemini-extensions.txt
+          grep -F 'Enabled (User): true' /tmp/compass-gemini-extensions.txt
           # The hooks Gemini loaded must be Gemini's own vocabulary. A foreign
           # event name is skipped with a warning on every session, which is
           # exactly what shipped before the roots were split.
-          HOOKS="$GITHUB_WORKSPACE/cargento-gemini/hooks/hooks.json"
+          HOOKS="$GITHUB_WORKSPACE/compass-gemini/hooks/hooks.json"
           jq -e '.hooks | has("BeforeAgent") and has("AfterAgent") and has("AfterTool")' "$HOOKS"
           jq -e '.hooks | has("UserPromptSubmit") | not' "$HOOKS"
           jq -e '[.hooks[][] | .hooks[].command] | all(contains("gemini"))' "$HOOKS"
@@ -181,7 +181,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --quiet -r requirements-validation.txt
-          python3 scripts/validate_plugins.py --runtime-files "$CARGENTO_INSTALL_PATH"
+          python3 scripts/validate_plugins.py --runtime-files "$COMPASS_INSTALL_PATH"
 
       - name: Smoke test the installed dashboard end to end
         # The installed copy, from an unrelated directory, with the repository
@@ -189,9 +189,9 @@ jobs:
         # without the checkout it was built from.
         run: |
           set -euo pipefail
-          STATE_DIR="$RUNNER_TEMP/cargento-smoke"
+          STATE_DIR="$RUNNER_TEMP/compass-smoke"
           mkdir -p "$STATE_DIR"
-          LAUNCHER="$CARGENTO_INSTALL_PATH/skills/cargento/server.py"
+          LAUNCHER="$COMPASS_INSTALL_PATH/skills/compass/server.py"
           test -f "$LAUNCHER"
 
           # A free port chosen by the kernel, so a parallel job cannot collide.
@@ -199,7 +199,7 @@ jobs:
 
           unset PYTHONPATH
           export PYTHONNOUSERSITE=1
-          export CARGENTO_HOME="$STATE_DIR"
+          export COMPASS_HOME="$STATE_DIR"
           SERVER_PID=""
 
           cleanup() {
@@ -225,15 +225,15 @@ jobs:
           SERVER_PID=$!
 
           for _ in $(seq 1 20); do
-            curl -sf "http://127.0.0.1:$PORT/api/health" > /tmp/cargento-health.json && break
+            curl -sf "http://127.0.0.1:$PORT/api/health" > /tmp/compass-health.json && break
             sleep 0.5
           done
           # The pid ties the answer to the process this step started, rather
           # than to whatever else might be listening.
-          jq -e --argjson pid "$SERVER_PID" '.ok == true and .pid == $pid' /tmp/cargento-health.json
-          curl -sf "http://127.0.0.1:$PORT/api/data" > /tmp/cargento-api.json
-          jq -e '.harnesses | type == "array"' /tmp/cargento-api.json
-          curl -sf "http://127.0.0.1:$PORT/" | grep -F '<title>Cargento</title>'
+          jq -e --argjson pid "$SERVER_PID" '.ok == true and .pid == $pid' /tmp/compass-health.json
+          curl -sf "http://127.0.0.1:$PORT/api/data" > /tmp/compass-api.json
+          jq -e '.harnesses | type == "array"' /tmp/compass-api.json
+          curl -sf "http://127.0.0.1:$PORT/" | grep -F '<title>Compass</title>'
 
           # --stop is the documented way to end it, and has to work against the
           # installed copy too. The trap still runs afterwards as a backstop.

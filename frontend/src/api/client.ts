@@ -24,7 +24,7 @@ import type {
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-const REVISION_HEADER = 'X-Cargento-Revision';
+const REVISION_HEADER = 'X-Compass-Revision';
 
 /* Raced against the signal as well as handed it, so a fetch that ignores the
    signal still releases its caller at the bound. The listener is removed on
@@ -147,7 +147,7 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
     );
 
   return {
-    /** The one route that reads `X-Cargento-Revision`. */
+    /** The one route that reads `X-Compass-Revision`. */
     getData: (options: {
       readonly showAll: boolean;
       readonly usage: boolean;
@@ -221,7 +221,7 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
         '/api/focus',
         { harness: options.identity.harness, sid: options.identity.sid },
         options.signal,
-        { 'X-Cargento-Capability': capability },
+        { 'X-Compass-Capability': capability },
       );
       if (result.kind === 'http-error') {
         if (result.status === 429) return 'throttled';

@@ -26,8 +26,8 @@
  *
  * No model is called, no credential is read and no vendor is contacted: the backend answers from fixed numbers
  * and records the request instead of acting on it. `Notification` is a script that records and shows nothing.
- * Run with `pnpm test:capacity:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name matches,
- * `CARGENTO_SCREENSHOTS=1` writes captures to docs/screenshots/, and `CARGENTO_MUTATION=<name>` applies one
+ * Run with `pnpm test:capacity:browser`; `COMPASS_E2E_STEPS=<regex>` runs only the steps whose name matches,
+ * `COMPASS_SCREENSHOTS=1` writes captures to docs/screenshots/, and `COMPASS_MUTATION=<name>` applies one
  * deliberate break (see MUTATIONS), which must make the run FAIL.
  */
 import assert from 'node:assert/strict';
@@ -46,8 +46,8 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, patience(ms)));
 
 const SHOTS = join(REPOSITORY, 'docs/screenshots');
-const shots = process.env.CARGENTO_SCREENSHOTS === '1';
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const shots = process.env.COMPASS_SCREENSHOTS === '1';
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 /* One break each, applied to the scratch copy only. A missing needle fails the run loudly rather than silently
    testing nothing. */
@@ -182,7 +182,7 @@ async function until(read, what, timeout = patience(12000)) {
 }
 
 /* ---- the world: one backend serving the page, over a scratch copy of the tree ---- */
-async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {}) {
+async function startWorld({ mutation = process.env.COMPASS_MUTATION || '' } = {}) {
   /* Development mounts the capacity harness (`capacity-harness.tsx`) in a scratch copy, so the strip, the usage consent
      and the observer controls are driven apart from the page that hosts them. The production run serves the page
      readers get instead, and drives each surface through its real mount point: the strip in the Sessions view, the
@@ -192,7 +192,7 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
   const ownsRepository = shipped && !mutation;
   const copy = ownsRepository
     ? REPOSITORY
-    : await mkdtemp(join(tmpdir(), 'cargento-capacity-browser-'));
+    : await mkdtemp(join(tmpdir(), 'compass-capacity-browser-'));
   let dev = null;
   const world = { copy, mutation, close };
   async function close() {
@@ -208,7 +208,7 @@ async function startWorld({ mutation = process.env.CARGENTO_MUTATION || '' } = {
           !path.includes('/test-results') &&
           !path.includes('__pycache__'),
       });
-      await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+      await cp(join(REPOSITORY, 'compass'), join(copy, 'compass'), {
         recursive: true,
         filter: (path) =>
           !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
@@ -957,7 +957,7 @@ try {
     try {
       await view.page.goto(`${side.origin}/${SESSIONS}`);
       await view.page.evaluate(() =>
-        globalThis.localStorage.setItem('cargento.next.usage.consent', 'granted'),
+        globalThis.localStorage.setItem('compass.next.usage.consent', 'granted'),
       );
       const before = (await eventsOf(side, 'model_call')).length;
       await go(view, CONSOLE);

@@ -1,6 +1,6 @@
 # Stable operator cockpit server
 
-This server keeps `http://127.0.0.1:8766/` available while the Cargento backend changes.
+This server keeps `http://127.0.0.1:8766/` available while the Compass backend changes.
 It starts two backend ports in sequence and publishes only a healthy backend.
 
 The server owns a clean checkout of `clkao/proto/operator-cockpit`.
@@ -19,11 +19,11 @@ Run this command from the review worktree:
   --public-port 8766 \
   --backend-port-a 18766 \
   --backend-port-b 18767 \
-  --checkout /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/checkout \
-  --state-dir /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/state \
-  --review-root /Users/clkao/git/spacedock-research/cargento/.worktrees/spacedock-ensign-project-cockpit \
+  --checkout /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/checkout \
+  --state-dir /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/state \
+  --review-root /Users/clkao/git/spacedock-research/compass/.worktrees/spacedock-ensign-project-cockpit \
   --review-commit <review-sha> \
-  --python /Users/clkao/git/spacedock-research/cargento/.worktrees/spacedock-ensign-project-cockpit/.venv/bin/python
+  --python /Users/clkao/git/spacedock-research/compass/.worktrees/spacedock-ensign-project-cockpit/.venv/bin/python
 ```
 
 The review worktree must be clean. Its `HEAD` must equal `<review-sha>`.
@@ -39,8 +39,8 @@ After the accepted push, record the exact remote checkpoint:
 
 ```bash
 .venv/bin/python scripts/serve_operator_cockpit.py \
-  --checkout /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/checkout \
-  --state-dir /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/state \
+  --checkout /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/checkout \
+  --state-dir /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/state \
   --accept-remote <pushed-sha>
 ```
 
@@ -50,7 +50,7 @@ This explicit step also supports a separately accepted remote checkpoint. For PR
 main into the prototype branch; do not rebase the three imported commits or rewrite their authorship.
 
 Backends start with `--no-usage` and without observer-model or interaction flags. Local
-project-context reads can still write semantic history under the server's private `CARGENTO_HOME`.
+project-context reads can still write semantic history under the server's private `COMPASS_HOME`.
 The observer model and terminal remain disabled. The proxy's git fetch is review machinery,
 separate from the dashboard's outbound-data contract.
 
@@ -59,8 +59,8 @@ separate from the dashboard's outbound-data contract.
 ```bash
 .venv/bin/python scripts/serve_operator_cockpit.py \
   --public-port 8766 \
-  --checkout /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/checkout \
-  --state-dir /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/state \
+  --checkout /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/checkout \
+  --state-dir /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/state \
   --stop
 ```
 
@@ -77,9 +77,9 @@ After integration, use the last accepted checkout without `--review-root` and `-
   --public-port 8766 \
   --backend-port-a 18766 \
   --backend-port-b 18767 \
-  --checkout /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/checkout \
-  --state-dir /Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/state \
-  --python /Users/clkao/git/spacedock-research/cargento/.worktrees/spacedock-ensign-project-cockpit/.venv/bin/python
+  --checkout /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/checkout \
+  --state-dir /Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/state \
+  --python /Users/clkao/git/spacedock-research/compass/.worktrees/spacedock-ensign-project-cockpit/.venv/bin/python
 ```
 
 If the checkout is dirty or the remote branch diverges, read the server error.
@@ -87,7 +87,7 @@ Do not repair the checkout with `git reset --hard`.
 Move the checkout aside.
 Then let the server make a new dedicated clone.
 
-Backend logs are in `/Users/clkao/git/spacedock-research/cargento/.spacedock/runtime/operator-cockpit/state/`.
+Backend logs are in `/Users/clkao/git/spacedock-research/compass/.spacedock/runtime/operator-cockpit/state/`.
 The proxy keeps the public port during a backend replacement.
 The API and SSE paths use the same proxy as the HTML page.
 

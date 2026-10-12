@@ -30,12 +30,12 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "cargento/skills/cargento"))
+sys.path.insert(0, str(HERE.parents[1] / "compass/skills/compass"))
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "e2e" / "support"))
 
 import terminal_backend as terminal  # noqa: E402
-from cargento_runtime import (  # noqa: E402
+from compass_runtime import (  # noqa: E402
     aggregate,
     asks,
     cli,

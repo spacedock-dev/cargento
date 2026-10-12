@@ -52,7 +52,7 @@ stages:
       label: merged
 ---
 
-# Burn down the Cargento Actions Front and Center roadmap
+# Burn down the Compass Actions Front and Center roadmap
 
 One roadmap issue at a time, from picked to merged, with the Linear records left true afterwards.
 
@@ -345,7 +345,7 @@ The rewritten issue is approved and gets built in a dedicated worktree on its ow
   issues that change the same view or contract is the unit of merge risk, and an issue remains the
   unit of Linear reconcile, with its own receipt. The `burndown` skill owns the grouping rule and
   the stack procedure. The hard constraint survives in one form: exactly one line of history may
-  touch `cargento_runtime/web/`, which is one pull request or one stack of layers built on each
+  touch `compass_runtime/web/`, which is one pull request or one stack of layers built on each
   other.
 - **Good:** The change is the narrow reading of the issue. Commits are DCO signed off. Comments
   record decisions — why not the obvious alternative, what was measured, what was rejected — and
@@ -373,7 +373,7 @@ would be reviewing its own work.
   - **Review depth chosen from the diff and stated up front**, per the Calibrating Effort table:
     self-verify for a change with no user-visible behaviour that nothing calls yet; full adversarial
     for security, credential handling or data loss; two lenses plus an arbiter for everything else,
-    including anything touching `frontend/`, the built `cargento_runtime/web/` bundle, `SKILL.md` or `config.py`.
+    including anything touching `frontend/`, the built `compass_runtime/web/` bundle, `SKILL.md` or `config.py`.
     Uniform depth is the failure this table exists to prevent — it cost 35 agents and 6.9M tokens
     for 10 blocking findings on one measured run.
   - **An arbiter that reproduces findings rather than ranking them.** On the measured run it refuted
@@ -782,7 +782,7 @@ only proof is a review of its own prose. The rules below add the specifics of th
 - **The built bundle is the conflict you will get.** `react.html`, `react.integrity.json` and
   `react-licenses.txt` are generated from `frontend/`. Rebuild with `pnpm build` and confirm with
   `pnpm build:check` rather than resolving a conflict textually. Exactly one in-flight PR may touch
-  `frontend/` or `cargento_runtime/web/`.
+  `frontend/` or `compass_runtime/web/`.
 - **A session you spawn leaves daemons behind.** Driving a harness to reproduce something starts
   that harness's own hooks and they outlive the sandbox. Thirteen survived a deleted directory once
   and drove the load average to 18, which caused the contention failures above. Kill what you
@@ -831,7 +831,7 @@ this workflow and override the defaults above wherever the two differ.
 Two rulings, in the captain's own words, scoped to this milestone's burndown.
 
 - **Group the PRs by dependency tier, not one per issue.** All twelve issues in the milestone touch
-  `cargento_runtime/web/`, and exactly one in-flight PR may. The `burndown` skill already provides
+  `compass_runtime/web/`, and exactly one in-flight PR may. The `burndown` skill already provides
   for it — "the second issue rides that PR or waits for it" — so a tier lands as one branch carrying
   several issues. **One-issue-per-branch above is suspended for this milestone only**, and the cost
   it was buying is paid another way: the post-merge Linear reconcile still runs **once per issue**,
@@ -1292,7 +1292,7 @@ Not "checks for Copilot comments" — reads them, decides on each, and resolves 
 not show them; they are a GraphQL surface:
 
 ```bash
-gh api graphql -F owner=spacedock-dev -F repo=cargento -F pr=<N> -F query=@q.graphql \
+gh api graphql -F owner=spacedock-dev -F repo=compass -F pr=<N> -F query=@q.graphql \
   --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | ...'
 ```
 
@@ -1811,14 +1811,14 @@ sentence as the figure, and read the summary line rather than the tail.
 ## One pull request per conflict surface, not one per branch
 
 Four branches were queued to land one at a time, each rebased onto the previous merge. All four
-rewrite `cargento_runtime/web/styles.css` and all four move the same three byte-pin oracles, so that
+rewrite `compass_runtime/web/styles.css` and all four move the same three byte-pin oracles, so that
 plan resolves the same conflict four times against a file moving underneath each resolution — the
 "each side is correct for a tree that no longer exists" failure `AGENTS.md` already names. They were
 consolidated into one integration instead: one resolution with all four intents visible, one pin
 regeneration, one CI cycle, one review.
 
 `AGENTS.md`'s **Calibrating Effort** already says the only constraint that genuinely forces a split
-is that exactly one pull request may touch `cargento_runtime/web/`. Read that as an instruction to
+is that exactly one pull request may touch `compass_runtime/web/`. Read that as an instruction to
 **combine**, not merely as a limit to respect. Branches that share the forcing surface belong in one
 pull request; the split was costing four merge serializations to avoid one conflict resolution.
 

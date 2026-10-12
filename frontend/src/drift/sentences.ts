@@ -34,7 +34,7 @@ export const UNKNOWN_KEY =
 export const SAVE_STEP = 'Save a goal above to analyze drift.';
 export const NO_WORDS = `Nothing has been typed for this session, so there is nothing to read it against. ${SAVE_STEP}`;
 export const MODEL_UNREAD =
-  'Reading availability has not been read, so no reading can be offered. Cargento asks again with the next update.';
+  'Reading availability has not been read, so no reading can be offered. Compass asks again with the next update.';
 export const JOB_TITLE = 'Analyzing drift';
 export const JOB_NOTE = 'You can keep working. The result will appear here.';
 export const JOB_NOTE_SO_FAR = 'Reads only the work so far. The result will appear here.';
@@ -48,7 +48,7 @@ export const UNAUTHORIZED =
 export const ANNOTATIONS_OFF =
   'Annotations are off for this run. Start without --no-annotations to type a goal and an expected output here.';
 export const ROUTE_UNREAD =
-  'Who would read this session is not published, so no analysis is offered. Cargento asks again with the next update.';
+  'Who would read this session is not published, so no analysis is offered. Compass asks again with the next update.';
 export const PROVIDER_CHANGED =
   'The reader for this session changed since this page was drawn, so nothing was sent; read who reads it now and press again.';
 export const DESTINATION_CHANGED =
@@ -67,7 +67,7 @@ export const REFUSAL_ABSENCE: ReadonlyMap<string, string> = new Map([
 ]);
 
 export const DERIVED_ONLY =
-  "Rests only on Cargento's own summary of this session, which is not evidence about it.";
+  "Rests only on Compass's own summary of this session, which is not evidence about it.";
 export const OWN_WORDS_ONLY =
   'Rests only on what you asked for, which is the request rather than the work.';
 export const MALFORMED = 'The reading did not return a usable result for this constraint.';
@@ -129,7 +129,7 @@ export const READING_FINISHED = 'The analysis finished. Its result is in the Dri
 
 export const STEER_BY_HAND = 'Raised to you and nowhere else.';
 export const STEER_BY_HAND_WHY =
-  'Cargento does not write into a session, so steering is by hand; the steer box in Console states the same rule about notes you write there.';
+  'Compass does not write into a session, so steering is by hand; the steer box in Console states the same rule about notes you write there.';
 export const DEPARTURE_DEFINITION =
   'A departure is a place the record does not match the words you chose.';
 export const READING_DEFINITION =
@@ -166,12 +166,12 @@ export const FLIP_CLOSED_REVISION =
 export const FLIP_CLOSED_UNANSWERED = 'Analyze closed before you answered, so nothing was sent.';
 
 export const WORK_HARNESSES: readonly string[] = ['claude', 'pi'];
-export const WORK_READ_FROM = 'Cargento reads work results from Claude Code and Pi only.';
+export const WORK_READ_FROM = 'Compass reads work results from Claude Code and Pi only.';
 export const WORK_AS_REPORTED = 'Results are as the tool reported; not inspected.';
 
 export const CORRECTION_CAP = 2000;
 export const STEER_HARNESSES: readonly string[] = ['claude'];
-export const CORRECTION_HINT = 'Cargento never sends this. Copy it and paste it into the session.';
+export const CORRECTION_HINT = 'Compass never sends this. Copy it and paste it into the session.';
 export const CORRECTION_NOTHING = 'Nothing recorded now gives a correction to steer back from.';
 export const CORRECTION_FAILED = 'Could not compose a correction. Press Steer back again to retry.';
 export const CORRECTION_OLDER =
@@ -198,7 +198,7 @@ export const LIVE_HINT =
 export const LIVE_SAVE = 'Save your intent to see a live estimate.';
 export const UNCHECKED = 'Not checked yet';
 export const NUDGE = 'This is a quick estimate. Analyze to see what drifted and how to steer back.';
-export const HARNESS_LIMIT = "Cargento can't read work or the agent's replies from this harness.";
+export const HARNESS_LIMIT = "Compass can't read work or the agent's replies from this harness.";
 
 export const REASON_LINES: Readonly<Record<string, (n: string) => string>> = {
   'failed-check': (n) => (n ? `A check failed at ${n}.` : 'A check failed.'),

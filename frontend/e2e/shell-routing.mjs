@@ -10,7 +10,7 @@
  * reduced motion.
  *
  * Models, usage, focus and notifications are off in the fixture backend; nothing here reads a harness
- * store, a clipboard or a terminal. Run with `pnpm test:shell:browser`; `CARGENTO_E2E_STEPS=<regex>`
+ * store, a clipboard or a terminal. Run with `pnpm test:shell:browser`; `COMPASS_E2E_STEPS=<regex>`
  * runs only the steps whose name matches.
  *
  * What the previous interface said is read through `support/golden.mjs` from
@@ -33,15 +33,15 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 
 // Captures land in the gitignored docs/screenshots/ of this checkout unless a run names another directory.
 const SHOTS = (
-  process.env.CARGENTO_SCREENSHOTS ||
+  process.env.COMPASS_SCREENSHOTS ||
   fileURLToPath(new URL('../../docs/screenshots', import.meta.url))
 ).replace(/\/?$/, '/');
 const E = encodeURIComponent;
 const receipts = {};
 const failures = [];
 
-/* `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name matches, for working on one of them. */
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+/* `COMPASS_E2E_STEPS=<regex>` runs only the steps whose name matches, for working on one of them. */
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 async function step(name, run) {
   if (only && !only.test(name)) return;
@@ -751,7 +751,7 @@ try {
         [second.hash, second.search, second.breadcrumb],
         [first.hash, '?all=1', 'Sessions › Alpha shared codex'],
       );
-      assert.equal(second.title, 'Alpha shared codex — alpha/app — Cargento');
+      assert.equal(second.title, 'Alpha shared codex — alpha/app — Compass');
     },
   );
 
@@ -1216,7 +1216,7 @@ try {
         const written = await o.page.evaluate(() => globalThis.__clipboardWrites);
         assert.equal(written.length, 1, 'one press writes one briefing');
         assert.ok(
-          written[0].startsWith('Cargento recovery briefing\nProject: app\nScope: Project\n'),
+          written[0].startsWith('Compass recovery briefing\nProject: app\nScope: Project\n'),
           `the briefing the project page builds was copied: ${written[0].slice(0, 80)}`,
         );
         assert.match(

@@ -1,6 +1,6 @@
 # Visibility 2x2
 
-A local board for arguing about what Cargento should become. It holds 57 candidate
+A local board for arguing about what Compass should become. It holds 57 candidate
 signals, each one scored on two axes, grouped by the outcome it unlocks and sequenced
 into releases. Open it with the `visibility-2x2` skill, or start `serve.py` directly.
 
@@ -23,8 +23,8 @@ follows" at the bottom to "prevents concrete loss or removes a recurring blocker
 top.
 
 **Horizontal, access.** How hard is it for a normal user to get quick access to this
-information today, *without* Cargento. Left means a harness already puts it on screen, so
-showing it is convenience. Right means Cargento creates access that did not exist, which
+information today, *without* Compass. Left means a harness already puts it on screen, so
+showing it is convenience. Right means Compass creates access that did not exist, which
 is differentiated value. This axis measures the user, not the engineering; build cost is a
 separate `build` score because the two are unrelated.
 

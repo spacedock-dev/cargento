@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
-const destination = process.env.CARGENTO_CSS_COVERAGE;
+const destination = process.env.COMPASS_CSS_COVERAGE;
 if (destination) {
   const directory = resolve(destination);
   if (relative(root, directory).startsWith('..'))
@@ -116,7 +116,7 @@ if (destination) {
           const playwrightEntries = await page.coverage.stopCSSCoverage();
           entries.push(...playwrightEntries);
           await cdp.detach();
-          const mode = process.env.CARGENTO_E2E_BUNDLE || 'development';
+          const mode = process.env.COMPASS_E2E_BUNDLE || 'development';
           await writeFile(
             resolve(directory, `${mode}-${process.pid}-${++sequence}.json.gz`),
             gzipSync(

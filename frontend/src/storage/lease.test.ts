@@ -12,7 +12,7 @@ import {
   revisionNewer,
 } from '.';
 
-describe('leader lease (cargento.next.leader)', () => {
+describe('leader lease (compass.next.leader)', () => {
   it('keeps the released renew and stale windows', () => {
     expect(LEASE_RENEW_MS).toBe(2000);
     expect(LEASE_STALE_MS).toBe(6000);
@@ -22,13 +22,13 @@ describe('leader lease (cargento.next.leader)', () => {
     const backend = fakeBackend();
     const { lease } = createLegacyStorage(() => backend);
     expect(lease.write('abc-1', 1_700_000_000_000)).toBe(true);
-    expect(backend.data.get('cargento.next.leader')).toBe('{"id":"abc-1","ts":1700000000000}');
+    expect(backend.data.get('compass.next.leader')).toBe('{"id":"abc-1","ts":1700000000000}');
     expect(lease.read()).toEqual({ id: 'abc-1', ts: 1_700_000_000_000 });
   });
 
   it('reads a missing, corrupt or falsy record as no lease', () => {
     for (const raw of [undefined, '{oops', 'null', '0', '""', 'false']) {
-      const backend = fakeBackend(raw === undefined ? {} : { 'cargento.next.leader': raw });
+      const backend = fakeBackend(raw === undefined ? {} : { 'compass.next.leader': raw });
       expect(createLegacyStorage(() => backend).lease.read()).toBeNull();
     }
   });
@@ -62,9 +62,9 @@ describe('leader lease (cargento.next.leader)', () => {
   });
 
   it('releases by removing the key', () => {
-    const backend = fakeBackend({ 'cargento.next.leader': '{"id":"a","ts":1}' });
+    const backend = fakeBackend({ 'compass.next.leader': '{"id":"a","ts":1}' });
     expect(createLegacyStorage(() => backend).lease.release()).toBe(true);
-    expect(backend.data.has('cargento.next.leader')).toBe(false);
+    expect(backend.data.has('compass.next.leader')).toBe(false);
   });
 
   it('lets a tab lead itself when storage cannot coordinate', () => {
@@ -83,7 +83,7 @@ describe('leader lease (cargento.next.leader)', () => {
   });
 });
 
-describe('revision (cargento.next.revision)', () => {
+describe('revision (compass.next.revision)', () => {
   it('orders the wire revision <started>.<counter>', () => {
     expect(revisionNewer('', 'a.1')).toBe(false);
     expect(revisionNewer('a.1', null)).toBe(true);
@@ -111,7 +111,7 @@ describe('revision (cargento.next.revision)', () => {
     const { revision } = createLegacyStorage(() => backend);
     expect(revision.read()).toBeNull();
     expect(revision.write('1700.42')).toBe(true);
-    expect(backend.data.get('cargento.next.revision')).toBe('1700.42');
+    expect(backend.data.get('compass.next.revision')).toBe('1700.42');
     expect(revision.read()).toBe('1700.42');
   });
 
@@ -122,11 +122,9 @@ describe('revision (cargento.next.revision)', () => {
   });
 
   it('extracts a revision from its storage event and ignores every other key', () => {
-    expect(revisionFromStorageEvent({ key: 'cargento.next.revision', newValue: '1.2' })).toBe(
-      '1.2',
-    );
-    expect(revisionFromStorageEvent({ key: 'cargento.next.revision', newValue: null })).toBe('');
-    expect(revisionFromStorageEvent({ key: 'cargento.next.leader', newValue: '1.2' })).toBeNull();
+    expect(revisionFromStorageEvent({ key: 'compass.next.revision', newValue: '1.2' })).toBe('1.2');
+    expect(revisionFromStorageEvent({ key: 'compass.next.revision', newValue: null })).toBe('');
+    expect(revisionFromStorageEvent({ key: 'compass.next.leader', newValue: '1.2' })).toBeNull();
     expect(revisionFromStorageEvent(null)).toBeNull();
   });
 });

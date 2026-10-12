@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { blockedBackend, fakeBackend, readOnlyBackend } from '../../test/storage_backends';
 import { boundMemo, createLegacyStorage, memoKey } from '.';
 
-describe('cockpit memo family (cargento.cockpit.memo.v2:)', () => {
+describe('cockpit memo family (compass.cockpit.memo.v2:)', () => {
   it('builds the released key: encoded project, encoded scope, kind', () => {
     expect(memoKey('proj/é', null, 'outcome')).toBe(
-      'cargento.cockpit.memo.v2:proj%2F%C3%A9:project:outcome',
+      'compass.cockpit.memo.v2:proj%2F%C3%A9:project:outcome',
     );
     expect(memoKey('k', { harness: 'claude', sid: 'a:b' }, 'focus')).toBe(
-      'cargento.cockpit.memo.v2:k:claude%3Aa%3Ab:focus',
+      'compass.cockpit.memo.v2:k:claude%3Aa%3Ab:focus',
     );
   });
 

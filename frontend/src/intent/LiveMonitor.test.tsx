@@ -6,7 +6,7 @@ import { board, mountSession, SESSION_HASH, text } from './panel.testing';
 /* The live monitor switch decides only whether the deterministic level is drawn. It is off by default,
    remembered for this exact session in this browser, and it never sends anything. */
 
-const KEY = 'cargento.next.live-estimate:claude:s1';
+const KEY = 'compass.next.live-estimate:claude:s1';
 const switchButton = () =>
   document.querySelector('[data-next-cockpit-action="live-monitor"]') as HTMLButtonElement;
 

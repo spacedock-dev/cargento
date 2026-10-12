@@ -208,7 +208,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
 
 export type BoardRuntime = ReturnType<typeof createBoardRuntime>;
 
-const SLOT = Symbol.for('cargento.board.runtime');
+const SLOT = Symbol.for('compass.board.runtime');
 
 /* Module replacement re-runs the module that creates the runtime. The previous
    one is disposed here, before the replacement can start, so a hot update

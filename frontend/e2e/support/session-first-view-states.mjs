@@ -85,7 +85,7 @@ export async function proveFirstViewStates({ page, browser, board, script }) {
     const observer = new MutationObserver(() => {
       if (!document.head) return;
       const meta = document.createElement('meta');
-      meta.name = 'cargento-focus';
+      meta.name = 'compass-focus';
       meta.content = 'first-view-proof-only';
       document.head.prepend(meta);
       observer.disconnect();

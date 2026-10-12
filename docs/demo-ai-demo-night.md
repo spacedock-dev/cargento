@@ -1,11 +1,11 @@
-# Cargento — 2-minute demo script and busy-work rig
+# Compass — 2-minute demo script and busy-work rig
 
 For the PicCollage **AI Demo Night, Wednesday 12 August 2026** (Karen's thread in `#general`, 6 Aug).
 Two minutes, pre-recorded, played back-to-back with other people's demos in a bilingual
 Mandarin/English room. Karen asked for an RSVP through the event form as well as the Slack reply —
 confirm that is done.
 
-Every claim here was checked against Cargento **0.10.0** on this laptop, and every command was run
+Every claim here was checked against Compass **0.10.0** on this laptop, and every command was run
 against the real CLIs. Where a check failed, the failure is recorded rather than the intention.
 Figures move fast — the Claude 5-hour window rose 3 points during the writing of this document — so
 treat all of them as "re-read on the day".
@@ -61,17 +61,17 @@ stop or a colon on purpose.
 | # | Slot | On screen | Say |
 |---|---|---|---|
 | B1 | 0:00–0:22 | Four terminal panes tailing four agent logs. **Three visibly scrolling, one frozen**, with a large elapsed timer overlaid on the frozen pane. No dashboard anywhere. Project name legible in a corner from frame 1 | "Four coding agents, all working for me. Three of them are busy. That one has been waiting on me for **[N]** minutes. And I hadn't noticed." |
-| B2 | 0:22–0:29 | Cut to the dashboard, whole page, cursor still | "This is Cargento. One local page, every agent working right now." |
+| B2 | 0:22–0:29 | Cut to the dashboard, whole page, cursor still | "This is Compass. One local page, every agent working right now." |
 | B3 | 0:29–0:47 | Cursor traces the discovered-harnesses strip | "Top strip: every harness it knows about. Green means it found that tool's data on this machine. I didn't configure Codex or Antigravity for this. It reads what these tools already write to disk." |
-| B4 | 0:47–1:18 | Red needs-input band; the macOS notification lands in frame. Speak, then **stop**: answer in the terminal and let the band clear in silence. Speak the last line over the cleared board | "There's the one. It's blocked on me. It didn't guess that from a timeout: Claude left a question open, so Cargento saw it and fired a desktop notification." *(silence — answer it, let the band clear)* "That's the whole idea. Everything else here is in service of it." |
+| B4 | 0:47–1:18 | Red needs-input band; the macOS notification lands in frame. Speak, then **stop**: answer in the terminal and let the band clear in silence. Speak the last line over the cleared board | "There's the one. It's blocked on me. It didn't guess that from a timeout: Claude left a question open, so Compass saw it and fired a desktop notification." *(silence — answer it, let the band clear)* "That's the whole idea. Everything else here is in service of it." |
 | B5 | 1:18–1:40 | Scroll to the working cards; rest on one carrying distinct subagent pills | "Underneath, a card per working agent: what it's doing this second, the subagents it spawned, how long this turn has run against comparable past turns, and its token rate." |
 | B6 | 1:40–1:51 | Cursor to the usage section, which is already on screen. Rest on the Claude 5-hour bar | "It also tracks what you're burning. Every vendor's quota window, in one place." |
-| B7 | 1:51–2:00 | Static title card, held in near-silence | "If you run more than one agent, you already have this problem. Cargento is free." |
+| B7 | 1:51–2:00 | Static title card, held in near-silence | "If you run more than one agent, you already have this problem. Compass is free." |
 
 The title card carries the things that are retained by being **read**, not said:
 
 ```
-Cargento
+Compass
 github.com/spacedock-dev/cargento
 Apache-2.0 · stdlib Python, no dependencies · runs entirely on your machine
 ```
@@ -206,13 +206,13 @@ way that would have left the director reporting success while two harnesses neve
 corrections below are the forms that actually parse.
 
 ````markdown
-You are the director for a 2-minute screen recording of Cargento, a dashboard that maps live
+You are the director for a 2-minute screen recording of Compass, a dashboard that maps live
 coding-agent sessions. Your job is to make this machine look busy across four harnesses for about
 20 minutes, using only throwaway work in a sandbox directory, and to hand me two specific shots.
 
 ## Hard constraints
 
-- All work happens under `~/cargento-demo`. Create nothing outside it. Touch no other repo.
+- All work happens under `~/compass-demo`. Create nothing outside it. Touch no other repo.
 - No network calls, no package installs, no git push, no edits to any settings file.
 - Never pass any blanket-permission flag. The list is longer than the two obvious ones, because
   Copilot's escalations are named nothing like Claude's or Codex's and its own help recommends one of
@@ -221,17 +221,17 @@ coding-agent sessions. Your job is to make this machine look busy across four ha
   If you hit permission friction, stop and tell me instead of escalating.
 - Never pass `--ephemeral` to codex: it skips writing session files, so the session becomes
   invisible to the dashboard, which defeats the point.
-- Include the literal token `CARGENTO-DEMO-RIG` in the text of every prompt you pass to another
+- Include the literal token `COMPASS-DEMO-RIG` in the text of every prompt you pass to another
   CLI. `agy` takes its working directory from its cwd and never as an argument, so the sandbox path
   is not in its argv — this token is the only reliable way to find every rig process afterwards.
 - Launch each background agent in a subshell that `exec`s the CLI, so the PID you record is the CLI
   itself and not a wrapper shell:
-  `( cd <dir> && exec nohup <cli> … >>~/cargento-demo/logs/<name>.log 2>&1 ) & echo $! >>~/cargento-demo/.pids`
-- Generate `~/cargento-demo/stop.sh` that kills exactly the recorded PIDs and nothing else.
+  `( cd <dir> && exec nohup <cli> … >>~/compass-demo/logs/<name>.log 2>&1 ) & echo $! >>~/compass-demo/.pids`
+- Generate `~/compass-demo/stop.sh` that kills exactly the recorded PIDs and nothing else.
 
 ## Step 1 — build the sandbox
 
-Create `~/cargento-demo/widget-shop`, `git init` it and make one commit **before** anything is
+Create `~/compass-demo/widget-shop`, `git init` it and make one commit **before** anything is
 launched into it (codex refuses to run outside a repo). Fill it with a small, obviously fictional
 Python project: about six files, ~400 lines — an order/pricing/inventory toy. Plant a handful of
 real but harmless defects (an off-by-one in pagination, a float used for money, a mutable default
@@ -240,7 +240,7 @@ argument, a missing timezone, an unbounded cache, a swallowed exception).
 Nothing about a real company, product, customer or credential. This directory name and these file
 names will be on screen in a public video.
 
-Also create `~/cargento-demo/logs/` and `~/cargento-demo/widget-shop/reports/`. Reports go **inside**
+Also create `~/compass-demo/logs/` and `~/compass-demo/widget-shop/reports/`. Reports go **inside**
 `widget-shop`, not beside it: codex's write sandbox is rooted at the directory you pass it, so a
 sibling directory would be unwritable and its incremental writes would fail.
 
@@ -264,13 +264,13 @@ Launch three subagents in one message so they run concurrently, each auditing di
 - Run them on a cheaper model than your own, so the pills carry a visible model label. A subagent
   shows a model only when the child's and the parent's are both known and different.
 - Have each one write **a separate file per source file reviewed** under
-  `~/cargento-demo/widget-shop/reports/`,
+  `~/compass-demo/widget-shop/reports/`,
   and append as it goes. Do not ask for one long essay at the end — see the note on tool calls below.
 
 ## Step 4 — launch one session per harness, in the background, staggered
 
 Stagger these ~45 seconds apart so the board fills in visibly. Tee each one's output to
-`~/cargento-demo/logs/<harness>.log`; those logs are what the cold-open shot films. Check each CLI
+`~/compass-demo/logs/<harness>.log`; those logs are what the cold-open shot films. Check each CLI
 with `command -v` first and skip any that is missing rather than failing the run.
 
 Use these command shapes exactly. **Flag order is load-bearing in two of the four**, and both were
@@ -285,7 +285,7 @@ prompt immediately after `-p` and let the flags follow it.
   `--add-dir` still eats it. And `--add-dir` only *adds* to the allowed set — it does not move the
   working directory, so without the `cd` the launch directory stays writable with `Write` in the
   allowlist:
-  `( cd ~/cargento-demo/widget-shop && exec claude -p "<prompt>" --model sonnet --add-dir ~/cargento-demo --allowedTools Read Glob Grep Write Edit )`
+  `( cd ~/compass-demo/widget-shop && exec claude -p "<prompt>" --model sonnet --add-dir ~/compass-demo --allowedTools Read Glob Grep Write Edit )`
   Launch a second on a different model for model diversity on the board. `Bash` is deliberately not in
   the allowlist. If a session hangs rather than finishing, tell me and stop — do **not** reach for
   `--permission-mode acceptEdits` or any bypass flag on your own; whether print mode denies or waits
@@ -293,19 +293,19 @@ prompt immediately after `-p` and let the flags follow it.
 - Codex — needs `--add-dir` as well as `-C`. `-s workspace-write` makes only the `-C` root writable,
   and the reports directory below is a sibling of it, so incremental writes would be sandbox-denied
   and the card would grey out mid-take:
-  `codex exec -C ~/cargento-demo/widget-shop --add-dir ~/cargento-demo -s workspace-write --skip-git-repo-check "<prompt>"`
+  `codex exec -C ~/compass-demo/widget-shop --add-dir ~/compass-demo -s workspace-write --skip-git-repo-check "<prompt>"`
   The repo-check flag is redundant inside a git repo and is cheap insurance if `git init` did not take.
 - Antigravity — **flags first, `-p` last with the prompt as its value.** `-p`/`--print`/`--prompt` is
   a Go string flag, so `agy -p --sandbox …` sets the prompt to the literal text `--sandbox`,
   sandboxing never engages, and the real prompt is silently discarded — three failures at once, one
   of them a safety failure. This form was run and returned a normal answer:
-  `( cd ~/cargento-demo/widget-shop && exec agy --sandbox --print-timeout 15m -p "<prompt>" )`
+  `( cd ~/compass-demo/widget-shop && exec agy --sandbox --print-timeout 15m -p "<prompt>" )`
   After it starts, confirm the sandbox actually engaged and tell me. This machine's `agy` settings
   carry `toolPermission: "always-proceed"`, so `--sandbox` is the only restraint there is.
 - Copilot — it has `-C`, and without it the row is labelled with my directory instead of the sandbox.
   Copilot also restricts file access to the working directory by default, so `-C` is doing
   containment work here and not just cosmetics:
-  `copilot -C ~/cargento-demo/widget-shop -p "<prompt>" --allow-tool='write' --allow-tool='shell(ls)' --allow-tool='shell(cat)' --add-dir ~/cargento-demo`
+  `copilot -C ~/compass-demo/widget-shop -p "<prompt>" --allow-tool='write' --allow-tool='shell(ls)' --allow-tool='shell(cat)' --add-dir ~/compass-demo`
   Copilot's help says `--allow-all-tools` is "required for non-interactive mode", and we have not
   tested whether the granular allowlist is enough. Watch for a third outcome as well as a refusal or
   a stall: with no allow flags at all, headless Copilot is not refused. It starts, reaches the gated
@@ -365,14 +365,14 @@ exact command used. Then ask your first question and wait.
 ### Tearing it down
 
 ```bash
-sh ~/cargento-demo/stop.sh          # kills only the PIDs the director recorded
+sh ~/compass-demo/stop.sh          # kills only the PIDs the director recorded
 ```
 
 Then check nothing survived, because a forgotten `agy` keeps burning Antigravity quota. Two sweeps,
 because neither is sufficient alone:
 
 ```bash
-pgrep -fl 'CARGENTO-DEMO-RIG' || echo "no rig prompts running"
+pgrep -fl 'COMPASS-DEMO-RIG' || echo "no rig prompts running"
 pgrep -fl 'agy|codex|copilot|github-mcp-server' || echo "no harness processes running"
 ```
 
@@ -392,7 +392,7 @@ testing, so a long prompt is safe. What it cannot see:
 Eyeball both lists before you walk away. Only then:
 
 ```bash
-rm -rf ~/cargento-demo              # after you have the footage, not before
+rm -rf ~/compass-demo              # after you have the footage, not before
 ```
 
 ---
@@ -467,7 +467,7 @@ several agent sessions plus a 20-minute recording.
 
 ### Browser state — the dashboard remembers things between sessions
 
-Seven `localStorage` keys under `cargento.*` persist per browser: `displayMode`, `usageOpen`,
+Seven `localStorage` keys under `compass.*` persist per browser: `displayMode`, `usageOpen`,
 `usageCfg`, `usageEnabled`, `usageModalSeen`, plus `leader` and `revision`, which are the
 tab-election lease and carry no user state.
 
@@ -478,11 +478,11 @@ tab-election lease and carry no user state.
       top of the board in regular mode and as the first row inside the calm frame, never over it
       (`web/usage.js:803`). There is nothing to dismiss: answer it with **Keep usage on** before the
       take, or use a profile that has already seen it. The other button, "Turn it off", empties B6.
-- [ ] If B6 comes up empty, the flag to check is **`cargento.usageEnabled`** — the feature switch,
+- [ ] If B6 comes up empty, the flag to check is **`compass.usageEnabled`** — the feature switch,
       which blanks usage in both modes (`web/usage.js:83`, `web/usage.js:763`). Once it is off in a
       browser it stays off. Confirm the strip populates before recording.
 
-      Not `cargento.usageOpen`: that one is **calm-mode only** (`web/usage.js:787` gates
+      Not `compass.usageOpen`: that one is **calm-mode only** (`web/usage.js:787` gates
       `usageBandCalm`; `usageSectionRegular` at `web/usage.js:777` has no such test). An earlier draft
       of this document had that backwards, and chasing the wrong flag costs you the take.
 - [ ] Do not press `u` during the take. It is a *toggle*, not an opener, and the band defaults to open
@@ -513,14 +513,14 @@ tab-election lease and carry no user state.
       projector.
 - [ ] Hide the bookmarks bar and other tabs. Do not use browser full-screen if it changes your
       capture region — see the whole-display item above.
-- [ ] Silence every other notification source. The only popup in frame should be Cargento's.
+- [ ] Silence every other notification source. The only popup in frame should be Compass's.
 - [ ] Mouse movement is narration too. One target per beat, and stop moving while a number is read.
 
 ### Wiring — optional, and skipping it is defensible
 
 "No configuration in the other harnesses" is a genuine selling point. For the record:
 
-- [ ] Cargento is **not** installed as a plugin in Codex or `agy` here. Both run scan-only:
+- [ ] Compass is **not** installed as a plugin in Codex or `agy` here. Both run scan-only:
       discovery, state, ETA and token rate all still work, and Codex quota still appears because it
       comes off Codex's own session files. What you lose is event-driven freshness.
 - [ ] Antigravity has no `statusLine`. (Checked: `~/.gemini/antigravity-cli/settings.json` exists and
@@ -528,7 +528,7 @@ tab-election lease and carry no user state.
       `toolPermission: "always-proceed"`, which is why the `agy --sandbox` flag order in Part 2 is a
       safety matter and not a detail, and it pins a model, so `agy` will not contribute model
       diversity whatever the prompt asks.) Wiring `statusline_hook.py` would add a fourth vendor to
-      B6 — see [the skill body](../cargento/skills/cargento/SKILL.md).
+      B6 — see [the skill body](../compass/skills/compass/SKILL.md).
 - [ ] The `Notification` and `SessionEnd` hooks are **not** in `~/.claude/settings.json`. They are not
       needed for B4. Note the split they affect: hook-driven popups fire with no browser tab open,
       but transcript-detected questions need a collection pass, which the periodic tick gates on a
@@ -572,7 +572,7 @@ If a real pending question will not appear on camera, the same state can be prod
 the identical payload Claude Code itself posts:
 
 ```bash
-echo '{"session_id":"<a session id Cargento already lists>","notification_type":"permission_prompt","message":"Claude needs your permission to run Bash"}' \
+echo '{"session_id":"<a session id Compass already lists>","notification_type":"permission_prompt","message":"Claude needs your permission to run Bash"}' \
   | python3 "<skill-dir>/notify_hook.py"
 ```
 
@@ -597,7 +597,7 @@ read on screen, so write it as a real permission prompt.
 Injected notifications live in memory only, so restarting the server clears them.
 
 Use this to rehearse timing. If it ends up in the final cut, keep B4's narration to what it actually
-is — a permission prompt Cargento detected — and do not describe it as an open question. It produces
+is — a permission prompt Compass detected — and do not describe it as an open question. It produces
 real state through the real code path, which is what makes it a legitimate retake tool; the line it
 must not cross is narrating a synthetic trigger as an organic one.
 
@@ -660,7 +660,7 @@ endpoints that can be switched off. `SECURITY.md` is the contract.
 
 ## Appendix — what this machine reports today
 
-Captured 7 August 2026, Cargento 0.10.0, macOS, Python 3.12.13. Re-run `--diagnose` on the day.
+Captured 7 August 2026, Compass 0.10.0, macOS, Python 3.12.13. Re-run `--diagnose` on the day.
 
 | Harness | Discovered | Sessions on disk | CLI installed |
 |---|---|---|---|
@@ -689,5 +689,5 @@ Two things follow for the script. Do not speak a percentage on camera — read w
 nothing. And the `Fable` row sitting at 0% renders as an empty bar, which is a weak thing to rest a
 sentence on, so B6 names no specific window.
 
-Related reading: [the shipped skill body](../cargento/skills/cargento/SKILL.md) for behaviour,
+Related reading: [the shipped skill body](../compass/skills/compass/SKILL.md) for behaviour,
 [SECURITY.md](../SECURITY.md) for the quota-read contract, [README.md](../README.md) for install.

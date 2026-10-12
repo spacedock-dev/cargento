@@ -1,6 +1,6 @@
 ---
 name: sync-project
-description: Use when reconciling Cargento's Linear project, milestone and issue surfaces after a merge, before picking work, or whenever a tracker description has grown past what a reader needs to act.
+description: Use when reconciling Compass's Linear project, milestone and issue surfaces after a merge, before picking work, or whenever a tracker description has grown past what a reader needs to act.
 ---
 
 # sync-project
@@ -81,7 +81,7 @@ Match these shapes. Add a section only when it changes what someone does next.
 
 [One line framing the table.]
 
-| Stage of the day | What Cargento tells you today | Who owns what comes next |
+| Stage of the day | What Compass tells you today | Who owns what comes next |
 | -- | -- | -- |
 | 1. ... | ... | [milestone] |
 

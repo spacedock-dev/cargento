@@ -186,7 +186,7 @@ class RecordTest(unittest.TestCase):
     def setUp(self) -> None:
         self.dir = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.enterContext(
-            unittest.mock.patch.dict("os.environ", {"CARGENTO_CAPTURE_DIR": str(self.dir)})
+            unittest.mock.patch.dict("os.environ", {"COMPASS_CAPTURE_DIR": str(self.dir)})
         )
 
     def _run(self, payload: object, argv: list[str] | None = None) -> int:
@@ -225,7 +225,7 @@ class RecordTest(unittest.TestCase):
     def test_an_unwritable_capture_directory_still_exits_zero(self) -> None:
         """A hook runs on the user's critical path and may never fail them."""
         with unittest.mock.patch.dict(
-            "os.environ", {"CARGENTO_CAPTURE_DIR": "/proc/nonexistent/nope"}
+            "os.environ", {"COMPASS_CAPTURE_DIR": "/proc/nonexistent/nope"}
         ):
             self.assertEqual(0, self._run({"hook_event_name": "Stop"}))
 
@@ -417,7 +417,7 @@ class HarnessTest(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory(prefix="cargento-capture-harness-")
+        self._tmp = tempfile.TemporaryDirectory(prefix="compass-capture-harness-")
         self.dir = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
 
@@ -425,7 +425,7 @@ class HarnessTest(unittest.TestCase):
         stdin = unittest.mock.MagicMock()
         stdin.buffer.read.return_value = json.dumps(payload).encode()
         with (
-            unittest.mock.patch.dict("os.environ", {"CARGENTO_CAPTURE_DIR": str(self.dir)}),
+            unittest.mock.patch.dict("os.environ", {"COMPASS_CAPTURE_DIR": str(self.dir)}),
             unittest.mock.patch.object(sys, "stdin", stdin),
         ):
             self.assertEqual(0, capture_hook.main(["capture_hook.py", harness]))
@@ -511,7 +511,7 @@ class HarnessInstallTest(unittest.TestCase):
         self.assertTrue(capture_hook.hook_command("gemini").endswith(" gemini"))
 
     def test_gemini_registers_gemini_events_and_claude_registers_claudes(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-capture-install-") as raw:
+        with tempfile.TemporaryDirectory(prefix="compass-capture-install-") as raw:
             for harness, expected, unexpected in (
                 ("gemini", "BeforeAgent", "UserPromptSubmit"),
                 ("claude", "UserPromptSubmit", "BeforeAgent"),
@@ -529,7 +529,7 @@ class HarnessInstallTest(unittest.TestCase):
 
     def test_geminis_settings_live_under_a_dot_gemini_inside_its_home(self) -> None:
         # GEMINI_CLI_HOME names the *parent* of the .gemini directory, which is
-        # what cargento_runtime/config.py already does with the same variable.
+        # what compass_runtime/config.py already does with the same variable.
         # Treating it as the .gemini directory itself points at a path the CLI
         # never reads, and the capture then silently records nothing.
         with unittest.mock.patch.dict("os.environ", {"GEMINI_CLI_HOME": "/tmp/ghome"}):

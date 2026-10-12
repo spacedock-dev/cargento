@@ -15,16 +15,16 @@ import bump_version
 
 
 def make_repo(root: Path, version: str = "0.1.0", drift: str | None = None) -> None:
-    (root / "cargento/.claude-plugin").mkdir(parents=True)
-    (root / "cargento/.codex-plugin").mkdir(parents=True)
+    (root / "compass/.claude-plugin").mkdir(parents=True)
+    (root / "compass/.codex-plugin").mkdir(parents=True)
     for rel in (
-        "cargento/.claude-plugin/plugin.json",
-        "cargento/.codex-plugin/plugin.json",
-        "cargento/gemini-extension.json",
+        "compass/.claude-plugin/plugin.json",
+        "compass/.codex-plugin/plugin.json",
+        "compass/gemini-extension.json",
     ):
         v = drift if drift and rel.endswith("gemini-extension.json") else version
         (root / rel).write_text(
-            json.dumps({"name": "cargento", "version": v, "description": "d"}, indent=2) + "\n"
+            json.dumps({"name": "compass", "version": v, "description": "d"}, indent=2) + "\n"
         )
 
 
@@ -36,14 +36,14 @@ class BumpVersionTests(unittest.TestCase):
         make_repo(root, **kwargs)
         patches: list[Any] = [
             mock.patch.object(bump_version, "ROOT", root),
-            mock.patch.object(bump_version, "TRUTH", root / "cargento/.claude-plugin/plugin.json"),
+            mock.patch.object(bump_version, "TRUTH", root / "compass/.claude-plugin/plugin.json"),
             mock.patch.object(
                 bump_version,
                 "MANIFESTS",
                 (
-                    root / "cargento/.claude-plugin/plugin.json",
-                    root / "cargento/.codex-plugin/plugin.json",
-                    root / "cargento/gemini-extension.json",
+                    root / "compass/.claude-plugin/plugin.json",
+                    root / "compass/.codex-plugin/plugin.json",
+                    root / "compass/gemini-extension.json",
                 ),
             ),
         ]
@@ -58,9 +58,9 @@ class BumpVersionTests(unittest.TestCase):
         bump_version.bump("0.2.0")
 
         for rel in (
-            "cargento/.claude-plugin/plugin.json",
-            "cargento/.codex-plugin/plugin.json",
-            "cargento/gemini-extension.json",
+            "compass/.claude-plugin/plugin.json",
+            "compass/.codex-plugin/plugin.json",
+            "compass/gemini-extension.json",
         ):
             self.assertEqual("0.2.0", json.loads((root / rel).read_text())["version"])
         self.assertEqual("0.2.0", bump_version.current_version())
@@ -105,7 +105,7 @@ class ManifestPathsTest(unittest.TestCase):
 
     It was restated, and it drifted the moment the Gemini manifest moved out of the
     plugin root. The bump succeeded, `validate_plugins.py` passed, and then
-    `git add` failed on `cargento/gemini-extension.json`, which no longer existed.
+    `git add` failed on `compass/gemini-extension.json`, which no longer existed.
     That took the release down after the version fields had already been rewritten,
     which is the worst point in the run to fail at: nothing was pushed, but the tag
     had been created and release tags are immutable.

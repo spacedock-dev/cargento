@@ -100,7 +100,7 @@ test('owned Python bind failure cancels foreign readiness drip and closes owned 
 test('interrupted startup cancels foreign HTTP while its inert owned child is still alive', {
   timeout: 15000,
 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'cargento-startup-interrupt-'));
+  const root = await mkdtemp(join(tmpdir(), 'compass-startup-interrupt-'));
   const helper = join(root, 'owned-sleeping-process.py');
   await writeFile(helper, 'import time\ntime.sleep(60)\n');
   try {

@@ -118,7 +118,7 @@ describe('the activity filter agrees with the legacy filter', () => {
     legacy.setScope('beta', 'codex:s2');
     expect(legacy.setGraphMode('everything')).toBe(false);
     expect([...legacy.storage.entries()]).toEqual([
-      ['cargento.next.graph.mode', '{"alpha\\u0000claude:s1":"decisions","beta\\u0000":"all"}'],
+      ['compass.next.graph.mode', '{"alpha\\u0000claude:s1":"decisions","beta\\u0000":"all"}'],
     ]);
     legacy.reload();
     const after = scopes.map(([project, session]) => {

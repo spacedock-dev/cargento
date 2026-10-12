@@ -1,11 +1,11 @@
 # Reading a session against what you asked for
 
-Cargento lets a person type what a session should achieve and what it should produce, then shows
+Compass lets a person type what a session should achieve and what it should produce, then shows
 that beside what the record says. Whether it may go further, and say something about how the two
 compare, is a product question rather than an engineering one, and it was settled by four rulings
 rather than by code.
 
-This file is where those rulings live for the code to cite. They were made on the Cargento
+This file is where those rulings live for the code to cite. They were made on the Compass
 Visibility 2x2 roadmap, now closed, and their full arguments stay on its issues, but a runtime
 comment cannot cite a tracker, and the shape contract below is not background: three of its rules
 are built into the producer rather than checked after it.
@@ -184,9 +184,9 @@ session publishes `annotation_window_start`, a scalar time, and it is not admitt
 `history.OBSERVATION_FIELDS`: nothing in history reads it yet, so it stays out, as `settled_at`
 does.
 
-## DEC-16: Cargento does not write into a session
+## DEC-16: Compass does not write into a session
 
-A departure is raised to the reader and nowhere else. Cargento does not write into an agent, and
+A departure is raised to the reader and nowhere else. Compass does not write into an agent, and
 the steer box holds a note in the reader's browser rather than sending one. Automatic correction is
 withheld, including when a later instruction contradicts the annotation: that is an unresolved
 baseline conflict for the person to settle, not agent drift for the board to declare.
@@ -194,7 +194,7 @@ baseline conflict for the person to settle, not agent drift for the board to dec
 ### Amended 2026-09-24: a correction you copy, and a later direction you keep or add
 
 [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
-amends this section in four places, and Cargento still writes nothing into a session. It composes a
+amends this section in four places, and Compass still writes nothing into a session. It composes a
 correction without a model, from your goal, your outcome lines with their state and the cited entry
 numbers and times, for you to edit and copy (item 7). Sending it into the session stays refused;
 DEC-25, the follow-on that would decide that, is not ruled (DRC-4698). Before an analysis, an
@@ -296,7 +296,7 @@ Expected Output stays not verifiable there, which is where it already was. The c
 narrows what may be said.
 
 Two rules were added beside it, both from the same pass and both demoting on either constraint. A
-verdict resting only on entries Cargento itself derived is this board quoting itself: an observer
+verdict resting only on entries Compass itself derived is this board quoting itself: an observer
 snapshot is a paraphrase of the session, not evidence about it. And a `consistent` resting only on
 the reader's own request is agreeing with the question, which is the shape a reader is most likely
 to misread as corroboration because the words match. A departure on her own words is different and
@@ -323,7 +323,7 @@ making.
 Owner ruling, 2026-09-24 (DRC-4677 review). Under
 [DEC-23](#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) item 8 the only
 `consistent` Expected Output can carry rests on a cited check whose latest run passed, and the row
-the model read says so in Cargento's own words ("passed, as the tool reported"). A model that
+the model read says so in Compass's own words ("passed, as the tool reported"). A model that
 described that evidence truthfully tripped the success-word half of the backstop, so every such
 reading was withdrawn as a stated verdict, and "no later write" or "not inspected" tripped the
 negator half on its own. The two sentences above still hold everywhere else. For an Expected Output
@@ -339,7 +339,7 @@ negator half on its own. The two sentences above still hold everywhere else. For
    rest of the list.
 
 The prompt now asks for `detail` only under a departure, and says a check's result words are
-Cargento's, so the prose the rule reads is rarer at the source. A consistent's prose is never shown,
+Compass's, so the prose the rule reads is rarer at the source. A consistent's prose is never shown,
 so this adds no prose to the page. Goal verdicts and departures are unchanged.
 
 ### Amended 2026-09-12: rules 3, 4, 5 and 7 are told apart in the stored shape
@@ -402,7 +402,7 @@ What it reverses and what it narrows:
   departure or a `consistent` on one stands. Nothing else the agent's tooling publishes joins it:
   a decision, a task's birth, a stage, a dispatch, Pi narration or a Codex final answer still
   carries no verdict on a line, and `no-work-shown` is still emitted for a line resting only on
-  those, on the reader's own request or on Cargento's paraphrase.
+  those, on the reader's own request or on Compass's paraphrase.
 - [The 2026-10-01 rule on a line about what the agent tells you](#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)
   is narrowed, not reversed. A `consistent` on such a line is still withdrawn as
   `tells-the-person` unless one of the agent's messages is among what it rests on, sent at or after
@@ -460,7 +460,7 @@ What stays:
 - [DEC-15](#dec-15-the-floor-and-the-overlay)'s rule that a reading never states the work was met,
   and the prompt sentence saying so.
 - Rule 4's success-word backstop.
-- `board-quoting-itself`: a verdict resting only on Cargento's own paraphrase.
+- `board-quoting-itself`: a verdict resting only on Compass's own paraphrase.
 - `uncorroborated`: a `consistent` resting only on the reader's own request.
 - [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)'s floor. "None or low"
   from an analysis still needs every outcome line `consistent` on a passing tool-reported check, so
@@ -567,7 +567,7 @@ Its results, on this constraint only:
 - `consistent`: every such claim is shown, by the work: it cites the message and a tool report or
   work result showing it, never a person agreeing with the agent.
 - `not verifiable`: there is no such claim, or the evidence cannot settle it. A claim of a state
-  nothing Cargento records can show (running, merged, pushed, deployed, sent, filed, a PR opened) is
+  nothing Compass records can show (running, merged, pushed, deployed, sent, filed, a PR opened) is
   a departure where the record contradicts it and not verifiable otherwise, never `unsupported`
   (the arbiter's ruling on review, 2026-10-04).
 
@@ -594,7 +594,7 @@ Nothing of it is published, sent or stored. Measured with the amended listing or
 second run found to be real. The success-word backstop reads a claims `consistent`'s
 prose as before, and not a departure's or an `unsupported`'s, which quote the agent's own success
 words by their nature ("said the change works, but the check errored") and say nothing landed. A
-comparison resting only on Cargento's own paraphrase is `board-quoting-itself`. `check_supports`
+comparison resting only on Compass's own paraphrase is `board-quoting-itself`. `check_supports`
 drops a cited check that does not carry the verdict, so a pass followed by a change does not show
 "passing" now, and no write carries a claims verdict; a consistent beside a failure in the window
 is withdrawn as for a line, cited (`check-does-not-show-it`) or unread (`failed-check-unread`). The
@@ -623,7 +623,7 @@ floor, and a claims row never holds "Nothing found" or "None or low" back. The a
 names a contradicted claim `claim-contradicted` rather than a departure. Claims are independent of
 the intent, so an unsettled later direction demotes the intent's rows and never the claims row
 (reversing the first build on review). Steer back adds one line for such a claim, in the
-owner-approved template's style: `You said "<claim>" at 14:02 (#12 in Cargento); the record does not
+owner-approved template's style: `You said "<claim>" at 14:02 (#12 in Compass); the record does not
 show it.` for an unshown claim, and `…; the record shows otherwise at 14:05 (#13).` for a
 contradicted one (the arbiter's wording, under the owner's delegation). Steer back is offered for
 the claim from the claims row itself, so it never offers "Update intent instead" for one. The claim
@@ -914,8 +914,8 @@ daily cap, once DRC-4640 ships. The press and the disclosure still apply to each
 #### How the check is run, 2026-09-12
 
 Two scripts, both outside the gate and neither in CI. `scripts/mark_abstention.py --build` draws
-cases from the live board into `~/.cargento/abstention-cases.json`, and its marking mode collects
-the captain's `judge` or `abstain` per constraint into `~/.cargento/abstention-marks.json`.
+cases from the live board into `~/.compass/abstention-cases.json`, and its marking mode collects
+the captain's `judge` or `abstain` per constraint into `~/.compass/abstention-marks.json`.
 `scripts/score_abstention.py --score --producer <name>` then hands each case to `reading.produce`
 with the two constant yardstick sentences as a synthetic revision (or, in format 5, the case's own
 goal and outcome lines), through the named producer's reading model, and writes two halves: a local results file beside the cases, and a committable summary under
@@ -1059,7 +1059,7 @@ to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) b
    harness's user-role message, and an Antigravity direction.
 2. A person's message carries its words in the ledger beside its title, under a 1,000-character
    cap of its own, with the menu-field scrub that stops a separator forging a column. Every other
-   entry is unchanged, and so is a copied correction, which is Cargento's text rather than the
+   entry is unchanged, and so is a copied correction, which is Compass's text rather than the
    reader's. A fact with no words, from a packet frozen earlier or republished by the history
    store, has its title alone.
 3. The reader's words may not cost a verdict its evidence. Entries are chosen by their titles,
@@ -1114,7 +1114,7 @@ Which sessions Claude Code reads is [DEC-21](#amended-2026-10-02-claude-code-is-
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,
 and never on render, poll, reconnect, resume, focus change or revision save. One reading in flight
 per session. No retry on failure, because a fresh press is required. Each reading is counted and the
-count is shown beside the control, against the capacity surface Cargento already renders, so the
+count is shown beside the control, against the capacity surface Compass already renders, so the
 reader spends their own capacity and can see it going.
 
 ### Two arguments that were withdrawn
@@ -1251,7 +1251,7 @@ permits: the preconditions gate the default rather than whether the thing may be
 
 ## DEC-19: the page may report a lane, never a delivery
 
-Decided 2026-09-11. Cargento notifies through two independent producers. The server runs one
+Decided 2026-09-11. Compass notifies through two independent producers. The server runs one
 `osascript` call and exists on macOS alone. The page constructs a browser `Notification` and is the
 only lane on Linux and Windows. They do not raise the same events, and the page reports nothing
 back.
@@ -1321,13 +1321,13 @@ and every session's page is one click away by DRC-4638. The row's goal slot and 
 are built by DRC-4637 and DRC-4641, as the amendment to
 [NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describes.
 
-The question was what a person sees about drift when they open Cargento. Measured on a default run
+The question was what a person sees about drift when they open Compass. Measured on a default run
 the day it was decided, the honest answer was nothing: four of four sessions had no typed goal, none
 had been read, and a departure comes only from a model reading, which a default run does not make.
 A first screen built from drift results would have been an empty state. So the ruling puts DEC-15's
 floor on the first screen and lets a result add to it, rather than the other way round.
 
-1. Cargento opens on Sessions. Drift belongs to a session, the journey never asks for grouping, and
+1. Compass opens on Sessions. Drift belongs to a session, the journey never asks for grouping, and
    Projects caps each row's members and draws no member lines for a project whose sessions are all
    idle. NUI-3, NUI-5 and NUI-16 are amended to match.
 2. Every row puts your goal beside the NOW line and leaves the comparison to you, which needs no
@@ -1463,7 +1463,7 @@ fetch metadata, from spending readings through a route with no capability token.
 allowed only with something that does that job instead.
 
 1. The first press of "Check for drift" shows the reading disclosure with "Allow and check". The
-   answer is kept in `~/.cargento`, so every tab and a respawned daemon agree; `--forget` clears it,
+   answer is kept in `~/.compass`, so every tab and a respawned daemon agree; `--forget` clears it,
    and the session page carries the off switch. The startup flag is no longer needed for
    reader-requested readings. It still governs goal summaries, which keep their own consent.
 2. A daily cap on reader-requested readings replaces the flag as the bound on a local process. It
@@ -1608,7 +1608,7 @@ The binding catches that move only where the destination was named, as item 5 sa
    `destination` names nothing wherever `OPENAI_BASE_URL` or `OPENAI_API_BASE` is set, so moving
    from one Codex base URL to another asks nothing; moving from OpenAI to one does. And it is every
    Claude Code setting SECURITY.md lists as naming nothing. The disclosure the reader answered says
-   so: "wherever your ... settings send it, which Cargento cannot name". The owner's rule that
+   so: "wherever your ... settings send it, which Compass cannot name". The owner's rule that
    unnamed is a value of its own (item 1) stands.
 6. The unasked lane sends under the same binding (consent F5, ui5). It sends the goal and messages
    to Codex with nobody at the desk, so before each send, at the model seam, it asks whether a
@@ -1717,7 +1717,7 @@ of the reader's own prompts from the session's observed record, offered by "Use 
 - The list is `annotations.prompt_choices`: the earliest prompt in the record first, then the most
   recent, a repeated text offered once, at most five. Each is a `user_message` fact of this session
   that `reading.author_of` calls the person's, with a valid time and its whole words. A correction
-  copied from Cargento, a harness control and a local command are refused exactly as the
+  copied from Compass, a harness control and a local command are refused exactly as the
   first-prompt draft refuses them; a local command already reaches the record with no words.
 - Each is resolved whole: its words as a reading reads them, clipped to the goal's 240-character
   cap with `cut` saying the offer is an excerpt. The text offered is the text an adoption stores.
@@ -2063,7 +2063,7 @@ shows it: set with Pi's own "Command exited with code N" line it is a nonzero ex
 timeout line it is a run with no result, and set with no status line the call never ran. The
 latest run of each check is kept, and its fact carries `subject` and `result`, so item 8 applies
 to it: `check_supports` now keys on a check on any harness, not only Claude Code's
-`tool_report`. The title is Cargento's and no command or output is published.
+`tool_report`. The title is Compass's and no command or output is published.
 
 Three rulings from the review round (2026-09-27) hold it there. A Pi check never enters the
 semantic history store, as item 6 already said of Claude Code's: the store keeps an allowlist of
@@ -2085,7 +2085,7 @@ new surviving failure class: a false `consistent` resting on a success the tool 
 qualifies the producer against it.
 
 1. Three things are never conflated: what was run, what the harness recorded as its result, and
-   whether the requested outcome exists, which Cargento never claims. Evidence is the recorded
+   whether the requested outcome exists, which Compass never claims. Evidence is the recorded
    result. A background launch is not a success, and an absent or malformed error flag is unknown,
    never success. `records.tool_outcome` turns an absent flag into `False` today, and that is the
    reading this item refuses.
@@ -2146,7 +2146,7 @@ qualifies the producer against it.
    relevant check passing inside the window with no later write, and is labelled as reported by the
    tool, not inspected. Absence supports neither. DEC-24 item 13 sets the evidence window.
 9. Tool output is quoted into the reading's prompt as untrusted data, never into an instruction
-   Cargento writes.
+   Compass writes.
 10. The unasked lane never receives tool outcomes until DEC-18's rubric thresholds exist.
 
 This amends the rule 7 amendment of 2026-09-10, whose "On Claude and Codex nothing does" no longer
@@ -2600,7 +2600,7 @@ the measured note that DEC-23 reads the root session's calls alone.
    in the background beside its parent is ordered by its own records' times.
 6. An Agent call is not itself a change. DRC-4709 named "an Agent call after a pass" because a
    subagent's work was unread; it is read now. The exposure left is a subagent whose transcript is
-   not on this machine, whose writes Cargento cannot see.
+   not on this machine, whose writes Compass cannot see.
 7. The bound, amended 2026-09-30. One check-evidence scan spends at most
    `turn_scan_max_bytes` (normally 8 MiB) on the parent and all admitted children together. It
    charges actual binary bytes returned, including invalid records, discarded partial lines and a
@@ -2672,7 +2672,7 @@ DRC-4697, among the milestone's other layers.
 
 A reader who opens a session to see whether it drifted meets DRIFT, GOAL and EXPECTED OUTPUT, empty
 fields, and a result that says "0 departures" beside "raised nothing and confirmed nothing". This
-decides the words, the intent, the answer, when an analysis may run, and what Cargento may hand
+decides the words, the intent, the answer, when an analysis may run, and what Compass may hand
 back.
 
 The owner ruled four things first. The goal is drafted from the reader's first prompt. The expected
@@ -2694,7 +2694,7 @@ the later-direction floor (item 9).
    name departures, never "no drift": "Departs from your intent", "Can't tell", "Nothing found
    against what it read". The attempt count stays beside the control.
 2. The goal draft. On a session with no saved goal, the goal field shows the reader's first prompt
-   as Cargento publishes it (one line, a clipped excerpt marked as such), marked "from your
+   as Compass publishes it (one line, a clipped excerpt marked as such), marked "from your
    prompt", unsaved. "Looks right" saves it; an edit saves it as typed; pressing Analyze drift
    adopts it in the same press (DEC-22). Nothing is inferred for the expected outcome. Amended
    2026-10-02 (owner): there is no "Looks right"; Save intent is enabled over the untouched draft
@@ -2782,13 +2782,13 @@ the later-direction floor (item 9).
 9. A copied correction coming back. The server records a digest of the exact text the reader
    copied, edited or not, per session: bounded per session, one use per digest, matched only after
    the copy. Each user message's digest is computed from its raw text before any clipping. A later
-   message that matches exactly is Cargento-assisted: not adopted as the goal, not person-authored
+   message that matches exactly is Compass-assisted: not adopted as the goal, not person-authored
    evidence, and not an unsettled later direction. No match, no special treatment. SECURITY.md
    names the route and its local-process residual. Built by DRC-4678 to the owner's rulings of
    2026-09-28: both sides normalise CRLF and CR to LF and a tab to four spaces and are trimmed at
    both ends, which is what a live paste into Claude Code 2.1.283 measured; eight digests per
    session, the oldest dropped; and the activity list labels a recognised message "You · Copied
-   from Cargento". An edited paste, a backspace that wipes it included, is the reader's own words.
+   from Compass". An edited paste, a backspace that wipes it included, is the reader's own words.
    The review round added three things. "After the copy" is a position in the transcript, not a
    clock: a message counts only if it was written past where the transcript ended when the text
    was copied. A recognised message is stored by its fact id and stays recognised after the tail
@@ -2822,7 +2822,7 @@ the later-direction floor (item 9).
     work was done." A failed check in the window outranks both "Nothing found" and "Can't tell". A
     departure count renders only beside a departure. "No reading was produced" and the refusals are
     process states, never answers. All of it is session-page only: never on a row, a total or a
-    notification. Elsewhere than Claude Code the panel states the harness limit ("Cargento can't
+    notification. Elsewhere than Claude Code the panel states the harness limit ("Compass can't
     read work from this harness"). "Stop session" is not offered (DEC-16, SECURITY.md).
 
 ### Amended 2026-10-05: verified request age belongs to a line
@@ -3017,7 +3017,7 @@ issue, and the rest were made within them.
   leaves the exit unwatchable, and the call then polls rather than reading it as an exit and killing
   a running CLI. A helper that leaves the group is not reached, and the docs say so.
 - A spent outcome the store refuses keeps its marker, marked as refused, and the next start records
-  that the analysis ran and its outcome could not be stored, not that Cargento stopped. A refused
+  that the analysis ran and its outcome could not be stored, not that Compass stopped. A refused
   "interrupted" or "unstopped" keeps its own reason, so "may still be running" is never turned
   into "ran".
 - A finished step is a filled mark and never a check mark. Item 6's rule is about results, but a
@@ -3090,7 +3090,7 @@ throughout (arbiter spec, `ui3`).
   "Saving your intent…" rather than telling the reader to save it. The start is said to the polite
   region only when the request is still open after 400 ms, and the outcome only once the refresh
   has drawn it. A request with no answer is aborted at 15 s and the control comes back with
-  "Cargento did not answer, so this page cannot tell whether your intent was saved", never "Not
+  "Compass did not answer, so this page cannot tell whether your intent was saved", never "Not
   saved", unless the refresh shows a newer revision holding exactly what was sent, which is the
   save. A 5 s backstop after the bound clears the busy state whatever the fetch did. The state is
   held by the control's focus key (`docs/design-reader-state.md`), and only the press that started
@@ -3105,7 +3105,7 @@ throughout (arbiter spec, `ui3`).
   and Cancel reads "Cancelling…" until the server accepts or answers that the job is not running.
   A lost request comes back with the control's existing sentence, so nothing stays busy forever.
 - An inert Analyze says something true and actionable. No line says Analyze opens "once this
-  session finishes a turn", which was false of a turn that had finished where Cargento could not
+  session finishes a turn", which was false of a turn that had finished where Compass could not
   see it. Amended 2026-10-06: beside an idle row with no end, a Claude Code session reads "Last turn
   isn't recorded as finished. Run another turn to open Analyze." This names the working-turn
   path that `press_eligibility` admits, without promising a recorded finish. Codex keeps its own
@@ -3206,7 +3206,7 @@ in 4, 6 and 5 items, each said once:
 4. `To:` where the words go as `reading_route.destination` names it, with credential shapes
    redacted, through the provider's own CLI and sign-in, spending the reader's capacity: the
    company off this machine, or the cloud or base-URL host configured in its place, or, where
-   nothing can be named, that Cargento cannot name it. It follows everything it covers, tool
+   nothing can be named, that Compass cannot name it. It follows everything it covers, tool
    output included, so it alone says where all of it goes. Until verifier C1 (2026-10-02) this
    item named the company whatever the environment said, so under Bedrock, a base URL or a unix
    socket the reader allowed one receiver and the words went to another.
@@ -3373,11 +3373,11 @@ DRC-4680 built items 1 and 14 on the session page: the Intent and drift panel be
 activity. The owner ruled the first three calls below on the issue; the orchestrator made the rest on
 the analysis's recommendation.
 
-- The harness limit replaces only the level and meter. "Cargento can't read work from this harness"
+- The harness limit replaces only the level and meter. "Compass can't read work from this harness"
   stands in the level's slot on every harness except Claude Code and Pi, and `Analyze drift` stays
   wherever the route names a reader, because DEC-21 item 4 still lets Codex read a Codex session.
   Never on Pi, whose work results are read, so the sentence would be false there. The observed
-  record's old line "Cargento reads those on Pi alone" is retired for the same reason: Claude Code's
+  record's old line "Compass reads those on Pi alone" is retired for the same reason: Claude Code's
   checks are read too.
 - On Antigravity the limit stays true because only the person's typed directions are read, never
   its work (owner, 2026-09-27, DRC-4689). Those directions give a pressed reading something to read
@@ -3401,7 +3401,7 @@ the analysis's recommendation.
   reading stored, "Not checked yet" stands over the unlit four-segment meter and its labels
   ([the result in the button's place](#amended-2026-10-01-the-result-takes-the-buttons-place)).
   The pill stays level-only.
-- The header shows the state in Cargento's own words (working, needs input, idle), not the design's
+- The header shows the state in Compass's own words (working, needs input, idle), not the design's
   "Running", which would rename a state across the product from one page.
 - The panel is not a scroll container and is not sticky; the page scrolls as one document, so the
   reader-state inventory gains no row. The panel comes first in the markup and the stylesheet places
@@ -3561,7 +3561,7 @@ at most 174 words (175 ceiling), the idle fixture 82 (85 ceiling), and the parti
   behind "What a reading reads". The READING section is drawn only for a stored reading this build
   could not read, and that sentence stays in view. A malformed reading keeps the section.
 - The introduction sits behind "What analysis does". Amended 2026-10-06: a saved goal gets
-  "When you analyze drift, Cargento lists where this session departed from your saved goal."
+  "When you analyze drift, Compass lists where this session departed from your saved goal."
   A row without a saved goal
   keeps "Choose a goal or use your prompt, then analyze drift..."; an unsaved prompt draft is
   not described as saved. Amended 2026-10-02 (NU-10): under a stored reading the introduction is
@@ -3665,7 +3665,7 @@ calls below on the issue; the rest follow the analysis.
 - The design's strings this replaces: "Key turns" is gone; "Drift began", "Off goal" and "Breaks
   outcome" become "Cited" or "A later direction you gave"; "In progress" is the source's own words;
   an entry is one fact, so "2 files" and other per-turn counts are not drawn. Your message reads
-  "You · Prompt", the agent's entries "Agent", and Cargento's own summary of the session "Cargento's
+  "You · Prompt", the agent's entries "Agent", and Compass's own summary of the session "Compass's
   summary", never the agent.
 
 ### What the direction-adoption server build decided, 2026-09-27
@@ -3762,7 +3762,7 @@ DRC-4682's page half, on the server half's wire, built to the owner's decisions 
 no level or pill over an unsaved draft, every unsettled later direction drawn at its own number, the
 question before the press in place of "Conflict to settle", and Add adopting a draft in its write.
 
-- The draft. The goal box holds the first prompt as Cargento publishes it, or the latest where no
+- The draft. The goal box holds the first prompt as Compass publishes it, or the latest where no
   first prompt with a time is published, marked "from your prompt" (and "latest" for the second),
   with "Shown excerpt only." on a clipped one, a tinted box and (until the owner's 2026-10-02
   amendment, which leaves Save intent the one save) Looks right. It is derived on every
@@ -3822,7 +3822,7 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   retry after a lost answer was told "Not saved" about words on disk).
   `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`,
   `read_incomplete` and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
-  fixture; the record column opens with "Cargento reads work results from Claude Code and Pi
+  fixture; the record column opens with "Compass reads work results from Claude Code and Pi
   only." The analyzing box lost `role="status"`, which re-announced it on every render: its start
   and its outcome are written once each to the persistent polite region. The question adds no
   full stop after a quote that ends in its own mark, and the Intent heading's keyboard focus draws
@@ -3867,9 +3867,9 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
   stored before this, so a line resting only on it reads "uncited" on both sides and falls to "not
   verifiable". No new reason token was needed.
 - Two more reasons come before those, because a record that was never read is not an empty one
-  (DRC-4689). `no-record-reader` is for a harness Cargento has no observed-record reader for:
+  (DRC-4689). `no-record-reader` is for a harness Compass has no observed-record reader for:
   Copilot, Cursor, OpenCode, Goose, Droid and Gemini CLI. Their collectors still read prompts and
-  titles for the board, so the sentence says that and no more (owner, 2026-09-27): "Cargento
+  titles for the board, so the sentence says that and no more (owner, 2026-09-27): "Compass
   reads only this harness's prompts and titles, not the session's work, so there is nothing to
   read your words against. No reading was made and nothing was spent." `record-unread` is for a
   harness that has a reader and whose transcript was not found. Both withhold before the ledger
@@ -3928,7 +3928,7 @@ saved-line labels. The calls the rulings left open:
 - The route is `POST /api/correction`, answering parts rather than a published field, because
   composition reads the record, and a per-session field would compose on every collection for a
   box few readers open. A part is text or `{"entry": fact_id}`. The page writes the first number
-  it draws as "(#n in Cargento)" and the rest as "(#n)", as the template shows them, and an entry
+  it draws as "(#n in Compass)" and the rest as "(#n)", as the template shows them, and an entry
   it does not number keeps only its time, which the server already wrote.
 - Each line's state is the stored reading's, re-derived against the record as it is now with the
   page's rules for whether a verdict survives: a reading of an older revision lends no state, an
@@ -3978,7 +3978,7 @@ saved-line labels. The calls the rulings left open:
   primary. The result stage gains nothing, so DRC-4695 renders around it. Amended 2026-10-12
   under DEC-27: after a current result, Steer back has no Analyze again beside it. A stale result
   offers the one rerun in its reason callout.
-- The box is labelled "Correction to copy" with the hint "Cargento never sends this. Copy it and
+- The box is labelled "Correction to copy" with the hint "Compass never sends this. Copy it and
   paste it into the session." Copy writes the box's text, frozen at the press, and posts it to
   `POST /api/correction/copied` only after the clipboard took it. The owner approved "Copy",
   "Nothing recorded now gives a correction to steer back from." and "Could not compose a
@@ -4345,7 +4345,7 @@ the record does not show (`claim-not-shown`) blocks None or low only.
 
 ### What the levels build decided, 2026-09-24
 
-DRC-4692 built the two functions in `cargento_runtime/levels.py`, and `scripts/levels_cases.py`
+DRC-4692 built the two functions in `compass_runtime/levels.py`, and `scripts/levels_cases.py`
 to measure them. The ruling left these open. Each was settled on the withholding side, and each is
 part of what the owner's marks validate.
 
@@ -4572,7 +4572,7 @@ even when its explanation needs more words than the one-citation example.
 Decided 2026-10-11 (DRC-4855), on the Actions Front and Center project, in the milestone "Intent
 and drift first". DRC-4856 to DRC-4866 build it. The owner signed every row below as recommended.
 
-The question was what a new reader sees first. A reviewer who tried Cargento on recorded sessions
+The question was what a new reader sees first. A reviewer who tried Compass on recorded sessions
 said the interface is too complicated, that people do not know where to start, and that only three
 things matter: the goal, a view of where the session drifted from it, and the analysis. They asked
 for an experiment that keeps those three and removes the rest. The owner's direction of the same

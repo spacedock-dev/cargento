@@ -81,7 +81,7 @@ export function mountSessions(options: SessionsShellOptions = {}) {
       state.revision += 1;
       return new Response(JSON.stringify(state.data), {
         status: 200,
-        headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` },
+        headers: { 'X-Compass-Revision': `7.${String(state.revision)}` },
       });
     };
     if (state.holdData && !state.heldData) {
@@ -93,7 +93,7 @@ export function mountSessions(options: SessionsShellOptions = {}) {
     return Promise.resolve(
       new Response(JSON.stringify(state.data), {
         status: 200,
-        headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` },
+        headers: { 'X-Compass-Revision': `7.${String(state.revision)}` },
       }),
     );
   };

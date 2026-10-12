@@ -91,7 +91,7 @@ export function mountPanels(
     return Promise.resolve(
       new Response(JSON.stringify(state.data), {
         status: 200,
-        headers: { 'X-Cargento-Revision': `7.${String(state.revision)}` },
+        headers: { 'X-Compass-Revision': `7.${String(state.revision)}` },
       }),
     );
   };

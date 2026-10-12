@@ -26,7 +26,7 @@ The Python execution entry point is `run_turn(plan, adapter)`. Its default adapt
 and authority binding are absent. An external trusted Python controller must bind
 `AUTHORITY_DIR` to the existing original budget directory and `GRANT_SHA256` to
 the independently reviewed existing grant identity. The helper discovers neither
-from a checkout, `HOME` nor `CARGENTO_HOME`. This binding is a trusted controller
+from a checkout, `HOME` nor `COMPASS_HOME`. This binding is a trusted controller
 capability; the helper cannot prove the controller chose the original authority.
 A missing, disabled or malformed budget refuses. A changed grant refuses. There
 is no CLI or environment option to select, activate, initialize, reset or migrate
@@ -63,9 +63,9 @@ remains failed.
 
 Each attempt binds a full native UUID, exact prompt digest, model, effort,
 workspace, revision, argv, environment, CLI/settings/hooks/MCP file identities,
-owned board port, owned `CARGENTO_HOME` and native transcript path. File hashes
+owned board port, owned `COMPASS_HOME` and native transcript path. File hashes
 are rechecked around admission. The owned home must differ from the account's
-default Cargento home, and the three owner's board ports are refused. The
+default Compass home, and the three owner's board ports are refused. The
 configuration admission must verify the actual opened runtime/configuration
 and custom hooks use the owned board port; hashes alone do not prove this.
 
@@ -107,9 +107,9 @@ anchor refuse. Sibling branches rooted in that person remain valid; strict linea
 adjacency is not required. Source and hook bytes must remain stable through cleanup
 and observer close. The external scope
 must independently bind those hook records to this capture interval. Failed joins,
-loss, incomplete cleanup, violated limits or any Cargento model call attempt to hold
+loss, incomplete cleanup, violated limits or any Compass model call attempt to hold
 the charge. Ordinary agent-provider traffic is separately attributable; the monitor,
-declined and no-harness walks require zero Cargento model calls.
+declined and no-harness walks require zero Compass model calls.
 
 ## Verification limits
 

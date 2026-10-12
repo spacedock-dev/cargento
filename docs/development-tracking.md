@@ -1,7 +1,7 @@
 # Development tracking
 
 This file owns the roadmap labels and move taxonomy. It is a development record, separate from
-[what Cargento promises a reader](promise-map.md). The promise map, the Visibility 2x2 board's
+[what Compass promises a reader](promise-map.md). The promise map, the Visibility 2x2 board's
 Promise row and the Linear project overview carry the same five promises. The in-repository check
 allows the board's initial capital where the map continues a lowercase sentence; the tracker copy
 is checked by hand. Build order and issue state live in the

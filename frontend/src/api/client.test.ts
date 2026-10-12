@@ -23,7 +23,7 @@ function recorder(
 describe('GET /api/data', () => {
   it('returns the body with the revision header it carried', async () => {
     const { fetch, calls } = recorder(() =>
-      json({ generated: 1, sessions: [] }, { headers: { 'X-Cargento-Revision': '9.4' } }),
+      json({ generated: 1, sessions: [] }, { headers: { 'X-Compass-Revision': '9.4' } }),
     );
     const result = await createApiClient({ fetch }).getData({ showAll: true, usage: true });
     expect(calls.map((call) => call.url)).toEqual(['/api/data?all=1&usage=1']);
@@ -103,7 +103,7 @@ describe('GET /api/data', () => {
 
 describe('only GET /api/data reads the revision header', () => {
   it('leaves the revision empty on every other route', async () => {
-    const { fetch } = recorder(() => json({}, { headers: { 'X-Cargento-Revision': '1.1' } }));
+    const { fetch } = recorder(() => json({}, { headers: { 'X-Compass-Revision': '1.1' } }));
     const client = createApiClient({ fetch });
     expect(await client.getProjectContext({ project: 'p' })).toMatchObject({
       kind: 'ok',
@@ -224,7 +224,7 @@ describe('POST /api/focus', () => {
     const sent = await outcome(() => json({ focused: true }));
     expect(sent.result).toBe('sent');
     expect(sent.calls[0]?.init).toMatchObject({
-      headers: { 'Content-Type': 'application/json', 'X-Cargento-Capability': 'cap' },
+      headers: { 'Content-Type': 'application/json', 'X-Compass-Capability': 'cap' },
     });
     expect(JSON.parse(String(sent.calls[0]?.init?.body))).toEqual(identity);
     expect((await outcome(() => json({ focused: false }))).result).toBe('declined');

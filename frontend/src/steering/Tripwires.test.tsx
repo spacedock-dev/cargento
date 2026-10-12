@@ -5,7 +5,7 @@ import { mountPanels } from './testing';
 
 /* The tripwires are browser preferences. They keep the released storage format and read the older one, the add
    box stays open for the tab, Escape cancels its draft without leaving the page, and none of it is ever sent. */
-const KEY = (project: string) => `cargento.next.guardrails.${encodeURIComponent(project)}`;
+const KEY = (project: string) => `compass.next.guardrails.${encodeURIComponent(project)}`;
 const input = (): HTMLInputElement =>
   document.querySelector('[data-next-guardrail-input]') as HTMLInputElement;
 const add = () => screen.getByText('+ set a tripwire');

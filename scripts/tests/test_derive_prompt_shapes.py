@@ -28,10 +28,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cargento" / "skills" / "cargento"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "compass" / "skills" / "compass"))
 
 import derive_prompt_shapes as derive
-from cargento_runtime import records
+from compass_runtime import records
 
 # Nothing a real transcript would contain, so a leak is unambiguous. Named for
 # what it is rather than for what it stands in for: a variable called

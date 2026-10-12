@@ -19,7 +19,7 @@ import { sessionDeviations } from './support/session-deviations.mjs';
  * and the copy requests of Steer back) is a recorded observation asserted against the React page's own.
  *
  * No model is ever called: the reading route is a double. Every request leaving the board's own origins is
- * refused. Run with `pnpm test:drift:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name
+ * refused. Run with `pnpm test:drift:browser`; `COMPASS_E2E_STEPS=<regex>` runs only the steps whose name
  * matches.
  */
 import assert from 'node:assert/strict';
@@ -57,7 +57,7 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
-const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
+const SHOTS = (process.env.COMPASS_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
 );
@@ -67,7 +67,7 @@ const norm = (value) => jsonSafe(normalise(value));
 const receipts = {};
 const failures = [];
 const shots = [];
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 async function step(name, run) {
   if (only && !only.test(name)) return;
@@ -246,8 +246,8 @@ let mutationRoot = null;
 if (process.env.DRIFT_MUTATION && process.env.DRIFT_MUTATION !== 'drop-consent')
   throw new Error(`Unknown drift mutation: ${process.env.DRIFT_MUTATION}`);
 if (process.env.DRIFT_MUTATION === 'drop-consent') {
-  mutationRoot = await mkdtemp(join(tmpdir(), 'cargento-drift-consent-'));
-  for (const folder of ['frontend', 'cargento'])
+  mutationRoot = await mkdtemp(join(tmpdir(), 'compass-drift-consent-'));
+  for (const folder of ['frontend', 'compass'])
     await cp(join(REPOSITORY, folder), join(mutationRoot, folder), {
       recursive: true,
       filter: copyProofPath,
@@ -838,13 +838,20 @@ try {
       await load(react);
       await react.page.locator('[data-next-cockpit-action="steer-back"]').click();
       await react.page.waitForSelector('#next-cockpit-correction');
-      const old = golden.observe('steer: the box');
+      const recordedBox = golden.observe('steer: the box');
+      const recordedText = golden.observe('steer: the correction text');
+      // The box shows its character count. The recorded page counted the retired name, one letter longer
+      // than Compass, so only that number is restated, from the recorded text itself.
+      const retiredCount = recordedText.length + (recordedText.split('Compass').length - 1);
+      const old = {
+        ...recordedBox,
+        text: recordedBox.text.replace(`${retiredCount}/2000`, `${recordedText.length}/2000`),
+      };
       const mine = norm(await read(react));
       assert.deepEqual(mine, old, 'the steer box differs from the recorded box');
       const text = await react.page.locator('#next-cockpit-correction').inputValue();
-      const recordedText = golden.observe('steer: the correction text');
       assert.equal(text, recordedText);
-      assert.match(text, /Your last check failed \(#1 in Cargento\)\. Fix it, then say so\./);
+      assert.match(text, /Your last check failed \(#1 in Compass\)\. Fix it, then say so\./);
       await react.page.locator('[data-next-cockpit-action="correction-copy"]').click();
       await sleep(patience(300));
       const copied = await react.page.evaluate(() => globalThis.__copied);
@@ -884,7 +891,7 @@ try {
     const arm = async (o) => {
       await o.context.addInitScript(
         ([harness, sid]) => {
-          globalThis.localStorage.setItem(`cargento.next.live-estimate:${harness}:${sid}`, '1');
+          globalThis.localStorage.setItem(`compass.next.live-estimate:${harness}:${sid}`, '1');
         },
         [HARNESS, SID],
       );

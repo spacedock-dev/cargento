@@ -21,11 +21,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 ABSTENTION = ROOT / "docs" / "abstention"
 RECORD = ABSTENTION / "claude-acceptance.json"
-SKILL = ROOT / "cargento" / "skills" / "cargento"
+SKILL = ROOT / "compass" / "skills" / "compass"
 if str(SKILL) not in sys.path:
     sys.path.insert(0, str(SKILL))
 
-from cargento_runtime import annotations as annotation_store  # noqa: E402
+from compass_runtime import annotations as annotation_store  # noqa: E402
 
 
 def _load(path: Path) -> dict[str, Any]:

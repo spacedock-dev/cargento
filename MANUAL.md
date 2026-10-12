@@ -1,20 +1,20 @@
-# Cargento command manual
+# Compass command manual
 
 [Synopsis](#synopsis) | [Options](#options) | [Environment](#environment) |
 [Files](#files) | [Exit status](#exit-status) | [Examples](#examples)
 
 ## Name
 
-`server.py` starts, inspects and stops the Cargento coding-agent dashboard.
+`server.py` starts, inspects and stops the Compass coding-agent dashboard.
 
 ## Synopsis
 
 ```text
-python3 cargento/skills/cargento/server.py [OPTIONS]
-python3 cargento/skills/cargento/server.py --diagnose [--json] [OPTIONS]
-python3 cargento/skills/cargento/server.py --status [--port PORT]
-python3 cargento/skills/cargento/server.py --stop [--port PORT]
-python3 cargento/skills/cargento/server.py --forget [--port PORT]
+python3 compass/skills/compass/server.py [OPTIONS]
+python3 compass/skills/compass/server.py --diagnose [--json] [OPTIONS]
+python3 compass/skills/compass/server.py --status [--port PORT]
+python3 compass/skills/compass/server.py --stop [--port PORT]
+python3 compass/skills/compass/server.py --forget [--port PORT]
 ```
 
 Paths above are relative to the repository root. For a plugin installation, use the
@@ -24,17 +24,17 @@ command, such as `py -3`, in place of `python3`.
 
 ## Description
 
-Cargento is a Python 3.11+ standard-library server that reads local coding-agent stores and displays
+Compass is a Python 3.11+ standard-library server that reads local coding-agent stores and displays
 sessions across harnesses. With no operation flag it runs in the foreground until stopped. Open
 `http://127.0.0.1:4553/` in a browser, or use the port you selected. `/api/data` serves the session
 snapshot as JSON. The launcher does not open a browser for you.
 
-The default bind is IPv4 loopback. Harness stores are read-only; Cargento keeps its own observations,
+The default bind is IPv4 loopback. Harness stores are read-only; Compass keeps its own observations,
 annotations and settings separately. Optional vendor quota requests, model analyses and webhook
 nudges have different controls. See [Security](SECURITY.md#scope) for their disclosures and limits.
 
-This file is the command reference. [How to use Cargento](HOW_TO_USE.md) owns harness configuration
-and setup procedures. The [installed skill](cargento/skills/cargento/SKILL.md) remains self-contained
+This file is the command reference. [How to use Compass](HOW_TO_USE.md) owns harness configuration
+and setup procedures. The [installed skill](compass/skills/compass/SKILL.md) remains self-contained
 for agents that do not have the repository.
 
 ## Options
@@ -59,8 +59,8 @@ then `--forget`, then `--stop`, then `--status`; it does not execute a sequence 
 | `--frontend-dev-manifest PATH` | Contributor-only startup ticket for an owned Vite child. Requires foreground operation and `127.0.0.1`; refuses diagnose/forget and disables model calls, quota fetching and native actions. Validates fixture locations and a fresh child handshake before serving. Status/stop do not read the ticket or probe Vite. Use the [frontend development command](CONTRIBUTING.md#frontend-development) to create and own it. |
 | `--host ADDRESS` | Accepts only `127.0.0.1` (default) or `0.0.0.0`. The latter exposes the dashboard on every IPv4 interface without authentication. Other addresses and IPv6 are rejected. Read [remote-access risks](SECURITY.md#known-and-accepted) before changing it; prefer an SSH tunnel. |
 | `--daemon` | Detach and keep serving after the starting shell exits. Reports the URL, process ID and log path. Without it, serving stays in the foreground. On Windows the launcher starts a detached child; see [platform notes](#platform-notes). |
-| `--status` | Report whether Cargento answers on the selected port, then exit. Distinguishes a running dashboard, no dashboard, stale state and a port held by another process. |
-| `--stop` | Ask Cargento on the selected port to shut down and wait for the port to be free. A foreign process is left alone. If nothing is running, remove stale instance state if present. |
+| `--status` | Report whether Compass answers on the selected port, then exit. Distinguishes a running dashboard, no dashboard, stale state and a port held by another process. |
+| `--stop` | Ask Compass on the selected port to shut down and wait for the port to be free. A foreign process is left alone. If nothing is running, remove stale instance state if present. |
 | `--diagnose` | Report the local store paths searched, whether they are readable and what was found; exit without serving, writing history or making model calls. Use it first when a harness is missing. |
 | `--json` | Format `--diagnose` as JSON. Does not change status output or make the dashboard's normal output JSON. |
 | `--window-hours HOURS` | Hide sessions with no activity within this many hours. Default: `24`. Accepts a floating-point number. This display window is separate from history retention. |
@@ -77,13 +77,13 @@ separate opt-ins. A model ID selects a reader, not permission to send content or
 | `--claude-reading-model MODEL` | Explicit Claude model ID for Claude readings. Default: `claude-sonnet-5-5` (Sonnet 5.5). The admission floor is Sonnet 5: explicit Sonnet or Opus generation 5 or later IDs are accepted, such as `claude-sonnet-5`. Floating aliases, Haiku and older generations are rejected. An admitted ID must still be available through your Claude Code installation. |
 | `--unasked-readings` | Enable bounded Codex checks of annotated sessions without a fresh press; only departures are raised. Off by default. Spends model capacity and requires remembered Codex permission covering the current destination. Quiet hours can suppress checks. |
 | `--no-observer-model`, `--no-harness-usage` | Equivalent names for refusing every model call for this run, including goal summaries, reader-requested analyses and unasked checks. Overrides both opt-ins above. |
-| `--no-usage` | Refuse vendor quota network fetches and quota pushed into Cargento for this run, regardless of the stored dashboard setting. Quota recorded in harness-owned stores, such as Codex or Copilot, still appears. Does not disable model calls or reach nudges. |
+| `--no-usage` | Refuse vendor quota network fetches and quota pushed into Compass for this run, regardless of the stored dashboard setting. Quota recorded in harness-owned stores, such as Codex or Copilot, still appears. Does not disable model calls or reach nudges. |
 
 ### History and annotations
 
-History records what Cargento observed. Annotations contain the goal and expected outcome you typed.
+History records what Compass observed. Annotations contain the goal and expected outcome you typed.
 Switches below address those stores separately; a port selects an instance, not a separate history.
-Dashboards using the same Cargento home share persistent stores.
+Dashboards using the same Compass home share persistent stores.
 
 | Option | Behavior and default |
 |---|---|
@@ -94,9 +94,9 @@ Dashboards using the same Cargento home share persistent stores.
 | `--no-dismiss` | Do not read or write the handled-session store. Previously handled sessions return to the board and its dismiss control is unavailable for this run. |
 | `--forget` | A one-shot cleanup: delete observation history, recorded session ends and copied-correction digests; sweep annotation discard records; clear reading permission. Preserve the words you typed and unexpired model-spend timestamps. Refused while a dashboard answers on the selected port: stop it first. This is irreversible cleanup, not a feature-off switch. |
 
-`--forget` checks only the named port. Stop every dashboard sharing that Cargento home before
+`--forget` checks only the named port. Stop every dashboard sharing that Compass home before
 cleanup; an instance on another port can otherwise retain or recreate observations. It does not
-erase harness transcripts or every Cargento setting and store.
+erase harness transcripts or every Compass setting and store.
 
 ### Workflow and event controls
 
@@ -141,20 +141,60 @@ terminal. Leave both unset for normal dashboard use. See the
 | `--interaction-origin-session HARNESS:SID` | Select one exact, already-collected session identity for registered read-only terminal output. No session is selected by default. Must be paired with the registration-file option. |
 | `--interaction-origin-registration-file PATH` | Write the one-use session-side tmux registration capability to this file. No path is selected by default. Must be paired with the origin-session option; session-side registration is still required. |
 
+## Upgrading from Cargento
+
+Until 1.0.0, Compass uses your Cargento home in place when it is the only home. If
+`COMPASS_HOME` is set, it wins. When it is unset, `CARGENTO_HOME` is honored.
+Without an override, an existing `~/.compass` wins; `~/.cargento` is used only
+when `~/.compass` is absent. With neither directory present, the default is `~/.compass`.
+This selects one store for the process. Existing legacy state files are read and
+written in place. A new file uses its Compass filename; logs use Compass filenames.
+The selected legacy home is read and written until you move it to `~/.compass`
+by hand. A ledger charge leaves the next default dashboard launch on that same home.
+
+Each renamed state file falls back to its `cargento-` filename, including saved
+intent, outcome lines, history, readings, dismissals, tripwires, copied corrections,
+per-port state and the reading-permission database. The variables `CARGENTO_HOME`,
+`CARGENTO_REACH_URL`, `CARGENTO_QUIET_HOURS` and the Pi/OpenCode hook variable
+`CARGENTO_PORT` are read only when their `COMPASS_` counterparts are unset, with
+the same validation. Fixed spend ledgers and their receipts use the account's
+selected default home, ignoring `COMPASS_HOME` and `CARGENTO_HOME`. Earlier charges
+and new charges stay in the same file, preserving the spend cap. Redaction configuration
+uses that default home; study stores follow the selected store home. All twelve browser storage families read
+the old `cargento` key when the `compass` key is absent and write the new key.
+
+When the new state filename is absent, the legacy state file is used in place,
+including the permission database. Older and newer builds then share one consent
+and reservation authority: revoking permission in either takes effect in both,
+and earlier and new charges count toward the same cap. When both filenames exist,
+the Compass file wins. Forgetting observed records removes the legacy copy too; clearing saved
+intent removes its words from the selected file and any legacy copy. Turning off
+readings revokes consent while retaining the timestamps that protect the spend cap.
+Browser settings write the Compass key; clearing one may write an empty value under
+that key to keep the old value cleared. Fixed ledgers and receipts keep their
+filenames and are written in place, including under `~/.cargento`.
+Run `server.py --diagnose` to see each legacy home, variable or state filename in use.
+A blank `COMPASS_HOME` selects the default home without consulting `CARGENTO_HOME`.
+
+Update installed hook, MCP and status-line settings that name the old plugin path
+or `/cargento:cargento` command by hand, using the [setup procedures](HOW_TO_USE.md).
+These fallbacks are removed at 1.0.0; move any data you still need to the Compass
+names before upgrading to that release.
+
 ## Environment
 
-Use absolute paths for directory overrides. A nonblank harness override is authoritative: Cargento
+Use absolute paths for directory overrides. A nonblank harness override is authoritative: Compass
 does not also search that harness's default directory. Diagnose the effective paths after relocation.
 These are dashboard configuration variables; provider authentication and destination settings are
 owned by the installed harness, as explained in [Security](SECURITY.md#observer-model-calls).
 
 | Variable | Effect |
 |---|---|
-| `CARGENTO_HOME` | Move Cargento's own state, logs and persistent stores. Default: `.cargento` under your home directory. Does not relocate harness transcripts. Use the same value for start, stop, status and forget. |
-| `CARGENTO_REACH_URL` | Reach endpoint when `--reach-url` is absent; takes precedence over the `reach_url` file in the Cargento home. `--no-reach` overrides all sources. |
-| `CARGENTO_QUIET_HOURS` | Quiet-hours window when `--quiet-hours` is absent; takes precedence over the `quiet_hours` file in the Cargento home. `--no-quiet-hours` overrides all sources. |
-| `CLAUDE_CONFIG_DIR` | Claude configuration root; Cargento searches `projects`, `tasks` and `teams` below it. |
-| `CODEX_HOME` | Codex root; Cargento searches `sessions` below it. |
+| `COMPASS_HOME` | Move Compass's own state, logs and persistent stores. Default: `.compass` under your home directory. Does not relocate harness transcripts. Use the same value for start, stop, status and forget. |
+| `COMPASS_REACH_URL` | Reach endpoint when `--reach-url` is absent; takes precedence over the `reach_url` file in the Compass home. `--no-reach` overrides all sources. |
+| `COMPASS_QUIET_HOURS` | Quiet-hours window when `--quiet-hours` is absent; takes precedence over the `quiet_hours` file in the Compass home. `--no-quiet-hours` overrides all sources. |
+| `CLAUDE_CONFIG_DIR` | Claude configuration root; Compass searches `projects`, `tasks` and `teams` below it. |
+| `CODEX_HOME` | Codex root; Compass searches `sessions` below it. |
 | `GEMINI_CLI_HOME` | Parent of `.gemini`, not `.gemini` itself. Relocates Gemini data and Antigravity data below `.gemini/antigravity-cli`. |
 | `COPILOT_HOME` | Copilot store root. |
 | `PI_CODING_AGENT_DIR` | Pi configuration root; its `settings.json` and default `sessions` directory are resolved here. |
@@ -162,26 +202,26 @@ owned by the installed harness, as explained in [Security](SECURITY.md#observer-
 | `XDG_DATA_HOME` | Base for OpenCode and Goose data discovery. Defaults to `.local/share` under your home directory. |
 | `LOCALAPPDATA`, `APPDATA` | Additional native Windows candidates for OpenCode and Goose; see the [platform contract](COMPATIBILITY.md). |
 
-`CARGENTO_PORT`, used by hook and MCP clients, does not set the dashboard listener's port.
+`COMPASS_PORT`, used by hook and MCP clients, does not set the dashboard listener's port.
 Pass `--port` to `server.py`; configure its clients to reach that same port using the
 [setup procedures](HOW_TO_USE.md#move-it-ports-a-second-dashboard-and-where-state-lives).
 
 ## Files
 
-The following files live in `CARGENTO_HOME`, or `.cargento` under your home directory. The list
+The following files live in `COMPASS_HOME`, or `.compass` under your home directory. The list
 covers instance control and the stores addressed above; it is not a complete inventory of caches.
 
 | File | Purpose |
 |---|---|
-| `cargento-PORT.json` | Per-port instance state, including process identity and capabilities. |
-| `cargento-PORT.log` | Detached instance output and diagnostics. |
-| `cargento-history.json` | Bounded observation history. |
-| `cargento-ends.json` | Recorded session ends from the event coordinator. |
-| `cargento-annotations.json` | Saved reader goals, outcome lines, readings and discard records. |
-| `cargento-dismissals.json` | Sessions marked handled. |
-| `cargento-tripwires.json` | Saved workflow stage conditions. |
-| `cargento-copied-corrections.json` | Digests recording copied corrections, without their text. |
-| `cargento-reading-permission.sqlite3` | Reading permissions and model-spend admission timestamps. |
+| `compass-PORT.json` | Per-port instance state, including process identity and capabilities. |
+| `compass-PORT.log` | Detached instance output and diagnostics. |
+| `compass-history.json` | Bounded observation history. |
+| `compass-ends.json` | Recorded session ends from the event coordinator. |
+| `compass-annotations.json` | Saved reader goals, outcome lines, readings and discard records. |
+| `compass-dismissals.json` | Sessions marked handled. |
+| `compass-tripwires.json` | Saved workflow stage conditions. |
+| `compass-copied-corrections.json` | Digests recording copied corrections, without their text. |
+| `compass-reading-permission.sqlite3` | Reading permissions and model-spend admission timestamps. |
 | `reach_url`, `quiet_hours` | Optional plain-text defaults for reach and quiet hours. |
 
 See [local-store security](SECURITY.md#scope) for retention, permissions and other persistent data.
@@ -202,8 +242,8 @@ hours are forwarded.
 
 | Code | Meaning |
 |---|---|
-| `0` | Help or diagnosis completed; status found a running Cargento; serving ended normally; daemon startup or stop succeeded; or forget completed its reading-permission cleanup. `--stop` can succeed when no instance is running. |
-| `1` | Status found no running Cargento, or startup/stop/forget failed or was refused. A foreign process is not stopped. |
+| `0` | Help or diagnosis completed; status found a running Compass; serving ended normally; daemon startup or stop succeeded; or forget completed its reading-permission cleanup. `--stop` can succeed when no instance is running. |
+| `1` | Status found no running Compass, or startup/stop/forget failed or was refused. A foreign process is not stopped. |
 | `2` | Invalid command-line syntax or rejected values/combinations, reported by the argument parser. |
 
 Diagnosis can exit `0` while reporting missing or unreadable stores; inspect its report.
@@ -219,51 +259,51 @@ reader-requested model analyses.
 Show help or inspect discovery without starting a listener:
 
 ```bash
-python3 cargento/skills/cargento/server.py --help
-python3 cargento/skills/cargento/server.py --diagnose --json
+python3 compass/skills/compass/server.py --help
+python3 compass/skills/compass/server.py --diagnose --json
 ```
 
 Run in the foreground with a shorter display window:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4581 --window-hours 6 --no-observer-model
+python3 compass/skills/compass/server.py --port 4581 --window-hours 6 --no-observer-model
 ```
 
 Start a detached instance, check it and stop it:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4581 --daemon --no-observer-model
-python3 cargento/skills/cargento/server.py --port 4581 --status
-python3 cargento/skills/cargento/server.py --port 4581 --stop
+python3 compass/skills/compass/server.py --port 4581 --daemon --no-observer-model
+python3 compass/skills/compass/server.py --port 4581 --status
+python3 compass/skills/compass/server.py --port 4581 --stop
 ```
 
 Keep three days of history with a 256 KiB cap and overnight quiet hours:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4581 --history-days 3 --history-max-bytes 262144 --quiet-hours 22:00-08:00 --no-observer-model
+python3 compass/skills/compass/server.py --port 4581 --history-days 3 --history-max-bytes 262144 --quiet-hours 22:00-08:00 --no-observer-model
 ```
 
 Refuse quota network fetches, model calls and reach nudges for the run:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4581 --no-usage --no-harness-usage --no-reach
+python3 compass/skills/compass/server.py --port 4581 --no-usage --no-harness-usage --no-reach
 ```
 
-After stopping every instance sharing the selected Cargento home, clear observed history and
+After stopping every instance sharing the selected Compass home, clear observed history and
 reading permission while preserving typed annotations:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4581 --forget
+python3 compass/skills/compass/server.py --port 4581 --forget
 ```
 
 ## See also
 
 - [README](README.md): installation and a product overview.
-- [How to use Cargento](HOW_TO_USE.md): installed launcher discovery, hooks, MCP, relocation and troubleshooting.
-- [Installed skill](cargento/skills/cargento/SKILL.md): dashboard controls, supported stores and session interpretation.
+- [How to use Compass](HOW_TO_USE.md): installed launcher discovery, hooks, MCP, relocation and troubleshooting.
+- [Installed skill](compass/skills/compass/SKILL.md): dashboard controls, supported stores and session interpretation.
 - [Security](SECURITY.md): data exposure, outbound activity and retention limits.
 - [Compatibility](COMPATIBILITY.md): harness and platform support.
 
-The [launcher](cargento/skills/cargento/server.py) delegates to
-[`cargento_runtime.cli`](cargento/skills/cargento/cargento_runtime/cli.py), which owns the parser.
+The [launcher](compass/skills/compass/server.py) delegates to
+[`compass_runtime.cli`](compass/skills/compass/compass_runtime/cli.py), which owns the parser.
 `--help` reflects the copy you actually run; this manual follows the repository's current code.

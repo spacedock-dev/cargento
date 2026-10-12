@@ -85,7 +85,7 @@ export function readingConstraints(
     ]);
 }
 
-/* A message the server recognised as a correction the reader copied from Cargento is Cargento's words. */
+/* A message the server recognised as a correction the reader copied from Compass is Compass's words. */
 export function readingCopied(entry: WorkEntry | null | undefined): boolean {
   return String(entry?.type || '') === 'user_message' && entry?.copied === true;
 }
@@ -116,7 +116,7 @@ function beforeWindow(entry: WorkEntry, windowStart: number | null): boolean {
 
 /* Who wrote an evidence entry. A closed set on the person side, because the asymmetry in rule 7 turns on it
    and a truthy check would count every unfamiliar type as a person's words. An observer snapshot is
-   Cargento's own paraphrase of the session, so it is a third author. */
+   Compass's own paraphrase of the session, so it is a third author. */
 export function readingAuthor(entry: WorkEntry): 'person' | 'derived' | 'agent' {
   const type = String(entry.type || '');
   if (type === 'user_message' && entry.copied !== true) return 'person';
@@ -332,7 +332,7 @@ export function criterion(
   }
   /* The claims row, as `reading._claims_rule` reads it: every result names the agent's message making the
      claim; a departure or a consistent also the entry contradicting or showing it, and that entry not only
-     Cargento's paraphrase. An `unsupported` is about absence, so the message is all it can cite. */
+     Compass's paraphrase. An `unsupported` is about absence, so the message is all it can cite. */
   const claimSaid = claims ? cited.filter(agentMessage) : [];
   const claimRecord = claims ? cited.filter((entry) => !agentMessage(entry)) : [];
   if (claims && result !== UNVERIFIABLE) {
@@ -381,7 +381,7 @@ export function criterion(
     why = droppedCheck ? CHECK_DOES_NOT_SHOW_IT : ASSISTANT_ONLY;
   }
   if (result !== UNVERIFIABLE && derivedOnly) {
-    /* A verdict resting only on Cargento's own paraphrase is this board quoting itself. */
+    /* A verdict resting only on Compass's own paraphrase is this board quoting itself. */
     result = UNVERIFIABLE;
     why = DERIVED_ONLY;
   }

@@ -74,7 +74,7 @@ or were extra) is a separate column from judgement.
 
 ## What this writes, and what it never touches
 
-Two halves. `~/.cargento/abstention-results.json` stays on this machine and may
+Two halves. `~/.compass/abstention-results.json` stays on this machine and may
 carry the withheld reason and the producer's cutoff sentence. The committable
 summary carries case ids (sixteen hex characters of a hash), marks, outcomes,
 counts, coverage, the sha256 of the marks file as scored, and when. A later
@@ -120,7 +120,7 @@ if TYPE_CHECKING:
     from typing import TypeGuard
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_SKILL = os.path.join(_ROOT, "cargento", "skills", "cargento")
+_SKILL = os.path.join(_ROOT, "compass", "skills", "compass")
 
 
 def _runtime() -> tuple[Any, Any, Any]:
@@ -132,7 +132,7 @@ def _runtime() -> tuple[Any, Any, Any]:
     """
     if _SKILL not in sys.path:
         sys.path.insert(0, _SKILL)
-    from cargento_runtime import config, reading, records  # noqa: PLC0415
+    from compass_runtime import config, reading, records  # noqa: PLC0415
 
     return config, reading, records
 
@@ -376,7 +376,7 @@ class _Charged:
         self.unavailable_reason: str | None = getattr(model, "unavailable_reason", None)
 
     def __call__(self, prompt: str, *, output_cap_bytes: int) -> tuple[str, str]:
-        from cargento_runtime import observer, reading  # noqa: PLC0415 - see `_runtime`
+        from compass_runtime import observer, reading  # noqa: PLC0415 - see `_runtime`
 
         available = getattr(self.model, "available", None)
         if available is not None and not available():
@@ -669,7 +669,7 @@ def verify_claude_binary(
     the identity and sha256 name the executable that actually runs.
     """
     _runtime()
-    from cargento_runtime import observer  # noqa: PLC0415 - see `_runtime`
+    from compass_runtime import observer  # noqa: PLC0415 - see `_runtime`
 
     found = resolver("claude")
     if not found or not os.path.isabs(found):
@@ -737,7 +737,7 @@ def argv_digest(producer: str, config: Any, *, claude_executor: Any = None) -> s
     digest moves with a flag, a model or an effort and with nothing else.
     """
     _runtime()
-    from cargento_runtime import observer  # noqa: PLC0415 - see `_runtime`
+    from compass_runtime import observer  # noqa: PLC0415 - see `_runtime`
 
     seen: list[list[str]] = []
 
@@ -849,7 +849,7 @@ def yardstick(words: tuple[str, str]) -> list[dict[str, Any]]:
     Handed in as an argument, never written to the store. Decided 2026-09-12
     against the collector's first draft, which had the scorer write and clear
     a revision: `produce` takes `revisions`, so nothing need touch
-    `cargento-annotations.json`, no reading count moves, and the Intent log
+    `compass-annotations.json`, no reading count moves, and the Intent log
     stays the reader's.
     """
     goal, output = words
@@ -1968,7 +1968,7 @@ def _run_digest(records: Mapping[str, Any], binding: Mapping[str, str] | None) -
     """
     return abstention_ledger.digest(
         {
-            "domain": "cargento-scoring-run-v1",
+            "domain": "compass-scoring-run-v1",
             "records": records,
             "binding": {key: (binding or {}).get(key) for key in BINDING_KEYS},
         }
@@ -2144,7 +2144,7 @@ def _binding_refusal(corpus: Corpus, binding: Mapping[str, str] | None) -> str:
     if (binding or {}).get("producer") != "claude":
         return ""
     _runtime()
-    from cargento_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
+    from compass_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
 
     if corpus.cases.get("v") != mark_abstention.FORMAT_INTENT:
         return "a Claude Code result is scored only from a format 5 packet"
@@ -2215,7 +2215,7 @@ def _may_score(
             mark_abstention.case_checks(body, c)[0] is not None for c in body.get("cases") or ()
         )
     ):
-        print("Cargento cannot name where the producer would send these checks. Nothing ran.")
+        print("Compass cannot name where the producer would send these checks. Nothing ran.")
         return False
     if ledger is not None:
         why = ledger.check()
@@ -2250,7 +2250,7 @@ def _scoring_ledger(
             from analyze_campaign import (  # noqa: PLC0415 - optional closure source binding
                 runtime_source_digest,
             )
-            from cargento_runtime import (  # noqa: PLC0415 - runtime installed by prior admission
+            from compass_runtime import (  # noqa: PLC0415 - runtime installed by prior admission
                 observer,
             )
 
@@ -2744,7 +2744,7 @@ def _score_rubric(
 def reading_label(producer: str) -> str:
     """The name a cutoff sentence gives the producer, as the route names it."""
     _runtime()
-    from cargento_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
+    from compass_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
 
     return str(reading_route.LABELS.get(producer, ""))
 
@@ -3132,9 +3132,9 @@ def probe_environment(
     }
     env["ANTHROPIC_BASE_URL"] = f"http://{host}"
     if oauth:
-        env["CLAUDE_CODE_OAUTH_TOKEN"] = f"cargento-probe-placeholder-{secrets.token_hex(8)}"
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = f"compass-probe-placeholder-{secrets.token_hex(8)}"
     else:
-        env["ANTHROPIC_API_KEY"] = f"cargento-probe-placeholder-{secrets.token_hex(8)}"
+        env["ANTHROPIC_API_KEY"] = f"compass-probe-placeholder-{secrets.token_hex(8)}"
     if config_dir:
         env["CLAUDE_CONFIG_DIR"] = config_dir
     env["NO_PROXY"] = "127.0.0.1"
@@ -3178,7 +3178,7 @@ def _probe_once(
     import secrets  # noqa: PLC0415
 
     _runtime()
-    from cargento_runtime import observer, reading_route, supervise  # noqa: PLC0415
+    from compass_runtime import observer, reading_route, supervise  # noqa: PLC0415
 
     nonce = secrets.token_hex(16)
     needles = {
@@ -3190,7 +3190,7 @@ def _probe_once(
     oauth = mode == "OAuth"
     argv: list[list[str]] = []
     root = observer.reading_workdir_root() or tempfile.gettempdir()
-    with tempfile.TemporaryDirectory(prefix="cargento-probe-config-", dir=root) as folder:
+    with tempfile.TemporaryDirectory(prefix="compass-probe-config-", dir=root) as folder:
         account = _placeholder_account(folder) if oauth else {}
         with _ProbeStub(nonce, needles=needles, account=account) as stub:
             env = probe_environment(environ, stub.host, config_dir=folder, oauth=oauth)
@@ -3276,7 +3276,7 @@ def probe_argv(
 
 def _claude_model_arg(value: str) -> str:
     _runtime()
-    from cargento_runtime import cli  # noqa: PLC0415 - import after installing the runtime path
+    from compass_runtime import cli  # noqa: PLC0415 - import after installing the runtime path
 
     return cli.claude_reading_model_arg(value)
 
@@ -3316,7 +3316,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0911, PLR0915 
         print(refusal)
         return 2
     config_mod, reading, _records = _runtime()
-    from cargento_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
+    from compass_runtime import reading_route  # noqa: PLC0415 - see `_runtime`
 
     config = config_mod.build_runtime_config(
         environ=os.environ,

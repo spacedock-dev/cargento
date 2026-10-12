@@ -26,7 +26,7 @@ ROOT = SCRIPTS.parent
 sys.path.insert(0, str(SCRIPTS))
 import frontend_cutover as cutover  # noqa: E402 - the scripts directory is not a package
 import frontend_fluidity_fixture as fixture_module  # noqa: E402
-from cargento_runtime.web.page import load_frontend_page  # noqa: E402 - path set by the fixture
+from compass_runtime.web.page import load_frontend_page  # noqa: E402 - path set by the fixture
 
 
 def load(name: str) -> Any:
@@ -845,7 +845,7 @@ class FluidityFixtureTest(unittest.TestCase):
                 fixture_module.validate_port(port)
 
     def test_it_serves_the_react_document_with_the_baselines_rows(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
+        with tempfile.TemporaryDirectory(prefix="compass-fluidity-test-") as scratch:
             fixture = fixture_module.build_fixture(Path(scratch))
             self.assertEqual(load_frontend_page(), fixture.page)
             shipped = load(cutover.REACT_DOCUMENT)["document"]["sha256"]
@@ -874,7 +874,7 @@ class FluidityFixtureTest(unittest.TestCase):
             self.assertTrue(config.state_dir.resolve().is_relative_to(Path(scratch).resolve()))
 
     def test_empty_and_unavailable_are_different_production_states(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
+        with tempfile.TemporaryDirectory(prefix="compass-fluidity-test-") as scratch:
             fixture = fixture_module.build_fixture(Path(scratch))
             fixture.configure(cohort="small", state="empty", sequence=2)
             empty = fixture.application.collect(show_all=True)
@@ -886,7 +886,7 @@ class FluidityFixtureTest(unittest.TestCase):
             self.assertIsNotNone(unavailable["harnesses"][0]["error"])
 
     def test_controls_are_strict_and_sequence_monotonic(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
+        with tempfile.TemporaryDirectory(prefix="compass-fluidity-test-") as scratch:
             fixture = fixture_module.build_fixture(Path(scratch))
             for command in (
                 {"cohort": "real", "state": "healthy", "sequence": 1},
@@ -901,7 +901,7 @@ class FluidityFixtureTest(unittest.TestCase):
                 fixture.configure(cohort="small", state="healthy", sequence=1)
 
     def test_it_serves_its_page_and_each_board_over_http_and_refuses_a_busy_port(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-test-") as scratch:
+        with tempfile.TemporaryDirectory(prefix="compass-fluidity-test-") as scratch:
             fixture = fixture_module.build_fixture(Path(scratch))
             # This listener is ours, and proves the fixture never steals a busy port.
             with socket.socket() as occupied:

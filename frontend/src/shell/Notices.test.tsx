@@ -148,7 +148,7 @@ describe('a reset history', () => {
     unreadable.unmount();
     reset('version');
     const second = screen.getByRole('status').textContent;
-    expect(second).toContain('It was written by a different version of Cargento.');
+    expect(second).toContain('It was written by a different version of Compass.');
     expect(second).not.toBe(first);
   });
 
@@ -181,7 +181,7 @@ describe('a server restarted into a newer build', () => {
     expect(within(notice).getByText('Reload to use the new version.')).toBeInTheDocument();
     expect(within(notice).getByText('Why reload')).toBeInTheDocument();
     expect(notice.textContent).toContain(
-      'Cargento was restarted with a different version after this page loaded',
+      'Compass was restarted with a different version after this page loaded',
     );
     expect(onReload).not.toHaveBeenCalled();
     fireEvent.click(within(notice).getByRole('button', { name: 'Reload' }));

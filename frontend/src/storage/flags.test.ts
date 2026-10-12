@@ -3,21 +3,21 @@ import { blockedBackend, fakeBackend, readOnlyBackend } from '../../test/storage
 import { compatSessKey } from '../api/identity';
 import { createLegacyStorage, liveEstimateKey, memoKey, sessionKey, STORAGE_KEYS } from '.';
 
-describe('live estimate family (cargento.next.live-estimate:)', () => {
+describe('live estimate family (compass.next.live-estimate:)', () => {
   const session = { harness: 'claude', sid: 'a b:c' };
 
   it('keys on the unencoded harness:sid pair', () => {
-    expect(liveEstimateKey(session)).toBe('cargento.next.live-estimate:claude:a b:c');
+    expect(liveEstimateKey(session)).toBe('compass.next.live-estimate:claude:a b:c');
     expect(liveEstimateKey({ harness: 'codex', sid: 'a b:c' })).not.toBe(liveEstimateKey(session));
   });
 
   it('keys a row with no sid on its display id, as the page does, and agrees with the API layer', () => {
     const row = { harness: 'claude', sid: '', session: 'abcd1234' };
-    expect(liveEstimateKey(row)).toBe('cargento.next.live-estimate:claude:abcd1234');
+    expect(liveEstimateKey(row)).toBe('compass.next.live-estimate:claude:abcd1234');
     expect(sessionKey(row)).toBe(compatSessKey(row));
-    expect(memoKey('p', row, 'focus')).toBe('cargento.cockpit.memo.v2:p:claude%3Aabcd1234:focus');
+    expect(memoKey('p', row, 'focus')).toBe('compass.cockpit.memo.v2:p:claude%3Aabcd1234:focus');
     expect(liveEstimateKey({ harness: 'claude', sid: '' })).toBe(
-      'cargento.next.live-estimate:claude:',
+      'compass.next.live-estimate:claude:',
     );
   });
 
@@ -56,8 +56,8 @@ describe('live estimate family (cargento.next.live-estimate:)', () => {
   });
 });
 
-describe('workstream collapse family (cargento.next.workstream.collapsed)', () => {
-  const key = 'cargento.next.workstream.collapsed';
+describe('workstream collapse family (compass.next.workstream.collapsed)', () => {
+  const key = 'compass.next.workstream.collapsed';
 
   it('is collapsed only for the raw word 1', () => {
     expect(Object.values(STORAGE_KEYS)).toContain(key);
@@ -99,18 +99,18 @@ describe('workstream collapse family (cargento.next.workstream.collapsed)', () =
 describe('the twelve keys', () => {
   it('are spelled exactly as released', () => {
     expect(STORAGE_KEYS).toEqual({
-      memoPrefix: 'cargento.cockpit.memo.v2:',
-      graphMode: 'cargento.next.graph.mode',
-      guardrailPrefix: 'cargento.next.guardrails.',
-      leader: 'cargento.next.leader',
-      liveEstimatePrefix: 'cargento.next.live-estimate:',
-      revision: 'cargento.next.revision',
-      usageConsent: 'cargento.next.usage.consent',
-      workstreamCollapsed: 'cargento.next.workstream.collapsed',
-      observerConsent: 'cargento.observer-model-consent.v1',
-      cockpitProject: 'cargento.projectCockpitProject',
-      goalPrefix: 'cargento.projectGoal.v1:',
-      usage: 'cargento.projectUsage.v1',
+      memoPrefix: 'compass.cockpit.memo.v2:',
+      graphMode: 'compass.next.graph.mode',
+      guardrailPrefix: 'compass.next.guardrails.',
+      leader: 'compass.next.leader',
+      liveEstimatePrefix: 'compass.next.live-estimate:',
+      revision: 'compass.next.revision',
+      usageConsent: 'compass.next.usage.consent',
+      workstreamCollapsed: 'compass.next.workstream.collapsed',
+      observerConsent: 'compass.observer-model-consent.v1',
+      cockpitProject: 'compass.projectCockpitProject',
+      goalPrefix: 'compass.projectGoal.v1:',
+      usage: 'compass.projectUsage.v1',
     });
   });
 });

@@ -52,7 +52,7 @@ def check_inventory(root: Path, data: dict[str, Any]) -> list[str]:
     )
     gaps.extend(owner_gaps(root, document))
     gaps.extend(native_field_gaps(root, data))
-    literals = re.compile(r"""["'`](cargento\.[^"'`\s$]+)""")
+    literals = re.compile(r"""["'`](compass\.[^"'`\s$]+)""")
     storage_names = set(literals.findall((root / STORAGE_KEYS).read_text(encoding="utf-8")))
     _coverage("storage", storage_names, groups["storage"], gaps)
     gaps.extend(

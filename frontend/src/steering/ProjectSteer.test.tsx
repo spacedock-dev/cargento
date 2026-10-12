@@ -20,7 +20,7 @@ describe('the steering bar says what it is before the first keystroke', () => {
     expect(screen.getByText('Your note (this tab only)')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Cargento has no write path into a session\. Anything you type here is a note to yourself/,
+        /Compass has no write path into a session\. Anything you type here is a note to yourself/,
       ),
     ).toBeInTheDocument();
     expect(box().getAttribute('maxlength')).toBe('500');

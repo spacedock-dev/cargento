@@ -13,7 +13,7 @@ import { sessionDeviations } from './support/session-deviations.mjs';
  * Models, usage, notifications, the clipboard and the terminal are off or replaced: the page's clipboard is a
  * recorder, the terminal raise is inert, and the Intent panel the previous interface drew beside the activity
  * column is outside the comparison (it is a stated slot in the React page). Run with
- * `pnpm test:sessions:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name matches,
+ * `pnpm test:sessions:browser`; `COMPASS_E2E_STEPS=<regex>` runs only the steps whose name matches,
  * `SESSIONS_E2E_SEEDS` sets how many generated payloads the differential compares.
  *
  * What the previous interface said is read through `support/golden.mjs` from
@@ -45,7 +45,7 @@ const { genPayload } = await import('../src/observed/generate.test.helper.ts');
 
 // A proof belongs to its worktree; sibling captures must not overwrite one another.
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
-const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
+const SHOTS = (process.env.COMPASS_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
 );
@@ -53,7 +53,7 @@ const SEEDS = Number(process.env.SESSIONS_E2E_SEEDS || 10);
 const E = encodeURIComponent;
 const receipts = {};
 const failures = [];
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 async function step(name, run) {
   if (only && !only.test(name)) return;
@@ -242,7 +242,7 @@ async function freeze(opened, holder) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      headers: { 'X-Cargento-Revision': '7.1' },
+      headers: { 'X-Compass-Revision': '7.1' },
       body: JSON.stringify(holder.body),
     }),
   );
@@ -803,7 +803,7 @@ try {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        headers: { 'X-Cargento-Revision': '7.1' },
+        headers: { 'X-Compass-Revision': '7.1' },
         body: JSON.stringify(state.body),
       }),
     );

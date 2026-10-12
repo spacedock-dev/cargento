@@ -14,14 +14,14 @@
   },
   "browser_project_goal": {
     "declared_keys": [
-      "cargento.displayMode",
-      "cargento.leader",
-      "cargento.projectFilter",
-      "cargento.revision",
-      "cargento.usageCfg",
-      "cargento.usageEnabled",
-      "cargento.usageModalSeen",
-      "cargento.usageOpen"
+      "compass.displayMode",
+      "compass.leader",
+      "compass.projectFilter",
+      "compass.revision",
+      "compass.usageCfg",
+      "compass.usageEnabled",
+      "compass.usageModalSeen",
+      "compass.usageOpen"
     ],
     "failure": "no shipped project-goal storage key, schema, writer, or conflict rule",
     "project_goal_keys": [],

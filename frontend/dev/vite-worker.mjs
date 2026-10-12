@@ -71,7 +71,7 @@ async function start(options) {
       react(),
       tailwindcss(),
       {
-        name: 'cargento-dev-origin',
+        name: 'compass-dev-origin',
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
             if (!exactHeader(req, 'host', authority) || req.method !== 'GET') return refuse(res);
@@ -81,11 +81,11 @@ async function start(options) {
             } catch {
               return refuse(res);
             }
-            if (path === '/__cargento_dev_handshake') {
-              const challenge = req.headers['x-cargento-dev-challenge'];
+            if (path === '/__compass_dev_handshake') {
+              const challenge = req.headers['x-compass-dev-challenge'];
               if (
                 Object.hasOwn(req.headers, 'origin') ||
-                req.headers['x-cargento-dev-generation'] !== manifest.backend_generation ||
+                req.headers['x-compass-dev-generation'] !== manifest.backend_generation ||
                 typeof challenge !== 'string' ||
                 !/^[0-9a-f]{64}$/.test(challenge)
               )
@@ -111,7 +111,7 @@ async function start(options) {
               ['document', 'iframe', 'frame'].includes(req.headers['sec-fetch-dest'])
             )
               return refuse(res);
-            if (path === '/__cargento_dev_fonts.css') {
+            if (path === '/__compass_dev_fonts.css') {
               res.writeHead(200, {
                 'Content-Type': 'text/css',
                 'Cache-Control': 'no-store',
@@ -162,7 +162,7 @@ async function start(options) {
         server: dispatch,
         host: '127.0.0.1',
         clientPort: options.port,
-        path: '__cargento_hmr',
+        path: '__compass_hmr',
         protocol: 'ws',
       },
     },
@@ -177,7 +177,7 @@ async function start(options) {
     if (
       !exactHeader(req, 'host', authority) ||
       !exactHeader(req, 'origin', manifest.python_origin) ||
-      path !== '/__cargento_hmr' ||
+      path !== '/__compass_hmr' ||
       !['vite-hmr', 'vite-ping'].includes(req.headers['sec-websocket-protocol'])
     ) {
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');

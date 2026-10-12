@@ -1,11 +1,11 @@
 ---
 name: visibility-2x2
-description: Use when deciding what Cargento should build next, opening the Visibility 2x2 board, or reviewing its candidate-signal scores.
+description: Use when deciding what Compass should build next, opening the Visibility 2x2 board, or reviewing its candidate-signal scores.
 ---
 
 # Visibility 2x2
 
-A local board for arguing about what Cargento should become. It lives at
+A local board for arguing about what Compass should become. It lives at
 `docs/visibility-2x2/` in this repository and is a development tool, not part of the
 shipped plugin.
 
@@ -38,8 +38,8 @@ is the one people misread, so lead with it.
 - **Vertical is impact**: if the user had this reliably and instantly, how much would it
   change what they actually do.
 - **Horizontal is access**: how hard is it for a normal user to get this information today
-  *without* Cargento. Left means a harness already shows it, so building it is convenience.
-  Right means Cargento creates access that did not exist.
+  *without* Compass. Left means a harness already shows it, so building it is convenience.
+  Right means Compass creates access that did not exist.
 
 So the top-right corner is where the product earns its position. Engineering effort is a
 separate `build` score and has nothing to do with the horizontal axis.

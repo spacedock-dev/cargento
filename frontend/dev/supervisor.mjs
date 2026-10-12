@@ -144,7 +144,7 @@ export async function startDevelopment(options = {}) {
   const root = options.root || repository;
   const pythonName =
     options.python ||
-    process.env.CARGENTO_TEST_PYTHON ||
+    process.env.COMPASS_TEST_PYTHON ||
     (process.platform === 'win32' ? 'python' : 'python3');
   let python;
   try {
@@ -171,7 +171,7 @@ export async function startDevelopment(options = {}) {
   } catch {
     throw Error('Frontend dependencies are missing; run pnpm install --frozen-lockfile first.');
   }
-  const scratch = await mkdtemp(join(tmpdir(), 'cargento-development-'));
+  const scratch = await mkdtemp(join(tmpdir(), 'compass-development-'));
   await mkdir(join(scratch, 'no-executables'));
   const env = isolatedEnvironment(scratch, process.env);
   const nonce = randomBytes(32).toString('hex'),
@@ -250,7 +250,7 @@ export async function startDevelopment(options = {}) {
     const manifestPath = join(scratch, `dev-${generation}.json`);
     await writeFile(manifestPath + '.tmp', JSON.stringify(manifest), { mode: 0o600 });
     await rename(manifestPath + '.tmp', manifestPath);
-    const launcher = options.backendHelper || join(root, 'cargento/skills/cargento/server.py');
+    const launcher = options.backendHelper || join(root, 'compass/skills/compass/server.py');
     const args = [
       launcher,
       '--frontend-dev-manifest',
@@ -302,7 +302,7 @@ export async function startDevelopment(options = {}) {
           deadline: Math.min(deadline, Date.now() + 1000),
           signal: requests.signal,
         });
-        if (!document.includes(`<meta name="cargento-dev-generation" content="${generation}">`))
+        if (!document.includes(`<meta name="compass-dev-generation" content="${generation}">`))
           throw Error('Python development identity mismatch.');
         handle.ready = { origin, viteOrigin, pid: backend.pid, workerPid: worker.pid, generation };
         await rm(manifestPath, { force: true });
@@ -369,7 +369,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       signal: controller.signal,
     });
     console.log(
-      `Cargento development: ${dev.origin} (isolated fixtures; models, usage and native actions disabled)`,
+      `Compass development: ${dev.origin} (isolated fixtures; models, usage and native actions disabled)`,
     );
     const input = createInterface({ input: process.stdin });
     input.on('line', (line) => {

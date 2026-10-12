@@ -24,7 +24,7 @@ import { usePanel } from './useIntent';
 
 /* The question before the press: "You gave a later direction ...", asked in the Analyze control's place, so
    the answer has one home and is asked before a reading is spent rather than after one was demoted. It asks
-   and never answers whether the direction conflicts: Cargento does not write into a session, and deciding
+   and never answers whether the direction conflicts: Compass does not write into a session, and deciding
    that a later instruction contradicts a typed goal is a reading of two prose strings, which the reader
    settles. The number comes from the entry list, and every unsettled later direction is drawn at its own
    number, so the "#<n>" named is on screen; the sentence drops the number rather than naming one the list

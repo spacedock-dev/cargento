@@ -1,6 +1,6 @@
 ---
 name: burndown
-description: Use when burning down a milestone of the Cargento Actions Front and Center project to completion, planning how to group and stack its issues, or closing out a single DRC issue.
+description: Use when burning down a milestone of the Compass Actions Front and Center project to completion, planning how to group and stack its issues, or closing out a single DRC issue.
 ---
 
 # burndown
@@ -104,7 +104,7 @@ the `Verification`-labelled issue aside; it runs last.
 
 **Tag each issue:**
 
-- Surface: `frontend/`, the built `cargento_runtime/web/` bundle, the shipped `SKILL.md`, `SECURITY.md` or `HOW_TO_USE.md`,
+- Surface: `frontend/`, the built `compass_runtime/web/` bundle, the shipped `SKILL.md`, `SECURITY.md` or `HOW_TO_USE.md`,
   `config.py`, or Python only.
 - Review tier, from **AGENTS.md, "Calibrating Effort"**: full adversarial for the `Security` label,
   credential handling, data loss, or a change to a boundary `SECURITY.md` names (such as the history

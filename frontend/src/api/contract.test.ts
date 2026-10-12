@@ -170,7 +170,7 @@ describe('every recorded GET answers as recorded', () => {
       if (result.kind === 'ok') {
         expect(result.revision).toBe(
           fixture.request.path === '/api/data'
-            ? (fixture.response.headers['X-Cargento-Revision'] ?? '')
+            ? (fixture.response.headers['X-Compass-Revision'] ?? '')
             : '',
         );
       }
@@ -228,14 +228,14 @@ describe('focus fixtures map to the closed outcomes', () => {
       };
       expect(await client.focus({ identity, capability: 'present' })).toBe(outcome);
       expect(sent).toHaveLength(1);
-      expect(sent[0]?.init?.headers).toMatchObject({ 'X-Cargento-Capability': 'present' });
+      expect(sent[0]?.init?.headers).toMatchObject({ 'X-Compass-Capability': 'present' });
     });
   }
 
   it('sends nothing without a capability, which the server would refuse with 403', async () => {
     const fixture = byName('focus-missing-capability');
     expect(fixture.response.status).toBe(403);
-    expect(fixture.request.headers).not.toHaveProperty('X-Cargento-Capability');
+    expect(fixture.request.headers).not.toHaveProperty('X-Compass-Capability');
     const { sent, client } = replayOf(fixture);
     expect(
       await client.focus({
@@ -252,7 +252,7 @@ function boardFrom(name: string) {
   const store = createBoardStore({ now: () => 1 });
   store.acceptData(
     fixture.response.body as PayloadData,
-    fixture.response.headers['X-Cargento-Revision'] ?? '',
+    fixture.response.headers['X-Compass-Revision'] ?? '',
   );
   return store;
 }
@@ -312,18 +312,18 @@ describe('selectors over recorded boards', () => {
     const store = createBoardStore({ now: () => 1 });
     store.acceptData(
       healthy.response.body as PayloadData,
-      healthy.response.headers['X-Cargento-Revision'] ?? '',
+      healthy.response.headers['X-Compass-Revision'] ?? '',
     );
     expect(selectBuildState(store.getSnapshot())).toBe('same');
     store.acceptData(
       restarted.response.body as PayloadData,
-      restarted.response.headers['X-Cargento-Revision'] ?? '',
+      restarted.response.headers['X-Compass-Revision'] ?? '',
     );
     expect(selectBuildState(store.getSnapshot())).toBe('reload-required');
     expect(
       revisionNewer(
-        restarted.response.headers['X-Cargento-Revision'],
-        healthy.response.headers['X-Cargento-Revision'],
+        restarted.response.headers['X-Compass-Revision'],
+        healthy.response.headers['X-Compass-Revision'],
       ),
     ).toBe(true);
   });

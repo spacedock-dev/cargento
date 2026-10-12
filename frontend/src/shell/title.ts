@@ -8,19 +8,19 @@ import { findSession, sessionTitle } from './derive';
 export function documentTitle(route: Route, data: PayloadData | null): string {
   switch (route.view) {
     case 'attention':
-      return 'Cargento — Attention';
+      return 'Compass — Attention';
     case 'projects':
-      return 'Cargento — Projects';
+      return 'Compass — Projects';
     case 'sessions':
-      return 'Cargento — Sessions';
+      return 'Compass — Sessions';
     case 'intent':
-      return 'Cargento — Intent log';
+      return 'Compass — Intent log';
     case 'project':
-      return `${route.project} — Cargento`;
+      return `${route.project} — Compass`;
     case 'session': {
       const session = findSession(data, route.project, route.harness, route.session);
       const title = session ? sessionTitle(session) : String(route.session || 'Session');
-      return `${title} — ${route.project} — Cargento`;
+      return `${title} — ${route.project} — Compass`;
     }
   }
 }

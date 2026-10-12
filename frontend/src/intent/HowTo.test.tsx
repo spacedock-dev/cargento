@@ -69,7 +69,7 @@ describe('the Intent how-to', () => {
       expect(popup.textContent).toContain(
         steer ? 'Steer back: available here.' : 'Steer back: Claude Code only.',
       );
-      expect(popup.textContent).toContain('Cargento never writes into sessions.');
+      expect(popup.textContent).toContain('Compass never writes into sessions.');
       expect(popup.textContent).toContain('Not enough recorded yet');
       const node = popup;
       await page.poll(page.state.data);

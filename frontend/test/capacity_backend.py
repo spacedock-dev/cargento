@@ -2,7 +2,7 @@
 """Run the real CLI over the Console board with a quota provider and model offer a test can steer.
 
 Everything the capacity and consent proofs need to see is steered from one control file and counted
-in one event log, both under `<CARGENTO_HOME>/capacity-fixture/`, which the supervisor (or the test)
+in one event log, both under `<COMPASS_HOME>/capacity-fixture/`, which the supervisor (or the test)
 owns:
 
 - `control.json`: `{"windows": "full" | "reordered" | "fewer" | "none", "observer": "enabled" |
@@ -29,12 +29,12 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "cargento/skills/cargento"))
+sys.path.insert(0, str(HERE.parents[1] / "compass/skills/compass"))
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "e2e" / "support"))
 
 import console_backend as board  # noqa: E402
-from cargento_runtime import aggregate, cli, project_context, state  # noqa: E402
+from compass_runtime import aggregate, cli, project_context, state  # noqa: E402
 
 DISCLOSURE = (
     "Send redacted transcript excerpts to the fixture reader for a goal summary? "
@@ -46,7 +46,7 @@ _LOCK = threading.Lock()
 
 
 def _folder() -> Path:
-    return Path(os.environ["CARGENTO_HOME"]) / "capacity-fixture"
+    return Path(os.environ["COMPASS_HOME"]) / "capacity-fixture"
 
 
 def control() -> dict[str, str]:

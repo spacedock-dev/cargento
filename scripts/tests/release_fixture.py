@@ -32,11 +32,11 @@ SCRIPTS = (
     "verify_release_archive.py",
 )
 MANIFESTS = (
-    "cargento/.claude-plugin/plugin.json",
-    "cargento/.codex-plugin/plugin.json",
-    "cargento-gemini/gemini-extension.json",
+    "compass/.claude-plugin/plugin.json",
+    "compass/.codex-plugin/plugin.json",
+    "compass-gemini/gemini-extension.json",
 )
-WEB = "cargento/skills/cargento/cargento_runtime/web"
+WEB = "compass/skills/compass/compass_runtime/web"
 BASE_VERSION = "0.1.0"
 IDENTITY = (
     "-c",
@@ -94,7 +94,7 @@ def _build_template() -> Path:
     root = Path(tempfile.mkdtemp(prefix="release-template-"))
     _scratch.append(root)
     tracked = subprocess.run(
-        [GIT, "-C", str(REPO), "ls-files", "cargento", "cargento-gemini"],
+        [GIT, "-C", str(REPO), "ls-files", "compass", "compass-gemini"],
         capture_output=True,
         text=True,
         check=True,

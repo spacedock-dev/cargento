@@ -99,7 +99,7 @@ export function correctionFit(
   return { value: edit.head + run + edit.tail, caret: edit.head.length + run.length };
 }
 
-/* The parts with "#n" filled from the list's own numbers: the first number drawn reads "(#n in Cargento)",
+/* The parts with "#n" filled from the list's own numbers: the first number drawn reads "(#n in Compass)",
    the rest "(#n)", and an entry the list does not number keeps only its time, which the server already
    wrote. The server counts every placeholder at its widest, so the text stays within the cap. */
 export function correctionText(
@@ -112,7 +112,7 @@ export function correctionText(
       if (typeof part === 'string') return part;
       const n = numbers.get(String(part?.entry || ''));
       if (n === undefined) return '';
-      const said = first ? ` (#${String(n)} in Cargento)` : ` (#${String(n)})`;
+      const said = first ? ` (#${String(n)} in Compass)` : ` (#${String(n)})`;
       first = false;
       return said;
     })

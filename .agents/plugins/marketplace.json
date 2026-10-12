@@ -1,14 +1,14 @@
 {
-  "name": "cargento-marketplace",
+  "name": "compass-marketplace",
   "interface": {
-    "displayName": "Cargento"
+    "displayName": "Compass"
   },
   "plugins": [
     {
-      "name": "cargento",
+      "name": "compass",
       "source": {
         "source": "local",
-        "path": "./cargento"
+        "path": "./compass"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -148,7 +148,7 @@
       "method": "GET",
       "name": "annotations-populated",
       "route": "/api/annotations",
-      "sha256": "f98cfa9fd020f1b203da89dff14d5c486c7a1b67b78d11390258c50f0480895f",
+      "sha256": "f95aa86c65493c4ea978eeeb9a25de75502f9822db5c3f578f64c4662c683610",
       "status": 200
     },
     {
@@ -281,14 +281,14 @@
       "method": "GET",
       "name": "data-empty",
       "route": "/api/data",
-      "sha256": "7767056e7b336ea448a9a6e00ff28c0784909908dd4967a426dbeef79c2c799e",
+      "sha256": "c1c5fab89eeff7e83e1d49d10b8098370776158124d1e8068f56eba5ba9ebe50",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-forbidden-cross-site",
       "route": "/api/data",
-      "sha256": "9d0a1c6dfd43bda44f299b4436d25d1b61c171fcc8811799df9327ce757aa3dd",
+      "sha256": "2e6564e4746ef0f6a09371537ecf5e7d38ac10424ed9f12f226debac2ec9c8e7",
       "status": 403
     },
     {
@@ -302,35 +302,35 @@
       "method": "GET",
       "name": "data-healthy",
       "route": "/api/data",
-      "sha256": "5745a832a16f221488ad3cfb9dc26a47488322fe8e21a99d4741cb519225bfa7",
+      "sha256": "891bbfd02f4e7d37effad26b56a373f987a7684b62679f2ae595807fdc1fdf7a",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-identity-collisions",
       "route": "/api/data",
-      "sha256": "bea56e0448f6bbbbcce8ec37d59ece521989a5a0f569efb1d51e7c1b6eb7aa4a",
+      "sha256": "91de59a4af5d6db2804f6e46618fdbff101c4baeeff36fabba3a65bcdbc16b1f",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-restarted-build",
       "route": "/api/data",
-      "sha256": "1688e189a08bde382eef0f8b86d9ed00848d40dd548dbae270e7570f76a29810",
+      "sha256": "881c07665227e9fd8d47e1a9b84c7dbecce08282bb4a49349f9ef5368ea9205a",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-show-all",
       "route": "/api/data",
-      "sha256": "ac5982618dddf242d7f87dc26ed41d85622704622558aa28ea006cf02bc5d9e4",
+      "sha256": "681a84c27e2f3e7a79560c4d2937a5b5715e81f97f2a6d62ef9580c6b474d424",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-unavailable",
       "route": "/api/data",
-      "sha256": "ebfbd131c22a4afdbe499bac778b93f45b321b63f8af56d3c56b5ebcf3b55a9d",
+      "sha256": "c0f523e72f274be4323bec884fc22715a8d5bbaa8bdd777dd71b015d15772f64",
       "status": 200
     },
     {
@@ -358,7 +358,7 @@
       "method": "POST",
       "name": "direction-unavailable",
       "route": "/api/direction",
-      "sha256": "ec71696c12d90c6790f883237a863067d8d3b0bda1c7ab498fff0278e372b67a",
+      "sha256": "41348dfbc9442e30804e4f4c41a9db1535f069aa34a13754dc91017d098f4049",
       "status": 200
     },
     {
@@ -379,28 +379,28 @@
       "method": "POST",
       "name": "focus-declined",
       "route": "/api/focus",
-      "sha256": "1d667c2aa2ce9f18aebf087593bbcf2b0ab8b521ece168fbbe73ce0f0f3eb25c",
+      "sha256": "ba2383bffa33fae614825111ed4e402086d2f3a53ad77ccffc7c8b919613263d",
       "status": 200
     },
     {
       "method": "POST",
       "name": "focus-disabled",
       "route": "/api/focus",
-      "sha256": "30c8e951d6e360a44186482a35761f5dfdf28e61827ed693f652ae2763e540fa",
+      "sha256": "ee9c66b106fa07f7ca445c7e63e96563effa8ba96243826f0635928f4739ea49",
       "status": 503
     },
     {
       "method": "POST",
       "name": "focus-focused",
       "route": "/api/focus",
-      "sha256": "f613a483f2d23a541c65dd3e91ce6349a64d5b146364781ea5a16f56d506751a",
+      "sha256": "51a4a728c6f21b931deff399a149e97a939f6ea930b3ee073860075d7c80809c",
       "status": 200
     },
     {
       "method": "POST",
       "name": "focus-forbidden-capability",
       "route": "/api/focus",
-      "sha256": "a44298739e2b40acd28f8a37ed3372b622bbb384e8bc277b12a43a48db0f6b53",
+      "sha256": "069cca8ab32ec28c014faf1a3a2ccdafef3342908ab08cad7058f5e30a904ff1",
       "status": 403
     },
     {
@@ -414,14 +414,14 @@
       "method": "POST",
       "name": "focus-throttled",
       "route": "/api/focus",
-      "sha256": "3200526d64d54384412f9a3b2c60b75196e28ca2c18c2b13b408043663c3b81c",
+      "sha256": "87c603dffd3e7dc132742cb984dc94d300f82cc799d073f26c645ccce6481fb3",
       "status": 429
     },
     {
       "method": "POST",
       "name": "focus-too-large",
       "route": "/api/focus",
-      "sha256": "6483a1f1a2cbeac916e7c331a77bb9b60802e48138589c629bf7813d896cfce8",
+      "sha256": "57f01177e28f76cd44eae6e89a48dcabee63962b335920a915943532ddc12971",
       "status": 413
     },
     {
@@ -533,7 +533,7 @@
       "method": "POST",
       "name": "reading-page-outdated",
       "route": "/api/reading",
-      "sha256": "f73f9b421e43a35f5e0bd28a83b37ae185cd91c511744d6f8e89c27c98b6cd10",
+      "sha256": "bfa46f8fb924bd00cf9cdd8fbe130de369de138f761bb25f5d6cb8c05fe840c2",
       "status": 400
     },
     {
@@ -667,7 +667,7 @@
     "answer-confirmed": "needs a registered ask, which an agent's own ingress token creates",
     "context-refresh-granted": "GET /api/project-context?refresh=1&observer_model=1 with a model enabled spends a model call; only the model-disabled answer is captured",
     "data-malformed-fields": "the application always publishes the full row schema, so a missing or malformed field cannot come from the real server; clients derive those cases by mutating the captured healthy body",
-    "data-missing-revision-header": "a 200 from /api/data always carries X-Cargento-Revision; the header is absent only on the refusals captured as data-forbidden-*, and clients strip it from data-healthy for the proxy case",
+    "data-missing-revision-header": "a 200 from /api/data always carries X-Compass-Revision; the header is absent only on the refusals captured as data-forbidden-*, and clients strip it from data-healthy for the proxy case",
     "data-usage-consented": "GET /api/data?usage=1 starts a quota fetch against a vendor credential",
     "focus-real-raise": "a real terminal raise is a native action; only an inert runner is used",
     "health": "the body carries the process id, which differs on every run",

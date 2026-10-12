@@ -13,13 +13,13 @@ from typing import TYPE_CHECKING, Any, cast
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cargento/skills/cargento"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "compass/skills/compass"))
 import abstention_ledger
 import score_abstention
-from cargento_runtime import reading
+from compass_runtime import reading
 
 if TYPE_CHECKING:
-    from cargento_runtime.config import RuntimeConfig
+    from compass_runtime.config import RuntimeConfig
 
 
 class QualificationDiagnostics(unittest.TestCase):

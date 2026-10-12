@@ -7,7 +7,7 @@ fixtures and verdict, and spreads the work:
 
 - Every worker repeats the exact ``discover`` call the serial command makes.
   That is load-bearing, not tidiness: 29 test modules never import
-  ``tests/support.py`` and get their temporary ``HOME`` and ``CARGENTO_HOME``
+  ``tests/support.py`` and get their temporary ``HOME`` and ``COMPASS_HOME``
   only because discovery imports it first. A worker that imported just its
   own modules would run those against the developer's real home.
 - The unit of work is a test class that has class fixtures, so ``setUpClass``
@@ -37,7 +37,7 @@ three crafted suites went green here and red under ``unittest``.
 
 Usage mirrors ``python -m unittest discover``::
 
-    python scripts/run_tests.py -s cargento/skills/cargento/tests -t .
+    python scripts/run_tests.py -s compass/skills/compass/tests -t .
     python scripts/run_tests.py -s scripts/tests -t scripts/tests -j 4 --coverage
 """
 
@@ -396,16 +396,16 @@ def main(argv: list[str] | None = None) -> int:
         help="run only leg K of N, balancing whole modules by measured cost",
     )
     args = parser.parse_args(argv)
-    # Every worker inherits this, so no test can resolve Cargento's state to the
-    # developer's real ~/.cargento. The dashboard suite already gets one from
+    # Every worker inherits this, so no test can resolve Compass's state to the
+    # developer's real ~/.compass. The dashboard suite already gets one from
     # tests/support.py; scripts/tests has no shared module, and a test there that
     # built a runtime (bench_collect's simulation, 2026-09-27) wrote fixture
     # sessions into the owner's real history store. Assigned rather than
-    # defaulted, as support.py does: an exported CARGENTO_HOME is the same leak.
+    # defaulted, as support.py does: an exported COMPASS_HOME is the same leak.
     # HOME stays: test_abstention_claude deliberately refuses a HOME that is not
     # the account's own.
-    state_home = tempfile.TemporaryDirectory(prefix="cargento-runner-home-")
-    os.environ["CARGENTO_HOME"] = state_home.name
+    state_home = tempfile.TemporaryDirectory(prefix="compass-runner-home-")
+    os.environ["COMPASS_HOME"] = state_home.name
     if args.top:
         sys.path.insert(0, os.path.abspath(args.top))
     ok = run(

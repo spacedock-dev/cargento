@@ -18,7 +18,7 @@ export interface ContextEntry {
 export interface BoardSnapshot {
   /** The last accepted body, exactly as the server sent it. */
   readonly data: PayloadData | null;
-  /** The `X-Cargento-Revision` of that body, or '' when it carried none. */
+  /** The `X-Compass-Revision` of that body, or '' when it carried none. */
   readonly revision: string;
   readonly acceptedCount: number;
   /** Failed current reads since the last accepted body. */

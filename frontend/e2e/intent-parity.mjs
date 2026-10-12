@@ -16,7 +16,7 @@
  * with no horizontal page scroll.
  *
  * Models, usage, notifications, the clipboard and the terminal are off or replaced. Every request leaving
- * the board's own origins is refused. Run with `pnpm test:intent:browser`; `CARGENTO_E2E_STEPS=<regex>` runs
+ * the board's own origins is refused. Run with `pnpm test:intent:browser`; `COMPASS_E2E_STEPS=<regex>` runs
  * only the steps whose name matches.
  */
 import assert from 'node:assert/strict';
@@ -43,7 +43,7 @@ const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
-const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
+const SHOTS = (process.env.COMPASS_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
 );
@@ -53,7 +53,7 @@ const norm = (value) => jsonSafe(normalise(value));
 const receipts = {};
 const failures = [];
 const shots = [];
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 async function step(name, run) {
   if (only && !only.test(name)) return;
@@ -204,7 +204,7 @@ if (mutation) {
   const scratch = join(checkout, 'docs/screenshots/prompt-select');
   await mkdir(scratch, { recursive: true });
   copy = await mkdtemp(join(scratch, 'proof-'));
-  for (const folder of ['frontend', 'cargento'])
+  for (const folder of ['frontend', 'compass'])
     await cp(join(REPOSITORY, folder), join(copy, folder), {
       recursive: true,
       filter: copyProofPath,
@@ -1011,7 +1011,7 @@ try {
       await readEditor(react);
       const more = react.page.getByRole('button', { name: 'More', exact: true });
       if ((await more.getAttribute('aria-expanded')) !== 'true') await more.click();
-      const key = 'cargento.next.live-estimate:claude:intent-2';
+      const key = 'compass.next.live-estimate:claude:intent-2';
       const sw = react.page.locator('.next-session-drift-switch');
       react.reset();
       assert.equal(await sw.getAttribute('aria-checked'), 'false');
@@ -1027,7 +1027,7 @@ try {
       );
       assert.equal(
         await react.page.evaluate(() =>
-          globalThis.localStorage.getItem('cargento.next.live-estimate:claude:intent-1'),
+          globalThis.localStorage.getItem('compass.next.live-estimate:claude:intent-1'),
         ),
         null,
       );

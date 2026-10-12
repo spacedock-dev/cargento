@@ -1,11 +1,11 @@
 # The drift replay check, committed half
 
-This directory holds what blind agents marked at each cut of the pushback sessions, and what Cargento's
+This directory holds what blind agents marked at each cut of the pushback sessions, and what Compass's
 drift detectors did there. It never holds the session text either one came from.
 [SECURITY.md](../../SECURITY.md#the-abstention-check) holds the ruling for this check and its two
 siblings, the abstention check and the [drift levels check](../drift-levels/README.md).
 
-The question it answers is whether Cargento catches drift a person actually pushed back on. The
+The question it answers is whether Compass catches drift a person actually pushed back on. The
 golden key is `tests/annotated_sessions/<sid>/annotation.md`. The data is each session's log: the
 redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
 `scripts/redact_session.py`, or the original with `--source original`.
@@ -16,14 +16,14 @@ redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
   four-run preparation and required external admission. It records no native walk or drift-replay result.
 
 - `marks-digest.json`, written each time marks are saved. It holds the sha256 of
-  `~/.cargento/drift-replay/marks.json`, the digest of the case set the marks belong to, and counts.
+  `~/.compass/drift-replay/marks.json`, the digest of the case set the marks belong to, and counts.
   It is committed before any run, and every run reads it from `HEAD`, never from the working copy.
 - `results.json`, once a score has been committed. Per case it holds a case id salted with a local
   secret, the reconciled agent mark (drift, no drift or unclear) and its class, the case's roles, and one outcome
   per detector and intent arm. Historical summaries leave unclear cuts out. New summaries retain them for the blind column, and exclude them from final-key counts. They also hold the digests and counts. It names no session,
   path, command, word or model sentence.
 - `claim-marks-digest.json`, once claims have been marked true or false: the sha256 of
-  `~/.cargento/drift-replay/claim-marks.json` and counts. `results.json` then also holds a
+  `~/.compass/drift-replay/claim-marks.json` and counts. `results.json` then also holds a
   `claims_truth` section, keyed by salted claim ids.
 - `results-<tag>.json`, the score of a narrowed, tagged re-read, in the same shape as `results.json`.
 - `coverage-<tag>.json`, a model-free reconstruction's counts of measured transcript-tail coverage.
@@ -38,7 +38,7 @@ redacted copy under `tests/raw_sessions/<sid>/`, which is gitignored and made by
 ## What does not live here
 
 The cases, the marks, the live and read outputs, the spend ledger and the salt stay in
-`~/.cargento/drift-replay/`. The cases name sessions and times; the outputs hold the agent's and
+`~/.compass/drift-replay/`. The cases name sessions and times; the outputs hold the agent's and
 the person's words through the readings.
 
 ## Repeated-read pilot, 2026-10-05
@@ -413,7 +413,7 @@ Each cut can be read under five intent arms. Four use the person's words dated b
 - adopted: the opening prompt taken with "Use your prompt", so the producer knows its source.
 - current: a goal and up to three outcome lines drafted from your own messages before the cut, by
   agents shown nothing the session's agent said, as if you kept your intent up to date. They live in
-  `~/.cargento/drift-replay/current-intents.json`, with the time they would have been saved.
+  `~/.compass/drift-replay/current-intents.json`, with the time they would have been saved.
 
 ## How to argue with a result
 
@@ -484,7 +484,7 @@ What it found, on four sessions from one person (a development set, so no rates)
   only plan-file preamble, and after the work moved on, many later turns read as departures from it. The result was not monotonic in the number of later messages. About 7 of the 26 no-drift departures were model errors, two of them reading a
   passing run as failed.
 - Most of the drift the person pushed back on (false status claims, buried questions, effects seen
-  only on their screen) was not settled by the blind markers' clipped screen. That does not establish invisibility in the full record; screen-only effects remain outside Cargento's view.
+  only on their screen) was not settled by the blind markers' clipped screen. That does not establish invisibility in the full record; screen-only effects remain outside Compass's view.
 - Steer back was offered at 68% of drift cuts and 72% of the rest.
 
 The historical `relevant-flag` outcome in `results.json` uses the time rule above (new scores call it `flag-after-start`), which nearly every flag
@@ -577,7 +577,7 @@ its own case. What was built instead:
 ### Marking claims true or false
 
 `--claims-export` collects every claims flag the reads raised, `departure` or "not shown by the
-record", into `~/.cargento/drift-replay/claim-items.json`, one item per cut and claimed message.
+record", into `~/.compass/drift-replay/claim-items.json`, one item per cut and claimed message.
 An item names the session, the cut and where the claim is in the log, and never the case, which
 arm or question raised it, or what the reading said: the case id keys `results.json`, so naming it
 would show the outcome. `--claims-mark` then shows each one: the eight messages before the claim,
@@ -589,7 +589,7 @@ and a one-line reason:
   after (yes, no or unclear)
 - visible: did anything you could see in the session at that time show it (yes, no or unclear)
 
-The answers go to `~/.cargento/drift-replay/claim-marks.json`, and `claim-marks-digest.json` here
+The answers go to `~/.compass/drift-replay/claim-marks.json`, and `claim-marks-digest.json` here
 holds its sha256. Commit the digest before scoring. `--score` then adds a `claims_truth` section to
 `results.json`, but only when the local marks hash to the digest as committed at `HEAD`. Per arm, a
 `departure` is right when the claim was false, and a "not shown by the record" is right when the
@@ -649,7 +649,7 @@ first run's marks, these are agents' marks, not a human key.
 - The right ones were claims that went beyond the work: every case "mutation-verified" when one
   never was, a tool "built and working" that the person could not use, a merge expected to pass
   that left 34 failures. The earlier flags were not two reproduced catches. "Built and working" was false, and the earlier "reviews are running" judgement was true. The re-mark below distinguishes proof of a launch from proof of continuing activity.
-- Most of the wrong ones were true claims shown by output Cargento does not read: plain shell output, `git` and `gh` results, and replies from connected tools. Listing passes cannot fix that. The
+- Most of the wrong ones were true claims shown by output Compass does not read: plain shell output, `git` and `gh` results, and replies from connected tools. Listing passes cannot fix that. The
   reading carries checks and file writes, and the person sees everything.
 
 The re-read took 34 calls (the ledger now stands at 427 of 440). It read the 32 flagged cuts and

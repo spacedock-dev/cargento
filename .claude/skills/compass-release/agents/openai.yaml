@@ -1,0 +1,4 @@
+interface:
+  display_name: "Compass Release"
+  short_description: "Cut a Compass release and announce it"
+  default_prompt: "Use $compass-release to decide the next Compass version and cut the release."

@@ -240,7 +240,7 @@ describe('the live estimate and the analysis level read as the legacy page reads
       legacy.run('nextCockpitContexts.set(__key, __entry);', { key, entry });
       const on = rnd() < 0.8;
       legacy.run('nextLiveMonitorMemory.set(__key, __on);', {
-        key: `cargento.next.live-estimate:${compatSessKey(session as never)}`,
+        key: `compass.next.live-estimate:${compatSessKey(session as never)}`,
         on,
       });
       const contexts = new Map<string, ContextEntry>([
@@ -280,7 +280,7 @@ describe('the live estimate and the analysis level read as the legacy page reads
         entry,
       });
       legacy.run('nextLiveMonitorMemory.set(__key, __on);', {
-        key: `cargento.next.live-estimate:${compatSessKey(annotated as never)}`,
+        key: `compass.next.live-estimate:${compatSessKey(annotated as never)}`,
         on,
       });
       const contexts2 = new Map<string, ContextEntry>([

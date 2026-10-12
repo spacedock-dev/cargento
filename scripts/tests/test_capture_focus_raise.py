@@ -22,7 +22,7 @@ SCRIPT = ROOT / "scripts" / "capture_focus_raise.py"
 
 #: Opt-in for the one test that sends real Apple Events. Unset is the default
 #: everywhere, including on CI, so the canonical pre-PR suite automates nothing.
-ALLOW_APPLE_EVENTS_ENV = "CARGENTO_ALLOW_APPLE_EVENTS"
+ALLOW_APPLE_EVENTS_ENV = "COMPASS_ALLOW_APPLE_EVENTS"
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -245,7 +245,7 @@ class ArmTableTest(unittest.TestCase):
         # An operator's own socket label can be a project name, and a name in an
         # argv is a name in the record. Minting removes the string rather than
         # redacting it.
-        self.assertEqual("cargento-raise", recorder.TMUX_SOCKET)
+        self.assertEqual("compass-raise", recorder.TMUX_SOCKET)
         argv = recorder.plan(recorder.ARMS_BY_ID["a5"], recorder.Targets(client="c", pane="%1"))
         self.assertIn(recorder.TMUX_SOCKET, argv[0]["argv"])
 
@@ -688,7 +688,7 @@ class RedactionTest(unittest.TestCase):
         # run is under a user's temp directory and on Windows carries no forward
         # slash at all. Supplied by the test so the assertion measures the
         # redaction rather than the runner's own filesystem layout.
-        minted = "/Users/someone/scratch/cargento-raise-x9/a2"
+        minted = "/Users/someone/scratch/compass-raise-x9/a2"
         with unittest.mock.patch.object(recorder, "_mint_handshake", lambda: minted):
             record = recorder.run_arm(
                 recorder.ARMS_BY_ID["a2"],
@@ -705,7 +705,7 @@ class RedactionTest(unittest.TestCase):
         self.assertNotIn("someone", blob)
 
     def test_the_recorder_cannot_reach_the_network(self) -> None:
-        # The user has a Cargento running, and a recorder that posted to it
+        # The user has a Compass running, and a recorder that posted to it
         # would contaminate the thing being measured -- and a raise recorder
         # posting anywhere would also be an exfiltration path for a device.
         source = SCRIPT.read_text(encoding="utf-8")
@@ -1099,12 +1099,12 @@ class ReaderParseTest(unittest.TestCase):
             return 0, "%3"
 
         with unittest.mock.patch.object(recorder, "_read", _read):
-            self.assertEqual("%3", recorder.read_tmux_selected("cargento-raise", "ttys004"))
-        self.assertEqual(["tmux", "-L", "cargento-raise"], seen[0][:3])
+            self.assertEqual("%3", recorder.read_tmux_selected("compass-raise", "ttys004"))
+        self.assertEqual(["tmux", "-L", "compass-raise"], seen[0][:3])
         # No client attached means no pane, and no command at all.
         seen.clear()
         with unittest.mock.patch.object(recorder, "_read", _read):
-            self.assertIsNone(recorder.read_tmux_selected("cargento-raise", None))
+            self.assertIsNone(recorder.read_tmux_selected("compass-raise", None))
         self.assertEqual([], seen)
 
     def test_a_client_list_keeps_devices_and_drops_everything_else(self) -> None:
@@ -1112,11 +1112,11 @@ class ReaderParseTest(unittest.TestCase):
         with self.fake_read({"tmux": (0, "/dev/ttys004\t123\n??\t456\n/dev/ttys005\t789")}):
             self.assertEqual(
                 [{"tty": "ttys004"}, {"tty": "ttys005"}],
-                recorder.read_tmux_clients("cargento-raise"),
+                recorder.read_tmux_clients("compass-raise"),
             )
         with self.fake_read({"tmux": (1, "")}):
-            self.assertEqual([], recorder.read_tmux_clients("cargento-raise"))
-            self.assertEqual([], recorder.read_tmux_panes("cargento-raise"))
+            self.assertEqual([], recorder.read_tmux_clients("compass-raise"))
+            self.assertEqual([], recorder.read_tmux_panes("compass-raise"))
 
     def test_a_responsible_process_is_named_from_a_closed_set(self) -> None:
         # An arbitrary `ucomm` is an arbitrary program name, and the operator's

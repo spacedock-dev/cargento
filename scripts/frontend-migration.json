@@ -58,7 +58,7 @@
       "name": "project.js",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_interaction_prototype.py",
+        "compass/skills/compass/tests/test_interaction_prototype.py",
         "frontend/src/timeline/semantic.differential.test.ts",
         "frontend/src/terminal/owner.test.ts",
         "frontend/e2e/timeline-filter.mjs",
@@ -205,7 +205,7 @@
       "name": "next-live.js",
       "owner": "DRC-4822",
       "oracles": [
-        "cargento/skills/cargento/tests/test_stream.py",
+        "compass/skills/compass/tests/test_stream.py",
         "frontend/src/transport/live.test.ts",
         "frontend/src/transport/runtime.test.ts",
         "frontend/e2e/sessions-parity.mjs",
@@ -267,7 +267,7 @@
       "name": "session-copy-and-terminal-raise-controls",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_focus.py",
+        "compass/skills/compass/tests/test_focus.py",
         "frontend/src/controls/SessionControls.test.tsx",
         "frontend/e2e/controls-continuity.mjs",
         "frontend/e2e/sessions-parity.mjs"
@@ -462,7 +462,7 @@
       "name": "project-decisions-semantic-timeline",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_project_context.py",
+        "compass/skills/compass/tests/test_project_context.py",
         "frontend/src/timeline/Timeline.test.tsx",
         "frontend/src/steering/ProjectDecisions.test.tsx",
         "frontend/src/timeline/semantic.differential.test.ts",
@@ -495,7 +495,7 @@
       "name": "workflow-stage-tripwires",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_tripwires.py",
+        "compass/skills/compass/tests/test_tripwires.py",
         "frontend/src/steering/StageConditions.test.tsx",
         "frontend/src/steering/StageConditions.differential.test.tsx",
         "frontend/e2e/console-parity.mjs"
@@ -516,7 +516,7 @@
       "name": "exact-session-terminal-registration-recipe",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_interaction_prototype.py",
+        "compass/skills/compass/tests/test_interaction_prototype.py",
         "frontend/src/terminal/registration.test.ts",
         "frontend/src/terminal/TerminalSurface.test.tsx",
         "frontend/e2e/terminal-parity.mjs",
@@ -528,7 +528,7 @@
       "name": "read-only-terminal-output-and-viewport",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_interaction_prototype.py",
+        "compass/skills/compass/tests/test_interaction_prototype.py",
         "frontend/src/terminal/owner.test.ts",
         "frontend/src/terminal/stream.test.ts",
         "frontend/src/terminal/viewport.test.ts",
@@ -560,7 +560,7 @@
       "name": "usage-consent-disclosure",
       "owner": "DRC-4827",
       "oracles": [
-        "cargento/skills/cargento/tests/test_inline_credentials.py",
+        "compass/skills/compass/tests/test_inline_credentials.py",
         "frontend/src/capacity/UsageConsent.test.tsx",
         "frontend/e2e/capacity-parity.mjs"
       ],
@@ -749,7 +749,7 @@
       "name": "retired-next-query-refusal",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_default_page.py",
+        "compass/skills/compass/tests/test_default_page.py",
         "frontend/e2e/shell-routing.mjs"
       ],
       "contract": "HTTP rejects retired ?next=true|false|empty aliases while canonical root and ?all=1 serve the one released UI."
@@ -870,7 +870,7 @@
       "name": "A workflow stage-condition choice, save cue and action focus",
       "owner": "DRC-4826",
       "oracles": [
-        "cargento/skills/cargento/tests/test_tripwires.py",
+        "compass/skills/compass/tests/test_tripwires.py",
         "frontend/src/steering/StageConditions.test.tsx",
         "frontend/e2e/console-parity.mjs"
       ],
@@ -926,7 +926,7 @@
       "name": "The prototype terminal viewport scroll offset",
       "owner": "DRC-4824",
       "oracles": [
-        "cargento/skills/cargento/tests/test_interaction_prototype.py",
+        "compass/skills/compass/tests/test_interaction_prototype.py",
         "frontend/src/terminal/viewport.test.ts",
         "frontend/src/terminal/owner.test.ts",
         "frontend/e2e/terminal-parity.mjs"
@@ -1266,7 +1266,7 @@
       "name": "A text selection over rendered text",
       "owner": "DRC-4823",
       "oracles": [
-        "cargento/skills/cargento/tests/test_documentation.py"
+        "compass/skills/compass/tests/test_documentation.py"
       ],
       "contract": "No synthetic text Range restoration or clipboard action. Stable nodes may retain native highlight; do not restore it over changed text.",
       "disposition": "not-managed"
@@ -1284,142 +1284,166 @@
   ],
   "storage": [
     {
-      "name": "cargento.cockpit.memo.v2:",
+      "name": "compass.cockpit.memo.v2:",
       "owner": "DRC-4823",
       "oracles": [
         "frontend/src/storage/memo.test.ts",
         "frontend/src/controls/HumanContext.test.tsx",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Human outcome/focus stay browser-local and exact project/scope; memory survives failed persistence, with visible error.",
-      "format": "Key prefix + encodeURIComponent(unique project_key else label) + ':' + encodeURIComponent('project' or harness:sid) + ':' + outcome|focus; raw string,500 UTF-16 units via slice/maxlength, no TTL or key-count cap; memory read wins."
+      "contract": "Human outcome/focus stay browser-local and exact project/scope; memory survives failed persistence, with visible error. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Key prefix + encodeURIComponent(unique project_key else label) + ':' + encodeURIComponent('project' or harness:sid) + ':' + outcome|focus; raw string,500 UTF-16 units via slice/maxlength, no TTL or key-count cap; memory read wins.",
+      "legacy_name": "cargento.cockpit.memo.v2:"
     },
     {
-      "name": "cargento.next.graph.mode",
+      "name": "compass.next.graph.mode",
       "owner": "DRC-4824",
       "oracles": [
         "frontend/src/storage/project.test.ts",
         "frontend/src/timeline/modes.test.tsx",
         "frontend/e2e/timeline-filter.mjs",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Reload and cross-project/session filter choices stay independent; invalid legacy empty-scope key is discarded.",
-      "format": "One JSON object map {'<project>\\u0000<session-or-empty>':'active'|'all'|'decisions'}; loader requires exactly two NUL-separated parts and valid mode; no TTL or map-count cap; caller pinned mode > stored > default > active."
+      "contract": "Reload and cross-project/session filter choices stay independent; invalid legacy empty-scope key is discarded. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "One JSON object map {'<project>\\u0000<session-or-empty>':'active'|'all'|'decisions'}; loader requires exactly two NUL-separated parts and valid mode; no TTL or map-count cap; caller pinned mode > stored > default > active.",
+      "legacy_name": "cargento.next.graph.mode"
     },
     {
-      "name": "cargento.next.guardrails.",
+      "name": "compass.next.guardrails.",
       "owner": "DRC-4826",
       "oracles": [
         "frontend/src/storage/guardrails.test.ts",
         "frontend/src/steering/Tripwires.test.tsx",
         "frontend/e2e/console-parity.mjs",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Tripwires are browser preferences, never instructions sent to a session; older string rules remain readable.",
-      "format": "Key prefix + encodeURIComponent(project); JSON array of {text:string,enabled:boolean}; accepts old strings as enabled; trim+slice500 UTF-16 units,drop empty/invalid,enabled only false disables,first50 rules; no TTL/project-count cap; tab memory survives failures."
+      "contract": "Tripwires are browser preferences, never instructions sent to a session; older string rules remain readable. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Key prefix + encodeURIComponent(project); JSON array of {text:string,enabled:boolean}; accepts old strings as enabled; trim+slice500 UTF-16 units,drop empty/invalid,enabled only false disables,first50 rules; no TTL/project-count cap; tab memory survives failures.",
+      "legacy_name": "cargento.next.guardrails."
     },
     {
-      "name": "cargento.next.leader",
+      "name": "compass.next.leader",
       "owner": "DRC-4822",
       "oracles": [
         "frontend/src/storage/lease.test.ts",
         "frontend/src/transport/legacyStorage.test.ts",
         "frontend/src/transport/live.test.ts",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Use released namespaced lease only; cross-tab sole stream owner, private storage fallback and pagehide release preserved.",
-      "format": "Fixed key; JSON {id:random-base36+'-'+Date.now(),ts:Date.now() milliseconds}; renew2000ms/stale6000ms; one lease, no payload-size bound in loader; foreign owner causes current leader to yield even when stale; failed storage makes tab self-lead."
+      "contract": "Use released namespaced lease only; cross-tab sole stream owner, private storage fallback and pagehide release preserved. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Fixed key; JSON {id:random-base36+'-'+Date.now(),ts:Date.now() milliseconds}; renew2000ms/stale6000ms; one lease, no payload-size bound in loader; foreign owner causes current leader to yield even when stale; failed storage makes tab self-lead. Clearing a legacy value writes an empty new key to suppress fallback on reload.",
+      "legacy_name": "cargento.next.leader"
     },
     {
-      "name": "cargento.next.live-estimate:",
+      "name": "compass.next.live-estimate:",
       "owner": "DRC-4825",
       "oracles": [
         "frontend/src/storage/flags.test.ts",
         "frontend/src/intent/LiveMonitor.test.tsx",
         "frontend/e2e/intent-parity.mjs",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Switch changes display only, persists only for exact harness/session, defaults off and retains tab answer on storage failure.",
-      "format": "Key prefix+harness+':'+sid (sessKey, no URL encoding); raw '1' means on, absent/other value off; off removes key; no TTL/session-count cap; in-memory choice wins after a local toggle."
+      "contract": "Switch changes display only, persists only for exact harness/session, defaults off and retains tab answer on storage failure. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Key prefix+harness+':'+sid (sessKey, no URL encoding); raw '1' means on, absent/other value off; off removes key; no TTL/session-count cap; in-memory choice wins after a local toggle. Clearing a legacy value writes an empty new key to suppress fallback on reload.",
+      "legacy_name": "cargento.next.live-estimate:"
     },
     {
-      "name": "cargento.next.revision",
+      "name": "compass.next.revision",
       "owner": "DRC-4822",
       "oracles": [
         "frontend/src/storage/lease.test.ts",
         "frontend/src/transport/legacyStorage.test.ts",
         "frontend/src/transport/live.test.ts",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Storage fan-out only not a durable acceptance/snapshot; duplicate/older stream events do not refetch.",
-      "format": "Fixed key raw server revision '<started>.<counter>'; comparator splits last '.', changed start treated newer, invalid counter falls back to inequality; no TTL/length bound; read via storage event, last revision memory, not hydration from persisted key."
+      "contract": "Storage fan-out only not a durable acceptance/snapshot; duplicate/older stream events do not refetch. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Fixed key raw server revision '<started>.<counter>'; comparator splits last '.', changed start treated newer, invalid counter falls back to inequality; no TTL/length bound; read via storage event, last revision memory, not hydration from persisted key.",
+      "legacy_name": "cargento.next.revision"
     },
     {
-      "name": "cargento.next.usage.consent",
+      "name": "compass.next.usage.consent",
       "owner": "DRC-4822",
       "oracles": [
         "frontend/src/storage/consent.test.ts",
         "frontend/src/capacity/UsageConsent.test.tsx",
         "frontend/e2e/capacity-parity.mjs",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Unanswered is distinct from declined/granted; no credential fetch before disclosure, storage error retains tab answer.",
-      "format": "Fixed key raw 'granted'|'declined'; missing/unrecognized null then in-memory fallback; no TTL; valid storage consulted before memo so another tab's answer can win."
+      "contract": "Unanswered is distinct from declined/granted; no credential fetch before disclosure, storage error retains tab answer. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Fixed key raw 'granted'|'declined'; missing/unrecognized null then in-memory fallback; no TTL; valid storage consulted before memo so another tab's answer can win.",
+      "legacy_name": "cargento.next.usage.consent"
     },
     {
-      "name": "cargento.next.workstream.collapsed",
+      "name": "compass.next.workstream.collapsed",
       "owner": "DRC-4826",
       "oracles": [
         "frontend/src/storage/flags.test.ts",
         "frontend/e2e/project-parity.mjs",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Stored workstream collapse survives reload with in-memory fallback; legacy unnamespaced storage not adopted.",
-      "format": "Fixed key raw '1' collapsed or '0' expanded; only '1' is true on load, missing/invalid expanded; no TTL; toggle updates memory before attempted persistence."
+      "contract": "Stored workstream collapse survives reload with in-memory fallback; legacy unnamespaced storage not adopted. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Fixed key raw '1' collapsed or '0' expanded; only '1' is true on load, missing/invalid expanded; no TTL; toggle updates memory before attempted persistence.",
+      "legacy_name": "cargento.next.workstream.collapsed"
     },
     {
-      "name": "cargento.observer-model-consent.v1",
+      "name": "compass.observer-model-consent.v1",
       "owner": "DRC-4822",
       "oracles": [
         "frontend/src/storage/consent.test.ts",
         "frontend/src/capacity/ObserverControls.test.tsx",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Summary consent survives reload without automatic model action; source availability and explicit press remain separate.",
-      "format": "Fixed key raw 'granted'|'declined'; missing/unrecognized falls back to null/memo; no TTL; storage consulted first, setter memo before write; not qualification or Analyze authorization."
+      "contract": "Summary consent survives reload without automatic model action; source availability and explicit press remain separate. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Fixed key raw 'granted'|'declined'; missing/unrecognized falls back to null/memo; no TTL; storage consulted first, setter memo before write; not qualification or Analyze authorization.",
+      "legacy_name": "cargento.observer-model-consent.v1"
     },
     {
-      "name": "cargento.projectCockpitProject",
+      "name": "compass.projectCockpitProject",
       "owner": "DRC-4822",
       "oracles": [
         "frontend/src/storage/project.test.ts",
         "frontend/src/storage/reads.test.ts",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Dormant legacy project selection is still inventoried; retain encoding/rollback compatibility without promoting it to a current session route.",
-      "format": "Fixed key raw project-label string, missing/empty becomes null; no TTL,length/count cap; project.js boot reads it, old setProjectCockpit writes; current shared seam suppresses old navigation handlers and uses #n routes."
+      "contract": "Dormant legacy project selection is still inventoried; retain encoding/rollback compatibility without promoting it to a current session route. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Fixed key raw project-label string, missing/empty becomes null; no TTL,length/count cap; project.js boot reads it, old setProjectCockpit writes; current shared seam suppresses old navigation handlers and uses #n routes.",
+      "legacy_name": "cargento.projectCockpitProject"
     },
     {
-      "name": "cargento.projectGoal.v1:",
+      "name": "compass.projectGoal.v1:",
       "owner": "DRC-4822",
       "oracles": [
         "frontend/src/storage/project.test.ts",
         "frontend/src/storage/reads.test.ts",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Dormant browser project focus remains separate from durable intent and memo.v2; do not migrate into a different scope silently.",
-      "format": "Key prefix+encodeURIComponent(label); raw trimmed saved string,clear removes key; old editor maxlength500 UTF-16 units but storage read/write do not enforce a raw length bound; no TTL/key-count cap; draft memory wins."
+      "contract": "Dormant browser project focus remains separate from durable intent and memo.v2; do not migrate into a different scope silently. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Key prefix+encodeURIComponent(label); raw trimmed saved string,clear removes key; old editor maxlength500 UTF-16 units but storage read/write do not enforce a raw length bound; no TTL/key-count cap; draft memory wins. Clearing a legacy value writes an empty new key to suppress fallback on reload.",
+      "legacy_name": "cargento.projectGoal.v1:"
     },
     {
-      "name": "cargento.projectUsage.v1",
+      "name": "compass.projectUsage.v1",
       "owner": "DRC-4822",
       "oracles": [
         "frontend/src/storage/project.test.ts",
         "frontend/src/storage/reads.test.ts",
-        "frontend/e2e/storage-conformance.mjs"
+        "frontend/e2e/storage-conformance.mjs",
+        "frontend/src/storage/upgrade.test.ts"
       ],
-      "contract": "Dormant legacy project-use ordering remains compatibility data, not observed activity or React sort authority.",
-      "format": "Fixed key JSON object label=>count; loader takes first200 entries,Math.floor(Number(value)),positive only,each<=999999; writes increment/clamp but do not bound total key count; no TTL; malformed/blocked storage yields in-memory fallback."
+      "contract": "Dormant legacy project-use ordering remains compatibility data, not observed activity or React sort authority. Until 1.0.0, an absent Compass key reads the Cargento key; new writes preserve the old key.",
+      "format": "Fixed key JSON object label=>count; loader takes first200 entries,Math.floor(Number(value)),positive only,each<=999999; writes increment/clamp but do not bound total key count; no TTL; malformed/blocked storage yields in-memory fallback.",
+      "legacy_name": "cargento.projectUsage.v1"
     }
   ],
   "native_fields": {

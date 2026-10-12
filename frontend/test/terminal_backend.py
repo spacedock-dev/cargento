@@ -7,9 +7,9 @@ plus one extra session that owns the terminal) and the terminal adapter, which s
 PTY and no child process. Its output comes from a control file the test appends to, so a test
 decides exactly when and what the "pane" prints; nothing else can reach the stream.
 
-The control file is `<CARGENTO_HOME>/terminal-fixture/control.ndjson`, one JSON object per line:
+The control file is `<COMPASS_HOME>/terminal-fixture/control.ndjson`, one JSON object per line:
 `{"text": "..."}` prints that text to the pane, `{"disconnect": true}` drops the read-only stream.
-`CARGENTO_HOME` is the isolated scratch the dev supervisor (or the test) already owns, so the file
+`COMPASS_HOME` is the isolated scratch the dev supervisor (or the test) already owns, so the file
 is created, read and removed with it.
 
 The project context answers with one fixed semantic model (facts, a work item, a dispatch relation,
@@ -32,13 +32,13 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "cargento/skills/cargento"))
+sys.path.insert(0, str(HERE.parents[1] / "compass/skills/compass"))
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "e2e" / "support"))
 
 import fixture_backend as board  # noqa: E402
 import installed_backend  # noqa: E402
-from cargento_runtime import cli, interaction_prototype, project_context  # noqa: E402
+from compass_runtime import cli, interaction_prototype, project_context  # noqa: E402
 
 # The one session the terminal registers for. The registry names it
 # `codex:disposable-tmux-origin:<n>`, so the board has to publish a session with exactly that sid.
@@ -158,7 +158,7 @@ SEMANTIC: dict[str, Any] = {
 
 
 def control_path() -> Path:
-    return Path(os.environ["CARGENTO_HOME"]) / "terminal-fixture" / "control.ndjson"
+    return Path(os.environ["COMPASS_HOME"]) / "terminal-fixture" / "control.ndjson"
 
 
 class ControlledTerminal(installed_backend.SyntheticTerminal):

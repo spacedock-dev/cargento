@@ -1,0 +1,388 @@
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import tempfile
+import time
+import unittest
+from datetime import UTC, datetime
+from pathlib import Path
+from unittest import mock
+
+import event_hook
+from compass_runtime import observation as runtime_observation
+from compass_runtime import records as runtime_records
+from compass_runtime import sessions as runtime_sessions
+from compass_runtime import transcripts as runtime_transcripts
+from compass_runtime.collectors import codex as codex_collector
+from compass_runtime.collectors import droid as droid_collector
+
+from .support import (
+    STORE_OVERRIDES,
+    USER_HOME,
+    RuntimeTestCase,
+    build_app,
+    config_patch,
+    make_runtime,
+    runtime,
+    store_patch,
+)
+
+
+class DroidCollectorTest(RuntimeTestCase):
+    NOW = 1_700_000_000.0
+
+    @staticmethod
+    def _transcript(root: Path, project: str, name: str, header: dict[str, object]) -> Path:
+        fp = root / project / f"{name}.jsonl"
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.write_text(json.dumps({"type": "session_start", **header}) + "\n")
+        return fp
+
+    def test_the_session_start_id_beats_the_filename(self) -> None:
+        # Droid names the file and the session independently, and the client
+        # keys per-session state on the sid. Mutation-checked: falling back to
+        # the filename unconditionally passed the whole suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._transcript(
+                Path(tmp),
+                "proj-y",
+                "renamed-file",
+                {"id": "real-session-id", "cwd": "/w/thing"},
+            )
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(["real-session-id"], [row["sid"] for row in rows])
+
+    def test_a_transcript_without_a_cwd_labels_from_its_project_directory(self) -> None:
+        # A header can omit cwd, and the encoded project directory is the only
+        # label left. Mutation-checked: dropping that fallback left the row
+        # labelled "" and passed the whole suite.
+        with tempfile.TemporaryDirectory() as tmp:
+            self._transcript(Path(tmp), "-w-droidwork", "s1", {"id": "s1"})
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("w-droidwork", rows[0]["project"])
+
+    def test_a_transcript_without_a_cwd_caps_its_project_directory_label(self) -> None:
+        # DR-15. The fixture above uses `-w-droidwork`, which is already two
+        # segments, so the cap is a no-op there and reverting the bind to
+        # `project_label` left the whole suite green. A deeper encoded name is
+        # the only thing that tells the two apart.
+        home = "/Users/cl"
+        encoded = f"{runtime_sessions.encoded_home_prefix(home)}-git-spacedock-subspace"
+        with tempfile.TemporaryDirectory() as tmp:
+            self._transcript(Path(tmp), encoded, "s1", {"id": "s1"})
+            with store_patch(FACTORY_PROJECTS=str(tmp)), config_patch(home=home):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual("spacedock-subspace", rows[0]["project"])
+
+    def test_droid_sessions_from_project_transcripts(self) -> None:
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "proj-x" / "d1d2d3d4.jsonl"
+            fp.parent.mkdir(parents=True)
+            fp.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_start",
+                                "id": "d1d2d3d4",
+                                "sessionTitle": "Ship feature",
+                                "cwd": "/w/droidproj",
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "message",
+                                "timestamp": iso,
+                                "message": {
+                                    "role": "user",
+                                    "content": [{"type": "text", "text": "ship it"}],
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n"
+            )
+
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                sessions = droid_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        s = sessions[0]
+        self.assertEqual("working", s["state"])
+        self.assertEqual("w/droidproj", s["project"])  # DRC-3963: <parent>/<basename>
+        self.assertEqual("Ship feature", s["title"])
+        self.assertEqual("ship it", s["last_prompt"])
+        self.assertEqual(runtime_records.parse_ts(iso), s["started_at"])
+
+    def test_the_0_202_0_layout_is_discovered_under_the_default_home(self) -> None:
+        # droid 0.202.0 writes <home>/.factory/sessions/<slugified-cwd>/<id>.jsonl
+        # beside an <id>.settings.json the *.jsonl glob must ignore. With the
+        # root at `projects` alone, three real transcripts discovered nothing
+        # (DRC-4331), so this goes through the resolved default roots rather
+        # than a store override, which would pass against any root at all.
+        factory = Path(USER_HOME) / ".factory"
+        self.addCleanup(shutil.rmtree, factory)
+        fp = self._transcript(
+            factory / "sessions", "-w-droidproj", "s0202", {"id": "s0202", "cwd": "/w/droidproj"}
+        )
+        (fp.parent / "s0202.settings.json").write_text("{}")
+        config, state = runtime()
+
+        self.assertTrue(droid_collector.discover(config, state))
+        rows = droid_collector.collect(config, state, self.NOW, 24, True)
+        self.assertEqual(["s0202"], [row["sid"] for row in rows])
+        self.assertEqual("w/droidproj", rows[0]["project"])
+
+
+class DroidReviewFixTest(unittest.TestCase):
+    NOW = 1_700_000_000.0
+
+    def test_a_future_record_does_not_mask_a_fresh_mtime(self) -> None:
+        # max(event_ts, mtime) picks the implausible one — a future timestamp
+        # is by definition the largest — so rejecting it discarded the good
+        # evidence too and an actively-written session read Idle.
+        future_iso = "2023-11-15T00:00:00+00:00"  # a day ahead of NOW
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "proj"
+            project.mkdir()
+            transcript = project / "s.jsonl"
+            transcript.write_text(
+                json.dumps(
+                    {
+                        "type": "message",
+                        "timestamp": future_iso,
+                        "message": {"role": "user", "content": "hi"},
+                    }
+                )
+                + "\n"
+            )
+            os.utime(transcript, (self.NOW, self.NOW))  # written right now
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                fresh = droid_collector.collect(config, state, self.NOW, 24, False)
+                os.utime(transcript, (self.NOW - 100_000, self.NOW - 100_000))
+                stale = droid_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual("working", fresh[0]["state"], "fresh mtime was masked")
+        self.assertEqual("idle", stale[0]["state"], "future record invented activity")
+
+
+class DroidVerificationFixTest(unittest.TestCase):
+    NOW = 1_700_000_000.0
+    FUTURE = NOW + 86_400
+
+    def test_a_future_main_file_does_not_mask_a_fresh_subagent(self) -> None:
+        # Codex and Gemini collapsed main and subagent mtimes with max() before
+        # the freshness test, so a skewed parent hid a genuinely running child.
+        with tempfile.TemporaryDirectory() as tmp:
+            day = Path(tmp) / "2023" / "11" / "14"
+            day.mkdir(parents=True)
+            main = day / "rollout-main.jsonl"
+            main.write_text(
+                json.dumps({"type": "session_meta", "payload": {"id": "S", "cwd": "/w"}}) + "\n"
+            )
+            os.utime(main, (self.FUTURE, self.FUTURE))
+            child = day / "rollout-child.jsonl"
+            child.write_text(
+                "\n".join(
+                    json.dumps(record)
+                    for record in (
+                        {
+                            "type": "session_meta",
+                            "payload": {
+                                "id": "K",
+                                "thread_source": "subagent",
+                                "source": {"subagent": {"thread_spawn": {"parent_thread_id": "S"}}},
+                                "agent_nickname": "reviewer",
+                            },
+                        },
+                        {
+                            "type": "event_msg",
+                            "timestamp": "2023-11-14T22:13:20Z",
+                            "payload": {"type": "task_started", "started_at": self.NOW},
+                        },
+                    )
+                )
+                + "\n",
+            )
+            os.utime(child, (self.NOW, self.NOW))
+            with (
+                mock.patch.dict(STORE_OVERRIDES, {"codex.sessions": [str(tmp)]}),
+                store_patch(CODEX_SESSIONS_DIR=str(tmp)),
+            ):
+                config, state = runtime()
+                sessions = codex_collector.collect(config, state, self.NOW, 24, True)
+
+        self.assertEqual("working", sessions[0]["state"])
+        # The child declares no `turn_context`, so its model is genuinely unread
+        # and the key is present holding None rather than absent.
+        self.assertEqual(
+            [
+                {
+                    "name": "reviewer",
+                    "model": None,
+                    "started_at": self.NOW,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
+            sessions[0]["subagents"],
+        )
+        self.assertLessEqual(sessions[0]["last_activity"], self.NOW, "skewed mtime displayed")
+
+
+class CodexPathTest(unittest.TestCase):
+    def test_codex_agent_label_uses_the_basename_on_either_separator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            rollout = Path(tmp) / "rollout-1.jsonl"
+            rollout.write_text(
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "sess-1",
+                            "thread_source": "subagent",
+                            "agent_path": "/home/u/agents/reviewer.md",
+                        },
+                    }
+                )
+                + "\n"
+            )
+            config, state = make_runtime()
+            self.assertEqual(
+                "reviewer.md",
+                runtime_transcripts.codex_meta(config, state, str(rollout))["agent_label"],
+            )
+
+    @unittest.skipUnless(os.name == "nt", "os.path is ntpath only on Windows")
+    def test_codex_agent_label_splits_windows_separators(self) -> None:
+        # The POSIX case above passes under the old rsplit("/") too, so it
+        # could not catch the bug it was written for. Only ntpath splits "\\".
+        with tempfile.TemporaryDirectory() as tmp:
+            rollout = Path(tmp) / "rollout-2.jsonl"
+            rollout.write_text(
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "s2",
+                            "thread_source": "subagent",
+                            "agent_path": r"C:\Users\j\agents\reviewer.md",
+                        },
+                    }
+                )
+                + "\n"
+            )
+            config, state = make_runtime()
+            self.assertEqual(
+                "reviewer.md",
+                runtime_transcripts.codex_meta(config, state, str(rollout))["agent_label"],
+            )
+
+
+class DroidIdentityAndOverlayJoinTest(RuntimeTestCase):
+    """AC-2: A valid measured Droid session ID joins exactly the existing Droid row."""
+
+    NOW = 1_700_000_000.0
+    UUID = "12345678-abcd-ef01-2345-6789abcdef01"
+
+    def test_droid_event_joins_row_with_header_id_and_does_not_affect_claude_control(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "proj-a" / f"{self.UUID}.jsonl"
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_text(
+                json.dumps({"type": "session_start", "id": self.UUID, "cwd": "/w/test"}) + "\n"
+            )
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+                self.assertEqual(1, len(rows))
+                self.assertEqual(self.UUID, rows[0]["sid"])
+
+                app = build_app()
+                coordinator = runtime_observation.Observation(
+                    app, clock=lambda: self.NOW, diagnostic_sink=lambda _msg: None
+                )
+
+                # Send SessionEnd event for Droid
+                envelope = event_hook.envelope(
+                    {
+                        "hook_event_name": "SessionEnd",
+                        "session_id": self.UUID,
+                        "cwd": "/w/test",
+                        "transcript_path": str(fp),
+                    },
+                    "droid",
+                )
+                self.assertIsNotNone(envelope)
+                assert envelope is not None
+                status = coordinator.submit("droid", envelope)
+                self.assertEqual("accepted", status)
+
+                # Coordinator records ended_at for the whole UUID on Droid
+                self.assertEqual(self.NOW, coordinator.ended_at("droid", self.UUID))
+
+                # Control: same prefix under Claude is unaffected
+                claude_prefix = self.UUID[:8]
+                self.assertEqual(0.0, coordinator.ended_at("claude", claude_prefix))
+
+                # Mutation check: truncated 8-character ID is refused as unmappable
+                bad_envelope = event_hook.envelope(
+                    {
+                        "hook_event_name": "SessionEnd",
+                        "session_id": claude_prefix,
+                        "cwd": "/w/test",
+                        "transcript_path": str(fp),
+                    },
+                    "droid",
+                )
+                assert bad_envelope is not None
+                self.assertEqual("unmappable-id", coordinator.submit("droid", bad_envelope))
+
+    def test_droid_event_joins_row_when_header_is_missing_using_filename_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fp = Path(tmp) / "proj-b" / f"{self.UUID}.jsonl"
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            # Line 1 is not session_start, so collector falls back to filename stem
+            fp.write_text(json.dumps({"type": "message", "content": "hello"}) + "\n")
+            with store_patch(FACTORY_PROJECTS=str(tmp)):
+                config, state = runtime()
+                rows = droid_collector.collect(config, state, self.NOW, 24, True)
+                self.assertEqual(1, len(rows))
+                self.assertEqual(self.UUID, rows[0]["sid"])
+
+                app = build_app()
+                coordinator = runtime_observation.Observation(
+                    app, clock=lambda: self.NOW, diagnostic_sink=lambda _msg: None
+                )
+
+                envelope = event_hook.envelope(
+                    {
+                        "hook_event_name": "SessionEnd",
+                        "session_id": self.UUID,
+                        "cwd": "/w/test",
+                        "transcript_path": str(fp),
+                    },
+                    "droid",
+                )
+                self.assertIsNotNone(envelope)
+                assert envelope is not None
+                status = coordinator.submit("droid", envelope)
+                self.assertEqual("accepted", status)
+                self.assertEqual(self.NOW, coordinator.ended_at("droid", self.UUID))

@@ -21,7 +21,7 @@ import mark_abstention as marking
 import score_abstention as scoring
 
 marking._reading()
-from cargento_runtime.config import build_runtime_config  # noqa: E402
+from compass_runtime.config import build_runtime_config  # noqa: E402
 
 
 class ReviewedExportIntakeTest(unittest.TestCase):
@@ -48,7 +48,7 @@ class ReviewedExportIntakeTest(unittest.TestCase):
             {"type": "system", "subtype": "turn_duration", "timestamp": self.stamp(21)},
         ]
         self.config = build_runtime_config(
-            environ={"HOME": str(self.root), "CARGENTO_HOME": str(self.root)},
+            environ={"HOME": str(self.root), "COMPASS_HOME": str(self.root)},
             platform_name="linux",
             os_name="posix",
             launcher_path=self.root / "server.py",
@@ -166,7 +166,7 @@ class ReviewedExportIntakeTest(unittest.TestCase):
         vouch = self.vouch(resolver)
         self.assertEqual([], vouch(case))
         self.assertEqual("reviewed-export", vouch.lifecycle(case))
-        self.assertFalse((self.root / "cargento-history.json").exists())
+        self.assertFalse((self.root / "compass-history.json").exists())
 
     def test_missing_opt_in_or_receipt_does_not_upgrade_old_matching_sid(self) -> None:
         resolver = self.resolver()
@@ -637,7 +637,7 @@ class ReviewedExportIntakeTest(unittest.TestCase):
             self.assertEqual(0, status)
             self.assertEqual(self.digest, vouch.call_args.kwargs["reviewed_exports"].digest)
             self.assertEqual("explicit-vouch", report.call_args.kwargs["vouch"])
-        from cargento_runtime import reading_route  # noqa: PLC0415 - local stub CLI path
+        from compass_runtime import reading_route  # noqa: PLC0415 - local stub CLI path
 
         verified = mock.MagicMock()
         verified.path = str(self.root / "never-launched-claude")

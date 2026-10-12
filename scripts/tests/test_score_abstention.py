@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL = ROOT / "cargento" / "skills" / "cargento"
+SKILL = ROOT / "compass" / "skills" / "compass"
 
 
 _LEDGER_PATCH: Any = None
@@ -537,7 +537,7 @@ class TheScorerLeavesTheReadersStoreAlone(unittest.TestCase):
 
     def test_a_scored_run_writes_nothing_to_the_annotation_store(self) -> None:
         with tempfile.TemporaryDirectory() as home:
-            store = os.path.join(home, "cargento-annotations.json")
+            store = os.path.join(home, "compass-annotations.json")
             with open(store, "w", encoding="utf-8") as handle:
                 handle.write('{"v": 1, "sessions": {}}')
             before = Path(store).read_bytes()
@@ -564,10 +564,10 @@ class TheScorerLeavesTheReadersStoreAlone(unittest.TestCase):
                 raise AssertionError(url)
 
             sys.path.insert(0, str(SKILL))
-            from cargento_runtime import annotations  # noqa: PLC0415
+            from compass_runtime import annotations  # noqa: PLC0415
 
             with (
-                mock.patch.dict(os.environ, {"CARGENTO_HOME": home}),
+                mock.patch.dict(os.environ, {"COMPASS_HOME": home}),
                 mock.patch.object(score_abstention, "_get", get),
                 mock.patch.object(annotations, "annotate", side_effect=AssertionError("wrote")),
                 mock.patch.object(
@@ -898,7 +898,7 @@ class TheReportNamesThePacketItReadTest(unittest.TestCase):
     def test_the_first_line_names_the_packet_and_the_default_home(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             home = Path(folder)
-            packet = home / ".cargento" / "abstention-claude-2026-09-27"
+            packet = home / ".compass" / "abstention-claude-2026-09-27"
             packet.mkdir(parents=True)
             cases = packet / "abstention-cases.json"
             cases.write_text(json.dumps({"v": 3, "cases": [_case("a" * 16)]}))
@@ -923,11 +923,11 @@ class TheReportNamesThePacketItReadTest(unittest.TestCase):
                 with self.subTest(default_home=default_home):
                     self.assertEqual(0, code)
                     self.assertEqual(
-                        "Packet: ~/.cargento/abstention-claude-2026-09-27/abstention-cases.json "
+                        "Packet: ~/.compass/abstention-claude-2026-09-27/abstention-cases.json "
                         "(1 case)",
                         printed[0],
                     )
-                    self.assertEqual(default_home, "CARGENTO_HOME is not set" in printed[1])
+                    self.assertEqual(default_home, "COMPASS_HOME is not set" in printed[1])
 
 
 class TheDisclosureIsWrittenWhereTheCodeSaysItIs(unittest.TestCase):
@@ -963,13 +963,13 @@ class RubricTokensMirrorTheProducerTest(unittest.TestCase):
 
     def test_the_two_mappings_are_equal(self) -> None:
         sys.path.insert(0, str(SKILL))
-        from cargento_runtime import reading  # noqa: PLC0415
+        from compass_runtime import reading  # noqa: PLC0415
 
         self.assertEqual(reading.RESULT_BY_TOKEN, score_abstention.RESULT_BY_TOKEN)
 
     def test_claims_tokens_match_the_native_closed_set(self) -> None:
         sys.path.insert(0, str(SKILL))
-        from cargento_runtime import reading  # noqa: PLC0415
+        from compass_runtime import reading  # noqa: PLC0415
 
         self.assertEqual(
             reading.CLAIMS_RESULT_BY_TOKEN,
@@ -1157,7 +1157,7 @@ class SynthesisedTextGoesThroughSafeText(unittest.TestCase):
 
     def test_a_control_character_is_gone_and_the_summary_is_clipped(self) -> None:
         sys.path.insert(0, str(SKILL))
-        from cargento_runtime import reading  # noqa: PLC0415
+        from compass_runtime import reading  # noqa: PLC0415
 
         row, facts = score_abstention._synthesised(self.ENTRY)
         self.assertEqual({"harness": "codex", "sid": "syn-1"}, facts[0]["source_session"])

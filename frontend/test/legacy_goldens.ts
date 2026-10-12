@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { afterAll, expect } from 'vitest';
+import { recordedName } from './recorded-name';
 
 /* What the previous interface said, recorded, so the React port stays held to it after that interface was
    removed. "Legacy" in this seam, in the `legacy*.test.helper.ts` files and in the differential tests means
@@ -301,7 +302,7 @@ export function legacyHarness<T extends object>(kind: string, spec: HarnessSpec 
       throw new Error(
         `No golden for ${kind}.${label} in ${goldens.describe()}. A generator, an input or a step changed, and the page that recorded the answers no longer exists.`,
       );
-    return decode(JSON.parse(stored)) as R;
+    return decode(recordedName(JSON.parse(stored))) as R;
   };
 
   const pure = new Set(spec.pure);
@@ -312,7 +313,7 @@ export function legacyHarness<T extends object>(kind: string, spec: HarnessSpec 
 
   const invoke = (name: string, args: unknown[]): unknown => {
     arrive();
-    const encodedArgs = JSON.stringify(encode(args, true));
+    const encodedArgs = JSON.stringify(recordedName(encode(args, true), true));
     const isPure = pure.has(name);
     const key = keyFor(name, encodedArgs, !isPure);
     const result = answer(key, name);

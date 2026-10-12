@@ -16,7 +16,7 @@
           "assessment": null,
           "at": 1900000000.0,
           "binding_why": "Bound by an eight-character identity prefix, which is all this harness publishes as the session id. Another session sharing it would share these words.",
-          "departure_why": "Cargento has not checked this session against what you asked for. Nothing here says whether it would have found anything.",
+          "departure_why": "Compass has not checked this session against what you asked for. Nothing here says whether it would have found anything.",
           "departures": [],
           "discarded_at": null,
           "discarded_why": "",
@@ -63,7 +63,7 @@
     },
     "headers": {
       "Cache-Control": "no-store",
-      "Content-Length": "1246",
+      "Content-Length": "1245",
       "Content-Security-Policy": "frame-ancestors 'none'",
       "Content-Type": "application/json"
     },

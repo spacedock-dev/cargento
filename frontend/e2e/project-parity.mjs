@@ -23,7 +23,7 @@
  * Models, usage, notifications and the terminal are off or replaced: the page's clipboard is a recorder, the
  * backend serving the page answers only the document and its health, and every board and project-context read
  * is the one this script serves. The Decisions and Console tabs and the steering bar belong to the steering step
- * and are outside the comparison. Run with `pnpm test:project:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only
+ * and are outside the comparison. Run with `pnpm test:project:browser`; `COMPASS_E2E_STEPS=<regex>` runs only
  * the steps whose name matches, `PROJECT_E2E_SEEDS` sets how many generated boards the differential compares.
  *
  * Timing: every fixed wait here means "give the page time to react", and a hosted runner has a few shared cores,
@@ -41,6 +41,7 @@ import { chromium } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { openPage } from './support/browser.mjs';
 import { goldenFor, jsonSafe, normalise } from './support/golden.mjs';
+import { recordedName } from '../test/recorded-name.ts';
 import {
   instrumentResources,
   recordClipboard,
@@ -63,7 +64,7 @@ const { genBoard, genContext, parityBoard } = makeBoards(base);
 
 // A proof belongs to its worktree; sibling captures must not overwrite one another.
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
-const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
+const SHOTS = (process.env.COMPASS_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
 );
@@ -72,7 +73,7 @@ const E = encodeURIComponent;
 const receipts = {};
 const failures = [];
 const shots = [];
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 async function step(name, run) {
   if (only && !only.test(name)) return;
@@ -208,7 +209,7 @@ async function freeze(opened, holder) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      headers: { 'X-Cargento-Revision': '7.1' },
+      headers: { 'X-Compass-Revision': '7.1' },
       body: JSON.stringify(holder.body),
     }),
   );
@@ -247,7 +248,10 @@ function firstDifferenceIn(left, right, path) {
 
 /* What was served, as a short digest: part of a recorded key, so a board that changed is a key that is absent. */
 const digestOf = (value) =>
-  createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 10);
+  createHash('sha256')
+    .update(JSON.stringify(recordedName(value, true)))
+    .digest('hex')
+    .slice(0, 10);
 
 /* A difference found by the comparison is a failure unless it is named here with its reason. */
 const DEVIATIONS = [
@@ -654,7 +658,7 @@ try {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        headers: { 'X-Cargento-Revision': '7.1' },
+        headers: { 'X-Compass-Revision': '7.1' },
         body: JSON.stringify(state.body),
       }),
     );
@@ -815,7 +819,7 @@ try {
         const copied = await o.page.evaluate(() => globalThis.__copied);
         assert.equal(copied.length, 1, 'one press, one copy');
         assert.ok(
-          copied[0].startsWith('Cargento recovery briefing\nProject: app\n'),
+          copied[0].startsWith('Compass recovery briefing\nProject: app\n'),
           copied[0].slice(0, 80),
         );
         assert.match(copied[0], /Captain attention: Authorize the dispatch\?/);
@@ -846,7 +850,7 @@ try {
   );
 
   /* ===================== BEHAVIOUR: the workstream's collapse ===================== */
-  const WORKSTREAM_KEY = 'cargento.next.workstream.collapsed';
+  const WORKSTREAM_KEY = 'compass.next.workstream.collapsed';
   await step(
     'workstream: the collapse survives a reload as 1 or 0, and a refusing store keeps the tab’s toggle',
     async () => {
@@ -907,7 +911,7 @@ try {
       }
       // The previous interface's unnamespaced key is not adopted.
       const stray = await clocked(fragmentFor('alpha/app', { tab: 'course' }), {
-        storage: { 'cargento.workstream.collapsed': '1' },
+        storage: { 'compass.workstream.collapsed': '1' },
       });
       try {
         assert.equal(
@@ -951,7 +955,7 @@ try {
           await o.page.evaluate(() =>
             globalThis.dispatchEvent(
               new globalThis.StorageEvent('storage', {
-                key: 'cargento.next.revision',
+                key: 'compass.next.revision',
                 newValue: `9.${Date.now() % 100000}`,
               }),
             ),
@@ -1056,7 +1060,7 @@ try {
         assert.equal(
           await o.page.evaluate(
             (key) => globalThis.localStorage.getItem(key),
-            'cargento.cockpit.memo.v2:beta%2Fapi:project:outcome',
+            'compass.cockpit.memo.v2:beta%2Fapi:project:outcome',
           ),
           'hello brave Xworld',
           'saved on input to the released key',
@@ -1073,7 +1077,7 @@ try {
     'memo: a note belongs to its project and its scope, and Escape puts back the words held when editing began',
     async () => {
       const o = await clocked(fragmentFor('beta/api'), {
-        storage: { 'cargento.cockpit.memo.v2:beta%2Fapi:project:outcome': 'Land the queue' },
+        storage: { 'compass.cockpit.memo.v2:beta%2Fapi:project:outcome': 'Land the queue' },
       });
       try {
         assert.match(
@@ -1099,7 +1103,7 @@ try {
         );
         assert.equal(
           await o.page.evaluate(() =>
-            globalThis.localStorage.getItem('cargento.cockpit.memo.v2:beta%2Fapi:project:outcome'),
+            globalThis.localStorage.getItem('compass.cockpit.memo.v2:beta%2Fapi:project:outcome'),
           ),
           'Land the queue',
           'Escape restored the saved words',
@@ -1323,7 +1327,7 @@ try {
             route.fulfill({
               status: 200,
               contentType: 'application/json',
-              headers: { 'X-Cargento-Revision': '7.1' },
+              headers: { 'X-Compass-Revision': '7.1' },
               body: JSON.stringify(proof.board),
             }),
           );

@@ -40,7 +40,7 @@ BASELINE = "docs/frontend-baseline.json"
 FLUIDITY = "docs/frontend-fluidity.json"
 RECEIPT = "docs/frontend-cutover-receipt.json"
 INVENTORY = "scripts/frontend-migration.json"
-REACT_DOCUMENT = "cargento/skills/cargento/cargento_runtime/web/react.integrity.json"
+REACT_DOCUMENT = "compass/skills/compass/compass_runtime/web/react.integrity.json"
 PRODUCTION_RUNNER = "frontend/e2e/production-proofs.mjs"
 # The sources a measurement is taken with. A receipt records two digests of each: what the runs were
 # taken with (`source_bindings`, embedded in every run and never rewritten) and what the tree holds
@@ -1033,7 +1033,7 @@ def _run_remeasure(root: Path, args: argparse.Namespace) -> int:
             check=True,
             timeout=120,
         )
-        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-refresh-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="compass-fluidity-refresh-") as temporary:
             runs = [Path(temporary) / f"run-{index}.json" for index in range(3)]
             for path in runs:
                 command = [

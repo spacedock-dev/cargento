@@ -21,8 +21,8 @@
  *
  * No model is ever called and no native action is ever taken: the terminal pane prints only what this script
  * appends to its control file, and a raise is inert. Every request leaving the board's own origins is refused.
- * Run with `pnpm test:console:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name matches, and
- * `CARGENTO_MUTATION=<name>` breaks one thing in the scratch copy (see MUTATIONS), which a run then must fail.
+ * Run with `pnpm test:console:browser`; `COMPASS_E2E_STEPS=<regex>` runs only the steps whose name matches, and
+ * `COMPASS_MUTATION=<name>` breaks one thing in the scratch copy (see MUTATIONS), which a run then must fail.
  */
 import assert from 'node:assert/strict';
 import { appendFile, mkdir } from 'node:fs/promises';
@@ -46,7 +46,7 @@ const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const checkout = fileURLToPath(new URL('../../', import.meta.url));
-const SHOTS = (process.env.CARGENTO_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
+const SHOTS = (process.env.COMPASS_SCREENSHOTS || `${checkout}docs/screenshots`).replace(
   /\/?$/,
   '/',
 );
@@ -54,7 +54,7 @@ const receipts = {};
 const failures = [];
 let currentStep = '';
 const shots = [];
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 /* A step's name is part of every key recorded under it (`support/golden.mjs`), so a name that still says "both
    pages" or "the legacy page" is the name the recording was made under, kept so its keys resolve. */
@@ -537,7 +537,7 @@ try {
     assert.match(panel.text, /Disabled in this browser\./);
     const readStored = (o) =>
       o.page.evaluate(() => {
-        const key = `cargento.next.guardrails.${encodeURIComponent('alpha/app')}`;
+        const key = `compass.next.guardrails.${encodeURIComponent('alpha/app')}`;
         return globalThis.localStorage.getItem(key);
       });
     const stored = await readStored(react);
@@ -797,7 +797,7 @@ try {
   await step(
     'tripwires written by an older build are read, and stay a note to oneself that nothing sends',
     async () => {
-      const key = `cargento.next.guardrails.${E(BOARD.project)}`;
+      const key = `compass.next.guardrails.${E(BOARD.project)}`;
       await react.page.evaluate(
         ([k]) =>
           globalThis.localStorage.setItem(

@@ -42,7 +42,7 @@ class LiveTransport:
         binary_resolver: Any = None,
         on_diagnostic: Any = None,
     ) -> tuple[str, str]:
-        from cargento_runtime import supervise  # noqa: PLC0415 - exact production default seam
+        from compass_runtime import supervise  # noqa: PLC0415 - exact production default seam
 
         if (
             runner not in (None, supervise.run)
@@ -84,8 +84,8 @@ def _refuse_unmetered_codex(*_args: Any, **_kwargs: Any) -> tuple[str, str]:
 
 def main(argv: list[str] | None = None) -> int:
     """Launch the shipped server with guarded Claude calls and no alternate executor."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "cargento/skills/cargento"))
-    from cargento_runtime import cli, observer  # noqa: PLC0415 - runtime path installed here
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "compass/skills/compass"))
+    from compass_runtime import cli, observer  # noqa: PLC0415 - runtime path installed here
 
     args = list(sys.argv[1:] if argv is None else argv)
     retry = ""

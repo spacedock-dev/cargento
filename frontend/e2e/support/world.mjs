@@ -5,7 +5,7 @@
  * HMR and Python serves the document and every /api route. That is what every proof has always exercised,
  * and it stays the default.
  *
- * `CARGENTO_E2E_BUNDLE=production`: the Python backend serves a PRODUCTION-built document, as `server.py`
+ * `COMPASS_E2E_BUNDLE=production`: the Python backend serves a PRODUCTION-built document, as `server.py`
  * serves it to a reader. No Vite child, no HMR, no `--frontend-dev-manifest`, the minified
  * single-file page, and the lazy local xterm assets from the vendored files. Dev mode catches what a
  * development server shows; this mode catches what only the shipped bytes show: minification, dead-code
@@ -32,16 +32,16 @@ import { startDevelopment } from '../../dev/supervisor.mjs';
 
 const REPOSITORY = fileURLToPath(new URL('../../../', import.meta.url));
 
-export const PRODUCTION = process.env.CARGENTO_E2E_BUNDLE === 'production';
+export const PRODUCTION = process.env.COMPASS_E2E_BUNDLE === 'production';
 
 if (
-  process.env.CARGENTO_E2E_BUNDLE &&
+  process.env.COMPASS_E2E_BUNDLE &&
   !PRODUCTION &&
-  process.env.CARGENTO_E2E_BUNDLE !== 'development'
+  process.env.COMPASS_E2E_BUNDLE !== 'development'
 )
-  throw new Error('CARGENTO_E2E_BUNDLE must be "production" or "development" when it is set.');
+  throw new Error('COMPASS_E2E_BUNDLE must be "production" or "development" when it is set.');
 
-/* The files `packageFrontend` reads from the root besides `frontend/` and `cargento/`, which a scratch copy
+/* The files `packageFrontend` reads from the root besides `frontend/` and `compass/`, which a scratch copy
    already carries. */
 const ROOT_FILES = [
   '.gitattributes',
@@ -54,7 +54,7 @@ const ROOT_FILES = [
 function resolvePython(name) {
   const python =
     name ||
-    process.env.CARGENTO_TEST_PYTHON ||
+    process.env.COMPASS_TEST_PYTHON ||
     (process.platform === 'win32' ? 'python' : 'python3');
   return execFileSync(python, ['-I', '-c', 'import sys; print(sys.executable)'], {
     encoding: 'utf8',
@@ -104,10 +104,10 @@ async function startProduction(options) {
   if (resolve(root) !== resolve(REPOSITORY)) await packageCopy(root);
   const port = options.port;
   const python = resolvePython(options.python);
-  const scratch = await mkdtemp(join(tmpdir(), 'cargento-production-'));
+  const scratch = await mkdtemp(join(tmpdir(), 'compass-production-'));
   await mkdir(join(scratch, 'no-executables'));
   const origin = `http://127.0.0.1:${port}`;
-  const launcher = options.backendHelper || join(root, 'cargento/skills/cargento/server.py');
+  const launcher = options.backendHelper || join(root, 'compass/skills/compass/server.py');
   // The development manifest forces every opt-out; there is none here, so the same flags are passed by hand
   // and a fixture that lifts some of them still sees the same starting point.
   const args = [
@@ -127,7 +127,7 @@ async function startProduction(options) {
     '--no-ask',
     '--no-history',
   ];
-  const env = { ...isolatedEnvironment(scratch, process.env), CARGENTO_E2E_BUNDLE: 'production' };
+  const env = { ...isolatedEnvironment(scratch, process.env), COMPASS_E2E_BUNDLE: 'production' };
   let backend;
   let closing = null;
   const handle = {
@@ -178,7 +178,7 @@ async function startProduction(options) {
         const page = await (
           await fetch(origin + '/', { signal: AbortSignal.timeout(2000) })
         ).text();
-        if (/cargento-dev-generation/.test(page))
+        if (/compass-dev-generation/.test(page))
           throw new Error('The production page carries a development generation.');
         handle.ready = { origin, viteOrigin: origin, pid: backend.pid, workerPid: null };
         return;
@@ -203,7 +203,7 @@ async function startProduction(options) {
   }
 }
 
-/** `startDevelopment`'s contract, honouring `CARGENTO_E2E_BUNDLE`. `vitePort` is ignored in production. */
+/** `startDevelopment`'s contract, honouring `COMPASS_E2E_BUNDLE`. `vitePort` is ignored in production. */
 export function startReactWorld(options = {}) {
   return PRODUCTION ? startProduction(options) : startDevelopment(options);
 }

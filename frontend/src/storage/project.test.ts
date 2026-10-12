@@ -9,7 +9,7 @@ import {
   graphModeScope,
 } from '.';
 
-describe('graph mode family (cargento.next.graph.mode)', () => {
+describe('graph mode family (compass.next.graph.mode)', () => {
   it('scopes a choice by project and session joined on NUL', () => {
     expect(graphModeScope('p', 's')).toBe('p\u0000s');
     expect(graphModeScope('p', null)).toBe('p\u0000');
@@ -42,7 +42,7 @@ describe('graph mode family (cargento.next.graph.mode)', () => {
     const { graphMode } = createLegacyStorage(() => backend);
     expect(graphMode.set(graphModeScope('p', 's'), 'all')).toBe(true);
     graphMode.set(graphModeScope('p', null), 'decisions');
-    expect(backend.data.get('cargento.next.graph.mode')).toBe(
+    expect(backend.data.get('compass.next.graph.mode')).toBe(
       '{"p\\u0000s":"all","p\\u0000":"decisions"}',
     );
   });
@@ -59,7 +59,7 @@ describe('graph mode family (cargento.next.graph.mode)', () => {
   it('resolves a pinned mode, then the stored one, then the default, then active', () => {
     const scope = graphModeScope('p', 's');
     const { graphMode } = createLegacyStorage(() =>
-      fakeBackend({ 'cargento.next.graph.mode': '{"p\\u0000s":"all"}' }),
+      fakeBackend({ 'compass.next.graph.mode': '{"p\\u0000s":"all"}' }),
     );
     expect(graphMode.resolve({ scope, mode: 'decisions' })).toBe('decisions');
     expect(graphMode.resolve({ scope })).toBe('all');
@@ -80,16 +80,16 @@ describe('graph mode family (cargento.next.graph.mode)', () => {
   });
 });
 
-describe('cockpit project family (cargento.projectCockpitProject)', () => {
+describe('cockpit project family (compass.projectCockpitProject)', () => {
   it('stores the raw label and reads a missing or empty one as null', () => {
     const backend = fakeBackend();
     const { cockpitProject } = createLegacyStorage(() => backend);
     expect(cockpitProject.read()).toBeNull();
     expect(cockpitProject.write('my project')).toBe(true);
-    expect(backend.data.get('cargento.projectCockpitProject')).toBe('my project');
+    expect(backend.data.get('compass.projectCockpitProject')).toBe('my project');
     expect(cockpitProject.read()).toBe('my project');
     cockpitProject.write('');
-    expect(backend.data.get('cargento.projectCockpitProject')).toBe('');
+    expect(backend.data.get('compass.projectCockpitProject')).toBe('');
     expect(cockpitProject.read()).toBeNull();
   });
 
@@ -100,9 +100,9 @@ describe('cockpit project family (cargento.projectCockpitProject)', () => {
   });
 });
 
-describe('goal family (cargento.projectGoal.v1:)', () => {
+describe('goal family (compass.projectGoal.v1:)', () => {
   it('keys on the encoded label', () => {
-    expect(goalKey('a b/é')).toBe('cargento.projectGoal.v1:a%20b%2F%C3%A9');
+    expect(goalKey('a b/é')).toBe('compass.projectGoal.v1:a%20b%2F%C3%A9');
   });
 
   it('saves the trimmed text raw, with no storage-side length bound', () => {
@@ -151,7 +151,7 @@ describe('goal family (cargento.projectGoal.v1:)', () => {
   });
 });
 
-describe('usage family (cargento.projectUsage.v1)', () => {
+describe('usage family (compass.projectUsage.v1)', () => {
   it('floors, keeps positives only and clamps at 999999', () => {
     const raw = JSON.stringify({
       a: 5.9,
@@ -192,11 +192,11 @@ describe('usage family (cargento.projectUsage.v1)', () => {
 
   it('increments, clamps and writes the whole object, without bounding its size', () => {
     const entries = Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`k${index}`, 1]));
-    const backend = fakeBackend({ 'cargento.projectUsage.v1': JSON.stringify(entries) });
+    const backend = fakeBackend({ 'compass.projectUsage.v1': JSON.stringify(entries) });
     const { usage } = createLegacyStorage(() => backend);
     usage.record('fresh');
     usage.record('fresh');
-    const stored = JSON.parse(backend.data.get('cargento.projectUsage.v1') ?? '{}') as Record<
+    const stored = JSON.parse(backend.data.get('compass.projectUsage.v1') ?? '{}') as Record<
       string,
       number
     >;
@@ -206,7 +206,7 @@ describe('usage family (cargento.projectUsage.v1)', () => {
   });
 
   it('never exceeds 999999', () => {
-    const backend = fakeBackend({ 'cargento.projectUsage.v1': '{"a":999999}' });
+    const backend = fakeBackend({ 'compass.projectUsage.v1': '{"a":999999}' });
     const { usage } = createLegacyStorage(() => backend);
     expect(usage.record('a')['a']).toBe(999999);
   });
