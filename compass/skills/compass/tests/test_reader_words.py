@@ -560,6 +560,7 @@ SENTINEL = "SENTINEL-READER-WORDS"
 # GET routes the sweep requests, with the query each needs. A route added to `_get_api`
 # without a line here fails `test_every_get_route_is_swept`.
 GET_ROUTES = {
+    "/api/session-record": f"/api/session-record?project=billing&session=claude:{SHORT}",
     "/api/data": "/api/data?all=1",
     "/api/observe": f"/api/observe?harness=claude&sid={SHORT}",
     "/api/project-context": f"/api/project-context?project=billing&session=claude:{SHORT}&prompts=1",

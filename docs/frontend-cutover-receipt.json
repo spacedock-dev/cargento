@@ -1733,7 +1733,7 @@
           },
           {
             "vitest": "frontend/src/intent/IntentAdoption.test.tsx",
-            "test": "reads the prompts once per opening, by the reader’s gesture, and never from a poll"
+            "test": "reads the prompts once per opening, by the reader\u2019s gesture, and never from a poll"
           },
           {
             "browser": "frontend/e2e/intent-parity.mjs",
@@ -1759,6 +1759,10 @@
           {
             "browser": "frontend/e2e/intent-parity.mjs",
             "step": "later directions: asked about before a reading, read whole before Keep settles, added only on Save"
+          },
+          {
+            "vitest": "frontend/src/drift/record.test.tsx",
+            "test": "a reader leaving an older direction draft keeps their words while its record page is unread on return"
           }
         ]
       },
@@ -2248,6 +2252,19 @@
             "test": "always sees a failed check outside a fold, splitting the run"
           }
         ]
+      },
+      "Loaded session record pages": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/record.test.tsx",
+            "test": "a reader keeps loaded pages through a board refresh and drops them on leaving the session page"
+          },
+          {
+            "vitest": "frontend/src/transport/record.test.ts",
+            "test": "a reader leaving a session aborts its request even when the network ignores cancellation"
+          }
+        ]
       }
     },
     "storage": {
@@ -2589,7 +2606,7 @@
         "proofs": [
           {
             "browser": "frontend/e2e/sessions-parity.mjs",
-            "step": "keyboard: Tab reaches a row’s link, Enter opens the session, Escape returns, as recorded"
+            "step": "keyboard: Tab reaches a row\u2019s link, Enter opens the session, Escape returns, as recorded"
           },
           {
             "browser": "frontend/e2e/sessions-parity.mjs",

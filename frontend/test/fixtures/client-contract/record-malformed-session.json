@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "record-malformed-session",
+  "notes": "The exact identity guard refuses a missing sid.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/session-record",
+    "query": "project=alpha-app&session=claude"
+  },
+  "response": {
+    "error_page": {
+      "contains": [
+        "Error code: 400",
+        "Error response"
+      ],
+      "kind": "python-http-server"
+    },
+    "headers": {
+      "Content-Type": "text/html;charset=utf-8"
+    },
+    "status": 400
+  }
+}

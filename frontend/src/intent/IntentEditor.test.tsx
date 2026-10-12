@@ -40,7 +40,11 @@ describe('a goal-less session arrives with its first prompt drafted and nothing 
     const page = mountSession();
     await settle(page);
     const paths = new Set(page.state.requests.map((r) => `${r.method} ${r.path}`));
-    expect([...paths].sort()).toEqual(['GET /api/data', 'GET /api/project-context']);
+    expect([...paths].sort()).toEqual([
+      'GET /api/data',
+      'GET /api/project-context',
+      'GET /api/session-record',
+    ]);
   });
 });
 

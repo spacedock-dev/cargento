@@ -119,9 +119,10 @@ export function createDisplayGate(options: DisplayGateOptions) {
           current.manualRefreshing !== last.manualRefreshing ||
           current.observer !== last.observer ||
           current.pending !== last.pending;
+        const recordsChanged = current.records !== last.records;
         last = current;
         // A poll's own fields reach the reader only through `paint`.
-        if (!othersChanged) return;
+        if (!othersChanged && !recordsChanged) return;
         if (contextsChanged) motion.paint(showOthers);
         else showOthers();
       });

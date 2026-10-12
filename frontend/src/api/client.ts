@@ -18,6 +18,7 @@ import type {
   ReadingReceipt,
   ReadingRequest,
   SessionIdentity,
+  SessionRecord,
   TripwireReceipt,
   TripwireRequest,
 } from './types';
@@ -120,6 +121,14 @@ export interface ProjectContextQuery {
   readonly signal?: AbortSignal;
 }
 
+export interface SessionRecordQuery {
+  readonly project: string;
+  readonly session: string;
+  readonly limit?: number;
+  readonly before?: string;
+  readonly signal?: AbortSignal;
+}
+
 export function createApiClient(deps: { readonly fetch: FetchLike }) {
   const get = <T>(path: string, signal: AbortSignal | undefined, readRevision = false) =>
     settle<T>(() => fetchBounded(deps.fetch, path, undefined, signal), signal, readRevision);
@@ -161,6 +170,13 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
       if (query.observerModel) path += '&observer_model=1';
       if (query.prompts) path += '&prompts=1';
       return get<ProjectContext>(path, query.signal);
+    },
+
+    getSessionRecord(query: SessionRecordQuery) {
+      const params = new URLSearchParams({ project: query.project, session: query.session });
+      if (query.limit !== undefined) params.set('limit', String(query.limit));
+      if (query.before !== undefined) params.set('before', query.before);
+      return get<SessionRecord>(`/api/session-record?${params.toString()}`, query.signal);
     },
 
     getAnnotations: (options: { readonly signal?: AbortSignal }) =>

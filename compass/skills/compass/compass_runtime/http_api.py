@@ -31,6 +31,7 @@ from compass_runtime import (
     notifications,
     quota,
     reading_policy,
+    record_pages,
     records,
     tripwires,
 )
@@ -253,6 +254,8 @@ class CompassHTTPServer(ThreadingHTTPServer):
         interaction_prototype: InteractionPrototype | None = None,
     ) -> None:
         self.application = application
+        # Authentication material only; pages and transcript bytes are never cached.
+        self.record_cursor_key = os.urandom(32)
         self.page_bytes = page_bytes
         # None under --no-events, and None for the many test doubles that only
         # need a page and an application. `serve` reads it to decide whether to
@@ -1041,6 +1044,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             "/api/data": self._data,
             "/api/observe": self._observe,
             "/api/project-context": self._project_context,
+            "/api/session-record": self._session_record,
         }.get(url.path)
         if with_url is not None:
             with_url(url)
@@ -1195,6 +1199,67 @@ class _RequestHandler(BaseHTTPRequestHandler):
                     application, result, collected["sessions"], focus, project
                 )
         # The page shows titles; a reader message whole is for a reading only.
+        result = runtime_project_context.for_page(result)
+        self._send(
+            json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),
+            "application/json",
+        )
+
+    def _session_record(self, url: ParseResult) -> None:
+        """A reader-requested backward page, under the project context's guards."""
+        if not self._local_ok():
+            self.send_error(403)
+            return
+        query = parse_qs(url.query, keep_blank_values=True)
+        application = self.server.application
+        project = query.get("project", [""])[0]
+        focus = query.get("session", [""])[0]
+        harness, separator, sid = focus.partition(":")
+        cap = application.config.ask_project_cap_chars
+        if (
+            not project
+            or len(project) > cap
+            or not separator
+            or not harness
+            or not sid
+            or len(focus) > cap
+        ):
+            self.send_error(400, "a bounded project and harness:session identity are required")
+            return
+        try:
+            limit = record_pages.page_limit(query.get("limit", ["50"])[0])
+        except ValueError:
+            self.send_error(400, "limit must be an integer")
+            return
+        _revision, body = application.collect_json(show_all=False)
+        rows = json.loads(body)["sessions"]
+        matching = [
+            row
+            for row in rows
+            if row.get("harness") == harness
+            and row.get("sid") == sid
+            and project
+            in {
+                str(row.get("project_key") or row.get("project") or ""),
+                str(row.get("project") or ""),
+            }
+        ]
+        result = record_pages.empty(harness, sid, "unavailable")
+        if len(matching) == 1:
+            path = runtime_observer.resolve_transcript(
+                application.config, application.state, harness, sid
+            )
+            result = record_pages.read(
+                application.config,
+                path or "",
+                harness,
+                sid,
+                cursor_key=self.server.record_cursor_key,
+                limit=limit,
+                before=query.get("before", [None])[0],
+            )
+        marked = copied_corrections.mark({"semantic": {"facts": result["entries"]}}, matching)
+        result["entries"] = marked["semantic"]["facts"]
         result = runtime_project_context.for_page(result)
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),

@@ -42,6 +42,25 @@ export function mountShell(options: TestShellOptions = {}) {
   };
   const fetch: FetchLike = (url, init) => {
     backend.requests.push({ method: init?.method ?? 'GET', url });
+    if (url.startsWith('/api/session-record')) {
+      const session = new URLSearchParams(url.split('?')[1]).get('session') ?? ':';
+      const split = session.indexOf(':');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            session: { harness: session.slice(0, split), sid: session.slice(split + 1) },
+            entries: [],
+            next: null,
+            reached_start: true,
+            bound: null,
+            scanned_bytes: 0,
+            kinds: ['user_message', 'agent_message'],
+            state: 'ok',
+          }),
+          { status: 200 },
+        ),
+      );
+    }
     if (backend.failing || backend.data === undefined || backend.data === null)
       return Promise.reject(new Error('offline'));
     backend.revision += 1;

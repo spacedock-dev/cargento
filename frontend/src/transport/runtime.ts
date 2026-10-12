@@ -4,6 +4,7 @@ import { exactIdentity } from '../api/identity';
 import type { FocusOutcome, SessionIdentity } from '../api/types';
 import { createBoardStore } from '../store/board';
 import { createContextLoader, type ContextScope } from './context';
+import { createRecordLoader, type RecordScope } from './record';
 import { createLiveTransport } from './live';
 import { createPendingRegistry, type PendingToken } from './pending';
 import type { Environment, TimerHandle, TransportStorage } from './ports';
@@ -51,6 +52,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
   interface Owned {
     readonly refresh: ReturnType<typeof createRefreshController>;
     readonly context: ReturnType<typeof createContextLoader>;
+    readonly record: ReturnType<typeof createRecordLoader>;
     readonly live: ReturnType<typeof createLiveTransport>;
   }
 
@@ -98,6 +100,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
     return {
       refresh,
       context: createContextLoader({ client, store, storage }),
+      record: createRecordLoader({ client, store }),
       live: createLiveTransport({
         env,
         storage,
@@ -125,6 +128,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
     closing.live.dispose();
     closing.refresh.dispose();
     closing.context.dispose();
+    closing.record.dispose();
   }
 
   function dispose(): void {
@@ -186,6 +190,10 @@ export function createBoardRuntime(options: RuntimeOptions) {
        both. False before the runtime is owned. */
     isLeader: (): boolean => owned?.live.isLeader() ?? false,
     loadContext: (scope: ContextScope): void => owned?.context.load(scope),
+    openRecord: (scope: RecordScope): (() => void) =>
+      owned?.record.open(scope) ?? (() => undefined),
+    readMoreRecord: (scope: RecordScope): Promise<void> =>
+      owned?.record.more(scope) ?? Promise.resolve(),
     requestObserverSummary: (scope: ContextScope): Promise<void> =>
       owned?.context.requestObserverSummary(scope) ?? Promise.resolve(),
 

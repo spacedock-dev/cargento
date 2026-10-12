@@ -1,7 +1,7 @@
 import './drift.css';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { payloadSessions } from '../api/bootstrap';
-import { compatSessKey, stableProjectKey } from '../api/identity';
+import { compatSessKey, contextKey, stableProjectKey } from '../api/identity';
 import { useLiveEstimateOn } from '../intent/liveMonitor';
 import { useHeldVersion } from '../intent/useIntent';
 import type { Row } from '../observed';
@@ -46,6 +46,7 @@ export function DriftProvider({
   useDriftVersion(ctx.drift);
   const overlay = useSyncExternalStore(ctx.drift.subscribe, ctx.drift.getOverlay);
   const contexts = useDisplayed((snapshot) => snapshot.contexts);
+  const records = useDisplayed((snapshot) => snapshot.records);
   const count = useDisplayed((snapshot) => snapshot.acceptedCount);
   const key = compatSessKey(session);
   const live = useMemo(
@@ -74,6 +75,7 @@ export function DriftProvider({
     [view.payload, project],
   );
   const liveOn = useLiveEstimateOn(session);
+  const record = records.get(contextKey(projectKey, session as never));
   const model: DriftModel = buildModel({
     liveOn,
     session: view.session,
@@ -83,6 +85,7 @@ export function DriftProvider({
     projectKey,
     contexts: view.contexts,
     held: ctx.intent.held,
+    ...(record ? { record } : {}),
   });
   const [chosen, setChosen] = useState<{ session: string; readAt: unknown; key: string } | null>(
     null,

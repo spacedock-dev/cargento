@@ -2,8 +2,8 @@
 
 The shape is the release's real one: a bare "origin", a working clone of it, and
 a tree that carries the shipped plugin, the version manifests and the release
-scripts. The tree is the repository's own committed plugin, so the archive proof
-runs against the real runtime inventory and the real React bundle rather than a
+scripts. The tree is the repository's own plugin, including declared runtime
+additions, so the archive proof runs against the real runtime inventory and the real React bundle rather than a
 stand-in that could pass for the wrong reason. Nothing here touches the real
 remote, a real tag or a version field in the working tree.
 """
@@ -19,6 +19,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest import mock
+
+from validate_plugins import COMPASS_RUNTIME_FILES
 
 if TYPE_CHECKING:
     import unittest
@@ -99,7 +101,10 @@ def _build_template() -> Path:
         text=True,
         check=True,
     ).stdout.splitlines()
-    for relative in tracked:
+    # A builder must prove a new runtime module before staging or committing it.
+    # Keep the archive proof's explicit inventory intact in that rehearsal too.
+    runtime = {f"compass/{relative}" for relative in COMPASS_RUNTIME_FILES}
+    for relative in sorted(set(tracked) | runtime):
         source = REPO / relative
         if source.is_symlink() or not source.is_file():
             continue

@@ -2,7 +2,7 @@ import { Card } from '../ui/card';
 import './intent.css';
 import { useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { payloadSessions } from '../api/bootstrap';
-import { compatSessKey, stableProjectKey } from '../api/identity';
+import { compatSessKey, contextKey, stableProjectKey } from '../api/identity';
 import { nextFiniteNumber } from '../api/bootstrap';
 import type { Row } from '../observed';
 import { goalFocusFor } from '../sessions/heldState';
@@ -75,7 +75,13 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
     () => ({ held: ctx.held, contexts, payload, session, annotation }),
     [ctx.held, contexts, payload, session, annotation],
   );
-  const source = workSource(contexts, projectKey, session);
+  const records = useDisplayed((snapshot) => snapshot.records);
+  const source = workSource(
+    contexts,
+    projectKey,
+    session,
+    records.get(contextKey(projectKey, session as never)),
+  );
 
   /* The passive reads of the observed record this panel's later directions and prompt menu stand on, started
      once per board revision and never by an action. The runtime makes a repeat for a revision it has settled

@@ -145,6 +145,7 @@ export function normaliseSessionRecord(record, evidence = {}) {
     return value;
   };
   const result = retract(record);
+  projectPublishedSessionAge(result, evidence);
   if (Array.isArray(result?.groups) && typeof result.header === 'string') {
     const available =
       evidence.annotate === true &&
@@ -161,4 +162,37 @@ export function normaliseSessionRecord(record, evidence = {}) {
     if (!available) result.header = result.header.replace(unchecked, '');
   }
   return result;
+}
+
+// The owner appended age to the identity line. Keep the recording's words, adding only the
+// independently published timestamp's duration; never change a title, instruction or nested header.
+function projectPublishedSessionAge(record, evidence) {
+  if (!Array.isArray(record?.attrs) || typeof record.header !== 'string') return;
+  const matches = (evidence.sessions ?? []).filter((row) => row.sid === record.attrs[0]);
+  if (matches.length !== 1 || !Number.isFinite(evidence.generated)) return;
+  const row = matches[0];
+  const at =
+    Number.isFinite(row.started_at) && row.started_at > 0 ? row.started_at : row.first_prompt_at;
+  if (!Number.isFinite(at) || at <= 0) return;
+  const seconds = Math.floor(Math.max(0, evidence.generated - at));
+  const duration =
+    seconds < 60
+      ? `${seconds}s`
+      : seconds < 3600
+        ? `${Math.floor(seconds / 60)}m`
+        : seconds < 86400
+          ? `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
+          : `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+  const identity = `${row.harness} · ${row.sid}`;
+  const start = record.header.indexOf(identity);
+  if (start < 0) return;
+  let end = start + identity.length;
+  const project = ` · ${row.project}`;
+  const projectAt = row.project ? record.header.indexOf(project, end) : -1;
+  if (projectAt >= 0) end = projectAt + project.length;
+  else {
+    const rate = /^ · [^·]*? \/m/.exec(record.header.slice(end));
+    if (rate) end += rate[0].length;
+  }
+  record.header = `${record.header.slice(0, end)} · Started about ${duration} ago${record.header.slice(end)}`;
 }

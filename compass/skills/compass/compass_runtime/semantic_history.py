@@ -31,7 +31,7 @@ STORE_NAME = "semantic-work-history.json"
 SUMMARY_CAP_CHARS = 240
 RESULT_DETAIL_CAP_CHARS = 4096
 RESCAN_OVERLAP_BYTES = 64 * 1024
-BACKFILL_SCHEMA_VERSION = 5
+BACKFILL_SCHEMA_VERSION = 6
 
 _RESULT_ALIAS_RE = re.compile(r"\[([a-z0-9][a-z0-9_-]{2,31})\]\([^)]+\)", re.IGNORECASE)
 _RESULT_TITLE_RE = re.compile(r"(?m)^- Title:\s*(\S.*)$")
@@ -121,6 +121,30 @@ def read(config: RuntimeConfig, state: RuntimeState, project: str) -> dict[str, 
     }
 
 
+def reconcile_project(
+    config: RuntimeConfig, state: RuntimeState, project: str, aliases: Iterable[str]
+) -> None:
+    """Join verified display-label buckets into their one canonical project key."""
+    aliases = tuple(aliases)
+    if not aliases:
+        return
+    with state.semantic_history_lock:
+        payload = _read(config)
+        projects = payload["projects"]
+        prior = projects.get(project, {})
+        existing = prior.get("events", []) if isinstance(prior, dict) else []
+        changed = False
+        for alias in aliases:
+            legacy = projects.pop(alias, None) if alias != project else None
+            if isinstance(legacy, dict):
+                existing = _merge(existing, legacy.get("events", []))
+                changed = True
+        if changed:
+            # Merged coverage was not measured under this key. Earn it again.
+            projects[project] = {"events": existing, "cursors": {}, "source_scans": {}}
+            _write(config, payload)
+
+
 def _write(config: RuntimeConfig, payload: dict[str, Any]) -> bool:
     target = store_path(config)
     tmp = f"{target}.{os.getpid()}.tmp"
@@ -142,16 +166,38 @@ def backfill_scan_bytes(
     state: RuntimeState,
     project: str,
     source_identity: str,
-    signature: Mapping[str, int],
+    signature: Mapping[str, Any],
     *,
     full_max_bytes: int,
 ) -> int:
     """Return a bounded cold/resume scan size for one authoritative source."""
+    return backfill_plan(
+        config, state, project, source_identity, signature, full_max_bytes=full_max_bytes
+    )[0]
+
+
+def backfill_plan(
+    config: RuntimeConfig,
+    state: RuntimeState,
+    project: str,
+    source_identity: str,
+    signature: Mapping[str, Any],
+    *,
+    full_max_bytes: int,
+) -> tuple[int, str | None]:
+    """The allowance and retained coverage an incremental read must preserve."""
     with state.semantic_history_lock:
         payload = _read(config)
     project_row = payload.get("projects", {}).get(project, {})
     scans = project_row.get("source_scans", {}) if isinstance(project_row, dict) else {}
     prior = scans.get(source_identity) if isinstance(scans, dict) else None
+    retained = project_row.get("events", []) if isinstance(project_row, dict) else []
+    if not (
+        isinstance(prior, dict)
+        and prior.get("schema") == BACKFILL_SCHEMA_VERSION
+        and prior.get("coverage") == _coverage(retained, source_identity)
+    ):
+        prior = None
     size = int(signature.get("size") or 0)
     mtime_ns = int(signature.get("mtime_ns") or 0)
     if (
@@ -160,11 +206,52 @@ def backfill_scan_bytes(
         and int(prior.get("size") or 0) == size
         and int(prior.get("mtime_ns") or 0) == mtime_ns
     ):
-        return 0
+        return 0, str(prior["coverage"])
     prior_size = int(prior.get("size") or 0) if isinstance(prior, dict) else 0
-    if prior_size and size >= prior_size:
-        return min(full_max_bytes, size - prior_size + RESCAN_OVERLAP_BYTES)
-    return min(full_max_bytes, size)
+    if prior is not None and prior_size and size >= prior_size:
+        return min(full_max_bytes, size - prior_size + RESCAN_OVERLAP_BYTES), str(prior["coverage"])
+    return min(full_max_bytes, size), None
+
+
+def _coverage(events: Iterable[Mapping[str, Any]], source: str) -> str:
+    ids = sorted(
+        {
+            str(row["event_id"])
+            for row in events
+            if row.get("source_identity") == source and row.get("event_id")
+        }
+    )
+    return hashlib.sha256(json.dumps(ids, separators=(",", ":")).encode()).hexdigest()
+
+
+def _retained_scans(
+    prior: Mapping[str, Any],
+    scanned: Mapping[str, Mapping[str, Any]] | None,
+    existing: list[dict[str, Any]],
+    incoming: list[dict[str, Any]],
+    retained: list[dict[str, Any]],
+) -> dict[str, Any]:
+    scans = dict(prior.get("source_scans") or {})
+    for source, signature in (scanned or {}).items():
+        expected = signature.get("prior_coverage")
+        if expected is not None and expected != _coverage(existing, source):
+            scans.pop(source, None)
+            continue
+        scans[source] = {
+            "schema": BACKFILL_SCHEMA_VERSION,
+            "size": int(signature.get("size") or 0),
+            "mtime_ns": int(signature.get("mtime_ns") or 0),
+            "coverage": _coverage([*existing, *incoming], source),
+        }
+    # A file stamp says what was read, not what survived the store's age and
+    # project caps. Losing any covered event must earn a fresh bounded scan.
+    return {
+        source: scan
+        for source, scan in scans.items()
+        if isinstance(scan, dict)
+        and scan.get("schema") == BACKFILL_SCHEMA_VERSION
+        and scan.get("coverage") == _coverage(retained, source)
+    }
 
 
 def _source_identity(fact: Mapping[str, Any]) -> str:
@@ -565,7 +652,7 @@ def update(
     assignments: Iterable[Mapping[str, Any]] = (),
     *,
     now: float | None = None,
-    source_scans: Mapping[str, Mapping[str, int]] | None = None,
+    source_scans: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Merge current source-backed meaning into the durable bounded history."""
     facts = semantic.get("facts")
@@ -617,16 +704,13 @@ def update(
             "events": merged,
             "cursors": cursors,
             "window_sec": HISTORY_WINDOW_SEC,
-            "source_scans": {
-                key: {
-                    "schema": BACKFILL_SCHEMA_VERSION,
-                    "size": int(value.get("size") or 0),
-                    "mtime_ns": int(value.get("mtime_ns") or 0),
-                }
-                for key, value in (source_scans or {}).items()
-            }
-            if source_scans is not None
-            else (prior.get("source_scans", {}) if isinstance(prior, dict) else {}),
+            "source_scans": _retained_scans(
+                prior if isinstance(prior, dict) else {},
+                source_scans,
+                existing if isinstance(existing, list) else [],
+                incoming,
+                merged,
+            ),
         }
         if len(projects) > MAX_PROJECTS:
             ranked = sorted(

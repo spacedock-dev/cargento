@@ -1,4 +1,4 @@
-import type { PayloadData, ProjectContext } from '../api/types';
+import type { PayloadData, ProjectContext, SemanticFact, SessionRecord } from '../api/types';
 
 export type DataFailure =
   | { readonly kind: 'http-error'; readonly status: number }
@@ -15,6 +15,30 @@ export interface ContextEntry {
   readonly error: DataFailure | null;
 }
 
+export interface RecordEntry {
+  readonly entries: readonly SemanticFact[];
+  readonly next: string | null;
+  readonly reachedStart: boolean;
+  readonly bound: SessionRecord['bound'];
+  readonly scannedBytes: number;
+  readonly status: 'idle' | 'loading' | 'loaded' | 'error' | 'stale' | 'unsupported';
+  readonly error: DataFailure | { readonly kind: 'unavailable' | 'stale' } | null;
+  readonly pages: number;
+  readonly restarted: boolean;
+}
+
+export const EMPTY_RECORD: RecordEntry = {
+  entries: [],
+  next: null,
+  reachedStart: false,
+  bound: null,
+  scannedBytes: 0,
+  status: 'idle',
+  error: null,
+  pages: 0,
+  restarted: false,
+};
+
 export interface BoardSnapshot {
   /** The last accepted body, exactly as the server sent it. */
   readonly data: PayloadData | null;
@@ -28,6 +52,7 @@ export interface BoardSnapshot {
   readonly manualRefreshing: boolean;
   readonly firstBuild: string;
   readonly contexts: ReadonlyMap<string, ContextEntry>;
+  readonly records: ReadonlyMap<string, RecordEntry>;
   readonly observer: {
     readonly requests: readonly string[];
     readonly states: ReadonlyMap<string, 'ready' | 'error'>;
@@ -48,6 +73,7 @@ const INITIAL: BoardSnapshot = Object.freeze({
   manualRefreshing: false,
   firstBuild: '',
   contexts: new Map(),
+  records: new Map(),
   observer: { requests: [], states: new Map() },
   pending: [],
 });
@@ -145,6 +171,19 @@ export function createBoardStore(deps: {
       const contexts = new Map(snapshot.contexts);
       contexts.set(key, entry);
       publish({ ...snapshot, contexts });
+    },
+
+    setRecord(key: string, entry: RecordEntry): void {
+      const records = new Map(snapshot.records);
+      records.set(key, entry);
+      publish({ ...snapshot, records });
+    },
+
+    dropRecord(key: string): void {
+      if (!snapshot.records.has(key)) return;
+      const records = new Map(snapshot.records);
+      records.delete(key);
+      publish({ ...snapshot, records });
     },
 
     setObserverRequest(key: string, active: boolean): void {

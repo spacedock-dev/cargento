@@ -4,6 +4,7 @@ import { fragmentForRoute } from '../router/grammar';
 import { genPayload } from '../observed/generate.test.helper';
 import { loadLegacyViews } from '../observed/legacy.test.helper';
 import { mountShell } from '../shell/testing';
+import { formatDuration } from '../shell/format';
 import { retractSessionCopies } from '../../test/sessionCopyDeviation';
 
 /* The session page, held to the legacy page by what a reader can read. `nextSessionView` runs unchanged
@@ -78,6 +79,33 @@ function summarize(source: Element | DocumentFragment): DetailSummary {
   };
 }
 
+function projectRecordedSessionAge(
+  root: DocumentFragment,
+  payload: Record<string, unknown>,
+  route: { project: string; harness?: string; session: string },
+): void {
+  const rows = payload['sessions'] as Record<string, unknown>[] | undefined;
+  const matches = (rows ?? []).filter(
+    (row) =>
+      String(row['project'] ?? '') === route.project &&
+      String(row['sid'] ?? row['session'] ?? '') === route.session &&
+      (!route.harness || row['harness'] === route.harness),
+  );
+  if (matches.length !== 1) return;
+  const session = matches[0];
+  const stamp =
+    Number(session?.['started_at']) > 0 ? session?.['started_at'] : session?.['first_prompt_at'];
+  if (
+    typeof stamp !== 'number' ||
+    !Number.isFinite(stamp) ||
+    stamp <= 0 ||
+    typeof payload['generated'] !== 'number'
+  )
+    return;
+  const duration = formatDuration(Math.max(0, payload['generated'] - stamp));
+  root.querySelector('.next-session-identity')?.append(` · Started about ${duration} ago`);
+}
+
 function legacySummary(
   payload: unknown,
   route: { project: string; harness?: string; session: string; from?: string },
@@ -87,6 +115,8 @@ function legacySummary(
   const template = document.createElement('template');
   template.innerHTML = legacy.sessionHtml(payload, route);
   retractSessionCopies(template.content);
+  projectRecordedSessionAge(template.content, payload as Record<string, unknown>, route);
+
   return summarize(template.content);
 }
 

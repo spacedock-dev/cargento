@@ -1496,6 +1496,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # question and option text it stores. The register route builds the
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "compass_runtime.http_api": {
+            "compass_runtime.record_pages",
             # The immutable admitted identity selects stricter dev authority.
             "compass_runtime.frontend_dev",
             "compass_runtime.reading_policy",
@@ -1579,6 +1580,12 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "compass_runtime.spacedock",
             "compass_runtime.state",
             "compass_runtime.transcripts",
+        },
+        # Request-only record composition reaches the existing fact builders;
+        # project context and the reading producers never reach paged evidence.
+        "compass_runtime.record_pages": {
+            "compass_runtime.config",
+            "compass_runtime.project_context",
         },
         # Semantic history is a pure reducer over bounded records and process
         # state. Project composition owns the higher-level joins.

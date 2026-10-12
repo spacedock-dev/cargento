@@ -215,6 +215,8 @@ const summarizeCard = () => {
       const panel = document.querySelector('[data-next-cockpit-work]');
       if (!panel) return norm(panel);
       const copy = panel.cloneNode(true);
+      // Reader-requested pages and their numbering note are new, asserted by the Record pages stories.
+      copy.querySelector('[data-record-pages]')?.remove();
       const rows = copy.querySelector('.next-cockpit-work-rows');
       if (rows) {
         // Mounted members carry their own original words. Flatten folds only in the copy, then restore

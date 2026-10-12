@@ -11,7 +11,12 @@ import { TooltipProvider } from '../ui/tooltip';
 import { disclosureKey, useControls } from '../controls';
 import { useControlledDisclosureState } from '../controls/useDisclosureState';
 import { Why } from './Why';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { contextKey } from '../api/identity';
+import { nextNumber } from '../api/bootstrap';
+import { entryWindow } from '../intent/work';
+import { useDisplayed, useShell } from '../shell/context';
+import { ShowMore } from './ShowMore';
 
 function HeldCheckRun({
   run,
@@ -55,8 +60,34 @@ function HeldCheckRun({
    hover is one a reader does not know is there. */
 export function WorkListView() {
   const { ctx, model, finding, jump } = useDrift();
+  const { runtime } = useShell();
+  const record = useDisplayed((snapshot) =>
+    snapshot.records.get(contextKey(model.projectKey, model.identity)),
+  );
+  const harness = model.identity?.harness;
+  const sid = model.identity?.sid;
+  useEffect(() => {
+    if (!harness || !sid) return;
+    return runtime.openRecord({ projectKey: model.projectKey, focus: { harness, sid } });
+  }, [runtime, model.projectKey, harness, sid]);
   const panel = useRef<HTMLDivElement>(null);
   const jumped = useRef<object | null>(null);
+  const pagingFocus = useRef<{ button: HTMLElement; before: ReadonlySet<string> } | null>(null);
+  const opened = entryWindow(model.session, model.payload);
+  const pastWindow =
+    opened !== null &&
+    (record?.entries ?? []).some((entry) => {
+      const at = nextNumber(entry.at);
+      return at !== null && at > 0 && at < opened;
+    });
+  const readMore = () => {
+    if (!model.identity || pastWindow) return;
+    const before = new Set(list.rows.map((row) => row.entry.id));
+    const button = panel.current?.querySelector<HTMLElement>('[data-record-more]');
+    if (button && document.activeElement === button) pagingFocus.current = { button, before };
+    // An appended older page stays below the existing rows. Focus must never scroll that page into view.
+    void runtime.readMoreRecord({ projectKey: model.projectKey, focus: model.identity });
+  };
   useEffect(() => {
     if (!finding || jumped.current === jump) return;
     jumped.current = jump;
@@ -82,6 +113,25 @@ export function WorkListView() {
     revealed: new Set(finding?.citedIds),
     generated: model.generated,
   });
+  useLayoutEffect(() => {
+    const request = pagingFocus.current;
+    if (
+      !request ||
+      record?.status === 'loading' ||
+      (record?.status === 'stale' && record.error === null) ||
+      !panel.current
+    )
+      return;
+    pagingFocus.current = null;
+    if (document.activeElement !== request.button && document.activeElement !== document.body)
+      return;
+    const retained = panel.current.querySelector<HTMLElement>('[data-record-more]');
+    const firstNew = [...panel.current.querySelectorAll<HTMLElement>('[data-next-entry-id]')].find(
+      (row) => !request.before.has(row.dataset['nextEntryId'] ?? ''),
+    );
+    const boundary = panel.current.querySelector<HTMLElement>('[data-record-stop]');
+    (retained ?? firstNew ?? boundary)?.focus({ preventScroll: true });
+  }, [record]);
   const hasChecks = list.rows.some((row) => 'check' in row.head && row.head.check);
   const about = (
     <>
@@ -190,6 +240,7 @@ export function WorkListView() {
         ) : list.unnumbered ? null : (
           <p className="next-cockpit-work-absent">{list.absent}</p>
         )}
+        <ShowMore {...(record ? { record } : {})} pastWindow={pastWindow} onMore={readMore} />
         {list.reads ? (
           <p className="next-cockpit-work-limit next-cockpit-work-reported">{WORK_AS_REPORTED}</p>
         ) : (

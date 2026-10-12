@@ -19,6 +19,9 @@ if TYPE_CHECKING:
 
     from .frontend_dev import DevelopmentFrontend
 
+RECORD_PAGE_MAX_BYTES = 16 * 1024 * 1024
+RECORD_PAGE_MAX_SECONDS = 2.0
+
 STORE_ENV_VARS = (
     "CLAUDE_CONFIG_DIR",
     "CODEX_HOME",
@@ -232,6 +235,9 @@ class RuntimeConfig:
     working_threshold_sec: float
     turn_gap_reset_sec: float
     tail_bytes: int
+    record_page_max_bytes: int
+    record_page_max_seconds: float
+    record_page_chunk_bytes: int
     popup_cooldown_sec: float
     global_popup_cooldown_sec: float
     popup_repeat_suppress_sec: float
@@ -795,6 +801,9 @@ def build_runtime_config(
         working_threshold_sec=90,
         turn_gap_reset_sec=300,
         tail_bytes=400_000,
+        record_page_max_bytes=RECORD_PAGE_MAX_BYTES,
+        record_page_max_seconds=RECORD_PAGE_MAX_SECONDS,
+        record_page_chunk_bytes=64 * 1024,
         popup_cooldown_sec=60,
         global_popup_cooldown_sec=15,
         popup_repeat_suppress_sec=600,
