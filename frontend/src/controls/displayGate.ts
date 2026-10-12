@@ -32,7 +32,7 @@ function boardLayer(snapshot: BoardSnapshot): BoardLayer {
 export interface DisplayGateOptions {
   readonly clock: Clock;
   readonly reducedMotion: () => boolean;
-  /** An option list is open: a native <select> inside the page holds focus. */
+  /** A Base UI Select trigger inside the page declares its popup open. */
   readonly isChoiceOpen: () => boolean;
 }
 
@@ -40,11 +40,10 @@ export interface DisplayGateOptions {
    the moment it arrives; this decides when a consumer shows it, with the two
    retained deferrals of docs/design-reader-state.md and nothing else:
 
-   - An open <select> cannot be put back after a redraw (no key, no API reopens
-     it), so a background paint waits while one holds focus: at most twelve in a
-     row, then the board paints again, and `change` or `blur` catches up once.
-     A manual refresh paints over an open list, because the reader pressed the
-     thing that redraws.
+   - React keeps the Select value and popup state. While it is open, a background
+     paint waits so changes around the trigger cannot move the choice: at most
+     twelve in a row, then the board paints without re-arming. Closing the popup
+     catches up once. Manual refresh still paints at the reader's request.
    - A disclosure the reader just toggled eases for 200 ms; a background paint
      inside that window is held 220 ms and coalesced to the newest, and reduced
      motion holds nothing. The catch-up after a list closes is the reader's own
@@ -159,7 +158,7 @@ export function createDisplayGate(options: DisplayGateOptions) {
     /** A reader's own disclosure toggle began. */
     noteToggle: (): void => motion.noteToggle(),
 
-    /** `change` or `blur` on a select: the newest deferred paint is shown once. */
+    /** A popup closed: the newest deferred paint is shown once. */
     releaseChoice(): boolean {
       releasing = true;
       try {
@@ -183,27 +182,43 @@ export function createDisplayGate(options: DisplayGateOptions) {
 
 export type DisplayGate = ReturnType<typeof createDisplayGate>;
 
-/** True while a native <select> inside `root` holds focus, which is when its option list may be open. */
-export function choiceOpenIn(root: () => Element | null, doc: Document = document): boolean {
-  const active = doc.activeElement;
-  if (!active || active.tagName !== 'SELECT') return false;
-  return root()?.contains(active) === true;
+/** The trigger remains in the page even when keyboard focus is in its portalled popup. */
+export function choiceOpenIn(root: () => Element | null, _doc: Document = document): boolean {
+  return Boolean(root()?.querySelector('[data-slot="select-trigger"][aria-expanded="true"]'));
 }
 
-/* `change` as well as `blur`, because a keyboard selection commits without the
-   list losing focus and the reader should see the board catch up then, not on the
-   next poll. Capture, because `blur` does not bubble. */
+/* Base UI publishes actual open state on the trigger. Observing its close also covers Escape,
+   outside presses and unmounts; focus alone no longer holds a closed choice. */
 export function installChoiceRelease(
   doc: Document,
   gate: Pick<DisplayGate, 'releaseChoice'>,
 ): () => void {
-  const onChange = (event: Event) => {
-    if (event.target instanceof HTMLSelectElement) gate.releaseChoice();
-  };
-  doc.addEventListener('change', onChange);
-  doc.addEventListener('blur', onChange, true);
-  return () => {
-    doc.removeEventListener('change', onChange);
-    doc.removeEventListener('blur', onChange, true);
-  };
+  const trigger = '[data-slot="select-trigger"]';
+  const observer = new MutationObserver((records) => {
+    const closed = records.some((record) => {
+      if (record.type === 'attributes') {
+        return (
+          record.target instanceof Element &&
+          record.target.matches(trigger) &&
+          record.oldValue === 'true' &&
+          record.target.getAttribute('aria-expanded') !== 'true'
+        );
+      }
+      return [...record.removedNodes].some(
+        (node) =>
+          node instanceof Element &&
+          (node.matches(`${trigger}[aria-expanded="true"]`) ||
+            node.querySelector(`${trigger}[aria-expanded="true"]`)),
+      );
+    });
+    if (closed) gate.releaseChoice();
+  });
+  observer.observe(doc, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['aria-expanded'],
+    attributeOldValue: true,
+  });
+  return () => observer.disconnect();
 }

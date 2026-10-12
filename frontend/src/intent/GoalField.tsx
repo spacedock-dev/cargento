@@ -102,7 +102,7 @@ export function GoalField() {
       data-next-cockpit-held-field="goal"
       {...(untouched ? { 'data-next-cockpit-drafted': '' } : {})}
     >
-      <div className="next-cockpit-held-heading flex-nowrap [&_.next-intent-prompt-pick]:flex-1">
+      <div className="next-cockpit-held-heading flex-nowrap [&_.next-intent-prompt-pick]:flex-none max-[760px]:[&_.next-intent-prompt-pick]:flex-1">
         <Label className="next-cockpit-held-label" htmlFor={boxId}>
           Goal
         </Label>
@@ -116,8 +116,8 @@ export function GoalField() {
       ) : null}
       <HeldTextarea
         id={boxId}
-        rows={1}
-        className="min-h-[44px]"
+        rows={3}
+        className="min-h-[44px] max-[760px]:h-[44px]"
         maxLength={cap}
         memoryKey={key}
         focusKey={key}

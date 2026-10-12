@@ -20,6 +20,8 @@ export function registerPopoverEscape(
 export function installPopoverEscape(doc: Document): () => void {
   const onKeydown = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return;
+    // A choice above a popover owns the first Escape; leave its containing disclosure open.
+    if (doc.querySelector('[data-slot=select-trigger][aria-expanded=true]')) return;
     const open = [
       ...doc.querySelectorAll<HTMLElement>('[data-slot=popover-trigger][aria-expanded=true]'),
     ];

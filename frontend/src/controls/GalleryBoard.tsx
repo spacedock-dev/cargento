@@ -1,5 +1,5 @@
 import { Textarea } from '../ui/textarea';
-import { NativeSelect } from '../ui/native-select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import { Label } from '../ui/label';
 import { DraftInput } from './DraftField';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../ui/collapsible';
@@ -127,12 +127,32 @@ export function GalleryBoard({ world }: { world: World }) {
         {(['prompt', 'stage', 'direction'] as const).map((appearance) => (
           <div key={appearance}>
             <Label htmlFor={`gallery-${appearance}`}>{appearance} choice</Label>
-            <NativeSelect id={`gallery-${appearance}`} appearance={appearance} defaultValue="long">
-              <option value="long">
-                A long choice whose chevron must leave room for the reader's text
-              </option>
-              <option value="short">Short choice</option>
-            </NativeSelect>
+            <Select
+              defaultValue="long"
+              items={{
+                long: "A long choice whose chevron must leave room for the reader's text",
+                short: 'Short choice',
+              }}
+            >
+              <SelectTrigger
+                id={`gallery-${appearance}`}
+                className={
+                  appearance === 'prompt'
+                    ? 'font-medium ps-[12px]'
+                    : appearance === 'stage'
+                      ? 'font-medium ps-[6.4px]'
+                      : undefined
+                }
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="long">
+                  A long choice whose chevron must leave room for the reader's text
+                </SelectItem>
+                <SelectItem value="short">Short choice</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         ))}
         <Label htmlFor="gallery-intent">Intent words</Label>
@@ -157,22 +177,28 @@ export function GalleryBoard({ world }: { world: World }) {
           placeholder="Native input"
         />
       </section>
-      <section aria-label="Native select">
+      <section aria-label="Select">
         <Label htmlFor="stage-choice">Stage condition</Label>
-        <NativeSelect
-          appearance="gallery"
-          id="stage-choice"
-          className="ctl-select"
-          value={choice}
-          onChange={(event) => setChoice(event.target.value)}
+        <Select
+          value={choice || null}
+          onValueChange={(value) => setChoice(value ?? '')}
+          items={sessions.rows.map((row) => ({
+            value: `${row.harness}:${row.sid}`,
+            label: `${row.title ?? row.sid} · ${String(row.harness)} · board ${String(displayedAccepted)}`,
+          }))}
         >
-          <option value="">Choose a session</option>
-          {sessions.rows.map((row) => (
-            <option key={`${row.harness}:${row.sid}`} value={`${row.harness}:${row.sid}`}>
-              {`${row.title ?? row.sid} · ${String(row.harness)} · board ${String(displayedAccepted)}`}
-            </option>
-          ))}
-        </NativeSelect>
+          <SelectTrigger id="stage-choice" className="ctl-select">
+            <SelectValue placeholder="Choose a session" />
+          </SelectTrigger>
+          <SelectContent>
+            {sessions.rows.map((row) => (
+              <SelectItem
+                key={`${row.harness}:${row.sid}`}
+                value={`${row.harness}:${row.sid}`}
+              >{`${row.title ?? row.sid} · ${String(row.harness)} · board ${String(displayedAccepted)}`}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <output className="ctl-wrap" data-readout="choice">
           {choice}
         </output>

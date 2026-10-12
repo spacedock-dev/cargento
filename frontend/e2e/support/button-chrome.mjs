@@ -29,7 +29,7 @@ export function measureButtonChrome(normaliseKey, disclosures = false) {
       .join('.');
   const selector = disclosures
     ? '[data-slot=accordion-trigger],[data-slot=collapsible-trigger],[data-slot=popover-trigger]'
-    : 'button:not([data-slot=accordion-trigger]):not([data-slot=collapsible-trigger]):not([data-slot=popover-trigger])';
+    : 'button:not([data-slot=select-trigger]):not([data-slot=accordion-trigger]):not([data-slot=collapsible-trigger]):not([data-slot=popover-trigger])';
   return [...document.querySelectorAll(selector)].map((el) => {
     const path = [];
     for (let node = el.parentElement; node && node.id !== 'app'; node = node.parentElement) {

@@ -2,6 +2,8 @@ export function intentEditorDeviations(recorded) {
   const value = structuredClone(recorded);
   const added = [];
   for (const field of value.fields ?? []) {
+    // The popup's options are proven through its roles; the recorded native option DOM is retired.
+    field.menu = [];
     if (field.kind === 'goal') field.buttons = field.buttons.filter(([label]) => label !== 'Clear');
     if (field.kind === 'lines') {
       field.label = 'Expected outcome (optional)';

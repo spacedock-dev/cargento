@@ -153,7 +153,7 @@
    a reordering trick. The page scrolls as one document: no scroll container
    and nothing sticky, so docs/design-reader-state.md gains no row. */
 .next-session-detail{margin:12px 0 0;padding:0 0 34px;box-shadow:none}
-.next-session-panel{display:flex;flex-direction:column;gap:var(--sp-1);min-width:0}
+.next-session-panel{display:flex;flex-direction:column;gap:var(--sp-5);min-width:0}
 .next-session-activity{min-width:0}
 .next-session-activity-heading{margin:0 0 var(--sp-3);color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 

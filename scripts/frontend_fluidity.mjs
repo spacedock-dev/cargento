@@ -10,7 +10,7 @@
 // captured from `setInterval` (the React page has no global poll function, and a manual refresh
 // would bypass the poll path); (3) it also counts open EventSource connections and removed nodes
 // per update; (4) it measures whether an edited textarea, an opened disclosure and a focused
-// native select keep their DOM nodes through a poll, and whether native undo survives; (5) a second
+// Base UI Select keep their DOM nodes through a poll, and whether native undo survives; (5) a second
 // navigation series is read after a forced collection, taken after the baseline-comparable series
 // so it cannot disturb it; (6) the navigation runs in a document that holds the live stream; (7) its
 // ports are the migration's own.
@@ -342,14 +342,13 @@ async function run(o) {
     const sessionHash = '#n=session:baseline-project:claude:b0000000';
     await evaluate(`location.hash=${JSON.stringify(sessionHash)}`);
     await evaluate(`__baseline.wait(()=>!!document.querySelector('textarea[data-next-cockpit-held-key]'),${o.timeoutMs})`);
-    // An opened disclosure and a focused native select are held beside the editor, so one update
-    // asks the question of all three nodes at once. A popup cannot be opened through CDP here; the
-    // open-popup hold has its own browser proof (see the cutover receipt).
+    // First measure the native editor and disclosure; then an actual nonempty choice and open
+    // Base UI popup over thirteen fallback polls, including the bounded gate's real repaint.
     await evaluate(`(() => {
       const details = document.querySelector('.next-session-facts-more');
       if (!details) throw Error('the session facts disclosure is missing');
       details.querySelector('[data-slot="accordion-trigger"]').click();
-      const select = document.querySelector('select.next-intent-prompt-select');
+      const select = document.querySelector('[data-next-cockpit-prompt-select]');
       if (!select) throw Error('the prompt select is missing');
       window.__baselineDetails = details; window.__baselineSelect = select;
       // The disclosure is an accordion item now: its open state is the trigger's aria-expanded.
@@ -364,7 +363,7 @@ async function run(o) {
     await call('Input.insertText', {text: 'Baseline native editor draft'});
     const before = await evaluate(`({value:__baselineEditor.value, start:__baselineEditor.selectionStart,
       end:__baselineEditor.selectionEnd, focused:document.activeElement===__baselineEditor,
-      detailsOpen:__isOpen(__baselineDetails), selectIndex:__baselineSelect.selectedIndex, selectOptions:__baselineSelect.options.length})`);
+      detailsOpen:__isOpen(__baselineDetails), selectValue:__baselineSelect.textContent})`);
     const updated = await configure('small', 'healthy');
     const removedBefore = await removed();
     await poll(); await markerPaint(updated.sequence);
@@ -374,8 +373,8 @@ async function run(o) {
       sameNode:e===__baselineEditor,
       sameDetailsNode:document.querySelector('.next-session-facts-more')===__baselineDetails,
       detailsStillAttached:document.contains(__baselineDetails), detailsOpen:__isOpen(__baselineDetails),
-      sameSelectNode:document.querySelector('select.next-intent-prompt-select')===__baselineSelect,
-      selectIndex:__baselineSelect.selectedIndex, selectOptions:__baselineSelect.options.length};})()`);
+      sameSelectNode:document.querySelector('[data-next-cockpit-prompt-select]')===__baselineSelect,
+      selectValue:__baselineSelect.textContent};})()`);
     const removedDuringUpdate = await removed() - removedBefore;
     // Native undo is the proof that the node kept its history, not only its text: the typed draft
     // must come off in one undo step and leave the words that stood before it.
@@ -390,15 +389,34 @@ async function run(o) {
       nodeRetained: after.sameNode === true,
       nativeUndo: {handled: undone.handled, valueBeforeTyping: editorBefore.valueBeforeTyping,
         valueAfterUndo: undone.value, restoredPriorWords: undone.value === editorBefore.valueBeforeTyping}};
+    await evaluate(`__baselineSelect.click(); __baseline.wait(()=>!!document.querySelector('[role="option"]:not([aria-disabled="true"])'),${o.timeoutMs})`);
+    const promptPoint = await evaluate(`(() => { const r = document.querySelector('[role="option"]:not([aria-disabled="true"])').getBoundingClientRect(); return {x:r.x+r.width/2, y:r.y+r.height/2}; })()`);
+    await call('Input.dispatchMouseEvent', {type:'mousePressed', button:'left', clickCount:1, ...promptPoint});
+    await call('Input.dispatchMouseEvent', {type:'mouseReleased', button:'left', clickCount:1, ...promptPoint});
+    await evaluate(`__baseline.wait(()=>__baselineSelect.getAttribute('aria-expanded')==='false',${o.timeoutMs})`);
+    await evaluate(`__baselineSelect.click(); __baseline.wait(()=>__baselineSelect.getAttribute('aria-expanded')==='true' && __baselineSelect.getAttribute('aria-busy')==='false',${o.timeoutMs})`);
+    const choiceBefore = await evaluate(`(() => {window.__baselinePopup=document.querySelector('[data-slot="select-content"]'); return {value:__baselineSelect.textContent, open:__baselineSelect.getAttribute('aria-expanded'), options:[...__baselinePopup.querySelectorAll('[role="option"]')].map(n=>n.textContent), selected:__baselinePopup.querySelector('[role="option"][aria-selected="true"]')?.getAttribute('data-value')};})()`);
+    let choiceUpdated;
+    for (let hold = 0; hold < 13; hold += 1) {
+      choiceUpdated = await configure('small', 'healthy');
+      await poll();
+      await evaluate(`__baseline.wait(()=>__baseline.requests.some(r=>r.sequence===${choiceUpdated.sequence}),${o.timeoutMs})`);
+      await evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+    }
+    await markerPaint(choiceUpdated.sequence);
+    const choiceAfter = await evaluate(`({value:__baselineSelect.textContent, open:__baselineSelect.getAttribute('aria-expanded'), sameTrigger:document.querySelector('[data-next-cockpit-prompt-select]')===__baselineSelect, samePopup:document.querySelector('[data-slot="select-content"]')===__baselinePopup, options:[...__baselinePopup.querySelectorAll('[role="option"]')].map(n=>n.textContent), selected:__baselinePopup.querySelector('[role="option"][aria-selected="true"]')?.getAttribute('data-value')})`);
+    await call('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
+    await call('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
     report.retention = {status: 'measured', trigger: 'fallbackPollCallback', removedNodesDuringUpdate: removedDuringUpdate,
       editedNodeReplacements: after.sameNode ? 0 : 1,
       openDisclosureReplacements: after.sameDetailsNode && after.detailsStillAttached ? 0 : 1,
       openDisclosureKeptOpen: before.detailsOpen === true && after.detailsOpen === true,
-      focusedSelectReplacements: after.sameSelectNode ? 0 : 1,
-      focusedSelectKeptChoice: before.selectIndex === after.selectIndex && before.selectOptions === after.selectOptions,
-      scope: 'The goal textarea (typed and focused), the opened session-facts disclosure and the prompt select, on the small cohort over one fallback poll that changed every row title.'};
+      focusedSelectReplacements: choiceAfter.sameTrigger && choiceAfter.samePopup ? 0 : 1,
+      focusedSelectKeptChoice: Boolean(choiceBefore.selected) && choiceBefore.selected === choiceAfter.selected && choiceBefore.value === choiceAfter.value && JSON.stringify(choiceBefore.options) === JSON.stringify(choiceAfter.options) && choiceBefore.open === 'true' && choiceAfter.open === 'true',
+      choiceBefore, choiceAfter,
+      scope: 'The typed and focused goal and open disclosure over one fallback poll, then a selected prompt and open popup over thirteen fallback polls until the board paints. Each update changes row titles; the choice must be nonempty.'};
     // Release the intentionally held nodes before DOM-retention trends are recorded.
-    await evaluate('delete window.__baselineEditor; delete window.__baselineDetails; delete window.__baselineSelect; delete window.__isOpen');
+    await evaluate('delete window.__baselineEditor; delete window.__baselineDetails; delete window.__baselineSelect; delete window.__baselinePopup; delete window.__isOpen');
     // A document that opened after a recent one finds that one's lease still fresh and follows it,
     // so it holds no stream, and a stream count of zero would say nothing about leaks. Drop the
     // lease and wait for this document to take it (it re-elects every two seconds), so the

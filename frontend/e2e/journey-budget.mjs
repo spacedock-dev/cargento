@@ -38,7 +38,7 @@ function countActivations() {
     'click',
     (event) => {
       const control = event.target.closest(
-        'button,a,input,textarea,select,summary,[role="button"]',
+        'button,a,input,textarea,select,summary,[role="button"],[role="option"]',
       );
       if (!event.isTrusted || !control || !globalThis.__journey.counting) return;
       globalThis.__journey.clicks.push(
@@ -56,6 +56,7 @@ const cases = [
     { name: `draft-${state}`, state, budget: 3 },
     { name: `directions-${state}`, state, later: true, budget: 4 },
   ]),
+  { name: 'chosen-prompt-running', state: 'running', chosen: true, budget: 5 },
   { name: 'draft-no-departure', state: 'running', noDeparture: true, budget: 3 },
   { name: 'typed-over-draft', state: 'running', typed: true, budget: 5 },
   { name: 'typed-no-draft', state: 'running', typed: true, noDraft: true, budget: 4 },
@@ -249,6 +250,19 @@ try {
         globalThis.__journey.counting = true;
       });
       const action = (name) => page.getByRole('button', { name, exact: true });
+      if (fixture.chosen) {
+        const before = await page.evaluate(() => globalThis.__journey.clicks.length);
+        await page
+          .getByRole('combobox', { name: 'Fill the goal from one of your prompts' })
+          .click();
+        await page.getByRole('option').first().click();
+        assert.equal(
+          await page.evaluate(() => globalThis.__journey.clicks.length),
+          before + 2,
+          'prompt choice costs one press and one choose',
+        );
+        assert.match(await page.locator('#next-cockpit-cue-status').innerText(), /Not saved/);
+      }
       if (fixture.typed) {
         if (fixture.state === 'ended') {
           assert.match(

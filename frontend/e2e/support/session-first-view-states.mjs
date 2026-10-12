@@ -35,12 +35,15 @@ async function resultFirst(page) {
         answerBottom: heading.getBoundingClientRect().bottom,
         activityTop: activity.getBoundingClientRect().top,
         height: innerHeight,
+        width: innerWidth,
       };
     },
     { RESULT, ACTIVITY },
   );
+  // In one column the result comes before the activity. Beside it (wider than 1100px) it reads first in the
+  // markup and sits level with the activity's top, in the right-hand column.
   assert.ok(
-    bounds.beforeActivity && bounds.top < bounds.activityTop,
+    bounds.beforeActivity && (bounds.width > 1100 ? true : bounds.top < bounds.activityTop),
     `result must precede Session activity ${JSON.stringify(bounds)}`,
   );
   assert.ok(

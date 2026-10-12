@@ -1,4 +1,5 @@
-import { act, fireEvent } from '@testing-library/react';
+import { openSelect, chooseSelect } from '../../test/select';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { json } from './testing';
 import {
@@ -26,8 +27,8 @@ const press = async (button: Element | null) => {
     fireEvent.click(button as Element);
   });
 };
-const select = (): HTMLSelectElement =>
-  document.querySelector('[data-next-cockpit-prompt-select]') as HTMLSelectElement;
+const select = (): HTMLButtonElement =>
+  document.querySelector('[data-next-cockpit-prompt-select]') as HTMLButtonElement;
 const CHOICES = [
   { fact_id: 'p1', text: 'Fix the login redirect', at: 100, cut: false },
   { fact_id: 'p2', text: 'Then ship the queue worker behind a flag', at: 200, cut: true },
@@ -35,17 +36,13 @@ const CHOICES = [
 const menu = () => json({ prompt_choices: CHOICES });
 
 async function open(page: Awaited<ReturnType<typeof mountSession>>) {
-  await act(async () => {
-    fireEvent.pointerDown(select());
-  });
+  await openSelect(select());
   await page.settle();
 }
 
 async function choose(page: Awaited<ReturnType<typeof mountSession>>, factId: string) {
   await open(page);
-  await act(async () => {
-    fireEvent.change(select(), { target: { value: factId } });
-  });
+  await chooseSelect(select(), factId);
   await page.settle();
 }
 
@@ -75,10 +72,9 @@ describe('the "Use your prompt" menu', () => {
     });
     await settle(page);
     await open(page);
-    const labels = [...select().options].map((option) => option.textContent ?? '');
-    expect(labels[0]).toBe('Use your prompt');
-    expect(labels[1]).toMatch(/^First prompt · \d\d:\d\d — Fix the login redirect$/);
-    expect(labels[2]).toMatch(
+    const labels = screen.getAllByRole('option').map((option) => option.textContent ?? '');
+    expect(labels[0]).toMatch(/^First prompt · \d\d:\d\d — Fix the login redirect$/);
+    expect(labels[1]).toMatch(
       /^Latest prompt · \d\d:\d\d · excerpt — Then ship the queue worker behind a flag$/,
     );
   });
@@ -91,13 +87,13 @@ describe('the "Use your prompt" menu', () => {
     await settle(page);
     await choose(page, 'p1');
     expect(goalBox().value).toBe('Fix the login redirect');
-    expect(select().value).toBe('p1');
+    expect(select().textContent).toContain('Fix the login redirect');
     expect(text('#next-cockpit-cue-status')).toBe('Goal filled from your prompt. Not saved.');
     expect(page.posts()).toBe(0);
     expect(inert(control('held-save'))).toBe(false);
     expect(inert(control('held-undo'))).toBe(false);
     type(goalBox(), 'Fix the login redirect, carefully');
-    expect(select().value).toBe('');
+    expect(select().textContent).toBe('Use your prompt');
     // Typed words replace the pending adoption, so the same prompt can be picked again.
     await choose(page, 'p1');
     expect(goalBox().value).toBe('Fix the login redirect');
@@ -129,9 +125,7 @@ describe('the "Use your prompt" menu', () => {
     expect(goalBox().value).toBe('Fix the login redirect');
     // The next opening finds a record that no longer holds it.
     page.state.routes['/api/project-context'] = () => json({ prompt_choices: [CHOICES[1]] });
-    await act(async () => {
-      fireEvent.blur(select());
-    });
+
     await open(page);
     expect(goalBox().value).toBe('Saved goal');
   });
@@ -289,9 +283,7 @@ describe('Save intent over an adopted prompt', () => {
     await settle(page);
     await choose(page, 'p1');
     await press(control('held-save'));
-    await act(async () => {
-      fireEvent.change(select(), { target: { value: 'p2' } });
-    });
+    await choose(page, 'p2');
     page.state.data = board(
       {},
       {

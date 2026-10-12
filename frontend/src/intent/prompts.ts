@@ -25,6 +25,7 @@ export async function loadPromptChoices(
   });
   ctx.held.notify();
   let choices: PromptChoice[] = [];
+  let failed = false;
   try {
     const result = await ctx.shell.runtime.client.getProjectContext({
       project: projectKey,
@@ -32,6 +33,18 @@ export async function loadPromptChoices(
       prompts: true,
     });
     const body = result.kind === 'ok' ? (result.body as unknown as Row) : null;
+    const sources = isRecord(body?.['sources']) ? body['sources'] : null;
+    const work = isRecord(sources?.['work']) ? sources['work'] : null;
+    const unavailable = Array.isArray(work?.['unavailable']) ? work['unavailable'] : [];
+    /* An empty list from a record the server could not read says nothing about the reader's prompts. */
+    failed =
+      body === null ||
+      unavailable.some(
+        (entry) =>
+          isRecord(entry) &&
+          entry['harness'] === input.session['harness'] &&
+          entry['sid'] === input.session['sid'],
+      );
     const offered = body?.['prompt_choices'];
     choices = Array.isArray(offered)
       ? offered.filter(isRecord).map((choice) => ({
@@ -43,16 +56,18 @@ export async function loadPromptChoices(
       : [];
   } catch {
     choices = [];
+    failed = true;
   }
   ctx.held.prompts.set(key, {
     pending: false,
     open: ctx.held.prompts.get(key)?.open === true,
     choices,
+    failed,
   });
   ctx.held.notify();
 }
 
-/* The menu is dismissed: Escape, or focus leaving the select. */
+/* The menu is dismissed: Escape, a choice, an outside press or focus leaving the popup. */
 export function closePromptMenu(ctx: Ctx, row: Row): void {
   const key = compatSessKey(row);
   const known = ctx.held.prompts.get(key);

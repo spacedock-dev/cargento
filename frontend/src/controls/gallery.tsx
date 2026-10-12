@@ -1,6 +1,6 @@
 /* A development-only page that mounts every shared control against the real backend, so a browser
    test can measure what a unit test cannot: unsaved text, caret, undo, IME composition, a native
-   <select> and disclosure motion across live data. It is not shipped: nothing in the production
+   Base UI Select and disclosure motion across live data. It is not shipped: nothing in the production
    entry imports it, and the browser test serves it by swapping the entry inside a scratch copy of
    the tree. */
 import { StrictMode } from 'react';

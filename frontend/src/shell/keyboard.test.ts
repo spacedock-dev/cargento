@@ -83,6 +83,11 @@ describe('a shortcut never fires where the reader is typing or using a modifier'
       expect(shortcutTarget(key(k, { tagName }), route('#n=intent')), `${tagName} ${k}`).toBeNull();
   });
 
+  it.each(['combobox', 'listbox', 'option'])('leaves choice keys with the %s', (role) => {
+    for (const k of ['a', 'p', 's', 'Escape'])
+      expect(shortcutTarget(key(k, { tagName: 'BUTTON', role }), route('#n=intent'))).toBeNull();
+  });
+
   it('is ignored over editable content', () => {
     expect(shortcutTarget(key('a', { isContentEditable: true }), route('#n=intent'))).toBeNull();
   });

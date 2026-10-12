@@ -299,7 +299,7 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             title={askingTitle(labels, session)}
           />
         ) : null}
-        <div className="next-session-columns grid grid-cols-1 gap-5 items-start">
+        <div className="next-session-columns grid grid-cols-1 gap-5 items-start min-[1101px]:grid-cols-[minmax(0,1fr)_460px]">
           <DriftSlot
             session={session}
             payload={payload}
@@ -308,7 +308,10 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
           >
             <DeparturesSection />
           </DriftSlot>
-          <div className="next-session-activity" data-next-session-activity>
+          <div
+            className="next-session-activity min-[1101px]:col-start-1 min-[1101px]:row-start-1"
+            data-next-session-activity
+          >
             {!(observed.isNeeds || observed.askKnown) ? (
               <Header
                 session={session}

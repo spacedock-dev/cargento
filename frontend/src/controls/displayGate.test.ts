@@ -50,7 +50,7 @@ describe("the display gate: acceptance is immediate, paint is the reader's to ho
     expect(listener).toHaveBeenCalledOnce();
   });
 
-  it('defers up to twelve background paints while a native select is open, then keeps painting without re-arming', async () => {
+  it('defers up to twelve background paints while a Base UI Select is open, then keeps painting without re-arming', async () => {
     const { held, arrive, shown, store, gate } = setup();
     held.choice = true;
     expect(MAX_DEFERRED_COMMITS).toBe(12);

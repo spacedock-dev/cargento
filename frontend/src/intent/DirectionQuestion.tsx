@@ -1,4 +1,4 @@
-import { NativeSelect } from '../ui/native-select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import { Label } from '../ui/label';
 import { useEffect, type ReactNode } from 'react';
 import { compatSessKey } from '../api/identity';
@@ -102,7 +102,7 @@ export function DirectionQuestion({
   useEffect(() => {
     if (!count && ctx.held.wholes.has(key)) ctx.held.wholes.delete(key);
   }, [ctx, key, count]);
-  const pickRef = useFocusKey<HTMLSelectElement>(
+  const pickRef = useFocusKey<HTMLButtonElement>(
     ctx.shell.controls.focusLane,
     `direction-pick:${key}`,
   );
@@ -142,13 +142,16 @@ export function DirectionQuestion({
   return (
     <>
       {before}
-      <div className="next-cockpit-direction-question gap-0.5" data-next-cockpit-direction-question>
+      <div
+        className="next-cockpit-direction-question gap-3 max-[760px]:gap-0.5"
+        data-next-cockpit-direction-question
+      >
         <p className="next-cockpit-direction-said">
           {`${String(count)} later direction${count === 1 ? '' : 's'}`}
           <span className="next-visually-hidden">{` ${since}`}</span>.
         </p>
         <WholeList pending={pending} numbers={numbers} />
-        <div className="next-cockpit-reading-ask">
+        <div className="next-cockpit-reading-ask [&>button]:flex-auto">
           <ActionButton
             weight={primary ? 'primary' : 'secondary'}
             label={analyze ? KEEP_ANALYZE : KEEP}
@@ -179,23 +182,40 @@ export function DirectionQuestion({
         {count > 1 ? (
           <Label className="next-direction-select">
             {'Direction '}
-            <NativeSelect
-              appearance="direction"
-              ref={pickRef}
-              data-next-direction-select
-              data-next-focus={`direction-pick:${key}`}
+            <Select
               value={earliest.id}
-              onChange={(event) => pickDirection(ctx, session, event.currentTarget.value)}
-            >
-              {pending.map((entry) => {
+              onValueChange={(value) => {
+                if (value) pickDirection(ctx, session, value);
+              }}
+              items={pending.map((entry) => {
                 const at = numbers.get(entry.id);
-                return (
-                  <option key={entry.id} value={entry.id}>
-                    {`${at !== undefined ? `#${String(at)}` : clock(Number(entry.at) || 0)} · ${entry.summary || 'Your direction'}`}
-                  </option>
-                );
+                return {
+                  value: entry.id,
+                  label: `${at !== undefined ? `#${String(at)}` : clock(Number(entry.at) || 0)} · ${entry.summary || 'Your direction'}`,
+                };
               })}
-            </NativeSelect>
+            >
+              <SelectTrigger
+                ref={pickRef}
+                data-next-direction-select
+                data-next-focus={`direction-pick:${key}`}
+                aria-label="Direction"
+                title={String(earliest.summary || 'Your direction')}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pending.map((entry) => {
+                  const at = numbers.get(entry.id);
+                  return (
+                    <SelectItem
+                      key={entry.id}
+                      value={entry.id}
+                    >{`${at !== undefined ? `#${String(at)}` : clock(Number(entry.at) || 0)} · ${entry.summary || 'Your direction'}`}</SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </Label>
         ) : null}
         {edited ? (

@@ -14,6 +14,7 @@ only readiness and control acknowledgements; diagnostics go to stderr.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import hashlib
 import json
 import os
@@ -96,6 +97,28 @@ class Fixture:
             reach_enabled=False,
             quiet_hours_enabled=False,
             history_enabled=False,
+        )
+        # Only the retention step opens this record. Cohort rows and timed board payloads stay
+        # identical to the baseline; the real prompt route now has a nonempty choice to measure.
+        transcript = scratch / ".claude" / "projects" / PROJECT / "b0000000.jsonl"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "user",
+                    "uuid": "baseline-prompt",
+                    "sessionId": "b0000000",
+                    "cwd": PROJECT,
+                    "isSidechain": False,
+                    "timestamp": dt.datetime.fromtimestamp(NOW - 60, tz=dt.UTC).isoformat(),
+                    "message": {
+                        "role": "user",
+                        "content": "Implement the synthetic baseline task.",
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
         )
         state = build_runtime_state(config, started=NOW)
         harness = HarnessSpec("claude", "Claude Code", lambda *_: True, self._rows)

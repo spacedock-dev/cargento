@@ -12,7 +12,7 @@ export const MAX_DEFERRED_COMMITS = 12;
 export const MOTION_HOLD_MS = 220;
 
 export interface CommitGateOptions<T> {
-  /** True while something the commit would destroy is mid-choice, such as an open native <select>. */
+  /** True while something the commit would destroy is mid-choice, such as an open select popup. */
   readonly isHeld: () => boolean;
   readonly commit: (payload: T) => void;
   readonly maxDeferred?: number;

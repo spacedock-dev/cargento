@@ -24,6 +24,10 @@ function useShellKeyboard(): void {
           key: event.key,
           tagName: target?.tagName ?? 'BODY',
           isContentEditable: editable,
+          role:
+            target
+              ?.closest('[role="combobox"], [role="listbox"], [role="option"]')
+              ?.getAttribute('role') ?? null,
           metaKey: event.metaKey,
           ctrlKey: event.ctrlKey,
           altKey: event.altKey,
@@ -44,7 +48,7 @@ export function Page() {
   const { runtime, display, clock, host } = useShell();
   useBoardRuntime(runtime);
   useShellKeyboard();
-  /* A native option list closing is the reader's own moment: the newest deferred poll shows once. */
+  /* A Select popup closing is the reader's own moment: the newest deferred poll shows once. */
   useEffect(() => installChoiceRelease(document, display), [display]);
 
   const route = useRoute();

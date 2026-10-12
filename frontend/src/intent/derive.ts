@@ -412,9 +412,11 @@ export function promptClip(text: unknown, limit: number): string {
 }
 
 export interface PromptMenu {
-  /** The native select is drawn at all: only where something could fill it. */
+  /** The prompt choice is drawn at all: only where something could fill it. */
   readonly visible: boolean;
   readonly pending: boolean;
+  /** The last read of the reader's prompts failed, which is not the same as finding none. */
+  readonly failed: boolean;
   readonly options: readonly {
     readonly value: string;
     readonly label: string;
@@ -424,16 +426,20 @@ export interface PromptMenu {
   readonly value: string;
 }
 
-/* "Use your prompt": one native select in the goal's label row listing the server's `prompt_choices`;
-   picking one fills the box as a pending adoption. A native select rather than a menu of buttons: that menu
-   jumped from the right of the row to the left when it opened, while the browser's own list drops over the
-   page and moves nothing. Its rationale, that a poll redraw would shut a list mid-choice, is answered by the
-   display gate, which defers the poll's paint while a select holds focus. The first entry is the earliest
+/* "Use your prompt": a Base UI Select in the goal's label row. Choosing fills the goal as a pending
+   adoption. React owns the popup; the display gate holds its anchor during background paints.
+   The first entry is the earliest
    prompt the record holds; over a session that opened with a harness control that is not its first prompt,
    so it is named the earliest. An excerpt says so in the option itself. */
 export function promptMenu(input: DraftInput): PromptMenu {
   const { held, contexts, payload, session } = input;
-  const hidden: PromptMenu = { visible: false, pending: false, options: [], value: '' };
+  const hidden: PromptMenu = {
+    visible: false,
+    pending: false,
+    failed: false,
+    options: [],
+    value: '',
+  };
   if (!annotateOn(payload) || storeUnreadable(payload)) return hidden;
   if (!['claude', 'codex'].includes(String(session['harness'] || ''))) return hidden;
   const choices = promptChoices(held, contexts, session);
@@ -450,7 +456,12 @@ export function promptMenu(input: DraftInput): PromptMenu {
       );
     });
   });
-  if (!choices.length && !((candidate?.at ?? 0) > 0) && !listed) return hidden;
+  if (!choices.length && !((candidate?.at ?? 0) > 0) && !listed) {
+    /* A popup the reader already opened outlives the offer that showed its trigger, so what the last read
+       said (still loading, or failed) must not be lost with the visibility. */
+    const read = held.prompts.get(compatSessKey(session));
+    return { ...hidden, pending: read?.pending === true, failed: read?.failed === true };
+  }
   /* "First" only for the row's own first prompt. The choices come from the focused record, which holds the
      newest 100 events, so in a long session its earliest prompt is a later message. */
   const firstAt = nextNumber(session['first_prompt_at']);
@@ -474,6 +485,7 @@ export function promptMenu(input: DraftInput): PromptMenu {
   return {
     visible: true,
     pending: held.prompts.get(compatSessKey(session))?.pending === true,
+    failed: held.prompts.get(compatSessKey(session))?.failed === true,
     options,
     value: options.find((option) => option.selected)?.value ?? '',
   };

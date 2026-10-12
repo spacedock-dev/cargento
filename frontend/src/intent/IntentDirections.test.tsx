@@ -1,4 +1,5 @@
-import { act, fireEvent } from '@testing-library/react';
+import { openSelect, chooseSelect } from '../../test/select';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { openPendingDirection } from './api';
 import { json } from './testing';
@@ -111,18 +112,17 @@ describe('the question before the press', () => {
     expect(text('.next-cockpit-direction-said')).toBe(
       '2 later directions since saving your intent.',
     );
-    const pick = document.querySelector('[data-next-direction-select]') as HTMLSelectElement;
-    expect([...pick.options].map((o) => o.textContent)).toEqual([
+    const pick = document.querySelector('[data-next-direction-select]') as HTMLButtonElement;
+    await openSelect(pick);
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
       '#1 · First one.',
       '#2 · Second one.',
     ]);
-    await act(async () => {
-      fireEvent.change(pick, { target: { value: 'f1' } });
-    });
+    await chooseSelect(pick, 'f1');
     expect(text('.next-cockpit-direction-said')).toBe(
       '2 later directions since saving your intent.',
     );
-    expect(pick.value).toBe('f1');
+    expect(pick.textContent).toContain('First');
     expect(page.posts()).toBe(0);
   });
 

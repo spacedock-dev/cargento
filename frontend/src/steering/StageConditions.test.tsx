@@ -1,3 +1,4 @@
+import { openSelect, chooseSelect } from '../../test/select';
 import { act, fireEvent } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StageConditions } from './StageConditions';
@@ -39,8 +40,8 @@ const board = (revision: string, generated = 1000) => ({
   },
 });
 const saved = () => json({ ok: true });
-const select = (): HTMLSelectElement =>
-  document.querySelector('[data-stage-choice]') as HTMLSelectElement;
+const select = (): HTMLButtonElement =>
+  document.querySelector('[data-stage-choice]') as HTMLButtonElement;
 const button = (action: string): HTMLButtonElement =>
   document.querySelector(`[data-stage-action="${action}"]`) as HTMLButtonElement;
 const cue = (): string => document.querySelector('[role="status"]')?.textContent ?? '';
@@ -71,7 +72,7 @@ describe('Save', () => {
   it('sends the exact request once, shows it busy, and says it was saved', async () => {
     const page = mount({ routes: { '/api/tripwire': () => 'hold' } });
     await page.settle();
-    fireEvent.change(select(), { target: { value: 'review' } });
+    await chooseSelect(select(), 'review');
     await press(button('save'));
     expect(page.allPosts()).toHaveLength(1);
     expect(page.allPosts()[0]?.path).toBe('/api/tripwire');
@@ -139,8 +140,8 @@ describe('Save', () => {
   it('names the revision the reader SAW, not a newer one the board accepted while a list was open', async () => {
     const page = mount();
     await page.settle();
-    // A native list holds a poll back from the screen: the board is newer than the card.
-    select().focus();
+    // An open choice holds a poll back from the screen: the board is newer than the card.
+    await openSelect(select());
     await page.poll(board('r2', 1002));
     expect(select().isConnected).toBe(true);
     await press(button('remove'));
@@ -222,11 +223,11 @@ describe('a press is one request', () => {
     // The board still says "build" after the save, so a kept draft would show "review" against it.
     const page = mount({ routes: { '/api/tripwire': saved } });
     await page.settle();
-    fireEvent.change(select(), { target: { value: 'review' } });
+    await chooseSelect(select(), 'review');
     await press(button('save'));
     await page.settle();
     expect(cue()).toBe('Saved.');
-    expect(select().value).toBe('build');
+    expect(select().textContent).toBe('build');
   });
 });
 
@@ -255,7 +256,7 @@ describe('the reader’s choice and cue', () => {
       routes: { '/api/tripwire': () => json({ ok: false, error: 'No.' }, 409) },
     });
     await page.settle();
-    fireEvent.change(select(), { target: { value: 'review' } });
+    await chooseSelect(select(), 'review');
     await press(button('save'));
     await page.settle();
     page.show(<p>elsewhere</p>);
@@ -265,7 +266,7 @@ describe('the reader’s choice and cue', () => {
       </main>,
     );
     await page.settle();
-    expect(select().value).toBe('review');
+    expect(select().textContent).toBe('review');
     expect(cue()).toBe('No.');
   });
 });

@@ -5,7 +5,11 @@ export function measureFieldChrome() {
       .filter((name) => /^(next-|ctl-|pc-)/.test(name))
       .sort()
       .join('.');
-  return [...document.querySelectorAll('#app select, #app textarea, #app input')].map((el) => {
+  return [
+    ...document.querySelectorAll(
+      '#app [data-slot=select-trigger], #app textarea, #app input:not([aria-hidden=true])',
+    ),
+  ].map((el) => {
     const path = [];
     for (let node = el.parentElement; node && node.id !== 'app'; node = node.parentElement) {
       const classes = semantic(node);

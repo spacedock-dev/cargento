@@ -1793,6 +1793,20 @@ redraw does not shut the list mid-choice.
   back up under the caret. The select, the box and the Expected outcome field below it now hold
   their places at rest, after a pick, after typing and after a redraw, at 1440, 760 and 375.
 
+### Amended 2026-10-12 (owner): Base UI Select
+
+The owner replaced all native choices with shadcn Base UI Select. The 2026-10-02 native-list
+mechanism above is historical: after an async prompt read, browser activation had expired and
+`showPicker()` could return without opening a list. The first press now opens a popup immediately
+with "Loading your prompts" as a disabled item, then choices or a stated absence (none in the part read, or the read failed) in
+the same popup. It drops below the trigger and moves no page content.
+
+The chosen fact, pending adoption and save meaning remain the same. Arrow keys navigate the list;
+confirmation chooses and returns focus to the trigger. Escape closes only the popup. The trigger
+keeps its existing focus key and 18rem wide-screen width, filling the remaining label-row width on narrow screens.
+React retains its open state through a refresh; the bounded board hold protects its anchor while
+open. [Reader state](design-reader-state.md#an-open-option-list) owns the current mechanism.
+
 ### Amended 2026-10-04 (owner): an adopted goal is read whole
 
 The owner, 2026-10-04, after
@@ -4593,6 +4607,12 @@ drift works, Use your prompt, the goal box, Save intent, Analyze drift (or the c
 make primary), What is sent, More, and the way back to Sessions. The optional outcome line is a
 field and is not counted.
 
+Amended 2026-10-12 by the owner: from 1101px wide the page is two columns, the session's activity on
+the left and the Intent and drift panel on the right, level at the top. Below that it is one column
+with the panel first, so the goal stays in the first view on a phone. The count above is the panel
+and the page chrome. The activity column's own disclosures (About this record, Session facts and the
+reports line) now also show beside it at 1280 by 800, and are held by the complete inventory of 14.
+
 ### The Sessions screen
 
 Keep the "running" and "waiting on you" counters; move the "exact requests" and "reported blocks"
@@ -4642,8 +4662,9 @@ bodies, has a 90-word ceiling. The opened how-to retains its separate 150-word c
 
 The fresh Claude Code fixture inventory below includes the session's project link and the Sessions
 breadcrumb. Before: 19 controls across the page, 13 in the 1280 by 800 viewport. After: 14 across
-the page, eight in that viewport. The activity disclosures remain below the first view; none of
-their sentences or controls are removed. The switch's accessible name is Live monitor.
+the page, eight in that viewport. The activity disclosures remain below the first view in one column; none of
+their sentences or controls are removed. (Beside the panel from 1101px wide, three of them show in
+that viewport; see the 2026-10-12 amendment above.) The switch's accessible name is Live monitor.
 
 | Button, link or disclosure | Before | After |
 | -- | -- | -- |

@@ -11,7 +11,7 @@
  * asserted against, and went with it. The BEHAVIOUR half
  * holds the React page to what a unit test cannot see: the native editor's text, caret, selection, undo history
  * and input-method composition surviving the board's own revisions (announced over the real stream), a
- * route away and back, the native select, the discard's dwell, the live monitor switch's storage key, the
+ * route away and back, the Base UI Select, the discard's dwell, the live monitor switch's storage key, the
  * StrictMode request and resource counts, keyboard operation, and 320/375/640(200% zoom)/1280 CSS px layouts
  * with no horizontal page scroll.
  *
@@ -107,12 +107,9 @@ const summarizeEditor = () => {
       norm(node),
       node.hasAttribute('data-next-cockpit-held-line-source-stale'),
     ]),
-    buttons: [...field.querySelectorAll('button')].map(button),
+    buttons: [...field.querySelectorAll('button:not([data-slot=select-trigger])')].map(button),
     cues: [...field.querySelectorAll('small.next-cockpit-held-cue')].map(norm),
-    menu: [...field.querySelectorAll('[data-next-cockpit-prompt-select] option')].map((o) => [
-      o.value,
-      norm(o),
-    ]),
+    menu: [], // Native option DOM is a recorded departure; popup choices have their own role proof.
     absent: [...field.querySelectorAll('.next-cockpit-held-absent')].map((node) => [
       norm(node),
       node.hidden,
@@ -191,12 +188,12 @@ if (mutation) {
       'defaultValue={initial}',
       'value={initial} onChange={() => undefined}',
     ],
-    'wide-select': [
-      'ui/native-select.tsx',
-      'relative min-w-0 max-w-full',
-      'relative min-w-[400px] max-w-full',
+    'wide-select': ['ui/select.tsx', 'flex w-full items-center', 'flex min-w-[400px] items-center'],
+    'auto-prompt-width': [
+      'intent/PromptSelect.tsx',
+      'w-[18rem] max-[760px]:w-full',
+      'w-auto max-[760px]:w-auto',
     ],
-    'auto-prompt-width': ['ui/native-select.tsx', "prompt: 'block w-full", "prompt: 'block w-auto"],
     'reset-held-viewport': [
       'intent/HeldTextarea.tsx',
       'if (!element) return;',
@@ -372,19 +369,23 @@ try {
     async () => {
       const options = {};
       await load(react, fragmentOf('intent-4'));
-      // A chosen prompt, picked through the native list.
+      // A chosen prompt, picked through the popup.
       const select = react.page.locator('[data-next-cockpit-prompt-select]');
       await select.click();
       await react.page.waitForFunction(
-        () => document.querySelectorAll('[data-next-cockpit-prompt-select] option').length > 1,
+        () =>
+          document.querySelectorAll(
+            '[data-slot=select-content] [role=option]:not([aria-disabled=true])',
+          ).length > 0,
       );
-      await select.selectOption({ index: 1 });
+      const offeredPrompts = await react.page.getByRole('option').count();
+      await react.page.getByRole('option').first().click();
       let old = await versus(
         'editor: a chosen prompt',
         'the editor differs from the recorded editor over a chosen prompt',
       );
       assert.match(old.fields[0].boxes[0], /Rename the worker/);
-      options.chosen = old.fields[0].menu.length;
+      options.chosen = offeredPrompts;
       // Save it (one adoption), which is what makes later directions the page can ask about.
       await react.page.locator('[data-next-cockpit-action="held-save"]').click();
       await react.page.waitForFunction(
@@ -666,6 +667,8 @@ try {
         await readEditor(react);
         const select = react.page.locator('[data-next-cockpit-prompt-select]');
         const idle = await select.evaluate((el) => el.getBoundingClientRect().width);
+        if (width === 1280)
+          assert.equal(idle, 288, 'the wide prompt trigger keeps its 18rem reservation');
         let release;
         const held = new Promise((done) => {
           release = done;
@@ -680,12 +683,15 @@ try {
           await select.evaluate((el) => {
             globalThis.__promptFirstFrame = new Promise((done) => {
               el.addEventListener(
-                'pointerdown',
+                'click',
                 () =>
                   requestAnimationFrame(() =>
                     done({
                       width: el.getBoundingClientRect().width,
-                      text: el.selectedOptions[0]?.textContent,
+                      text: el.textContent,
+                      expanded: el.getAttribute('aria-expanded'),
+                      loading: document.querySelector('[role=option][aria-disabled=true]')
+                        ?.textContent,
                       busy: el.getAttribute('aria-busy'),
                       focused: document.activeElement === el,
                     }),
@@ -696,19 +702,45 @@ try {
           });
           await select.click();
           const pending = await react.page.evaluate(() => globalThis.__promptFirstFrame);
-          assert.equal(pending.text, 'Loading your prompts', 'the first frame must show loading');
+          assert.equal(pending.text, 'Use your prompt');
+          assert.equal(pending.expanded, 'true', 'the first press must open the popup');
+          assert.equal(pending.loading, 'Loading your prompts', 'the open popup must show loading');
           assert.equal(pending.busy, 'true');
-          assert.equal(pending.focused, true);
+          assert.equal(await react.page.getByRole('listbox').isVisible(), true);
+          await mark(react, '[data-slot=select-content]', 'prompt-popup');
+          await react.page.screenshot({
+            path: `${SHOTS}select-prompt-loading-${width}.png`,
+            fullPage: true,
+          });
           release();
           await react.page.waitForFunction(() => {
             const el = document.querySelector('[data-next-cockpit-prompt-select]');
-            return el?.getAttribute('aria-busy') === 'false' && el.options.length > 1;
+            return (
+              el?.getAttribute('aria-busy') === 'false' &&
+              document.querySelector('[role=option]:not([aria-disabled=true])')
+            );
           });
           const loaded = await select.evaluate((el) => ({
             width: el.getBoundingClientRect().width,
-            text: el.selectedOptions[0]?.textContent,
+            text: el.textContent,
+            expanded: el.getAttribute('aria-expanded'),
+            loading: document.querySelector('[role=option][aria-disabled=true]')?.textContent,
           }));
           assert.equal(loaded.text, 'Use your prompt');
+          assert.equal(await same(react, '[data-slot=select-content]', 'prompt-popup'), true);
+          assert.equal(await select.getAttribute('aria-expanded'), 'true');
+          await react.page.screenshot({
+            path: `${SHOTS}select-prompt-loaded-${width}.png`,
+            fullPage: true,
+          });
+          const popupBounds = await react.page.getByRole('listbox').evaluate((node) => {
+            const popup = node.closest('[data-slot=select-content]').getBoundingClientRect();
+            const trigger = document
+              .querySelector('[data-next-cockpit-prompt-select]')
+              .getBoundingClientRect();
+            return { top: popup.top, bottom: trigger.bottom };
+          });
+          assert.ok(popupBounds.top >= popupBounds.bottom, 'the popup must drop below the trigger');
           for (const [state, size] of [
             ['pending', pending.width],
             ['loaded', loaded.width],
@@ -753,7 +785,7 @@ try {
   );
 
   await step(
-    'the native select reads the prompts once per opening, fills the box, and Save adopts it naming the fact',
+    'the Base UI Select reads the prompts once per opening, fills the box, and Save adopts it naming the fact',
     async () => {
       await load(react, fragmentOf('intent-2'));
       await readEditor(react);
@@ -761,16 +793,19 @@ try {
       const select = react.page.locator('[data-next-cockpit-prompt-select]');
       await select.click();
       await react.page.waitForFunction(
-        () => document.querySelectorAll('[data-next-cockpit-prompt-select] option').length > 1,
+        () =>
+          document.querySelectorAll(
+            '[data-slot=select-content] [role=option]:not([aria-disabled=true])',
+          ).length > 0,
       );
       const prompts = react.log.requests.filter((r) => r.path.includes('prompts=1'));
       assert.equal(prompts.length, 1, 'the menu read the prompts more than once for one opening');
-      const options = await select.locator('option').allTextContents();
+      const options = await react.page.getByRole('option').allTextContents();
       assert.match(
-        options[1],
+        options[0],
         /^First prompt · \d\d:\d\d — Ship the queue worker behind a flag\.$/,
       );
-      await select.selectOption({ index: 1 });
+      await react.page.getByRole('option').first().click();
       assert.equal(
         await react.page.locator(GOAL).inputValue(),
         'Ship the queue worker behind a flag.',
@@ -808,7 +843,7 @@ try {
       assert.equal(norm(said), '2 later directions since saving your intent.');
       const number = await react.page
         .locator('[data-next-direction-select]')
-        .inputValue()
+        .evaluate((node) => node.nextElementSibling.value)
         .then(async (id) =>
           react.page.locator(`[data-next-entry-id="${id}"]`).getAttribute('data-next-entry'),
         );
@@ -1134,7 +1169,9 @@ await step(
         for (const width of [320, 375]) {
           await page.setViewportSize({ width, height: 900 });
           const fields = await page
-            .locator('main select,main input,main textarea')
+            .locator(
+              'main [data-slot=select-trigger],main input:not([aria-hidden=true]),main textarea',
+            )
             .evaluateAll((elements) =>
               elements
                 .map((el) => {

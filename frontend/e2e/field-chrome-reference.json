@@ -91,19 +91,19 @@
       "line-height": "23.25px",
       "text-align": "start"
     },
-    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field[drafted] > next-cockpit-held-heading > next-intent-prompt-pick | select.next-intent-prompt-select | data-next-cockpit-prompt-select=true | disabled=false": {
+    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field[drafted] > next-cockpit-held-heading > next-intent-prompt-pick | button.next-intent-prompt-select | data-next-cockpit-prompt-select=true | disabled=false": {
       "color": "rgb(246, 243, 234)",
-      "background-color": "rgb(59, 59, 59)",
-      "border-top": "1px solid rgb(133, 133, 133)",
-      "border-right": "1px solid rgb(133, 133, 133)",
-      "border-bottom": "1px solid rgb(133, 133, 133)",
-      "border-left": "1px solid rgb(133, 133, 133)",
-      "display": "block",
-      "padding": "0px 28px 0px 12px",
+      "background-color": "rgb(15, 15, 10)",
+      "border-top": "1px solid rgb(116, 114, 95)",
+      "border-right": "1px solid rgb(116, 114, 95)",
+      "border-bottom": "1px solid rgb(116, 114, 95)",
+      "border-left": "1px solid rgb(116, 114, 95)",
+      "display": "flex",
+      "padding": "6.4px 8px 6.4px 12px",
       "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
       "font-size": "15px",
       "font-weight": "500",
-      "line-height": "normal",
+      "line-height": "23.25px",
       "text-align": "start",
       "inline-size": "288px"
     },
@@ -122,19 +122,19 @@
       "line-height": "23.25px",
       "text-align": "start"
     },
-    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field > next-cockpit-held-heading > next-intent-prompt-pick | select.next-intent-prompt-select | data-next-cockpit-prompt-select=true | disabled=false": {
+    "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field > next-cockpit-held-heading > next-intent-prompt-pick | button.next-intent-prompt-select | data-next-cockpit-prompt-select=true | disabled=false": {
       "color": "rgb(246, 243, 234)",
-      "background-color": "rgb(59, 59, 59)",
-      "border-top": "1px solid rgb(133, 133, 133)",
-      "border-right": "1px solid rgb(133, 133, 133)",
-      "border-bottom": "1px solid rgb(133, 133, 133)",
-      "border-left": "1px solid rgb(133, 133, 133)",
-      "display": "block",
-      "padding": "0px 28px 0px 12px",
+      "background-color": "rgb(15, 15, 10)",
+      "border-top": "1px solid rgb(116, 114, 95)",
+      "border-right": "1px solid rgb(116, 114, 95)",
+      "border-bottom": "1px solid rgb(116, 114, 95)",
+      "border-left": "1px solid rgb(116, 114, 95)",
+      "display": "flex",
+      "padding": "6.4px 8px 6.4px 12px",
       "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
       "font-size": "15px",
       "font-weight": "500",
-      "line-height": "normal",
+      "line-height": "23.25px",
       "text-align": "start",
       "inline-size": "288px"
     },
@@ -153,19 +153,19 @@
       "line-height": "23.25px",
       "text-align": "start"
     },
-    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > next-stage-conditions > next-stage-rule > next-stage-editor | select. | data-stage-choice=abababababababababababababababababababababababababababababababab | disabled=false": {
-      "color": "rgb(255, 255, 255)",
-      "background-color": "rgb(59, 59, 59)",
-      "border-top": "1px solid rgb(133, 133, 133)",
-      "border-right": "1px solid rgb(133, 133, 133)",
-      "border-bottom": "1px solid rgb(133, 133, 133)",
-      "border-left": "1px solid rgb(133, 133, 133)",
-      "display": "inline-block",
-      "padding": "6.4px",
+    "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-panel > next-stage-conditions > next-stage-rule > next-stage-editor | button. | data-stage-choice=abababababababababababababababababababababababababababababababab | disabled=false": {
+      "color": "rgb(246, 243, 234)",
+      "background-color": "rgb(15, 15, 10)",
+      "border-top": "1px solid rgb(116, 114, 95)",
+      "border-right": "1px solid rgb(116, 114, 95)",
+      "border-bottom": "1px solid rgb(116, 114, 95)",
+      "border-left": "1px solid rgb(116, 114, 95)",
+      "display": "flex",
+      "padding": "6.4px 8px 6.4px 6.4px",
       "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
       "font-size": "15px",
       "font-weight": "500",
-      "line-height": "normal",
+      "line-height": "23.25px",
       "text-align": "start"
     },
     "next-project-detail > next-cockpit-shell > next-cockpit-content > next-cockpit-recovery > next-cockpit-recovery-memos > ctl-memo.ctl-memo--editing | textarea. |  | disabled=false": {
@@ -198,19 +198,19 @@
       "line-height": "23.25px",
       "text-align": "start"
     },
-    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > next-cockpit-direction-question > next-direction-select | select. | data-next-direction-select=true | disabled=false": {
-      "color": "rgb(255, 255, 255)",
-      "background-color": "rgb(59, 59, 59)",
-      "border-top": "1px solid rgb(133, 133, 133)",
-      "border-right": "1px solid rgb(133, 133, 133)",
-      "border-bottom": "1px solid rgb(133, 133, 133)",
-      "border-left": "1px solid rgb(133, 133, 133)",
-      "display": "block",
-      "padding": "0px",
-      "font-family": "Arial",
-      "font-size": "13.3333px",
+    "next-session-detail > next-session-columns > next-session-panel > next-session-drift > next-session-drift-check > next-cockpit-direction-question > next-direction-select | button. | data-next-direction-select=true | disabled=false": {
+      "color": "rgb(246, 243, 234)",
+      "background-color": "rgb(15, 15, 10)",
+      "border-top": "1px solid rgb(116, 114, 95)",
+      "border-right": "1px solid rgb(116, 114, 95)",
+      "border-bottom": "1px solid rgb(116, 114, 95)",
+      "border-left": "1px solid rgb(116, 114, 95)",
+      "display": "flex",
+      "padding": "6.4px 8px",
+      "font-family": "\"Space Grotesk\", system-ui, -apple-system, sans-serif",
+      "font-size": "15px",
       "font-weight": "400",
-      "line-height": "normal",
+      "line-height": "23.25px",
       "text-align": "start"
     },
     "next-session-detail > next-session-columns > next-session-panel > next-cockpit-held > next-cockpit-held-fields > next-cockpit-held-field.next-cockpit-held-lines > next-cockpit-held-list > next-cockpit-direction-line.next-cockpit-held-line | textarea. |  | disabled=false": {
@@ -243,5 +243,6 @@
       "line-height": "23.25px",
       "text-align": "start"
     }
-  }
+  },
+  "select_revision": "2026-10-12: Base UI trigger identities, flex chrome and inline chevron; other baseline rows are unchanged."
 }

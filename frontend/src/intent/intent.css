@@ -4,14 +4,13 @@
    COCKPIT section so the two renderers look alike (the browser parity test compares their layout at 320,
    375 and 1280 CSS px). What is left behind belongs to the Analyze step: the level meter, the reading, the
    departures and the re-entry row. Selectors are copied as written, `#app` included. */
-.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:4px}
+.next-session-panel .next-cockpit-held-fields{grid-template-columns:minmax(0,1fr);gap:16px}
 .next-session-panel .next-cockpit-held-list{gap:2px}
 .next-session-panel .next-cockpit-held-heading>.next-cockpit-held-label{display:inline-flex;min-height:44px;align-items:center}
 .next-session-panel .next-cockpit-held-lines>.next-cockpit-held-heading>.next-cockpit-held-label{min-height:0}
-.next-cockpit-held-stamp{display:flex;flex-wrap:wrap;gap:0 8px}
 .next-cockpit-held-stamp{display:block}
 .next-cockpit-held-stamp [data-slot="accordion-content"]>span{display:block}
-.next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 12px;padding:8px 16px 2px}
+.next-session-drift-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 12px;padding:16px 16px 12px}
 .next-session-drift-titles{min-width:0}
 .next-session-drift-monitor{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-top:-13px;color:var(--ink);font-size:var(--fs-label);font-weight:500}
 .next-session-drift-switch{display:inline-flex;align-items:center;justify-content:center;padding:0;border:0;background:transparent;cursor:pointer}
@@ -40,7 +39,7 @@
 .next-cockpit-held-lede{margin:0;color:var(--ink);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-held-revision{color:var(--ink2);font:500 var(--fs-body)/1.55 var(--sans);max-width:var(--measure)}
 .next-cockpit-held-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
-.next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px;padding-left:9px;border-left:1px solid var(--rule)}
+.next-cockpit-held-field{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:baseline;gap:4px 8px}
 .next-cockpit-held-heading{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px}
 .next-cockpit-held-under{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px}
 .next-cockpit-held-footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
@@ -48,7 +47,6 @@
 .next-cockpit-held-footer>.next-cockpit-held-cue{flex:1 1 100%}
 .next-cockpit-held-remove{min-inline-size:44px}
 .next-cockpit-held-tools{display:flex;align-items:center;gap:4px 8px;margin-left:auto}
-.next-intent-prompt-pick{margin-left:auto;display:flex;min-width:0;max-inline-size:min(18rem,100%)}
 .next-direction-select{display:grid;gap:4px;min-inline-size:0;max-inline-size:100%}
 .next-cockpit-held-label{grid-column:1/-1;color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em}
 .next-cockpit-held-field textarea{grid-column:1/-1}

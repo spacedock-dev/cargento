@@ -87,24 +87,9 @@ const FIELD_TABLE = JSON.parse(
   await readFile(new URL('./field-chrome-reference.json', import.meta.url), 'utf8'),
 );
 
-/* Native UA select chrome is deliberately replaced by the token recipe, including the formerly
-   13.3333px Arial direction field. Other field chrome is held to the measured reference. */
+/* Select trigger rows explicitly record the owner's Base UI swap. Other fields keep their baseline. */
 function expectedFieldChrome(key) {
-  const baseline = FIELD_TABLE.instances[key];
-  if (!baseline || !key.includes(' | select.')) return baseline;
-  const chrome = {
-    ...baseline,
-    color: 'rgb(246, 243, 234)',
-    'background-color': 'rgb(15, 15, 10)',
-    'font-family': '"Space Grotesk", system-ui, -apple-system, sans-serif',
-    'font-size': '15px',
-    'line-height': '23.25px',
-  };
-  for (const side of ['top', 'right', 'bottom', 'left'])
-    chrome[`border-${side}`] = '1px solid rgb(116, 114, 95)';
-  if (key.includes('data-stage-choice=')) chrome.padding = '6.4px 28px 6.4px 6.4px';
-  if (key.includes('data-next-direction-select=')) chrome.padding = '6px 28px 6px 8px';
-  return chrome;
+  return FIELD_TABLE.instances[key];
 }
 
 const BUTTON_TABLE = JSON.parse(
@@ -231,9 +216,7 @@ const MUTATIONS = {
   'field-content-size': [
     ['ui/textarea.tsx', 'block w-full resize-y', 'block w-full resize-y field-sizing-content'],
   ],
-  'field-chevron-overlap': [
-    ['ui/native-select.tsx', 'pe-[28px] leading-[1.5]', 'pe-0 leading-[1.5]'],
-  ],
+  'field-chevron-overlap': [['ui/select.tsx', 'justify-between gap-2', 'justify-between gap-0']],
   'absence-mono': [
     [
       'capacity/capacity.css',
@@ -1991,7 +1974,7 @@ async function checkButtonGallery(browser) {
         const page = opened.page;
         await page.getByRole('button', { name: 'Edit OUTCOME', exact: true }).click();
         const fields = page.locator(
-          '[data-slot=native-select],[data-slot=input],[data-slot=textarea]',
+          '[data-slot=select-trigger],[data-slot=input],[data-slot=textarea]',
         );
         assert.equal(await fields.count(), 11, 'the gallery reaches every field recipe');
         await page.keyboard.press('Tab');
@@ -1999,10 +1982,9 @@ async function checkButtonGallery(browser) {
           const metrics = await field.evaluate((el) => {
             const css = getComputedStyle(el),
               box = el.getBoundingClientRect();
-            const icon =
-              el.tagName === 'SELECT'
-                ? el.parentElement.querySelector('[data-slot=native-select-icon]')
-                : null;
+            const icon = el.matches('[data-slot=select-trigger]')
+              ? el.querySelector('[data-slot=select-icon] svg')
+              : null;
             return {
               id: el.id,
               width: box.width,
@@ -2014,7 +1996,8 @@ async function checkButtonGallery(browser) {
               sizing: css.fieldSizing,
               chevronClear:
                 !icon ||
-                box.right - parseFloat(css.paddingRight) <= icon.getBoundingClientRect().left,
+                el.querySelector('[data-slot=select-value]').getBoundingClientRect().right + 7 <=
+                  icon.getBoundingClientRect().left,
               pointer: icon ? getComputedStyle(icon).pointerEvents : null,
             };
           });
@@ -2041,6 +2024,37 @@ async function checkButtonGallery(browser) {
             );
           }
           await page.emulateMedia({ forcedColors: 'none' });
+        }
+        for (const trigger of await page
+          .locator('[data-field-gallery] [data-slot=select-trigger]')
+          .all()) {
+          await trigger.click();
+          await page.getByRole('listbox').waitFor();
+          const popup = await page.getByRole('listbox').evaluate((list) => {
+            const node = list.closest('[data-slot=select-content]');
+            const css = getComputedStyle(node);
+            return {
+              font: css.fontFamily,
+              px: parseFloat(css.fontSize),
+              ink: css.color,
+              background: css.backgroundColor,
+            };
+          });
+          assert.equal(popup.px, 15);
+          assert.match(popup.font, /Space Grotesk/);
+          assert.equal(popup.ink, 'rgb(246, 243, 234)');
+          assert.equal(popup.background, 'rgb(36, 35, 27)');
+          for (const option of await page.getByRole('option').all()) {
+            const metrics = await option.evaluate((node) => ({
+              height: node.getBoundingClientRect().height,
+              px: parseFloat(getComputedStyle(node).fontSize),
+              title: node.title,
+            }));
+            assert.ok(metrics.height >= 44, 'popup choices keep a 44px target');
+            assert.equal(metrics.px, 15);
+            assert.ok(metrics.title, 'a clamped choice keeps its full title');
+          }
+          await page.keyboard.press('Escape');
         }
         await page.getByRole('button', { name: 'Done', exact: true }).click();
         const hover = opened.page.locator('[data-example="hover"]');

@@ -7,7 +7,7 @@ it replaced; the [reader-state inventory](design-reader-state.md#the-inventory) 
 
 ## Verdict
 
-Adopted with the reader-state contracts intact. The final page stays inside every fluidity time budget;
+Adopted with the reader-state contracts intact. The last measured page stayed inside every fluidity time budget;
 the layer records below describe the browser proofs and platform checks that were run. The original go
 decision required repeated Linux production drift checks for the disclosure and popover layers after the
 spike crashed Chromium's renderer. Those layers record their qualification separately from the spike
@@ -47,7 +47,7 @@ The components keep the existing semantic roots, field owners and disclosure sto
 | `accordion.tsx` | The accordion variant of `Disclosure`, including session, project and timeline evidence. | [Disclosures](#accordion-and-collapsible-layer) |
 | `collapsible.tsx` | The armed Intent discard offer. | [Disclosures](#accordion-and-collapsible-layer) |
 | `popover.tsx` | The popover variant of `Disclosure`, including Sessions caveats, reentry Why and Drift sending details. | [Popover](#popover-layer) |
-| `native-select.tsx` | Prompt, workflow stage and pending direction choices, all real native selects. | [Fields](#form-controls-layer) |
+| `select.tsx` | Prompt, workflow stage and pending direction choices through shadcn Base UI Select. | [Fields](#form-controls-layer) |
 | `input.tsx` | Project steering and local tripwire drafts through `DraftInput`. | [Fields](#form-controls-layer) |
 | `textarea.tsx` | Goal, outcomes, pending direction, context notes and correction drafts through their existing uncontrolled owners. | [Fields](#form-controls-layer) |
 | `label.tsx` | Native field associations in Intent, context, correction and stage controls. | [Fields](#form-controls-layer) |
@@ -57,7 +57,7 @@ The components keep the existing semantic roots, field owners and disclosure sto
 | `separator.tsx` | The decorative notification boundary in session details. | [Sessions](#sessions-layer) |
 | `tabs.tsx` | Route-controlled `ProjectTabs` with automatic keyboard activation; only Root, List and Trigger are retained. | [Project](#project-console-timeline-shell-and-terminal-layer) |
 
-Native menus keep their deliberate exemption from Escape dismissal. Select choices and uncontrolled
+Native menus keep their deliberate exemption from Escape dismissal. Select choices use Base UI popup and keyboard handling; uncontrolled
 editor nodes retain native focus, undo, composition and dragged dimensions. Native progress elements
 and title tooltips remain because the swap offered no gain; the Capacity budget bar keeps its two
 independent quantities. Facts, evidence rows, switches, meter segments, result glyphs and conditional
@@ -67,7 +67,8 @@ their existing groups and roles. Unused Card and Alert parts and TabsContent wer
 because a second panel lifecycle would duplicate route ownership. Icon-library imports, the npm `cn`
 package, Preflight and animation-package imports were also omitted for the reasons in the findings.
 
-The final page is 1,608,668 bytes against a 2,000,000-byte ceiling. Hand-written CSS is 124,635 bytes
+The last page measured before the 2026-10-12 Select replacement was 1,608,668 bytes against a
+2,000,000-byte ceiling. Hand-written CSS at that measurement was 124,635 bytes
 across the same thirteen counted sheets. The cleanup's rough starting estimate was about 135,500 bytes;
 its recorded start was 136,243, a reduction of 11,608 bytes. The whole migration started at 161,464
 counted bytes. The [cleanup](#stylesheet-cleanup) removed 83 rule entries, including the alias block,
@@ -80,7 +81,7 @@ optional evidence, transient states, browser-specific progress and individual an
 readability exception; the form layer removed four native focus-ring exceptions. The coverage method's
 five limits are recorded in [Stylesheet cleanup](#stylesheet-cleanup).
 
-The final three-run fluidity measurement on 2026-10-11, after the prompt menu fix, passes every budget. For 5, 50
+The three-run fluidity measurement on 2026-10-11, before the Base UI Select replacement, passed every budget. For 5, 50
 and 250 sessions, first-render medians are 148.6, 94.3 and 127.6 ms; poll-to-paint medians are 44.7, 44.5 and 61.4
 ms. The earlier layer measurements below remain the history of how the page reached this state; the cleanup
 measurement in [Stylesheet cleanup](#stylesheet-cleanup) records the page before the fix (1,608,412 bytes).
@@ -244,8 +245,9 @@ raises it in its own pull request, with its measured times.
   `configFile: false`, so it needs `tailwindcss()` and the alias of its own; without them every
   `@/ui/...` import returned 500 and the development proofs timed out. The unit-test config
   (`vitest.config.mts`) needs the alias too. Three configs, one alias.
-- jsdom 30 needs no polyfill for Button, Accordion, Popover or NativeSelect (seven tests, no warnings).
-  NativeSelect keeps `document.activeElement.tagName === 'SELECT'`.
+- jsdom 30 needed no polyfill for Button, Accordion, Popover or the then NativeSelect (seven tests, no
+  warnings). That measurement predates the 2026-10-12 swap to the Base UI Select, which is exercised
+  through its combobox and option roles instead.
 - Linux (arm64 container, Node 26.10): `pnpm build:check` reproduces the macOS artifact byte for byte,
   `pnpm test` passes (1,439 tests) and `pnpm typecheck` passes.
 - Continuous integration on the throwaway pull request (the three platform legs of the frontend job): the frozen
@@ -294,7 +296,7 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
 | Disclosure, accordion variant | adopt Accordion and Collapsible with `hiddenUntilFound` | needs the reactive store first; state precedence is specified in that layer |
 | Disclosure, popover variant | adopt Popover (owner ruling), non-modal, initial focus left on the trigger | live regions must stay exposed |
 | Disclosure, menu variant | keep native | not dismissed by Escape by design; not a popover |
-| Select | adopt NativeSelect; keep it a real `<select>` | `displayGate` defers polls while a native select is focused |
+| Select | adopt Base UI Select (owner, 2026-10-12) | an async prompt read outlives native picker activation; the popup opens immediately and retains React state |
 | Textarea, input | restyle with Textarea and Input classes; stay uncontrolled | native undo and composition |
 | Tabs (`ProjectTabs`) | adopted route-controlled Tabs after testing automatic activation and modifier keys | original labelled panel and route ownership retained |
 | `role="status"` banner | adopted polite Alert; static messages disable announcements | the registry's assertive default would change the contract |
@@ -316,7 +318,7 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
    `content`). Upstream MIT licence text for copied code ships in `react-licenses.txt`. A vendored file with
    no importer in shipped code is deleted. After every `add`: remove the `cn` package it adds, rewrite the
    `cn` import, run `biome format --write frontend/src/ui`, and run the scale rewrite.
-4. Native stays native where the reader-state contract needs it: the held select, the uncontrolled textarea,
+4. Native stays native where the reader-state contract needs it: the uncontrolled textarea,
    `title`, `<progress>`, the live regions, and the menu disclosure variant until a ruling changes it. Each is
    a recorded decision with its reason.
 5. A layer deletes the CSS it replaces in the same layer and moves the gate edits with it (size, focus,
@@ -634,16 +636,28 @@ clean against this bundle (see the source-name note in the migration record).
 
 ## Form controls layer
 
-NativeSelect, Input, Textarea and Label are copied through the pinned Base UI registry procedure.
-The temporary npm `cn` dependency is removed, every import uses the local merger, and the select's
-chevron is an inline SVG. No icon library or package dependency is added. NativeSelect passes the
-ref, class and event handlers to a real `select`; its wrapper and pointer-inert icon own no choice
-state. The prompt and held-editor selectors in the fluidity driver remain valid.
+Select, Input, Textarea and Label use the pinned Base UI registry procedure. On 2026-10-12 the
+owner reversed the original NativeSelect decision: the prompt request outlived the click's
+transient activation, so the later `showPicker()` could fail silently after "Loading your prompts".
+The replacement vendors the Base UI `select` registry item and removes NativeSelect.
 
-The three shipped selects keep `displayGate`'s focus probe and change/blur release. Background
-paints defer twelve times, then paint without re-arming; a manual refresh still bypasses that hold.
-Headless Chromium checks node identity, focus, chosen value, options and deferred paints. It cannot
-read the platform popup's contents, so none of these proofs claims to inspect that popup.
+The local merger, inline chevrons and check, page fonts, sunk trigger background, token border,
+15 px sentence tier, 44 px targets and shared field focus ring replace registry defaults. No
+icon library, animation package, size variant or dependency is added. Storybook's explicit optimizer
+list adds the existing Select entry so its CommonJS store shim is prebundled. A non-modal portal drops
+below the trigger with `alignItemWithTrigger=false`, scrolls within the available height, and
+uses two-line items with full titles. Non-modal mode keeps the page and its live regions exposed.
+
+PromptSelect opens before fetching and shows a disabled loading item in that popup, then choices
+or one of two stated absences (none found in the part of the session read, or the read failed) in the same popup. The trigger stays "Use your prompt" until a
+choice stands in the goal as a pending adoption; choosing saves nothing. It reserves 18rem on
+wide screens and fills the remaining label-row width on narrow screens. Stage and direction keep
+their controlled values and existing change owners. The focus keys remain on the trigger buttons.
+
+The bounded background hold now reads actual trigger expansion, including focus in the portal;
+a focused closed trigger does not hold. Popup closure releases once. React retains the popup
+through ordinary, manual and capped paints. Escape closes only the popup before a disclosure or
+route handler. The browser proof can now inspect the list itself, its position and its node.
 
 Input and Textarea supply native nodes and chrome. DraftInput, DraftTextarea, HeldTextarea and the
 correction owner keep their existing uncontrolled `defaultValue`, input callbacks, keys and refs.
@@ -664,8 +678,8 @@ chrome explicitly, while surface sheets retain grid columns, flex placement and 
 | Goal and outcome line | Textarea intent owns value ink, panel background, 7 px padding, 1.55 line height and vertical resizing. An untouched drafted goal uses sunk background. Intent keeps grid placement. |
 | Pending direction | The same intent recipe, with a 44 px floor. Content sizing no longer overrides a remembered drag. |
 | Correction to copy | Textarea correction owns the former panel/value recipe and 120 px floor. Its existing composition and paint-pause owner stays in place. |
-| Prompt, stage and direction select | NativeSelect owns token border and sunk background, sans control type and a 44 px floor. The prompt retains its medium weight and label-row placement; its wrapper reserves 18rem, capped by the label's available width, and the select fills it through idle, loading and loaded states. All three reserve 28 px for the ten-pixel chevron. |
-| Gallery draft | Textarea draft replaces the deleted ctl-draft chrome; the gallery select uses NativeSelect. |
+| Prompt, stage and direction select | Base UI SelectTrigger owns token border, sunk background, sans sentence type and a 44 px floor. Prompt and stage keep medium weight. The prompt wrapper reserves 18rem on wide screens and the remaining row width on narrow screens, unchanged through loading. Flex placement and an eight-pixel gap keep the inline ten-pixel chevron clear of the value. |
+| Gallery draft | Textarea draft replaces the deleted ctl-draft chrome; the gallery choice uses Base UI Select. |
 
 `field-chrome-reference.json` records sixteen identities from the pre-swap page at `bd79507d`,
 the merge base of this layer and its predecessor. The same measurement helper rejects conflicting
