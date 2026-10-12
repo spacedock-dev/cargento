@@ -462,7 +462,13 @@ Clear move there with Live monitor, Discard everything, Delegated work, Turn off
 neutral later-direction state. The idle monitor explanation and editor hint move with their owners.
 The count-only Direction summary draws no text, so every Keep requires the whole-text opening
 press before settlement. Activity Add stays mounted and becomes visible on hover or focus.
-The panel precedes activity at all widths, and the unblocked header moves into that activity area.
+Below 1101 px the panel precedes the activity in one column; from 1101 px the activity reads on the left
+and the panel on the right, level at the top (owner request, 2026-10-12). The unblocked header moves into
+the activity area.
+From 761 px the Intent section is a card like the Drift card, 24 px above it, and its text fields show
+three lines; at 760 px and below the earlier compact spacing and one-line fields stay so the goal and the
+primary control remain in the 375 by 667 first view. The field chrome reference table records the card's
+background, border, radius and padding for the wide Intent panel; nothing else in it changes.
 The ended-session note appears beside the Goal field before typing. Claude's idle session without
 an observed stop says “Analyze opens while this session runs.” The route and browser projections
 replace only the former refusal sentence. Recorded-side projections adapt those placements and

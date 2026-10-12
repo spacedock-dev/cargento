@@ -116,8 +116,8 @@ export function GoalField() {
       ) : null}
       <HeldTextarea
         id={boxId}
-        rows={1}
-        className="min-h-[44px]"
+        rows={3}
+        className="min-h-[44px] max-[760px]:h-[44px]"
         maxLength={cap}
         memoryKey={key}
         focusKey={key}

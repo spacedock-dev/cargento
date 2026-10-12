@@ -76,7 +76,8 @@ function DirectionLineView() {
     >
       <HeldTextarea
         id={boxId}
-        rows={1}
+        rows={3}
+        className="max-[760px]:h-[44px]"
         memoryKey={focus}
         focusKey={focus}
         text={text}
@@ -175,9 +176,9 @@ function LineRow({
     >
       <HeldTextarea
         id={boxId}
-        className={used ? 'col-start-1 col-end-2' : undefined}
+        className={`${used ? 'col-start-1 col-end-2 ' : ''}max-[760px]:h-[44px]`}
         aria-label={`Expected outcome line ${String(index + 1)}`}
-        rows={1}
+        rows={3}
         maxLength={cap}
         memoryKey={`${key}:${String(index)}`}
         focusKey={`${key}:${String(index)}`}

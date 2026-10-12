@@ -142,7 +142,7 @@ export function IntentSection() {
           <span className="next-cockpit-held-revision">{stamp}</span>
         </div>
       ) : null}
-      <div className="next-cockpit-held-fields">
+      <div className="next-cockpit-held-fields max-[760px]:gap-1">
         <GoalField />
         <OutcomeLines />
       </div>

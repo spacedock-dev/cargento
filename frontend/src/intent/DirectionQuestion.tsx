@@ -142,13 +142,16 @@ export function DirectionQuestion({
   return (
     <>
       {before}
-      <div className="next-cockpit-direction-question gap-0.5" data-next-cockpit-direction-question>
+      <div
+        className="next-cockpit-direction-question gap-3 max-[760px]:gap-0.5"
+        data-next-cockpit-direction-question
+      >
         <p className="next-cockpit-direction-said">
           {`${String(count)} later direction${count === 1 ? '' : 's'}`}
           <span className="next-visually-hidden">{` ${since}`}</span>.
         </p>
         <WholeList pending={pending} numbers={numbers} />
-        <div className="next-cockpit-reading-ask">
+        <div className="next-cockpit-reading-ask [&>button]:flex-auto">
           <ActionButton
             weight={primary ? 'primary' : 'secondary'}
             label={analyze ? KEEP_ANALYZE : KEEP}

@@ -18,7 +18,8 @@ const cardVariants = cva('min-w-0', {
         'block px-[16px] py-[13px] border border-solid border-[var(--rule)] border-l-2 border-l-[var(--amber)] rounded-card bg-card',
       'session-landed': 'flex flex-col gap-[4px] pl-[9px] [border-left:1px_solid_var(--rule)]',
       'intent-row': 'flex flex-col gap-[3px] pl-[9px] [border-left:1px_solid_var(--rule)]',
-      'intent-panel': 'flex flex-col gap-[6px] p-0',
+      'intent-panel':
+        'flex flex-col gap-[6px] p-0 min-[761px]:gap-[14px] min-[761px]:p-[16px] min-[761px]:border min-[761px]:border-solid min-[761px]:border-[var(--rule)] min-[761px]:rounded-card min-[761px]:bg-card',
       'drift-panel':
         'block m-0 pt-0 px-0 pb-[4px] border border-solid border-[var(--rule)] rounded-card bg-card',
       'reading-job':

@@ -134,7 +134,7 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
   return (
     <PanelContext value={panel}>
       <aside
-        className="next-session-panel min-[1101px]:col-start-2 min-[1101px]:row-start-1"
+        className="next-session-panel max-[760px]:gap-1 min-[1101px]:col-start-2 min-[1101px]:row-start-1"
         data-next-session-drift
         data-next-session-panel="intent"
         aria-label="Intent and drift"
@@ -147,7 +147,7 @@ export function IntentPanel({ session, payload, project, drift, children }: Inte
           id="next-session-drift"
           aria-labelledby="next-session-drift-heading"
         >
-          <header className="next-session-drift-head py-0">
+          <header className="next-session-drift-head max-[760px]:py-0">
             <div className="next-session-drift-titles flex flex-wrap items-baseline gap-x-2">
               <h2 id="next-session-drift-heading" className="next-session-drift-heading">
                 Drift

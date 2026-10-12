@@ -9,7 +9,7 @@
 .next-wait-dot{animation:none}
 }
 .next-session-drift-hint{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
-.next-session-drift-live{display:grid;gap:6px;margin:0 16px 2px}
+.next-session-drift-live{display:grid;gap:6px;margin:16px 16px 12px;padding-top:16px;border-top:1px solid var(--rule)}
 .next-session-drift-live-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:0}
 .next-session-drift-level{color:var(--ink);font-size:var(--fs-value);font-weight:600}
 .next-session-drift-source{color:var(--ink2);font-family:var(--mono);font-size:var(--fs-label)}
@@ -27,7 +27,7 @@
 .next-session-drift-range,.next-session-drift-reason{margin:0;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
 .next-session-drift-reason{color:var(--ink)}
 .next-session-drift-limit{margin:0 16px 10px;color:var(--ink2);font-size:var(--fs-body);line-height:1.5}
-.next-cockpit-reading-count{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.4 var(--sans)}
+.next-cockpit-reading-count,.next-cockpit-reading-budget{margin:0;color:var(--ink2);font:500 var(--fs-body)/1.4 var(--sans)}
 .next-cockpit-steer-tools{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .next-cockpit-steer-tools>p{flex:1 1 12em;margin:0}
 
