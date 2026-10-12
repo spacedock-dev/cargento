@@ -41,6 +41,63 @@ class ProjectContextTest(unittest.TestCase):
     NOW = 1_800_000_000.0
     SID = "project-session"
 
+    def test_a_reader_using_a_project_label_and_key_gets_one_history(self) -> None:
+        row = {
+            "project": "recce/example",
+            "project_key": "git:example",
+            "harness": "codex",
+            "sid": "root",
+        }
+        with mock.patch.object(observer, "resolve_transcript", return_value=None):
+            project_context.collect(
+                self.config,
+                build_runtime_state(self.config, started=1),
+                [row],
+                "recce/example",
+                now=self.NOW,
+            )
+            project_context.collect(
+                self.config,
+                build_runtime_state(self.config, started=1),
+                [row],
+                "git:example",
+                now=self.NOW,
+            )
+        stored = json.loads(Path(semantic_history.store_path(self.config)).read_text())
+        self.assertEqual({"git:example"}, set(stored["projects"]))
+
+    def test_a_reader_keeps_legacy_label_history_when_the_key_is_unambiguous(self) -> None:
+        state = build_runtime_state(self.config, started=1)
+        fact = {
+            "fact_id": "old",
+            "type": "user_message",
+            "at": self.NOW,
+            "summary": "Build synthetic work",
+            "source_session": {"harness": "codex", "sid": "root"},
+        }
+        semantic_history.update(self.config, state, "recce/example", {"facts": [fact]}, [])
+        row = {
+            "project": "recce/example",
+            "project_key": "git:example",
+            "harness": "codex",
+            "sid": "root",
+        }
+        with mock.patch.object(observer, "resolve_transcript", return_value=None):
+            result = project_context.collect(self.config, state, [row], "git:example", now=self.NOW)
+        self.assertIn("old", [f["fact_id"] for f in result["semantic"]["facts"]])
+        self.assertEqual(
+            ["old"],
+            [
+                e["event_id"]
+                for e in semantic_history.read(self.config, state, "git:example")["events"]
+            ],
+        )
+
+    def test_a_reader_never_joins_repositories_that_share_a_display_label(self) -> None:
+        rows = [{"project": "example", "project_key": key} for key in ("git:first", "git:second")]
+        self.assertEqual(("example", ()), project_context._history_identity(rows, "example"))
+        self.assertEqual(("git:first", ()), project_context._history_identity(rows, "git:first"))
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

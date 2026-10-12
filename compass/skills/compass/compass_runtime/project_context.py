@@ -5422,12 +5422,12 @@ def _incremental_history_events(
     sid: str,
     *,
     now: float,
-) -> tuple[list[dict[str, Any]], dict[str, int] | None]:
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     signature = _transcript_signature(transcript_path)
     if signature is None:
         return [], None
     source_identity = f"{harness}:{sid}"
-    scan_bytes = semantic_history.backfill_scan_bytes(
+    scan_bytes, prior_coverage = semantic_history.backfill_plan(
         config,
         state,
         project,
@@ -5436,18 +5436,20 @@ def _incremental_history_events(
         full_max_bytes=SEMANTIC_BACKFILL_MAX_BYTES,
     )
     if not scan_bytes:
-        return [], signature
-    return (
-        _semantic_history_source_events(
-            config,
-            transcript_path,
-            harness,
-            sid,
-            since=now - SEMANTIC_HISTORY_HORIZON_SEC,
-            max_bytes=scan_bytes,
-        ),
-        signature,
+        return [], None
+    source_events = _semantic_history_source_events(
+        config,
+        transcript_path,
+        harness,
+        sid,
+        since=now - SEMANTIC_HISTORY_HORIZON_SEC,
+        max_bytes=scan_bytes,
     )
+    # An empty forgiving reader is not proof that a scan ran. Keep the prior
+    # marker, if any, rather than minting empty coverage after a failed read.
+    if not source_events or _transcript_signature(transcript_path) != signature:
+        return source_events, None
+    return source_events, {**signature, "prior_coverage": prior_coverage}
 
 
 def _dedupe_project_events(
@@ -5563,6 +5565,43 @@ def _context_sessions(
         if (str(session.get("harness") or ""), str(session.get("sid") or "")) == focus
     ]
     return analysis, [], "focused session", len(selected) - len(analysis)
+
+
+def _history_identity(
+    sessions: Sequence[Mapping[str, Any]], project: str
+) -> tuple[str, tuple[str, ...]]:
+    matching = [
+        row
+        for row in sessions
+        if project
+        in {str(row.get("project_key") or row.get("project") or ""), str(row.get("project") or "")}
+    ]
+    keys = {str(row.get("project_key") or row.get("project") or "") for row in matching}
+    if len(keys) != 1:
+        return project, ()
+    key = keys.pop()
+    labels = {str(row.get("project") or "") for row in matching} - {key, ""}
+    # A reused display label cannot join distinct repositories' evidence.
+    aliases = tuple(
+        sorted(
+            label
+            for label in labels
+            if all(
+                str(row.get("project_key") or row.get("project") or "") == key
+                for row in sessions
+                if row.get("project") == label
+            )
+        )
+    )
+    return key, aliases
+
+
+def _history_project(
+    config: RuntimeConfig, state: RuntimeState, sessions: Sequence[Mapping[str, Any]], project: str
+) -> str:
+    key, aliases = _history_identity(sessions, project)
+    semantic_history.reconcile_project(config, state, key, aliases)
+    return key
 
 
 def _analysis_context_sessions(
@@ -7361,7 +7400,7 @@ def _collect_without_transcript(
     sinks: tuple[
         list[dict[str, Any]],
         list[dict[str, Any]],
-        dict[str, dict[str, int]],
+        dict[str, dict[str, Any]],
         list[dict[str, Any]],
     ],
 ) -> None:
@@ -7405,6 +7444,7 @@ def collect(
         sessions, project, focus
     )
     attention_sessions, attention_coverage = _attention_context_sessions(sessions, project)
+    history_project = _history_project(config, state, sessions, project)
     workflow_discovery = _project_workflow_discovery(
         config,
         state,
@@ -7417,7 +7457,7 @@ def collect(
     events: list[dict[str, Any]] = []
     history_events: list[dict[str, Any]] = []
     gate_events: list[dict[str, Any]] = []
-    history_source_scans: dict[str, dict[str, int]] = {}
+    history_source_scans: dict[str, dict[str, Any]] = {}
     tool_report_scans: list[dict[str, Any]] = []
     unavailable: list[dict[str, str]] = []
     briefings = 0
@@ -7439,8 +7479,7 @@ def collect(
         for session in omitted
     ]
     for session in analysis_sessions:
-        harness = str(session.get("harness") or "")
-        sid = str(session.get("sid") or "")
+        harness, sid = str(session.get("harness") or ""), str(session.get("sid") or "")
         identity = {"harness": harness, "sid": sid}
         is_focused = focus is not None and (harness, sid) == focus
         if is_focused and harness == "codex":
@@ -7459,7 +7498,7 @@ def collect(
             _collect_without_transcript(
                 config,
                 state,
-                project,
+                history_project,
                 identity,
                 now=now,
                 sinks=(events, history_events, history_source_scans, unavailable),
@@ -7490,7 +7529,7 @@ def collect(
             config, transcript_path, session, events, tool_report_scans
         )
         backfill_rows, signature = _incremental_history_events(
-            config, state, project, transcript_path, harness, sid, now=now
+            config, state, history_project, transcript_path, harness, sid, now=now
         )
         history_events.extend(backfill_rows)
         source_identity = f"{harness}:{sid}"
@@ -7510,7 +7549,7 @@ def collect(
         gate_events,
         None,
         child_assignments,
-        semantic_history.read(config, state, project),
+        semantic_history.read(config, state, history_project),
     )
 
     timeline = _project_timeline(events, focus)
@@ -7521,7 +7560,7 @@ def collect(
     history = semantic_history.update(
         config,
         state,
-        project,
+        history_project,
         history_semantic,
         attention_sessions,
         child_assignments,

@@ -595,3 +595,126 @@ class SemanticHistoryTest(unittest.TestCase):
         self.assertEqual(0, cached)
         self.assertEqual(1_000 + semantic_history.RESCAN_OVERLAP_BYTES, resumed)
         self.assertEqual(500_000, rotated)
+
+    def test_a_reader_recovers_a_source_whose_scanned_events_were_evicted(self) -> None:
+        state = build_runtime_state(self.config, started=1)
+        signature = {"size": 1_000_000, "mtime_ns": 10}
+        fact = self._fact("old", 100, "user_message", "steer", "Older direction", None)
+        semantic_history.update(
+            self.config,
+            state,
+            "project",
+            {"facts": [fact]},
+            [],
+            now=100,
+            source_scans={"codex:root": signature},
+        )
+        semantic_history.update(
+            self.config,
+            state,
+            "project",
+            {},
+            [],
+            now=100 + semantic_history.HISTORY_WINDOW_SEC + 1,
+        )
+        self.assertEqual([], semantic_history.read(self.config, state, "project")["events"])
+        self.assertEqual(
+            1_000_000,
+            semantic_history.backfill_scan_bytes(
+                self.config,
+                state,
+                "project",
+                "codex:root",
+                signature,
+                full_max_bytes=2_000_000,
+            ),
+        )
+
+    def test_a_reader_recovers_a_source_crowded_out_by_a_busier_session(self) -> None:
+        state = build_runtime_state(self.config, started=1)
+        signature = {"size": 1_000_000, "mtime_ns": 10}
+        fact = self._fact("old", 100, "user_message", "steer", "Older direction", None)
+        semantic_history.update(
+            self.config,
+            state,
+            "project",
+            {"facts": [fact]},
+            [],
+            now=100,
+            source_scans={"codex:root": signature},
+        )
+        busy = [
+            self._fact(f"busy-{n}", 101 + n, "user_message", "steer", "Busy", None)
+            for n in range(3)
+        ]
+        for row in busy:
+            row["branch"] = {"harness": "codex", "sid": "sibling"}
+        with patch.object(semantic_history, "MAX_EVENTS_PER_PROJECT", 3):
+            semantic_history.update(self.config, state, "project", {"facts": busy}, [], now=105)
+        self.assertEqual(
+            1_000_000,
+            semantic_history.backfill_scan_bytes(
+                self.config,
+                state,
+                "project",
+                "codex:root",
+                signature,
+                full_max_bytes=2_000_000,
+            ),
+        )
+
+    def test_a_reader_rescans_after_a_failed_write_or_an_over_cap_store(self) -> None:
+        state = build_runtime_state(self.config, started=1)
+        signature = {"size": 1_000_000, "mtime_ns": 10}
+        with patch.object(semantic_history, "_write", return_value=False):
+            result = semantic_history.update(
+                self.config, state, "project", {}, [], source_scans={"codex:root": signature}
+            )
+        self.assertFalse(result["persisted"])
+        self.assertEqual(
+            1_000_000,
+            semantic_history.backfill_scan_bytes(
+                self.config, state, "project", "codex:root", signature, full_max_bytes=2_000_000
+            ),
+        )
+        path = Path(semantic_history.store_path(self.config))
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(b" " * (self.config.state_read_cap_bytes + 1))
+        self.assertEqual(
+            1_000_000,
+            semantic_history.backfill_scan_bytes(
+                self.config, state, "project", "codex:root", signature, full_max_bytes=2_000_000
+            ),
+        )
+
+    def test_a_reader_does_not_lose_coverage_if_an_incremental_read_outlives_the_store(
+        self,
+    ) -> None:
+        state = build_runtime_state(self.config, started=1)
+        fact = self._fact("old", 100, "user_message", "steer", "Older direction", None)
+        signature = {"size": 1_000_000, "mtime_ns": 10}
+        semantic_history.update(
+            self.config,
+            state,
+            "project",
+            {"facts": [fact]},
+            [],
+            source_scans={"codex:root": signature},
+        )
+        prior = semantic_history.read(self.config, state, "project")["source_scans"]["codex:root"]
+        Path(semantic_history.store_path(self.config)).unlink()
+        grown = {"size": 1_001_000, "mtime_ns": 11, "prior_coverage": prior["coverage"]}
+        semantic_history.update(
+            self.config, state, "project", {}, [], source_scans={"codex:root": grown}
+        )
+        self.assertEqual(
+            1_001_000,
+            semantic_history.backfill_scan_bytes(
+                self.config,
+                state,
+                "project",
+                "codex:root",
+                grown,
+                full_max_bytes=2_000_000,
+            ),
+        )

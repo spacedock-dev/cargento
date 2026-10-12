@@ -3357,6 +3357,7 @@ already accepts on loopback.
 The `proto/operator-cockpit` branch adds project context and an optional read-only terminal.
 `GET /api/project-context` reads bounded transcript and workflow evidence, stores semantic history
 under the configured state directory, and can invoke the installed Codex CLI for a derived goal.
+`GET /api/session-record` uses the same loopback and bounded project/session guards, returns the same redacted message titles as project-context, and exposes no fields or content classes the page could not already read.
 This is separate from quota fetching and from the session-history switch. The prototype retains
 its own semantic-history store; `--forget` deletes the session-history and session-end stores,
 removes the discard records in the annotation store, and reaches nothing else.
