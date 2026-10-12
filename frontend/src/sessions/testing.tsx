@@ -52,6 +52,25 @@ export function mountSessions(options: SessionsShellOptions = {}) {
   const fetch: FetchLike = (url, init) => {
     const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : null;
     state.requests.push({ method: init?.method ?? 'GET', url, body });
+    if (url.startsWith('/api/session-record')) {
+      const session = new URLSearchParams(url.split('?')[1]).get('session') ?? ':';
+      const split = session.indexOf(':');
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            session: { harness: session.slice(0, split), sid: session.slice(split + 1) },
+            entries: [],
+            next: null,
+            reached_start: true,
+            bound: null,
+            scanned_bytes: 0,
+            kinds: ['user_message', 'agent_message'],
+            state: 'ok',
+          }),
+          { status: 200 },
+        ),
+      );
+    }
     if (url === '/api/answer') {
       const script = state.answer;
       switch (script.kind) {

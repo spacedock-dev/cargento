@@ -63,6 +63,12 @@ test('real backend restarts serialize fresh identities and close only owned chil
     const first = dev.ready;
     const data = await (await fetch(first.origin + '/api/data')).json();
     assert.match(data.build, /^react-dev-/);
+    const record = await (
+      await fetch(first.origin + '/api/session-record?project=synthetic&session=claude:unknown')
+    ).json();
+    assert.equal(record.state, 'unavailable');
+    assert.equal(record.reached_start, false);
+    assert.deepEqual(record.entries, []);
     await Promise.all([dev.restart(), dev.restart()]);
     assert.notEqual(dev.ready.pid, first.pid);
     assert.notEqual(dev.ready.generation, first.generation);

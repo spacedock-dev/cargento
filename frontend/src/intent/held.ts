@@ -47,6 +47,7 @@ export interface PromptList {
 /* A later direction opened for review as one pending outcome line. Its box carries no `maxlength`, so
    nothing truncates it; a line over the store's bound is refused at the save, never cut. */
 export interface DirectionLine {
+  readonly recordOrigin?: boolean;
   readonly factId: string;
   readonly n: number | null;
   readonly later: boolean;

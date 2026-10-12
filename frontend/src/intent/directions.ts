@@ -1,5 +1,5 @@
-import { nextNumber } from '../api/bootstrap';
-import { compatSessKey } from '../api/identity';
+import { nextNumber, payloadSessions } from '../api/bootstrap';
+import { compatSessKey, contextKey, stableProjectKey } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
 import type { Row } from '../observed';
 import { annotationOf, heldCap, scrub } from './annotation';
@@ -56,8 +56,15 @@ import { laterDirections, workSource, type WorkEntry } from './work';
 const compat = compatSessKey;
 
 /* The session's focused observed record, read from the contexts the board holds. */
-function sourceOf(input: DraftInput, projectKey: string) {
-  return workSource(input.contexts, projectKey, input.session);
+function sourceOf(ctx: Ctx, input: DraftInput, projectKey: string) {
+  return workSource(
+    input.contexts,
+    projectKey,
+    input.session,
+    ctx.shell.runtime.store
+      .getSnapshot()
+      .records.get(contextKey(projectKey, input.session as never)),
+  );
 }
 
 /* The pending line, from its fact id on every render and gone once its direction is no longer open: a number
@@ -66,7 +73,17 @@ export function reconcileDirection(ctx: Ctx, input: DraftInput, projectKey: stri
   const key = compat(input.session);
   const held = ctx.held.directions.get(key);
   if (!held || typeof held.text !== 'string') return;
-  const source = sourceOf(input, projectKey);
+  const source = sourceOf(ctx, input, projectKey);
+  const record = ctx.shell.runtime.store
+    .getSnapshot()
+    .records.get(contextKey(projectKey, input.session as never));
+  // Unread older pages cannot disprove an opened direction. Its draft belongs to Intent, not the page cache.
+  if (
+    held.recordOrigin &&
+    !record?.reachedStart &&
+    !(source.all ?? source.entries).some((entry) => entry.id === held.factId)
+  )
+    return;
   const read = source.state === 'read' || source.state === 'empty';
   /* Opened by Update intent instead, a direction an analysis's Keep already settled is still one to add, so
      that line stands while its direction is any later direction; the question's own Add keeps the
@@ -108,7 +125,19 @@ export async function openDirection(
   const control = `${action}:${key}`;
   const press = pendingStart(ctx, control, 'Opening…');
   if (!press) return;
-  ctx.held.directions.set(key, { factId, n, later, opening: true });
+  const snapshot = ctx.shell.runtime.store.getSnapshot();
+  const label = String(row['project'] ?? '');
+  const projectKey = stableProjectKey({
+    label,
+    sessions: snapshot.data
+      ? payloadSessions(snapshot.data).rows.filter((session) => session.project === label)
+      : [],
+  });
+  const recordOrigin = snapshot.records
+    .get(contextKey(projectKey, identity))
+    ?.entries.some((entry) => entry.fact_id === factId);
+  const origin = recordOrigin ? { recordOrigin: true } : {};
+  ctx.held.directions.set(key, { factId, n, later, opening: true, ...origin });
   ctx.held.notify();
   let held: DirectionLine;
   try {
@@ -135,7 +164,7 @@ export async function openDirection(
   } finally {
     pendingEnd(ctx, control, press);
   }
-  ctx.held.directions.set(key, held);
+  ctx.held.directions.set(key, { ...held, ...origin });
   ctx.held.requestFocus(held.error ? control : `direction:${key}`);
 }
 
@@ -481,7 +510,7 @@ export async function keepIntent(
   if (pendingHas(ctx, control) || ctx.held.requests.get(key)?.pending) return;
   const input = readInput(ctx, identity, row);
   if (!input) return;
-  const pending = directionsOpen(input, sourceOf(input, projectKey));
+  const pending = directionsOpen(input, sourceOf(ctx, input, projectKey));
   if (!pending.length) return;
   keepUnsay(ctx, key);
   if (intentUnsaved(input)) {

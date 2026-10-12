@@ -573,6 +573,41 @@
     },
     {
       "method": "GET",
+      "name": "record-malformed-session",
+      "route": "/api/session-record",
+      "sha256": "8dabed3bee7c72b6b884cd49b7eac8178ea4caa206ad2b40f882723e184aa9bc",
+      "status": 400
+    },
+    {
+      "method": "GET",
+      "name": "record-newest-to-start",
+      "route": "/api/session-record",
+      "sha256": "8e37288e4981b1f467f404b95abbef0afd823b24627957d3a82a1b97dfeff0f0",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "name": "record-stale",
+      "route": "/api/session-record",
+      "sha256": "0f045d0a7dee5d72e17f2a9f3e9d92fa51126cd3bc80c5bf4faf153a802638ae",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "name": "record-unavailable",
+      "route": "/api/session-record",
+      "sha256": "693163b20ab74a8df0fce95f7d929462db4f89c070ae604e09fd6c51bb97ceab",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "name": "record-unsupported",
+      "route": "/api/session-record",
+      "sha256": "a28f751590e0ccb62a53b86f057e926ccaba50fc7046bcd57ff58c9e10b05a4f",
+      "status": 200
+    },
+    {
+      "method": "GET",
       "name": "stream-budget-exhausted",
       "route": "/api/stream",
       "sha256": "f2ecd5dd86a12f66d8afcfab0cb2923b015dbea8386f0c33dba5828a73b98422",

@@ -790,6 +790,17 @@
       "disposition": "store-held"
     },
     {
+      "name": "Loaded session record pages",
+      "owner": "DRC-4825",
+      "oracles": [
+        "frontend/src/drift/record.test.tsx",
+        "frontend/src/transport/record.test.ts",
+        "frontend/stories/RecordPages.stories.tsx"
+      ],
+      "contract": "Hold pages across polls and manual refresh only while the exact project/session page is open. Read newest fifty once per opening; read older pages only on Show more. Dedupe by fact_id, abort and drop on leave, restart stale once. Never persist or prefetch. Recompute numbers from the oldest loaded entry in the intent window.",
+      "disposition": "store-held"
+    },
+    {
       "name": "An expanded Attention section",
       "owner": "DRC-4827",
       "oracles": [
@@ -1016,9 +1027,10 @@
       "owner": "DRC-4825",
       "oracles": [
         "frontend/src/intent/IntentDirections.test.tsx",
-        "frontend/e2e/intent-parity.mjs"
+        "frontend/e2e/intent-parity.mjs",
+        "frontend/src/drift/record.test.tsx"
       ],
-      "contract": "Hold whole pending direction text/source/replacement in memory; no maxlength truncation, live count/refusal; duplicate Add focuses same draft, missing source/removal clears.",
+      "contract": "Hold whole pending direction text/source/replacement in memory; no maxlength truncation, live count/refusal; duplicate Add focuses same draft, missing source/removal clears. A direction draft opened from record pages keeps its words across leaving while older pages are unread; only a loaded origin or a complete record can reconcile absence.",
       "disposition": "store-held"
     },
     {

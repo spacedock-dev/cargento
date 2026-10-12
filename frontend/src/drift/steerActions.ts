@@ -1,4 +1,4 @@
-import { compatSessKey } from '../api/identity';
+import { compatSessKey, contextKey } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
 import { annotationOf } from '../intent/annotation';
 import { answered, liveRow } from '../intent/context';
@@ -42,7 +42,12 @@ function sourceFor(ctx: DriftCtx, session: Row) {
       ? payloadSessions(data).rows.filter((row) => String(row.project ?? '') === label)
       : [],
   });
-  return workSource(snapshot.contexts, projectKey, session);
+  return workSource(
+    snapshot.contexts,
+    projectKey,
+    session,
+    snapshot.records.get(contextKey(projectKey, session as never)),
+  );
 }
 
 /* What the correction's text is right now: the reader's own where they edited or copied it, the frozen text of

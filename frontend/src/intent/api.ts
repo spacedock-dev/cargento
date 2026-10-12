@@ -1,5 +1,5 @@
 import { payloadSessions } from '../api/bootstrap';
-import { stableProjectKey } from '../api/identity';
+import { contextKey, stableProjectKey } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
 import type { Row } from '../observed';
 import type { Shell } from '../shell/context';
@@ -45,7 +45,13 @@ export async function openPendingDirection(
     addLine(ctx, input);
     return;
   }
-  const source = workSource(input.contexts, projectKeyOf(shell, input.session), input.session);
+  const projectKey = projectKeyOf(shell, input.session);
+  const source = workSource(
+    input.contexts,
+    projectKey,
+    input.session,
+    shell.runtime.store.getSnapshot().records.get(contextKey(projectKey, identity)),
+  );
   const n = entryNumbers(input.session, source, input.payload).get(factId);
   await openDirection(ctx, input.session, factId, n ?? null, true, 'update-intent');
 }

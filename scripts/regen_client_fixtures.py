@@ -1351,6 +1351,29 @@ def adoption_scenarios(recorder: Recorder, scratch: Scratch) -> None:
             get("/api/project-context", scope + "&prompts=1"),
             "prompts=1 adds the menu of prompts this session can adopt as its goal.",
         )
+        for name, query, note in (
+            (
+                "record-newest-to-start",
+                scope + "&limit=50",
+                "The newest message facts reach the start of this short synthetic record.",
+            ),
+            (
+                "record-stale",
+                scope + "&before=invalid",
+                "An unauthenticated cursor returns stale without a boundary claim.",
+            ),
+            (
+                "record-unavailable",
+                "project=alpha-app&session=claude:unknown",
+                "An unknown source establishes no record start.",
+            ),
+            (
+                "record-malformed-session",
+                "project=alpha-app&session=claude",
+                "The exact identity guard refuses a missing sid.",
+            ),
+        ):
+            recorder.capture(rig, name, get("/api/session-record", query), note)
         facts = context["body"]["semantic"]["facts"]
         later = next(
             fact for fact in facts if fact.get("type") == "user_message" and fact["at"] > first_at
@@ -1516,10 +1539,30 @@ def focus_scenarios(recorder: Recorder, scratch: Scratch) -> None:
         rig.close()
 
 
+def unsupported_record_scenario(recorder: Recorder, scratch: Scratch) -> None:
+    rig = Rig(
+        scratch,
+        "record-unsupported",
+        rows={
+            "claude": [synthetic_row("pi", "s1", "alpha-app", title="Synthetic unsupported record")]
+        },
+    )
+    try:
+        recorder.capture(
+            rig,
+            "record-unsupported",
+            get("/api/session-record", "project=alpha-app&session=pi:s1"),
+            "An unsupported harness is not an empty record and establishes no start.",
+        )
+    finally:
+        rig.close()
+
+
 SCENARIO_SECTIONS: tuple[Callable[[Recorder, Scratch], None], ...] = (
     data_scenarios,
     stream_scenarios,
     context_scenarios,
+    unsupported_record_scenario,
     annotation_scenarios,
     action_scenarios,
     copy_and_direction_scenarios,

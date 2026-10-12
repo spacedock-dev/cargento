@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "record-unavailable",
+  "notes": "An unknown source establishes no record start.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/session-record",
+    "query": "project=alpha-app&session=claude:unknown"
+  },
+  "response": {
+    "body": {
+      "bound": null,
+      "entries": [],
+      "kinds": [
+        "user_message",
+        "agent_message"
+      ],
+      "next": null,
+      "reached_start": false,
+      "scanned_bytes": 0,
+      "session": {
+        "harness": "claude",
+        "sid": "unknown"
+      },
+      "state": "unavailable"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "189",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

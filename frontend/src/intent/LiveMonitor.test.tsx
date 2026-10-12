@@ -38,7 +38,10 @@ describe('the live monitor switch', () => {
     expect(page.posts()).toBe(0);
     expect(
       page.state.requests.filter(
-        (r) => r.path !== '/api/data' && r.path !== '/api/project-context',
+        (r) =>
+          r.path !== '/api/data' &&
+          r.path !== '/api/project-context' &&
+          r.path !== '/api/session-record',
       ),
     ).toEqual([]);
     expect(KEY).toContain('claude:s1');

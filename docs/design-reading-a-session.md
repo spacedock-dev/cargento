@@ -3636,7 +3636,10 @@ calls below on the issue; the rest follow the analysis.
   pass from the middle; and the observer snapshot moves with each snapshot. A fifth since
   [2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence): an agent message
   leaves the transcript tail the board reads, and since it is never stored in the session history
-  it drops out of the list and the entries after it renumber. A departure that cited it then reads
+  it used to drop out of the list and the entries after it renumbered. Record pages now keep loaded
+  messages for the open session page, independently of that tail. Loading older messages in the
+  intent window can renumber every entry; the list says "Numbers count from the oldest entry loaded."
+  After leaving, the next opening starts with the newest page. A departure citing an unloaded entry reads
   as citing nothing resolvable, with the generic sentence: a citation is a hashed fact id, so the
   page cannot tell that the entry it named was one of the agent's messages. The list and every
   citation are recomputed together on each render, so the screen never disagrees with itself, and
@@ -3652,13 +3655,16 @@ calls below on the issue; the rest follow the analysis.
   predicate the conflict block narrows to the unsettled ones, so the two cannot disagree. It stays
   flagged once settled, because settling says the baseline still applies, not that the direction was
   never given. It is never called drift (DEC-16).
-- The bound is the newest twenty entries in the window that are not checks or files, and every
+- The readability bound was retired on 2026-10-12. Opening reads the newest fifty message entries;
+  Show more alone reads each older page. Every loaded timed entry in the window is listed, and every
   check and file in the window. A check or file from before the window is counted with the earlier
   entries and not drawn, where every listed one used to be. When nothing is numbered but the record
   holds earlier or untimed entries, the list says no entry is from after the window opened (or that
   none has a time) rather than that the record names nothing. Every entry a departure cites is drawn as well, at its own number, so the gaps in
-  the numbering show and no expand control is needed. A later direction past the bound is counted,
-  not drawn; the conflict block lists the unsettled ones.
+  the numbering show and no expand control is needed for a loaded citation. Revealed entries and
+  open later directions are listed as well. Older message pages exist only after Show more; once
+  they reach before the intent window, the list says "Everything since your intent's window opened
+  is listed." and stops offering invisible older rows.
 - The list sits right after CURRENT ACTIVITY under the column's "Session activity" heading, and the
   OBSERVED RECORD heading is retired. The header's second row says "N entries" and omits the count,
   rather than showing 0, when the record was not read.
@@ -4695,6 +4701,11 @@ removing one separate row before Keep. A used outcome has Remove beside its box.
 the level and direction selector; the visible summary is the count, with its floor retained in
 the accessible sentence. A blocked header limits the visible title to two lines, retaining the
 full title in its text and title attribute, and moves its measured counts to Session activity.
+The session age appends to the existing identity line, wrapping only when necessary at the
+phone width. It uses the published start or the first message time, states that fallback in its
+exact-local-time tooltip, and draws nothing when both are absent. It adds no separate metadata
+block before the signed content. Storybook verifies phone wrapping; the retired first-view proof
+is not a new measurement of this addition.
 The first-view proof covers stored results, one and four
 unsettled directions, short and wrapped blocked headers, and touch activity actions at desktop
 and phone sizes; each placement and the touch fallback have a rejecting mutation.

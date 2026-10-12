@@ -841,7 +841,7 @@ React page changes its digest and needs measuring again.
 ## The cutover receipt
 
 [The mapped receipt](frontend-cutover-receipt.json) maps every row of the ownership map (20 parts, 39
-surfaces, 17 routes, 45 reader-state rows and 12 storage families) to the React-side proof that stands for
+surfaces, 17 routes, 49 reader-state rows and 12 storage families) to the React-side proof that stands for
 it: a vitest file and test title, a browser proof and its step, a Python test for server code both pages
 share, or a fluidity verdict. A row is proven, proven with a recorded deviation (the entry links the
 paragraph that records it), deferred to a named owner, or an explicit gap. `python3
@@ -965,13 +965,50 @@ final runtime again rather than reuse a pre-migration source binding.
 
 The retired page listed the numbered activity oldest first and showed "Add to my intent" only on hover.
 The owner ruled on 2026-10-12 that the list reads newest first and that the button is always drawn. The
-numbers do not change: they stay the oldest-first ones every "#<n>" and citation names, so the column
+numbers are the oldest-first ones every "#<n>" and citation names, so the column
 reads from the highest down to #1. `frontend/src/drift/WorkListView.test.tsx` holds both. The drift
 parity proof restates the rows in number order on a copy before it compares them with the recorded
 answer, which is unchanged. The list is ordered by time over every kind of entry; a check or a message
 the agent wrote sits between the prompts either side of it. Where the rows look grouped, the record read
-for the session holds no entry of the other kind in that stretch: the agent's messages come from a
-bounded transcript tail and are never stored, so they reach back only as far as that tail does.
+for the session holds no entry of the other kind in that stretch: the agent's messages come from the record pages, within the harness limits in the [page contract](design-session-record-pages.md#route-contract).
+
+Opening a session reads its newest fifty message entries once through `/api/session-record`.
+Show more alone requests each older page, up to fifty entries; no poll, manual refresh or idle
+control prefetches one. The page merges context and record facts by `fact_id`, with the record
+winning a conflict; checks and workflow facts still come from context. An unsaved direction
+opened from a record page keeps its words in the existing intent store across leaving and
+returning. Discarding record pages does not prove that its older source entry is gone; reconciliation
+waits for that entry or the record start, without retaining the old page. Every loaded timed entry
+in the intent window is listed, together with cited or revealed entries and open later directions.
+The former twenty general rows and ten agent messages are retired. Loading older entries in the
+window recomputes every number, oldest first. After another page, the list says "Numbers count
+from the oldest entry loaded." The full merged set remains available for citations.
+
+Focus remains on Show more after an append. If it disappears, focus reaches the first new row,
+or the boundary sentence when the page added no visible row, without scrolling. A later focus
+chosen by the reader wins. The paging control states loading, failure and retry, a byte or time stop with its measured MB,
+record start, unsupported harness and a stale restart. A stale response drops held pages and
+restarts once; another stale response waits for the reader. Once the oldest loaded record entry
+predates the intent window, the control is replaced by "Everything since your intent's window
+opened is listed." The [reader-state row](design-reader-state.md#the-inventory) owns the opening-only
+lifetime and abort on leave. `frontend/src/drift/record.test.tsx` and
+`frontend/src/transport/record.test.ts` hold paging and survival; `frontend/stories/RecordPages.stories.tsx`
+asserts each control state and scroll and focus during an append in Chromium.
+
+The recorded-side `projectRecordedLoadedSource` in the work differential replaces the old
+source slice and its shown count with the recording's full source. `projectRecordedLoadedActivity`
+in `frontend/test/recorded-loaded-activity.ts` retains every existing recorded row, reconstructs
+only rows hidden by the old caps from the recorded full source, and removes only the retired cap
+caption. Both full comparisons still run every recorded seed. The golden files are unchanged.
+The browser parity snapshot omits the new paging region on its cloned panel; its scripted backend
+now answers record reads from its synthetic facts. No browser parity run is claimed.
+
+The header appends "Started about <duration> ago" to the existing identity line. It reads
+`started_at`, falling back to `first_prompt_at`, and draws nothing when neither is published.
+The title contains exact local time; the fallback says "From the first message in the record".
+`projectRecordedSessionAge` in the session detail differential appends the age from the
+recording's published timestamp before comparing the retained header. The shared browser recorded-side projection in `frontend/e2e/support/session-deviations.mjs` does the same for session headers, guarded by its Node tests. Session detail tests and
+`frontend/stories/SessionAge.stories.tsx` hold start, fallback, absence and phone wrapping.
 
 The same ruling shortens the row head. The actor and type now say "Agent said" once. The model
 keeps the original `toolReportLine` words exactly, while a check shows "No result", "Passed" or

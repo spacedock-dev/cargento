@@ -29,13 +29,6 @@ import { readingAuthor, readingCopied } from './shape';
    fact ids the current reading's surviving departures rest on. The legacy cockpit's `nextCockpitWorkEvidence`
    is the oracle (`workList.differential.test.ts`). */
 
-/* The agent's messages, bounded apart: half the other rows' bound, a readability choice, stated under the rows
-   the same way. */
-export const AGENT_ROWS = 10;
-/* How many entries the block draws: a readability bound rather than a measurement, which is why the count it
-   hid is stated under the rows. Nothing upstream caps the semantic facts. */
-export const WORK_ROWS = 20;
-
 /* A fact's type as a word on the activity list. Closed, and a Map so a type named like an Object property
    cannot resolve to one: a type with no word here reads "Entry" rather than its raw token. */
 const ENTRY_KIND = new Map([
@@ -219,14 +212,6 @@ export function entryActor(entry: WorkEntry): string {
   if (author === 'person' || readingCopied(entry)) return 'You';
   /* Compass's own paraphrase is never credited to the agent. */
   return author === 'derived' ? 'Compass’s summary' : 'Agent';
-}
-
-const entryCount = (n: number): string => `${String(n)} ${n === 1 ? 'entry' : 'entries'}`;
-
-/* "A, B and C", for the bound sentence's clauses. */
-function joinClauses(parts: readonly string[]): string {
-  const last = parts[parts.length - 1];
-  return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${last ?? ''}`;
 }
 
 /* The clause for entries that are counted and not listed, naming the ones a departure cites, which are listed
@@ -420,26 +405,11 @@ export function workList(input: WorkListInput): WorkList {
      is drawn with its time, as a cited earlier entry is, and is not counted among the earlier entries left
      unlisted. A settled one takes the bound. */
   const open = new Set(conflictCandidates(ann, all, session, input.draft));
-  /* The readability bound: the newest non-tool rows, every listed check and file, and every entry a departure
-     cites, each at its own number so the gaps show. A cited entry is always drawn, so it is reachable without
-     an expand control. */
   const numbered = all.filter((entry) => numbers.has(entry));
-  /* The agent's messages take a bound of their own beside the other rows', so a talkative session never
-     pushes the reader's messages off the list. */
-  const agentSaid = (entry: WorkEntry): boolean => entry.type === 'agent_message';
-  const recent = new Set(
-    numbered.filter((entry) => entry.type !== 'tool_report' && !agentSaid(entry)).slice(-WORK_ROWS),
-  );
-  const recentSaid = new Set(numbered.filter(agentSaid).slice(-AGENT_ROWS));
-  const isCited = (entry: WorkEntry): boolean => cited.has(String(entry?.id || ''));
+  const isCited = (entry: WorkEntry): boolean => cited.has(entry.id);
   const isRevealed = (entry: WorkEntry): boolean => Boolean(input.revealed?.has(entry.id));
-  const isRecent = (entry: WorkEntry): boolean => recent.has(entry) || recentSaid.has(entry);
   const entries = all.filter(
-    (entry) =>
-      isCited(entry) ||
-      isRevealed(entry) ||
-      open.has(entry) ||
-      (numbers.has(entry) && (entry.type === 'tool_report' || isRecent(entry))),
+    (entry) => numbers.has(entry) || isCited(entry) || isRevealed(entry) || open.has(entry),
   );
   const turnOf = lastTurn(session, all);
   const rows = entries.map((entry): WorkRow => {
@@ -525,35 +495,8 @@ export function workList(input: WorkListInput): WorkList {
       ),
     );
   }
-  /* Every figure from the rows drawn and the numbers given, never authored. */
-  const listed = entries.filter((entry) => numbers.has(entry));
-  const bound =
-    listed.length < numbers.size
-      ? `Listing ${String(listed.length)} of ${entryCount(numbers.size)}: ${joinClauses([
-          `the ${String(recent.size)} most recent`,
-          ...(recentSaid.size
-            ? [`the ${String(recentSaid.size)} most recent messages the agent wrote`]
-            : []),
-          /* In the window: a check or file from before it is counted with the earlier entries, so "every" is
-             true only of this set. */
-          ...(listed.some((entry) => entry.type === 'tool_report')
-            ? ['every check and file in the window']
-            : []),
-          ...(listed.some(
-            (entry) => isCited(entry) && entry.type !== 'tool_report' && !isRecent(entry),
-          )
-            ? ['every entry the analysis cites']
-            : []),
-          ...(listed.some(
-            (entry) => input.revealed?.has(entry.id) && !isCited(entry) && !isRecent(entry),
-          )
-            ? ['the selected finding’s entries']
-            : []),
-          ...(listed.some((entry) => open.has(entry) && !isCited(entry) && !isRecent(entry))
-            ? ['every later direction still to settle']
-            : []),
-        ])}. ${String(numbers.size - listed.length)} ${numbers.size - listed.length === 1 ? 'is' : 'are'} counted and not listed.`
-      : '';
+  // Every timed entry in the loaded window is drawn; there is no hidden readability slice.
+  const bound = '';
   /* Nothing numbered while the record holds entries is a fact about the window, not an empty record: "No entry
      names this session" beside a count of the entries it holds was false. */
   const unnumbered =
