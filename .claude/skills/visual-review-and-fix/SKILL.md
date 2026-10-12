@@ -1,13 +1,13 @@
 ---
 name: visual-review-and-fix
-description: Use before and after building a Cargento change, to walk the board as its user, hold new work to what that user expects, and keep the tests behavioural.
+description: Use before and after building a Compass change, to walk the board as its user, hold new work to what that user expects, and keep the tests behavioural.
 ---
 
 # visual-review-and-fix
 
 Open the dashboard, use it the way its reader does, and find what the suite cannot see.
 
-This skill rests on one measured claim. **Cargento's defect class is the confident wrong answer in
+This skill rests on one measured claim. **Compass's defect class is the confident wrong answer in
 an absence.** A9 was cancelled over a light that read "safe" exactly when nothing could be seen. A5
 produced five false greens inside a binary verdict, none of them in the numbers. C2 published
 "nothing succeeded" off state it had not finished reading. The framing header shipped claiming two
@@ -44,7 +44,7 @@ reader knows the walk was considered rather than forgotten.
 - A browser automation capability. The walk is the point; there is no reading-only substitute for
   it, and the section on delegation below says why a subagent cannot do this part.
 - The dashboard runnable from the tree under review: `python3 server.py --daemon --port <spare>`
-  from `cargento/skills/cargento`.
+  from `compass/skills/compass`.
 - `docs/promise-map.md` open. It is canonical for what the product promises at each stage of the
   reader's day, and for where each promise stops.
 

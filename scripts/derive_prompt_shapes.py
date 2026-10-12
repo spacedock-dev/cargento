@@ -2,7 +2,7 @@
 """Re-derive the prompt-shape counts written into `records.py`.
 
 Every number in the "Harness-injected prompts" comment block of
-`cargento_runtime/records.py` was measured against a real local store. Until this
+`compass_runtime/records.py` was measured against a real local store. Until this
 script existed the measuring code did not survive the measurement, so no reviewer
 could tell a derived count from a plausible one. This is that code, kept.
 
@@ -37,11 +37,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = ROOT / "cargento" / "skills" / "cargento"
+SKILL_DIR = ROOT / "compass" / "skills" / "compass"
 if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
 
-from cargento_runtime import records  # noqa: E402
+from compass_runtime import records  # noqa: E402
 
 DEFAULT_CLAUDE_ROOT = Path.home() / ".claude" / "projects"
 DEFAULT_CODEX_ROOT = Path.home() / ".codex" / "sessions"

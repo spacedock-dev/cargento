@@ -48,7 +48,7 @@ export function mountShell(options: TestShellOptions = {}) {
     return Promise.resolve(
       new Response(JSON.stringify(backend.data), {
         status: 200,
-        headers: { 'X-Cargento-Revision': `7.${String(backend.revision)}` },
+        headers: { 'X-Compass-Revision': `7.${String(backend.revision)}` },
       }),
     );
   };

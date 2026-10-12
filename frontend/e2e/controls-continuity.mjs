@@ -171,14 +171,14 @@ const step = async (name, run) => {
 // Doubled on a hosted runner, which draws frames and delivers events later; only a pass gets slower, the assertions after a pause are unchanged.
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, process.env.CI ? ms * 2 : ms));
 
-const copy = await mkdtemp(join(tmpdir(), 'cargento-controls-browser-'));
+const copy = await mkdtemp(join(tmpdir(), 'compass-controls-browser-'));
 let dev, browser, shell, reduced;
 try {
   await cp(join(REPOSITORY, 'frontend'), join(copy, 'frontend'), {
     recursive: true,
     filter: (path) => !path.includes('/fixtures') && !path.includes('/test-results'),
   });
-  await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+  await cp(join(REPOSITORY, 'compass'), join(copy, 'compass'), {
     recursive: true,
     filter: (path) =>
       !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
@@ -831,7 +831,7 @@ if (new URLSearchParams(location.search).has('late')) {
       const key = await page.evaluate(() =>
         Object.keys(localStorage).find(
           (name) =>
-            name.startsWith('cargento.cockpit.memo.v2:') && name.endsWith(':project:outcome'),
+            name.startsWith('compass.cockpit.memo.v2:') && name.endsWith(':project:outcome'),
         ),
       );
       assert.ok(key, 'no released-format key was written');

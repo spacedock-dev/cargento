@@ -1,6 +1,6 @@
 /*
  * Runs the eleven parity proofs with the React side served as the shipped bundle
- * (`CARGENTO_E2E_BUNDLE=production`, see `support/world.mjs`), one at a time, and says which failed.
+ * (`COMPASS_E2E_BUNDLE=production`, see `support/world.mjs`), one at a time, and says which failed.
  *
  *   pnpm test:production:browser                  every proof
  *   pnpm test:production:browser --shard a | b    half of them
@@ -49,7 +49,7 @@ for (const script of scripts) {
   const result = spawnSync('pnpm', ['run', script], {
     cwd: root,
     stdio: 'inherit',
-    env: { ...process.env, CARGENTO_E2E_BUNDLE: 'production' },
+    env: { ...process.env, COMPASS_E2E_BUNDLE: 'production' },
   });
   const seconds = Math.round((Date.now() - started) / 1000);
   console.log(`=== ${script}: ${result.status === 0 ? 'ok' : 'FAILED'} in ${seconds}s ===`);

@@ -1,13 +1,13 @@
 # Design: Spacedock stage cartography
 
-The durable rationale behind how Cargento answers "where is each work item on its workflow?" for a
+The durable rationale behind how Compass answers "where is each work item on its workflow?" for a
 Spacedock first officer. It records the decisions and the alternatives that were tried and rejected.
 The rejected ones are the expensive part, because without them they get re-attempted.
 
 The security contract these reads operate under is owned by [`SECURITY.md`](../SECURITY.md), and the
 user-facing behaviour is owned by the skill body. This file explains *why*, not *what*.
 
-The parsers live in `cargento_runtime/spacedock.py`, which knows nothing about any harness. The
+The parsers live in `compass_runtime/spacedock.py`, which knows nothing about any harness. The
 collectors call it, and each decides for itself whether a session is a first officer before asking
 for strips: `collectors/claude.py` from the `agentSetting` in its transcript head,
 `collectors/pi.py` from the boot envelope itself, per S-5. That boundary is what keeps
@@ -25,7 +25,7 @@ identifier across `*.py`, `*.toml` and `*.md` before renumbering anything.
 A first officer is one session driving many entities through many workflows, dispatching one
 ensign subagent per stage of work. The session card shows the subagent pills already, but a pill
 name is not progress: `spacedock-ensign-drc-3832-review` says a worker exists, not that `drc-3832`
-is four stages from done. Cargento is a passive reader. It never runs `spacedock`, never talks to
+is four stages from done. Compass is a passive reader. It never runs `spacedock`, never talks to
 the first officer, and must derive the whole picture from files something else already wrote.
 
 ## S-1: Read state, not the boot snapshot, for where an entity is
@@ -119,7 +119,7 @@ harness knowledge into a module whose whole point is not having any.
 ## S-6: The boot envelope has a third provenance shape, and it is Codex's
 
 The provenance rule is that boot output counts only when it arrives as *command output*, because
-scanning the raw line would let anything a person pasted nominate an absolute path for Cargento to
+scanning the raw line would let anything a person pasted nominate an absolute path for Compass to
 open. `spacedock.tool_result_text` is where that rule is applied, and it read two shapes: Claude's
 `type: "tool_result"` content blocks and Pi's `toolResult` role message.
 

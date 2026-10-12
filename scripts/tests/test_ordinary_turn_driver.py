@@ -51,7 +51,7 @@ class FakeScope:
         return driver.Observation(
             evidence_kind="synthetic-control-only",
             loss=self.test.loss,
-            cargento_model_calls=self.test.model_calls,
+            compass_model_calls=self.test.model_calls,
             elapsed_seconds=self.test.elapsed,
             output_bytes=self.test.output_bytes,
             receipt_sha256=driver.sha(b"fake observer receipt, never real proof"),
@@ -122,7 +122,7 @@ class ControlFixture(unittest.TestCase):
             effort="reviewed-effort",
             prompt="Write the next ordinary reply.",
             argv=(str(self.root / "cli"), "reviewed-native-arguments"),
-            environment={"CARGENTO_HOME": str(home)},
+            environment={"COMPASS_HOME": str(home)},
             files=files,
             board_port=4599,
             transcript_path=str(self.root / "native-session.jsonl"),
@@ -177,7 +177,7 @@ class OrdinaryControls(ControlFixture):
         fresh = importlib.util.module_from_spec(spec)
         with (
             mock.patch.dict(sys.modules, {name: fresh}),
-            mock.patch.dict(os.environ, {"HOME": str(self.root), "CARGENTO_HOME": str(self.root)}),
+            mock.patch.dict(os.environ, {"HOME": str(self.root), "COMPASS_HOME": str(self.root)}),
         ):
             spec.loader.exec_module(fresh)
         self.assertIsNone(fresh.AUTHORITY_DIR)
@@ -483,7 +483,7 @@ class OrdinaryControls(ControlFixture):
                     self.run_turn(dataclasses.replace(self.plan, ordinal=2, **edits))
                 self.assertNotIn("launch", self.events)
 
-    def test_loss_cleanup_bounds_and_nonzero_cargento_calls_are_held(self) -> None:
+    def test_loss_cleanup_bounds_and_nonzero_compass_calls_are_held(self) -> None:
         for field, value in (
             ("loss", 1),
             ("cleaned", False),
@@ -594,7 +594,7 @@ class OrdinaryControls(ControlFixture):
             self.assertEqual("blocked", run["status"])
             self.assertIn("copy_readback", run["required_artifacts"])
             if run["kind"] != "default":
-                self.assertEqual(0, run["expected_cargento_model_calls"])
+                self.assertEqual(0, run["expected_compass_model_calls"])
 
     def test_preparation_cli_writes_private_blocked_manifest_without_authority_changes(
         self,
@@ -742,7 +742,7 @@ class StubNativeProcess(ControlFixture):
 
     def test_local_stub_receives_exact_prompt_environment_and_workspace(self) -> None:
         plan = self.stub(
-            "import os,sys\nprint(os.getcwd())\nprint(os.environ['CARGENTO_HOME'])\nprint(sys.stdin.read())\n"
+            "import os,sys\nprint(os.getcwd())\nprint(os.environ['COMPASS_HOME'])\nprint(sys.stdin.read())\n"
         )
         driver.reserve(plan)
         process = driver.NativeProcess(StubGate())
@@ -753,7 +753,7 @@ class StubNativeProcess(ControlFixture):
             (
                 str(Path(plan.workspace).resolve())
                 + "\n"
-                + plan.environment["CARGENTO_HOME"]
+                + plan.environment["COMPASS_HOME"]
                 + "\n"
                 + plan.prompt
                 + "\n"

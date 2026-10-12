@@ -461,7 +461,7 @@ describe('the checks run while the reader was away, when that lane is off', () =
       (node) => node.textContent,
     );
     expect(sentences).toEqual([
-      'Nothing watches for a departure on its own. Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.',
+      'Nothing watches for a departure on its own. Start with --unasked-readings to have Compass check a session against what you asked for while you are away.',
       'The checks that run while you were away are off for this run, so nothing new is being checked. What was already raised is still on record.',
     ]);
     expect(part().textContent).toContain('The change widened the goal.');

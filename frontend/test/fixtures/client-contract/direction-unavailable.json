@@ -19,11 +19,11 @@
     "body": {
       "ok": false,
       "reason": "unavailable",
-      "why": "Cargento could not open that direction from the session's record, so nothing was added. The part of the record it reads may no longer reach back to it, or it may not be later than your intent. Type the line yourself instead."
+      "why": "Compass could not open that direction from the session's record, so nothing was added. The part of the record it reads may no longer reach back to it, or it may not be later than your intent. Type the line yourself instead."
     },
     "headers": {
       "Cache-Control": "no-store",
-      "Content-Length": "268",
+      "Content-Length": "267",
       "Content-Security-Policy": "frame-ancestors 'none'",
       "Content-Type": "application/json"
     },

@@ -9,12 +9,41 @@ frontend preserves the [existing promises](promise-map.md), including their limi
 The interface it replaced is called the legacy page below. It is gone: it is not served, not
 rendered, and its shell, its rollback flag and the tests that pinned its bytes were removed. What
 remains of it is kept on purpose and is not part of any page. The twenty legacy script parts under
-`cargento_runtime/web/` (`next-*.js` and `project.js`) stay byte for byte, because the paused
+`compass_runtime/web/` (`next-*.js` and `project.js`) remain, because the paused
 Intent and drift study evaluates their text and binds the digest of `page.load_script()`; nothing in
 the runtime, the frontend or the tests reads them. Deleting them is separate work that has to rebind
 that study first. The recorded answers the React page is held to are described in the next section.
 
 ## Held to recorded answers
+
+The rename also preserves saved browser choices until 1.0.0: a missing Compass
+key reads the matching Cargento key through the shared storage adapter. Writes
+use only Compass keys; clearing an old setting leaves an empty new value so it
+stays cleared on reload. `frontend/src/storage/upgrade.test.ts` adds that narrow
+contract for all twelve families without changing recorded answers or the existing
+storage browser proofs.
+The retained study scripts remain frozen and unserved. Extending their reads requires
+requalification, so the fallback applies to the served React storage adapter.
+
+
+The owner renamed the application to Compass on 2026-10-12. The named
+`frontend/test/recorded-name.ts` projection changes only the three case variants of the
+former product name in recorded answers, including object keys used for browser storage.
+The Vitest seam maps renamed arguments back to the recorded spelling before computing
+lookup and state hashes, then projects the encoded answer before decoding it. The browser
+seam projects recorded values when loading them and maps lookup labels and input digests
+back to their recorded spelling, including storage labels before length-based truncation.
+Live observations, assertion shapes,
+case counts and all golden bytes remain unchanged. These are test projections, with no
+runtime fallback for old stores, storage keys or environment variables.
+The same mechanical rename changes literals in the retained retired-page script parts;
+their earlier source bindings require renewed evidence. Recorded measurement receipts
+remain untouched and cannot certify these renamed source bytes.
+The Python tests use `tests/recorded_name.py` to restore only the three name
+spellings before comparing retained study source and final reading headers with their
+historical byte pins. Every original size and digest remains unchanged, and all other
+bytes are still checked. This comparison proves the mechanical rename, not qualification
+of the renamed study or producer.
 
 The DEC-27 correction keeps Sessions orientation in the compared header, qualified by the
 annotation store and reading routes. Project instruction order follows instruction timestamps;
@@ -234,7 +263,7 @@ without allowing their text to change the HTML parser's state. A global replacem
 break operators; replacing only script end tags would miss HTML comment and script parser states.
 The browser tests must execute hostile literals, rather than infer safety from a string check.
 
-The JavaScript resource ends with a fixed `sourceURL=cargento-bundle.js` comment. Without
+The JavaScript resource ends with a fixed `sourceURL=compass-bundle.js` comment. Without
 that short name, Chromium captured the full 1.1 MB data URL in callback source locations;
 repeated production drift loads reached 8.3 GiB renderer RSS while the JavaScript heap
 stayed below 65 MiB. The short name kept the same proof below 478 MiB. The callback-stack
@@ -496,7 +525,7 @@ three lines; at 760 px and below the earlier compact spacing and one-line fields
 primary control remain in the 375 by 667 first view. The field chrome reference table records the card's
 background, border, radius and padding for the wide Intent panel; nothing else in it changes.
 The ended-session note appears beside the Goal field before typing. Claude's idle session without
-an observed stop says “Analyze opens while this session runs.” The route and browser projections
+ an observed stop says "Analyze opens while this session runs." The route and browser projections
 replace only the former refusal sentence. Recorded-side projections adapt those placements and
 controls; field values, evidence and requests remain asserted.
 The idle drafted panel has a 90-word ceiling outside field values and closed bodies; the browser
@@ -511,7 +540,7 @@ the wider row. The relocated subtitle uses the 15 px prose step. No recording un
 DEC-27 replaces What analysis does with the keyed How Intent and drift works popover beside
 the Intent heading. Its three steps explain the goal, Analyze and the correction. Its limit line
 uses the shared work and steering harness lists and the board's reading route, including a
-missing reader's reason; it retains the promise that Cargento never writes into sessions.
+missing reader's reason; it retains the promise that Compass never writes into sessions.
 The shared Popover proof covers click, keyboard, Escape, outside press, focus return and 320 px.
 No browser storage or first-visit marker is added. The old disclosure is removed only from the
 recorded-side Drift snapshot; the remaining limits and privacy disclosures are still compared.
@@ -597,7 +626,7 @@ typing that words saved now cannot be read against it, then says "saved after th
 with no result; idle without a recorded stop keeps Analyze inert and shows its refusal sentence.
 Their attempted paths cost four and two activations respectively, without a model request.
 
-The proof runs in development and `CARGENTO_E2E_BUNDLE=production` modes, packaging only
+The proof runs in development and `COMPASS_E2E_BUNDLE=production` modes, packaging only
 its worktree scratch copy. `JOURNEY_MUTATION=confirm-step` adds a confirmation before Allow;
 it must fail the three-click draft ceiling at four clicks. Production shard a carries the
 proof once, with shard membership pinned by `test_frontend_quality_gate.py`.
@@ -789,7 +818,7 @@ under the ruling. A later rebuild changed the page, and the runs recorded here w
 page and judged under the ruling from the start.
 
 ```bash
-python3 scripts/frontend_cutover.py remeasure --chrome "$CARGENTO_FLUIDITY_CHROME"
+python3 scripts/frontend_cutover.py remeasure --chrome "$COMPASS_FLUIDITY_CHROME"
 python3 scripts/frontend_cutover.py check --final
 ```
 
@@ -829,7 +858,7 @@ Close controls, the Attention controls and the capacity window rows and consent 
 step that operates them by key.
 
 Every parity proof can run against the shipped `react.html` rather than the development server:
-`CARGENTO_E2E_BUNDLE=production` makes the Python backend serve the minified page, `pnpm
+`COMPASS_E2E_BUNDLE=production` makes the Python backend serve the minified page, `pnpm
 test:production:browser` runs all twelve, and CI runs them as the `Frontend production bundle` job in two
 shards. The receipt's `production_artifact` block names that runner and job, and `check` fails if either
 goes missing from the package scripts or the workflow's steps. The limits it states are these. The controls
@@ -875,7 +904,7 @@ can serve, assemble, select or roll back to the legacy page:
   smoke proof and `pnpm build:check`. The inventory rows that named a deleted Python test now name those.
 
 Candidate parity runs against the shipped bytes as well as the development server. Setting
-`CARGENTO_E2E_BUNDLE=production` makes the shared proof support (`frontend/e2e/support/world.mjs`) start the
+`COMPASS_E2E_BUNDLE=production` makes the shared proof support (`frontend/e2e/support/world.mjs`) start the
 Python backend with no development ticket, so it serves the minified `react.html`;
 the default stays the development server, and a StrictMode-specific assertion keeps running there because
 the production build has no double effect. A proof that serves a scratch copy of the tree (a harness

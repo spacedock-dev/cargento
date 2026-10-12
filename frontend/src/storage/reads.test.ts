@@ -18,7 +18,7 @@ const session = { harness: 'claude', sid: 'sid:1' };
  */
 function preloaded() {
   return fakeBackend({
-    'cargento.projectUsage.v1': JSON.stringify(
+    'compass.projectUsage.v1': JSON.stringify(
       Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`k${i}`, i + 1])),
     ),
     [guardrailKey('p')]: JSON.stringify([
@@ -27,19 +27,19 @@ function preloaded() {
       { text: '  padded  ', enabled: 0 },
       ...Array.from({ length: 60 }, (_, i) => `r${i}`),
     ]),
-    'cargento.next.graph.mode': JSON.stringify({
+    'compass.next.graph.mode': JSON.stringify({
       '': 'all',
       'p\u0000': 'decisions',
       'x\u0000y\u0000z': 'all',
     }),
     [memoKey('p', null, 'outcome')]: 'm'.repeat(700),
     [goalKey('p')]: '  untrimmed goal  ' + 'g'.repeat(800),
-    'cargento.next.leader': '{"id":"someone","ts":"1"}',
-    'cargento.next.revision': 'start.7',
-    'cargento.next.usage.consent': 'garbled',
-    'cargento.observer-model-consent.v1': 'granted',
-    'cargento.next.workstream.collapsed': 'true',
-    'cargento.projectCockpitProject': 'a project',
+    'compass.next.leader': '{"id":"someone","ts":"1"}',
+    'compass.next.revision': 'start.7',
+    'compass.next.usage.consent': 'garbled',
+    'compass.observer-model-consent.v1': 'granted',
+    'compass.next.workstream.collapsed': 'true',
+    'compass.projectCockpitProject': 'a project',
     [liveEstimateKey(session)]: '1',
   });
 }
@@ -78,7 +78,7 @@ describe('reading storage', () => {
     expect(storage.guardrails.rules('p')).toHaveLength(50);
     expect(storage.memo.read(memoKey('p', null, 'outcome'))).toHaveLength(500);
     expect(
-      Object.keys(JSON.parse(backend.data.get('cargento.projectUsage.v1') ?? '{}') as object),
+      Object.keys(JSON.parse(backend.data.get('compass.projectUsage.v1') ?? '{}') as object),
     ).toHaveLength(201);
     expect(backend.data.get(memoKey('p', null, 'outcome'))).toHaveLength(700);
   });

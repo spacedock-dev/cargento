@@ -40,7 +40,7 @@ export function delegatedWork(session: Row | null | undefined, now: number | nul
     return {
       draw: (nextNumber(session?.['delegated_latest_launch_at']) ?? 0) > 0,
       risky: false,
-      text: 'Delegated work: not measured; Cargento cannot see work this session started.',
+      text: 'Delegated work: not measured; Compass cannot see work this session started.',
     };
   }
   const launches = count as number;
@@ -51,7 +51,7 @@ export function delegatedWork(session: Row | null | undefined, now: number | nul
   const age = quiet > 0 && quiet <= (now ?? 0) ? (now ?? 0) - quiet : null;
   const risky = open > 0 && age !== null && age >= QUIET_AFTER_SECONDS;
   const limit = ['partial', 'unattributed', 'not-recorded'].includes(visibility)
-    ? ' Cargento cannot see all work this session started.'
+    ? ' Compass cannot see all work this session started.'
     : '';
   const times =
     (latest > 0 ? ` Latest launch ${clock(latest)}.` : '') +
@@ -112,7 +112,7 @@ export type Landing = {
   Pair<'independent'>;
 
 /* `stopped` is `sessionStop`'s answer, or any truthy value for a hook stop. A transcript stop is named
-   as the transcript's: Cargento read it from Claude Code's own record rather than observing it. */
+   as the transcript's: Compass read it from Claude Code's own record rather than observing it. */
 export function landingOf(
   source: Row,
   ended: boolean,

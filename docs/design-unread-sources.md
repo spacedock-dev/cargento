@@ -39,7 +39,7 @@ This is the measurement that settles the design regardless of which branch is ta
 `io.record_store_error` writes into `state.store_errors`, and that dict is read only by
 `diagnostics.diagnose`, which only the `--diagnose` path calls. It appears in no `/api/data` key,
 it never sets the payload's `harness["error"]` (only an exception escaping `collect` does), and a
-grep for it under `cargento_runtime/web/` returns nothing.
+grep for it under `compass_runtime/web/` returns nothing.
 
 The shared formatter preserves the exception type and caps the message body at 1,024 Unicode
 characters, including `... [truncated]` when clipped. The type and `: ` prefix are additional;

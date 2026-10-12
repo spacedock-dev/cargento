@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import mark_abstention
 
 mark_abstention._reading()
-from cargento_runtime import project_context, reading  # noqa: E402
-from cargento_runtime.config import build_runtime_config  # noqa: E402
+from compass_runtime import project_context, reading  # noqa: E402
+from compass_runtime.config import build_runtime_config  # noqa: E402
 
 
 class FullProductionFreezeTest(unittest.TestCase):
@@ -32,7 +32,7 @@ class FullProductionFreezeTest(unittest.TestCase):
         self.path = self.root / "synthetic-session.jsonl"
         self.start = dt.datetime(2026, 9, 24, tzinfo=dt.UTC).timestamp()
         self.config = build_runtime_config(
-            environ={"HOME": temp.name, "CARGENTO_HOME": temp.name},
+            environ={"HOME": temp.name, "COMPASS_HOME": temp.name},
             platform_name="linux",
             os_name="posix",
             launcher_path=self.root / "server.py",

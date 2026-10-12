@@ -1,7 +1,7 @@
 """The drift-level case tool: what it may keep, what it may commit, and what it refuses.
 
 DRC-4692 measures the two level functions against levels the owner marks before any rule runs. The
-cases hold facts drawn from recorded Claude Code sessions and stay under `~/.cargento`; only the
+cases hold facts drawn from recorded Claude Code sessions and stay under `~/.compass`; only the
 marks' digest and the scored expectations reach the repository.
 """
 
@@ -155,7 +155,7 @@ class CaseToolTestCase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self.home = self.root / "home" / ".cargento"
+        self.home = self.root / "home" / ".compass"
         self.repo = self.root / "repo"
         (self.repo / "docs" / "drift-levels").mkdir(parents=True)
         _git(self.repo, "init", "-q")
@@ -290,12 +290,12 @@ class BuildTest(CaseToolTestCase):
     def test_the_cases_never_land_in_the_repository(self) -> None:
         code = levels_cases.build(
             self.spec(self.case()),
-            home=str(self.repo / ".cargento"),
+            home=str(self.repo / ".compass"),
             repo_root=str(self.repo),
             say=self.say,
         )
         self.assertEqual(code, 2)
-        self.assertFalse((self.repo / ".cargento" / "drift-levels" / "cases.json").exists())
+        self.assertFalse((self.repo / ".compass" / "drift-levels" / "cases.json").exists())
 
     def test_a_case_without_its_later_directions_is_refused_not_defaulted(self) -> None:
         body = self.case()
@@ -701,7 +701,7 @@ def _runtime_module(name: str) -> Any:
     levels_cases._runtime()
     import importlib  # noqa: PLC0415
 
-    return importlib.import_module(f"cargento_runtime.{name}")
+    return importlib.import_module(f"compass_runtime.{name}")
 
 
 class FakeModel:

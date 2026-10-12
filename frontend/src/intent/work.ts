@@ -209,7 +209,7 @@ export function workAbsence(source: Pick<WorkSource, 'state' | 'scanned' | 'omit
   return 'No entry in the observed record names this session.';
 }
 
-/* A message the server recognised as a correction the reader copied from Cargento is Cargento's words:
+/* A message the server recognised as a correction the reader copied from Compass is Compass's words:
    not theirs here, so not a later direction and not a turn's start either. */
 export function personAuthored(
   entry: Pick<WorkEntry, 'type' | 'copied' | 'by'> | null | undefined,

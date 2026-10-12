@@ -1,6 +1,6 @@
 ---
 name: sync-docs
-description: Use when reconciling Cargento's docs before a pull request or release, or whenever the repository documentation may be stale.
+description: Use when reconciling Compass's docs before a pull request or release, or whenever the repository documentation may be stale.
 ---
 
 # sync-docs
@@ -12,8 +12,8 @@ diff-and-reconcile pass, not a rewrite.
 ## Hard boundaries — this repository will reject you otherwise
 
 - **Never touch a version field.** The plugin version appears in
-  `cargento/.claude-plugin/plugin.json` (the source of truth), `cargento/.codex-plugin/plugin.json`
-  and `cargento-gemini/gemini-extension.json`, and is owned by the tag-driven Release workflow. The
+  `compass/.claude-plugin/plugin.json` (the source of truth), `compass/.codex-plugin/plugin.json`
+  and `compass-gemini/gemini-extension.json`, and is owned by the tag-driven Release workflow. The
   `version-guard` check fails any PR that changes one. Never write a version literal into Markdown
   either — it would drift permanently and unwatched. Illustrative tags (`git tag v0.2.0`) are fine.
 - **Never change the plugin description casually.** It must stay byte-identical across five
@@ -38,7 +38,7 @@ diff-and-reconcile pass, not a rewrite.
 
 | File | Owns | Rule |
 |------|------|------|
-| `README.md` | The front door: what Cargento is, prerequisites, per-harness install, the skill inventory table, a short "how it works", links out. | Keep short. No command suites and no reference tables — link to the owner. **Validator-asserted:** the literals `/cargento:cargento` and `codex plugin add cargento@cargento-marketplace` must appear verbatim; rewording either fails the required `validate` check. |
+| `README.md` | The front door: what Compass is, prerequisites, per-harness install, the skill inventory table, a short "how it works", links out. | Keep short. No command suites and no reference tables — link to the owner. **Validator-asserted:** the literals `/compass:compass` and `codex plugin add compass@compass-marketplace` must appear verbatim; rewording either fails the required `validate` check. |
 | `MANUAL.md` | The standalone `server.py` CLI reference: all options and aliases, defaults, interactions, environment, files, exit status and examples. | Reconcile against `cli.build_parser`, runtime configuration and lifecycle behavior when the CLI changes. `CommandManualOptionsTest` checks the option-row inventory, not the semantics. Link to HOW_TO_USE for configuration tasks and SECURITY for exposure/consent contracts. The installed skill retains its own portable reference because the manual is not shipped. |
 | `HOW_TO_USE.md` | What the reader configures by hand, one task per section: registering the stdio MCP server per harness, the hooks and status line the plugin cannot install, and resolving the installed plugin path every one of those snippets needs. | Task-oriented, and **every command and snippet must have been run before it is written down**: nothing in CI checks a command block, so an unrun one ships wrong. It may name repository paths and real config paths, which is exactly why it exists, since the shipped skill body is forbidden both. It owns no contract and no install steps. **Frozen path** once it is in `ROOT_DOCS`, and any heading `COMPATIBILITY.md` cites is frozen with it. |
 | `AGENTS.md` | **Canonical** repository contract and the source of truth for process: architecture tree, doc map, commit conventions, PR workflow, the pre-PR command list, the quality gate, versioning/releases, portability rules. | Every process command list is defined here once; other docs link. `CLAUDE.md` imports it, so edits propagate. Never rename or move it — Codex and Claude both load it by name. |
@@ -46,7 +46,7 @@ diff-and-reconcile pass, not a rewrite.
 | `CONTRIBUTING.md` | The human contributor journey: clone → dev setup → run locally → the quality gate → tests → what the validator enforces → `server.py` design constraints → commits → PRs → adding a harness → releases. | Task-oriented. Reference the pre-PR suite in `AGENTS.md` rather than re-listing it; duplicated command lists are how they drift. |
 | `COMPATIBILITY.md` | **Canonical** cross-harness and cross-platform contract: the per-runtime surface matrix, the per-OS capability matrix, the platform caveats, the native per-runtime validators, and **the Python floor** (with the list of every other place it is restated). Carries the sync marker. | Matrices and their footnotes. *Why* a row reads the way it does belongs in `docs/design-*.md`. |
 | `SECURITY.md` | Security posture: the invariants, the known-and-accepted exposures, and private reporting. Covers the whole shipped surface — `server.py` **and** `notify_hook.py`. | Anything that weakens an invariant is a security bug and belongs here. Keep the contact address equal to the one in `CODE_OF_CONDUCT.md`; nothing checks it. |
-| `cargento/skills/cargento/SKILL.md` | **Canonical** product surface: per-harness data sources, session states, start/stop, notifications, options, interpretation notes, common mistakes. | A *shipped, validated artifact* — see the constraints below. It is installed without the repository, so it must never contain a repo-relative link or repo process. |
+| `compass/skills/compass/SKILL.md` | **Canonical** product surface: per-harness data sources, session states, start/stop, notifications, options, interpretation notes, common mistakes. | A *shipped, validated artifact* — see the constraints below. It is installed without the repository, so it must never contain a repo-relative link or repo process. |
 | `docs/promise-map.md` | **Canonical** user-facing promise: the five questions of a user's day, one promise each, the shipped capability that backs it, and the limit that keeps it honest. | A promise may not enter it before the capability ships, and the wording of each promise is duplicated verbatim in `docs/visibility-2x2/items.json` (`columns[].promise`) and in the Linear project description. Change one, change all three. [Development tracking](../../../docs/development-tracking.md#how-work-links-to-a-promise) owns promise IDs and the move taxonomy; keep them out of user-facing tracker prose. |
 | `docs/development-tracking.md` | **Canonical** development taxonomy: promise IDs, journey labels, board columns, moves and tracker copies. | Preserve development provenance here; the public promise map owns reader-facing behavior and limits. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, the inward-only dependency rule, top-level import identity, and the config/state/application split. | Other design docs link here for the module map instead of restating it. The import allowlist it describes is asserted by a test. |
@@ -56,9 +56,9 @@ diff-and-reconcile pass, not a rewrite.
 | `CODE_OF_CONDUCT.md` | Contributor Covenant 2.1, verbatim. | **Never edit the text.** Only the enforcement contact is ours. |
 | `.claude/skills/*/SKILL.md` and `.agents/skills/*` | Repository development skills, including this one. Not shipped with the plugin. | `.claude/skills/` is canonical. Each `.agents/skills/` entry is a relative symlink to its matching canonical directory so Codex and Claude Code read one body. Each canonical skill directory contains its own `agents/openai.yaml`. The banned portability literals are legal here because this tree is not shipped; the validator link-checks the canonical files but does not marker-scan them. |
 
-### Constraints on `cargento/skills/cargento/SKILL.md`
+### Constraints on `compass/skills/compass/SKILL.md`
 
-`scripts/validate_plugins.py` scans every Markdown file under `cargento/skills/`, and
+`scripts/validate_plugins.py` scans every Markdown file under `compass/skills/`, and
 The dashboard test suite asserts the skill body against the code. Both are required checks:
 
 - Frontmatter fields are exactly `name`, `description`, `license` — nothing else, no duplicate keys.
@@ -80,8 +80,8 @@ The dashboard test suite asserts the skill body against the code. Both are requi
   validator applies that same ban to every prose doc — including this file, which is why the banned
   spelling is not written out here.
 
-After any edit under `cargento/skills/`, run `python3 scripts/validate_plugins.py` and
-`python3 -m unittest discover -s cargento/skills/cargento/tests -t .` before committing.
+After any edit under `compass/skills/`, run `python3 scripts/validate_plugins.py` and
+`python3 -m unittest discover -s compass/skills/compass/tests -t .` before committing.
 
 ## Public text boundary
 
@@ -123,7 +123,7 @@ README.md  MANUAL.md  HOW_TO_USE.md  CONTRIBUTING.md  COMPATIBILITY.md  SECURITY
 ```
 
 Out of scope, deliberately: `AGENTS.md` and `CLAUDE.md` (agent contracts loaded verbatim as
-instructions), `cargento/skills/cargento/SKILL.md` (a validated artifact with test-asserted
+instructions), `compass/skills/compass/SKILL.md` (a validated artifact with test-asserted
 literals, shipped to other harnesses as agent instructions), and this file. Leave their voice alone.
 
 The standard, in order of how often it is violated:
@@ -158,8 +158,8 @@ Editing it changes behavior or breaks a licence, silently.
 | `.github/ISSUE_TEMPLATE/*.yml` | GitHub issue *forms*: prose inside a validated schema. | Edit `label` / `description` strings only; never touch keys, `id`s or `labels:`. Keep the harness options aligned with the registry, but do not delete the non-harness catch-all option. |
 | `.github/ISSUE_TEMPLATE/config.yml` | Chooser config. Its `name`/`about` strings do render, but the security-advisory URL is load-bearing. | None — and if it must change, keep it consistent with `SECURITY.md`. |
 | `coverage-comment.md` | Written by a CI step and read back by the next one; its marker comment must stay byte-identical to what the comment action matches on. Untracked. | Never. If it appears locally it is CI debris. |
-| Markdown under `**/tests/**` or created by a fixture | Test input; its content is asserted on. | Never. New fixtures must live **outside** `cargento/skills/`, or the validator will scan them and fail the build. |
-| `cargento/commands/*.md` | Rejected outright by the validator as legacy commands. | Never create Markdown there. |
+| Markdown under `**/tests/**` or created by a fixture | Test input; its content is asserted on. | Never. New fixtures must live **outside** `compass/skills/`, or the validator will scan them and fail the build. |
+| `compass/commands/*.md` | Rejected outright by the validator as legacy commands. | Never create Markdown there. |
 | `.git/`, `.mypy_cache/`, `.ruff_cache/`, `__pycache__/`, `node_modules/`, `.venv/` | Not source. | Never. |
 
 ### Classifying Markdown this table does not list
@@ -184,7 +184,7 @@ Then apply, in order:
    it fails the build, editing it does not. A file whose *strings* are asserted has those specific
    strings frozen. Every entry in `ROOT_DOCS` in `scripts/validate_plugins.py` is in the first
    category; `README.md` and the shipped skill body are in both.
-2. **Location outranks content.** Anything under `cargento/skills/` is a shipped artifact and gets
+2. **Location outranks content.** Anything under `compass/skills/` is a shipped artifact and gets
    the full constraint set above, including `references/` or `operations/` files that do not exist
    yet. Anything a required check asserts against code is system-consumed even when it reads like
    prose — in this repository that is the skill body and `README.md`.
@@ -212,15 +212,15 @@ update is cheap; a silently broken fixture or system prompt is not.
 Run these from the repository root; the output is what the docs MUST match.
 
 ```bash
-S=cargento/skills/cargento/server.py
-A=cargento/skills/cargento/cargento_runtime/aggregate.py
-C=cargento/skills/cargento/cargento_runtime/config.py
-R=cargento/skills/cargento/cargento_runtime/state.py
-W=cargento/skills/cargento/cargento_runtime/web
-G=cargento/skills/cargento/cargento_runtime/diagnostics.py
-H=cargento/skills/cargento/cargento_runtime/http_api.py
-L=cargento/skills/cargento/cargento_runtime/lifecycle.py
-I=cargento/skills/cargento/cargento_runtime/cli.py
+S=compass/skills/compass/server.py
+A=compass/skills/compass/compass_runtime/aggregate.py
+C=compass/skills/compass/compass_runtime/config.py
+R=compass/skills/compass/compass_runtime/state.py
+W=compass/skills/compass/compass_runtime/web
+G=compass/skills/compass/compass_runtime/diagnostics.py
+H=compass/skills/compass/compass_runtime/http_api.py
+L=compass/skills/compass/compass_runtime/lifecycle.py
+I=compass/skills/compass/compass_runtime/cli.py
 
 # HTTP routes the server actually serves, split by method, and who owns the
 # listener. Read by AST over the three functions that dispatch, because no
@@ -250,7 +250,7 @@ for method, routes in found.items():
     for route in sorted(routes):
         print("   ", route)
 ROUTES
-grep -nE '^(class CargentoHTTPServer|class _RequestHandler)|^def (normalize_host|reuse_address_allowed|bind_error_message)' "$H"
+grep -nE '^(class CompassHTTPServer|class _RequestHandler)|^def (normalize_host|reuse_address_allowed|bind_error_message)' "$H"
 # CLI flags and their defaults. These live in cli.build_parser now, not in the
 # launcher: `server.py` is seven lines and greps of it silently find nothing.
 grep -E -A4 'add_argument\(' "$I" | grep -E '"--|default='
@@ -260,27 +260,27 @@ cat "$S"
 # renders its chips. Read it from `aggregate.default_harnesses` rather than by
 # matching source text, because the rows are multi-line. The third column is
 # each callback's defining module. Every row must resolve under
-# `cargento_runtime.collectors`, with no exception: Claude's used to be a
+# `compass_runtime.collectors`, with no exception: Claude's used to be a
 # wrapper the registry built to bind a popup notifier, and the popup decision
 # now belongs to `Application` instead.
 python3 - "$A" <<'PY'
 import pathlib, sys
 
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]).parents[1]))
-from cargento_runtime import aggregate
+from compass_runtime import aggregate
 
 for spec in aggregate.default_harnesses():
     print(f"{spec.key:10} {spec.label:10} {spec.collect.__module__}")
 PY
 # Lifecycle operations, and the one respawn contract --daemon uses on Windows
-grep -nE '^def (tcp_port|cargento_home|state_path|log_path|write_state|read_state|probe_port|port_released|await_release|instance_status|render_status|stop_instance|fork_daemon|await_daemon|spawn_argv|spawn_detached|await_spawned|prepare_daemon_home|serve)' "$L"
+grep -nE '^def (tcp_port|compass_home|state_path|log_path|write_state|read_state|probe_port|port_released|await_release|instance_status|render_status|stop_instance|fork_daemon|await_daemon|spawn_argv|spawn_detached|await_spawned|prepare_daemon_home|serve)' "$L"
 # The application boundary and the registry contract it consumes
 grep -nE '^(class Application|class HarnessSpec)|^def default_harnesses|^    def collect' "$A"
 grep -nE '^HARNESSES|^def (_legacy_application|_bound_popup_notifier)' "$S"
 # What --diagnose reports, and the pinned order it reports stores in
 grep -nE '^(_REPORT_KEY_ORDER|def (store_primaries|candidate_report|diagnose|render_diagnosis))' "$G"
 # Store-relocation environment variables the resolver advertises
-grep -nE '^(STORE_ENV_VARS|CARGENTO_HOME_ENV) = ' "$C"
+grep -nE '^(STORE_ENV_VARS|COMPASS_HOME_ENV) = ' "$C"
 # Immutable configuration fields, builders, and locked defaults
 grep -nE '^(class RuntimeConfig|def (build_runtime_config|resolve_store_roots|store_roots|primary_store))' "$C"
 awk '/return RuntimeConfig\\(/,/^    \\)/' "$C"
@@ -298,7 +298,7 @@ import sys
 from pathlib import Path
 
 web = Path(sys.argv[1])
-spec = importlib.util.spec_from_file_location("cargento_web_page", web / "page.py")
+spec = importlib.util.spec_from_file_location("compass_web_page", web / "page.py")
 assert spec and spec.loader
 page_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(page_mod)
@@ -417,7 +417,7 @@ minutes, a Python version. Stale counts are this repository's most common drift.
    python3 scripts/validate_plugins.py
 
    # d. If you touched the skill body, the documentation-matches-code assertions.
-   python3 -m unittest discover -s cargento/skills/cargento/tests -t .
+   python3 -m unittest discover -s compass/skills/compass/tests -t .
 
    # e. Tone: no em/en dashes or curly quotes in the human-facing prose docs. Nothing in CI
    #    enforces this, so it is the one anti-drift check that only exists here.

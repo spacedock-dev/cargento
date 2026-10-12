@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { cn, TYPE_STEPS, RADII } from './utils';
 
 describe('the local class merger', () => {
-  it('keeps Cargento type sizes beside colours and resolves actual conflicts', () => {
+  it('keeps Compass type sizes beside colours and resolves actual conflicts', () => {
     for (const size of TYPE_STEPS) {
       expect(cn(`text-${size}`, 'text-muted-foreground')).toBe(
         `text-${size} text-muted-foreground`,

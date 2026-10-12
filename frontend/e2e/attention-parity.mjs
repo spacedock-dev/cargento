@@ -17,8 +17,8 @@
  * raise and what permission it asked for, and nothing here can create a native notification. Models, usage,
  * focus and the clipboard are not exercised: every board read is the one this script serves, usage is never
  * consented to, and a request for it fails the run. Run with `pnpm test:attention:browser`;
- * `CARGENTO_E2E_STEPS=<regex>` runs only the steps whose name matches, `CARGENTO_SCREENSHOTS=1` writes captures
- * to docs/screenshots/, and `CARGENTO_MUTATION=<name>` applies one deliberate break in a scratch copy of the
+ * `COMPASS_E2E_STEPS=<regex>` runs only the steps whose name matches, `COMPASS_SCREENSHOTS=1` writes captures
+ * to docs/screenshots/, and `COMPASS_MUTATION=<name>` applies one deliberate break in a scratch copy of the
  * tree (see MUTATIONS), which must make the run FAIL.
  *
  * Timing: every fixed wait here means "give the page time to react", and a hosted runner has a few shared
@@ -46,8 +46,8 @@ process.removeAllListeners('warning');
 const { attentionBoard } = await import('../test/attention_boards.ts');
 
 const SHOTS = join(REPOSITORY, 'docs/screenshots');
-const shotsOn = process.env.CARGENTO_SCREENSHOTS === '1';
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const shotsOn = process.env.COMPASS_SCREENSHOTS === '1';
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 /* One break each, applied to the scratch copy only. A missing needle fails the run loudly rather than
    silently testing nothing. */
@@ -154,13 +154,13 @@ async function step(name, run) {
 }
 
 /* ---- the world: a scratch copy of the tree, so a mutation never touches a tracked file ---- */
-const mutation = process.env.CARGENTO_MUTATION || '';
+const mutation = process.env.COMPASS_MUTATION || '';
 assert.ok(!mutation || MUTATIONS[mutation], `unknown mutation ${mutation}`);
 /* Without a mutation, the production run serves the tracked `react.html` itself rather than a scratch copy's build. */
 const ownsRepository = PRODUCTION && !mutation;
 const copy = ownsRepository
   ? REPOSITORY
-  : await mkdtemp(join(tmpdir(), 'cargento-attention-browser-'));
+  : await mkdtemp(join(tmpdir(), 'compass-attention-browser-'));
 let board = null;
 let browser = null;
 const opened = [];
@@ -174,7 +174,7 @@ async function prepareCopy() {
       !path.includes('__pycache__') &&
       !path.includes('/.frontend-build'),
   });
-  await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+  await cp(join(REPOSITORY, 'compass'), join(copy, 'compass'), {
     recursive: true,
     filter: (path) =>
       !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
@@ -311,7 +311,7 @@ async function serve(side) {
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      headers: { 'X-Cargento-Revision': `9.${holder.revision}` },
+      headers: { 'X-Compass-Revision': `9.${holder.revision}` },
       body: JSON.stringify(holder.body),
     });
   });
@@ -379,7 +379,7 @@ async function revise(change, ...sides) {
       (revision) =>
         globalThis.dispatchEvent(
           new globalThis.StorageEvent('storage', {
-            key: 'cargento.next.revision',
+            key: 'compass.next.revision',
             newValue: revision,
           }),
         ),
@@ -800,7 +800,7 @@ try {
       );
       const made = (await notifyState(side.page)).made;
       assert.equal(made.length, 2, 'a new question raised nothing');
-      assert.equal(made[1].tag, 'cargento-ask:ask-task-1');
+      assert.equal(made[1].tag, 'compass-ask:ask-task-1');
     },
   );
 

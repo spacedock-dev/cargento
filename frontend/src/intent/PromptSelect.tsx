@@ -10,8 +10,8 @@ import { usePanel } from './useIntent';
    the reader's own prompts can all lie outside it; that is a limit of what is read, not a claim that
    none were written. */
 const EMPTY_NONE =
-  'None of your prompts are in the recent part of this session that Cargento reads.';
-const EMPTY_FAILED = 'Cargento could not read your prompts from this session.';
+  'None of your prompts are in the recent part of this session that Compass reads.';
+const EMPTY_FAILED = 'Compass could not read your prompts from this session.';
 
 /* Open before the async read: a browser picker requested after that read loses the click's user
    activation. Base UI keeps the same popup while loading and across board revisions.

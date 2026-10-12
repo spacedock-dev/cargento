@@ -6,7 +6,7 @@ import { build } from 'vite';
 import { JSDOM } from 'jsdom';
 
 export const ROOT = fileURLToPath(new URL('../../', import.meta.url));
-const WEB = 'cargento/skills/cargento/cargento_runtime/web';
+const WEB = 'compass/skills/compass/compass_runtime/web';
 const OUTPUTS = ['react.html', 'react.integrity.json', 'react-licenses.txt'];
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const ordered = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -34,7 +34,7 @@ export function stableJson(value) {
 export function createDocument(
   javascript,
   css,
-  template = '<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>Cargento</title></head><body><div id="root"></div><script type="module" src="entry.js"></script></body></html>',
+  template = '<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>Compass</title></head><body><div id="root"></div><script type="module" src="entry.js"></script></body></html>',
 ) {
   const dom = new JSDOM(template);
   try {
@@ -44,7 +44,7 @@ export function createDocument(
       fail('expected one external Vite module entry');
     if (
       document.querySelectorAll('#root').length !== 1 ||
-      document.querySelector('[name="cargento-focus"]')
+      document.querySelector('[name="compass-focus"]')
     )
       fail('invalid root/focus template');
     if (document.querySelector('style,iframe,object,embed,img,video,audio'))
@@ -68,7 +68,7 @@ export function createDocument(
     // production drift loads reached 8 GiB RSS. A short name bounds those copies.
     script.src =
       'data:text/javascript;base64,' +
-      Buffer.from(javascript + '\n//# sourceURL=cargento-bundle.js\n').toString('base64');
+      Buffer.from(javascript + '\n//# sourceURL=compass-bundle.js\n').toString('base64');
     script.textContent = '';
     const result = dom.serialize() + '\n';
     if ((result.match(/<\/head>/g) || []).length !== 1) fail('head injection point must be unique');
@@ -82,7 +82,7 @@ export async function readFonts(root) {
   const page = lf(await readFile(join(root, WEB, 'page.py')));
   const pairs = [
     ...page.matchAll(
-      /\(\s*"(fonts\/[a-z0-9.-]+\.woff2\.b64)",\s*"(\{\{CARGENTO_FONT_[A-Z0-9_]+\}\})",?\s*\)/g,
+      /\(\s*"(fonts\/[a-z0-9.-]+\.woff2\.b64)",\s*"(\{\{COMPASS_FONT_[A-Z0-9_]+\}\})",?\s*\)/g,
     ),
   ];
   const styles = lf(await readFile(join(root, WEB, 'styles.css')));

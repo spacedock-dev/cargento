@@ -148,10 +148,10 @@ export function lastTurn(
 
 export function entryActor(entry: WorkEntry): string {
   const author = readingAuthor(entry);
-  /* You pasted it, and Cargento wrote it: the meta says which. */
+  /* You pasted it, and Compass wrote it: the meta says which. */
   if (author === 'person' || readingCopied(entry)) return 'You';
-  /* Cargento's own paraphrase is never credited to the agent. */
-  return author === 'derived' ? 'Cargento’s summary' : 'Agent';
+  /* Compass's own paraphrase is never credited to the agent. */
+  return author === 'derived' ? 'Compass’s summary' : 'Agent';
 }
 
 const entryCount = (n: number): string => `${String(n)} ${n === 1 ? 'entry' : 'entries'}`;
@@ -200,7 +200,7 @@ export function workMix(entries: readonly WorkEntry[]): string {
   if (directions)
     parts.push(`${String(directions)} ${directions === 1 ? 'direction' : 'directions'} you gave`);
   if (said) parts.push(`${String(said)} ${said === 1 ? 'message' : 'messages'} the agent wrote`);
-  if (copied) parts.push(`${String(copied)} copied from Cargento`);
+  if (copied) parts.push(`${String(copied)} copied from Compass`);
   if (derived) parts.push(`${String(derived)} model-derived`);
   if (summaries) {
     parts.push(
@@ -221,11 +221,11 @@ export function evidenceOwn(payload: Row, harness: string, sent = true): string 
     const route = sent ? readingRoute(payload, { harness }) : null;
     const output = route?.['provider'] ? String(route['tool_output'] || '') : '';
     return (
-      `${label} records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable.` +
+      `${label} records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Compass inspects no file, test or deliverable.` +
       (output ? ` ${output}` : '')
     );
   }
-  /* "Cargento reads those on Pi alone" stood here, and stopped being true when Claude Code's checks were read
+  /* "Compass reads those on Pi alone" stood here, and stopped being true when Claude Code's checks were read
      too. The panel's own harness limit is the level's, so this line says only what the record above is. */
   return `${label} publishes no demonstrated work results, so nothing above is an inspected file, test or deliverable.`;
 }
@@ -314,7 +314,7 @@ export function workList(input: WorkListInput): WorkList {
           : {
               actor: entryActor(entry),
               type: copied
-                ? 'Copied from Cargento'
+                ? 'Copied from Compass'
                 : entry.type === 'user_message'
                   ? 'Prompt'
                   : (ENTRY_KIND.get(String(entry.type || '')) ?? 'Entry'),

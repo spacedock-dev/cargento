@@ -106,7 +106,7 @@ export function clock(stamp: number): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
-/* Whether the row's `field` quotes a correction the reader copied from Cargento, which is never
+/* Whether the row's `field` quotes a correction the reader copied from Compass, which is never
    presented as their words. The server places each field on the message it quotes (the quoted_as
    list), so this reads its answer. */
 export function promptCopied(session: Row | null | undefined, field: string): boolean {

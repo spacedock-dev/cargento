@@ -5,10 +5,10 @@ DRC-4382 measured which identifier FINDS a terminal. It never raised one, and
 its own capture says so: the lookup counts a tab and never activates one. This
 records the other half -- whether asking the operating system to bring that
 window to the front actually moves it -- and specifically whether it works from
-the shape Cargento ships as, which is a detached daemon.
+the shape Compass ships as, which is a detached daemon.
 
 The finding that drives the arm list, measured on this machine and reproducible
-with `responsibility_get_pid_responsible_for_pid`: the running Cargento daemon
+with `responsibility_get_pid_responsible_for_pid`: the running Compass daemon
 resolves to the Terminal window that LAUNCHED it, after a double fork, a
 `setsid`, and three days re-parented to `launchd`. So macOS attributes its Apple
 Events to Terminal. Every successful `osascript` call DRC-4382 made is therefore
@@ -190,7 +190,7 @@ RESPONSIBLE_NAMES = frozenset(
 # The socket and session this recorder mints for the tmux arms. Minted rather
 # than taken from a flag: an operator's own socket label can be a project name,
 # and a name in an argv is a name in the record.
-TMUX_SOCKET = "cargento-raise"
+TMUX_SOCKET = "compass-raise"
 TMUX_SESSION = "raise"
 
 # A device in no family macOS hands out, for the negative control. `ttys` is the
@@ -430,7 +430,7 @@ ARMS: tuple[Arm, ...] = (
         durable_side_effect="a TCC AppleEvents grant, and a Terminal window "
         "opened and then closed; the grant is reversible with "
         "`tccutil reset AppleEvents`",
-        note="THE GATE ON THE WHOLE APPLE EVENT CASE. Cargento ships as a daemon "
+        note="THE GATE ON THE WHOLE APPLE EVENT CASE. Compass ships as a daemon "
         "whose launcher is long gone, and the responsible identity that made A1 "
         "work is the launcher's. The window-quitting step carries its own flag, "
         "`--allow-a2-quit-window`, because it closes a window an operator opened.",
@@ -800,7 +800,7 @@ def read_tmux_panes(socket: str) -> list[str]:
 def responsible_pid(pid: int) -> int | None:
     """The process macOS attributes this one's Apple Events to.
 
-    The whole question. On this machine the running Cargento daemon answers
+    The whole question. On this machine the running Compass daemon answers
     Terminal, after a double fork, a `setsid` and three days re-parented to
     launchd -- which is why an `osascript` success from inside a Terminal window
     is an exemption rather than a grant.
@@ -1594,7 +1594,7 @@ def _mint_handshake() -> str:
     redirect and killed the launcher before it started. `redact_argv` reduces
     this to `<path>/basename` on the way into the record.
     """
-    return os.path.join(tempfile.mkdtemp(prefix="cargento-raise-"), "a2")
+    return os.path.join(tempfile.mkdtemp(prefix="compass-raise-"), "a2")
 
 
 def _read_json(path: str) -> dict[str, Any] | None:

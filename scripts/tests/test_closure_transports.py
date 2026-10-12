@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cargento/skills/cargento"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "compass/skills/compass"))
 
 import abstention_ledger
 import analyze_campaign
@@ -23,7 +23,7 @@ import mark_abstention
 import score_abstention
 
 if TYPE_CHECKING:
-    from cargento_runtime.config import RuntimeConfig
+    from compass_runtime.config import RuntimeConfig
 
     from tests import test_analyze_campaign as campaign_cases
     from tests import test_mark_full_production as source_cases
@@ -34,7 +34,7 @@ else:
 
 class SyntheticDestinationIsolation(unittest.TestCase):
     def test_native_windows_live_wrapper_never_reserves_or_calls_the_executor(self) -> None:
-        from cargento_runtime import reading_route  # noqa: PLC0415 - actual native route
+        from compass_runtime import reading_route  # noqa: PLC0415 - actual native route
 
         inner = mock.Mock(return_value=("synthetic reply", "ok"))
         observer = types.SimpleNamespace(
@@ -60,7 +60,7 @@ class SyntheticDestinationIsolation(unittest.TestCase):
         inner.assert_not_called()
 
     def test_native_windows_destination_refuses_before_provenance_or_reservation(self) -> None:
-        from cargento_runtime import reading_route  # noqa: PLC0415 - actual native route
+        from compass_runtime import reading_route  # noqa: PLC0415 - actual native route
 
         observer = mock.Mock()
         observer.claude_reading_provenance.return_value = {"model": "declared-model"}
@@ -84,7 +84,7 @@ class SyntheticDestinationIsolation(unittest.TestCase):
         campaign.assert_not_called()
 
     def test_fake_transport_runs_on_windows_without_admitting_the_native_route(self) -> None:
-        from cargento_runtime import reading_route  # noqa: PLC0415 - native refusal outside fixture
+        from compass_runtime import reading_route  # noqa: PLC0415 - native refusal outside fixture
 
         with mock.patch.object(platform, "system", return_value="Windows"):
             self.assertEqual("", reading_route.destination("claude"))
@@ -111,7 +111,7 @@ class ProductionTransport(unittest.TestCase):
     def setUp(self) -> None:
         # This fixture owns a fake Anthropic executor, not native OS admission.
         self.enterContext(
-            mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic")
+            mock.patch("compass_runtime.reading_route.destination", return_value="Anthropic")
         )
         campaign_cases.CampaignReservations.setUp(cast("campaign_cases.CampaignReservations", self))
 
@@ -243,8 +243,8 @@ class ProductionTransport(unittest.TestCase):
         )
 
     def test_native_reading_model_default_executor_arguments_are_admitted(self) -> None:
-        from cargento_runtime import observer as native_observer  # noqa: PLC0415
-        from cargento_runtime import (  # noqa: PLC0415 - actual production model seam
+        from compass_runtime import observer as native_observer  # noqa: PLC0415
+        from compass_runtime import (  # noqa: PLC0415 - actual production model seam
             reading,
         )
 
@@ -257,7 +257,7 @@ class ProductionTransport(unittest.TestCase):
         self.assertEqual(1, self.inner.call_count)
 
     def test_argv_capture_uses_saved_executor_without_entering_installed_wrapper(self) -> None:
-        from cargento_runtime import (  # noqa: PLC0415 - native capture-only transport
+        from compass_runtime import (  # noqa: PLC0415 - native capture-only transport
             config,
             observer,
         )
@@ -276,7 +276,7 @@ class ProductionTransport(unittest.TestCase):
         guarded.assert_not_called()
 
     def test_foreground_launcher_holds_verified_lifetime_and_restores_native_executor(self) -> None:
-        from cargento_runtime import (  # noqa: PLC0415 - native foreground launch seam
+        from compass_runtime import (  # noqa: PLC0415 - native foreground launch seam
             cli,
             observer,
         )
@@ -312,7 +312,7 @@ class ProductionTransport(unittest.TestCase):
         self.assertIs(original, observer.claude_exec)
 
     def test_instrumented_launcher_refuses_unmetered_codex_and_restores_executor(self) -> None:
-        from cargento_runtime import cli, observer, reading  # noqa: PLC0415
+        from compass_runtime import cli, observer, reading  # noqa: PLC0415
 
         original = observer.codex_exec
         inner = mock.Mock(return_value=("unmetered reply", "ok"))
@@ -343,7 +343,7 @@ class ProductionTransport(unittest.TestCase):
             verify.assert_not_called()
 
     def test_daemon_abbreviations_are_refused_before_any_runtime_or_verification(self) -> None:
-        from cargento_runtime import cli  # noqa: PLC0415
+        from compass_runtime import cli  # noqa: PLC0415
 
         for arg in ("--da", "--dae", "--daem", "--daemo", "--daemon"):
             with (
@@ -358,7 +358,7 @@ class ProductionTransport(unittest.TestCase):
                 runtime.assert_not_called()
 
     def test_native_press_permission_refusal_does_not_call_or_reserve(self) -> None:
-        from cargento_runtime.http_api import (  # noqa: PLC0415 - native permission short circuit
+        from compass_runtime.http_api import (  # noqa: PLC0415 - native permission short circuit
             _RequestHandler,
         )
 
@@ -383,10 +383,10 @@ class ProductionTransport(unittest.TestCase):
 
     def test_native_replay_call_reserves_before_actual_inner_send(self) -> None:
         producer = {"model": "declared-model"}
-        from cargento_runtime import observer  # noqa: PLC0415 - source stamp of native replay tree
+        from compass_runtime import observer  # noqa: PLC0415 - source stamp of native replay tree
 
         source = analyze_campaign.runtime_source_digest(Path(observer.__file__).parent)
-        from cargento_runtime import reading_route  # noqa: PLC0415 - admitted vendor
+        from compass_runtime import reading_route  # noqa: PLC0415 - admitted vendor
 
         transport = {
             "reading": producer,
@@ -452,7 +452,7 @@ class ProductionTransport(unittest.TestCase):
         self.assertEqual(631, replay.used())
 
     def test_changed_replay_binary_never_reserves_or_calls_executor(self) -> None:
-        from cargento_runtime import (  # noqa: PLC0415 - admitted actual replay bindings
+        from compass_runtime import (  # noqa: PLC0415 - admitted actual replay bindings
             observer,
             reading_route,
         )

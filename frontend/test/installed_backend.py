@@ -55,7 +55,7 @@ class SyntheticTerminal:
                 "/api/interaction/register",
                 {
                     "registration_token": token,
-                    "cargento_session_id": session,
+                    "compass_session_id": session,
                     "origin": origin.as_dict(),
                 },
             )
@@ -118,7 +118,7 @@ def isolated_environment(scratch: Path, environ: dict[str, str], *, os_name: str
     result = {
         "HOME": str(scratch),
         "USERPROFILE": str(scratch),
-        "CARGENTO_HOME": str(scratch / "state"),
+        "COMPASS_HOME": str(scratch / "state"),
         "PATH": str(scratch / "no-executables"),
     }
     if os_name == "nt":
@@ -152,10 +152,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    skill = args.plugin_root.resolve() / "skills/cargento"
+    skill = args.plugin_root.resolve() / "skills/compass"
     sys.path.insert(0, str(skill))
     modules = {
-        name: importlib.import_module(f"cargento_runtime.{name}")
+        name: importlib.import_module(f"compass_runtime.{name}")
         for name in (
             "config",
             "cli",
@@ -171,7 +171,7 @@ def main() -> int:
         if not Path(module.__file__).resolve().is_relative_to(skill):
             raise RuntimeError("smoke runtime escaped the installed copy")
     page = modules["web.page"].load_frontend_page()
-    with tempfile.TemporaryDirectory(prefix="cargento-installed-backend-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="compass-installed-backend-") as temporary:
         scratch = Path(temporary)
         # The child environment and explicit runtime config independently refuse
         # host stores. No Node executable is visible to runtime subprocesses.
@@ -227,7 +227,7 @@ def main() -> int:
             if args.terminal_fixture
             else None
         )
-        server = modules["http_api"].CargentoHTTPServer(
+        server = modules["http_api"].CompassHTTPServer(
             ("127.0.0.1", args.port),
             application,
             modules["cli"].inject_focus_capability(page, args.focus_token),

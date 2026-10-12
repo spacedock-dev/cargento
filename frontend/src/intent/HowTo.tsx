@@ -49,7 +49,7 @@ export function IntentHowTo({
       focusKey={`intent-howto:${session ? compatSessKey(session) : 'sessions'}`}
     >
       <h3 className="text-body font-semibold">How Intent and drift works</h3>
-      <p>1. Give the goal. Cargento drafts one from your first prompt; edit it if it is off.</p>
+      <p>1. Give the goal. Compass drafts one from your first prompt; edit it if it is off.</p>
       <p>
         2. Press Analyze drift. It asks once to allow the reading and counts against a daily cap,
         both shown beside the button.
@@ -60,7 +60,7 @@ export function IntentHowTo({
       </p>
       <p
         data-next-intent-howto-limit
-      >{`Drift level: ${WORK_HARNESSES.map(label).join(' and ')} sessions only. Analyze drift here: ${reader}${reader.endsWith('.') ? '' : '.'} Steer back: ${steer}. Cargento never writes into sessions.`}</p>
+      >{`Drift level: ${WORK_HARNESSES.map(label).join(' and ')} sessions only. Analyze drift here: ${reader}${reader.endsWith('.') ? '' : '.'} Steer back: ${steer}. Compass never writes into sessions.`}</p>
       <p>“Not enough recorded yet” is normal until you add an expected outcome line.</p>
       {children}
     </Disclosure>

@@ -95,7 +95,7 @@ SCOPE_CONDITIONS = ("legacy-scope", "turn-scope")
 CONDITIONS = (*SCOPE_CONDITIONS, "production", "reply-first1000", "newest-final-whole")
 V3_SHA256 = "d4db4234f4706eadd7f8a4a554c5898feedb07986c77ef571446f63f660c9b8f"
 LEGACY_HEADER_SHA256 = "83feb706807a7133758ad3b185c93b47bde987159db6129e3fd6602e5c7fc7a3"
-_RUNTIME = Path(__file__).resolve().parents[1] / "cargento/skills/cargento"
+_RUNTIME = Path(__file__).resolve().parents[1] / "compass/skills/compass"
 
 
 def digest(value: str) -> str:
@@ -162,10 +162,10 @@ class StudyControl:
         if runtime_reading is None:
             if str(_RUNTIME) not in sys.path:
                 sys.path.insert(0, str(_RUNTIME))
-            runtime_reading = importlib.import_module("cargento_runtime.reading")
+            runtime_reading = importlib.import_module("compass_runtime.reading")
         source = Path(str(runtime_reading.__file__)).resolve()
         self.source_digest = hashlib.sha256(source.read_bytes()).hexdigest()
-        name = "cargento_runtime._study_scope_" + uuid.uuid4().hex
+        name = "compass_runtime._study_scope_" + uuid.uuid4().hex
         spec = importlib.util.spec_from_file_location(name, source)
         if spec is None or spec.loader is None:
             raise ValueError("Reading source cannot be isolated")

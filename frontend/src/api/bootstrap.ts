@@ -1,6 +1,6 @@
 import type { PayloadAsk, PayloadSession } from './types';
 
-export const FOCUS_META_SELECTOR = 'meta[name="cargento-focus"]';
+export const FOCUS_META_SELECTOR = 'meta[name="compass-focus"]';
 
 export interface Bootstrap {
   readonly showAll: boolean;

@@ -45,7 +45,7 @@ export async function forcePoll(page) {
       globalThis.__fieldPollWake = (globalThis.__fieldPollWake || 0) + 1;
       globalThis.dispatchEvent(
         new StorageEvent('storage', {
-          key: 'cargento.next.revision',
+          key: 'compass.next.revision',
           newValue: `${Date.now()}.${globalThis.__fieldPollWake}`,
         }),
       );

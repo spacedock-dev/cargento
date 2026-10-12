@@ -2,7 +2,7 @@
 """Regenerate the typed client's shared contract fixtures from the live server.
 
 Every file under `frontend/test/fixtures/client-contract/` is a request sent over loopback
-to a real `CargentoHTTPServer` and the response it answered, recorded with the clock, the
+to a real `CompassHTTPServer` and the response it answered, recorded with the clock, the
 build and the sessions pinned so the bytes are the same on every run. The TypeScript client
 tests read those bytes; `tests/test_frontend_client_fixtures.py` regenerates them here and
 requires equality, so a backend change fails Python before it can fail a client.
@@ -48,32 +48,32 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 REPO = Path(__file__).resolve().parents[1]
-SKILL = REPO / "cargento" / "skills" / "cargento"
+SKILL = REPO / "compass" / "skills" / "compass"
 FIXTURES = REPO / "frontend" / "test" / "fixtures" / "client-contract"
 VOCABULARY = FIXTURES.parent / "vocabulary.json"
 sys.path.insert(0, str(SKILL))
-from cargento_runtime import aggregate as runtime_aggregate  # noqa: E402 - skill runtime path
-from cargento_runtime import annotations as annotation_store  # noqa: E402 - skill runtime path
-from cargento_runtime import levels as runtime_levels  # noqa: E402 - skill runtime path
-from cargento_runtime import notifications as runtime_notifications  # noqa: E402 - runtime path
-from cargento_runtime import observation as observation_module  # noqa: E402 - skill runtime path
-from cargento_runtime import reading as runtime_reading  # noqa: E402 - skill runtime path
-from cargento_runtime import reading_jobs as runtime_reading_jobs  # noqa: E402 - skill runtime path
-from cargento_runtime import reading_route as runtime_reading_route  # noqa: E402 - runtime path
-from cargento_runtime import records as runtime_records  # noqa: E402 - skill runtime path
-from cargento_runtime import tripwires as runtime_tripwires  # noqa: E402 - runtime path
-from cargento_runtime.aggregate import Application, HarnessSpec  # noqa: E402 - skill runtime path
-from cargento_runtime.config import build_runtime_config  # noqa: E402 - skill runtime path
-from cargento_runtime.http_api import CargentoHTTPServer  # noqa: E402 - skill runtime path
-from cargento_runtime.sessions import base_session  # noqa: E402 - skill runtime path
-from cargento_runtime.state import build_runtime_state  # noqa: E402 - skill runtime path
+from compass_runtime import aggregate as runtime_aggregate  # noqa: E402 - skill runtime path
+from compass_runtime import annotations as annotation_store  # noqa: E402 - skill runtime path
+from compass_runtime import levels as runtime_levels  # noqa: E402 - skill runtime path
+from compass_runtime import notifications as runtime_notifications  # noqa: E402 - runtime path
+from compass_runtime import observation as observation_module  # noqa: E402 - skill runtime path
+from compass_runtime import reading as runtime_reading  # noqa: E402 - skill runtime path
+from compass_runtime import reading_jobs as runtime_reading_jobs  # noqa: E402 - skill runtime path
+from compass_runtime import reading_route as runtime_reading_route  # noqa: E402 - runtime path
+from compass_runtime import records as runtime_records  # noqa: E402 - skill runtime path
+from compass_runtime import tripwires as runtime_tripwires  # noqa: E402 - runtime path
+from compass_runtime.aggregate import Application, HarnessSpec  # noqa: E402 - skill runtime path
+from compass_runtime.config import build_runtime_config  # noqa: E402 - skill runtime path
+from compass_runtime.http_api import CompassHTTPServer  # noqa: E402 - skill runtime path
+from compass_runtime.sessions import base_session  # noqa: E402 - skill runtime path
+from compass_runtime.state import build_runtime_state  # noqa: E402 - skill runtime path
 
 FORMAT = 1
 NOW = 1_900_000_000.0
 STARTED = 1_900_000_000.0
 RESTARTED = 1_900_000_500.0
-PAGE_A = b"<!doctype html><title>cargento client fixture build A</title>"
-PAGE_B = b"<!doctype html><title>cargento client fixture build B</title>"
+PAGE_A = b"<!doctype html><title>compass client fixture build A</title>"
+PAGE_B = b"<!doctype html><title>compass client fixture build B</title>"
 
 # Placeholders the request templates carry where the real value is chosen per run: the
 # listening port is ephemeral and the focus capability is a per-process secret.
@@ -87,7 +87,7 @@ KEPT_HEADERS = (
     "Content-Security-Policy",
     "Content-Type",
     "X-Accel-Buffering",
-    "X-Cargento-Revision",
+    "X-Compass-Revision",
 )
 
 # What the generation run refused to do. The verifying test requires all zeros, so a
@@ -116,7 +116,7 @@ UNREACHABLE: dict[str, str] = {
         "the captured healthy body"
     ),
     "data-missing-revision-header": (
-        "a 200 from /api/data always carries X-Cargento-Revision; the header is absent "
+        "a 200 from /api/data always carries X-Compass-Revision; the header is absent "
         "only on the refusals captured as data-forbidden-*, and clients strip it from "
         "data-healthy for the proxy case"
     ),
@@ -219,7 +219,7 @@ class Scratch:
     """One generation run's directory, removed on exit."""
 
     def __init__(self) -> None:
-        self._dir = tempfile.TemporaryDirectory(prefix="cargento-client-fixtures-")
+        self._dir = tempfile.TemporaryDirectory(prefix="compass-client-fixtures-")
         self.root = Path(self._dir.name).resolve()
         self._count = 0
 
@@ -276,7 +276,7 @@ class Rig:
             environ={
                 "HOME": str(self.dir),
                 "USERPROFILE": str(self.dir),
-                "CARGENTO_HOME": str(self.dir / "state"),
+                "COMPASS_HOME": str(self.dir / "state"),
             },
             # Terminals are only recorded for focus on macOS, so that one rig claims it; the
             # label is a config input and nothing in it touches the host.
@@ -307,7 +307,7 @@ class Rig:
         self.focus_runner = SimpleNamespace(calls=[])
         if with_focus:
             self._attach_focus()
-        self.server = CargentoHTTPServer(("127.0.0.1", 0), self.application, page, self.observation)
+        self.server = CompassHTTPServer(("127.0.0.1", 0), self.application, page, self.observation)
         self.port = self.server.server_port
         self._thread = threading.Thread(target=self._serve, daemon=True)
         self._thread.start()
@@ -698,7 +698,7 @@ def data_scenarios(recorder: Recorder, scratch: Scratch) -> None:
                     "Sec-Fetch-Dest": "empty",
                 },
             ),
-            "A refusal is an HTML error page with no X-Cargento-Revision and no JSON body.",
+            "A refusal is an HTML error page with no X-Compass-Revision and no JSON body.",
         )
         recorder.capture(
             rig,
@@ -1045,7 +1045,7 @@ def action_scenarios(recorder: Recorder, scratch: Scratch) -> None:
         recorder.capture(
             rig,
             "focus-disabled",
-            post("/api/focus", SESSION, **{"X-Cargento-Capability": CAPABILITY}),
+            post("/api/focus", SESSION, **{"X-Compass-Capability": CAPABILITY}),
             "Focus off for this run (the default): 503, whatever the capability.",
         )
     finally:
@@ -1471,7 +1471,7 @@ def tripwire_scenarios(recorder: Recorder, scratch: Scratch) -> None:
 
 def focus_scenarios(recorder: Recorder, scratch: Scratch) -> None:
     rig = Rig(scratch, "focus", with_focus=True)
-    capability = {"X-Cargento-Capability": CAPABILITY}
+    capability = {"X-Compass-Capability": CAPABILITY}
     try:
         recorder.capture(
             rig,
@@ -1497,7 +1497,7 @@ def focus_scenarios(recorder: Recorder, scratch: Scratch) -> None:
         recorder.capture(
             rig,
             "focus-forbidden-capability",
-            post("/api/focus", SESSION, **{"X-Cargento-Capability": "stale-capability"}),
+            post("/api/focus", SESSION, **{"X-Compass-Capability": "stale-capability"}),
             "A capability from a previous run is 403: reload for a new page.",
         )
         recorder.capture(

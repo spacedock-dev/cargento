@@ -43,7 +43,7 @@ export function LaterDirections() {
         <p className={className}>{body}</p>
         <p className="next-cockpit-conflict-why">
           Nothing here decides whether it changes what you are asking for. That is yours, and
-          Cargento does not write into the session either way.
+          Compass does not write into the session either way.
         </p>
       </Disclosure>
     </section>

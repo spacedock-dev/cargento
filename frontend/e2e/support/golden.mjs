@@ -19,6 +19,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { recordedName } from '../../test/recorded-name.ts';
 
 /* A recording was made in one zone and locale, so every run reads the same clock and locale: UTC and en-US, for
    the Python backends (`dev/protocol.mjs` carries it), the browsers (`BROWSER_CONTEXT`) and this process. */
@@ -44,6 +45,7 @@ function stable(value) {
  * that starts producing something else misses the golden instead of being compared with another input's.
  */
 export function digest(value) {
+  value = recordedName(value, true);
   return createHash('sha256')
     .update(typeof value === 'string' ? value : JSON.stringify(stable(value)))
     .digest('hex')
@@ -87,10 +89,13 @@ export function goldenFor(proofName) {
   const target = join(DEFAULT_DIRECTORY, `${proofName}.json`);
   const parsed = JSON.parse(readFileSync(target, 'utf8'));
   assert.equal(parsed.proof, proofName, `${target} belongs to another proof.`);
-  const stored = new Map(Object.entries(parsed.observations));
+  const stored = new Map(
+    Object.entries(parsed.observations).map(([key, value]) => [key, recordedName(value)]),
+  );
   const seen = new Map();
 
   function observe(key) {
+    key = recordedName(key, true);
     if (seen.has(key)) throw new Error(`Golden key "${key}" was read twice in ${proofName}.`);
     if (!stored.has(key))
       throw new Error(
@@ -105,13 +110,14 @@ export function goldenFor(proofName) {
   return {
     observe,
     verify(key, value) {
+      key = recordedName(key, true);
       assert.ok(seen.has(key), `verify("${key}") before it was observed in ${proofName}.`);
       assert.deepEqual(jsonSafe(normalise(value)), seen.get(key), `${proofName}: ${key}`);
     },
-    recorded: (key) => (stored.has(key) ? stored.get(key) : undefined),
-    has: (key) => stored.has(key),
+    recorded: (key) => stored.get(recordedName(key, true)),
+    has: (key) => stored.has(recordedName(key, true)),
     /**
-     * Every stored key must have been read. `complete: false` is a run of some steps only (`CARGENTO_E2E_STEPS`)
+     * Every stored key must have been read. `complete: false` is a run of some steps only (`COMPASS_E2E_STEPS`)
      * or one that failed: it checks nothing, because the steps that did not run cannot have read their keys.
      */
     finish({ complete = true } = {}) {

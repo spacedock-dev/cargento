@@ -15,9 +15,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cargento/skills/cargento"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "compass/skills/compass"))
 
-from cargento_runtime import cli, observation
+from compass_runtime import cli, observation
 
 _VALIDATE = cli.validate_frontend_args
 
@@ -26,7 +26,7 @@ def fixture_capabilities(parser: Any, args: Any) -> None:
     _VALIDATE(parser, args)
     # The production-bundle proofs serve the shipped page with no development ticket and say so
     # in the environment their world gives this child; nothing else relaxes the check.
-    production = os.environ.get("CARGENTO_E2E_BUNDLE") == "production"
+    production = os.environ.get("COMPASS_E2E_BUNDLE") == "production"
     if args.frontend_dev_manifest is None and not production:
         parser.error("capability fixture requires an owned development startup ticket")
     args.no_events = False

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Sync Cargento Docs"
+  display_name: "Sync Compass Docs"
   short_description: "Reconcile repository docs with the code"
-  default_prompt: "Use $sync-docs to reconcile Cargento's documentation before a pull request."
+  default_prompt: "Use $sync-docs to reconcile Compass's documentation before a pull request."

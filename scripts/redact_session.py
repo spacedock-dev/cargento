@@ -4,7 +4,7 @@
 The generic rules live here: secrets, emails, identifiers, private addresses, time zones, paths
 outside the repository, other sessions' prompt listings and other people's chat messages. The
 names, handles, organisations and places that identify real people live in a local JSON config
-(default `~/.cargento/redaction.json`), because a public repository cannot list them. The config
+(default `~/.compass/redaction.json`), because a public repository cannot list them. The config
 shape is in [tests/README.md](tests/README.md#redaction).
 
 The output is meant to be replayed by `scripts/drift_replay.py`, so the redaction keeps what the
@@ -25,10 +25,12 @@ import re
 import sys
 from typing import TYPE_CHECKING, Any
 
+import legacy_paths
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
-CONFIG = os.path.expanduser("~/.cargento/redaction.json")
+CONFIG = os.path.join(legacy_paths.default_home(), "redaction.json")
 
 SECRET = re.compile(
     r"(AKIA|ASIA)[A-Z0-9]{16}"
@@ -46,7 +48,7 @@ QUERY_SECRET = re.compile(
     r"|x-amz-security-token|signature|sig|sk|token|key|secret|access_token)=)"
     r"([A-Za-z0-9_.%/+-]{8,})"
 )
-# A 64-hex value keyed by a harness name (Cargento's per-run event capability, read from its state
+# A 64-hex value keyed by a harness name (Compass's per-run event capability, read from its state
 # file) or right after a token-like key. Measured 2026-10-04: one fixture held eight of them.
 HEX_CAPABILITY = re.compile(
     r"(\\?\"(?:claude|codex|antigravity|gemini|pi|copilot|opencode|cursor|goose|droid)\\?\"\s*:\s*\\?\")"

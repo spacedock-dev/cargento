@@ -394,13 +394,13 @@ class SimulationEndToEndTest(unittest.TestCase):
 
     def test_a_simulation_writes_no_state_into_the_home_it_runs_under(self) -> None:
         # The fixture sessions a simulation collects are fake by construction.
-        # Without a scratch CARGENTO_HOME, collect() recorded them into the
-        # owner's real ~/.cargento/cargento-history.json, a store at its size
+        # Without a scratch COMPASS_HOME, collect() recorded them into the
+        # owner's real ~/.compass/compass-history.json, a store at its size
         # cap, where each fixture row can evict a real one. Measured on
         # 2026-09-27: sid 00000000 project proj-0 (claude) and
         # 00000000-1111-2222-3333-444444444444 w/proj-0 (codex), w/proj (pi).
         with tempfile.TemporaryDirectory() as fake_home:
-            environ = {k: v for k, v in os.environ.items() if k != "CARGENTO_HOME"}
+            environ = {k: v for k, v in os.environ.items() if k != "COMPASS_HOME"}
             environ["HOME"] = environ["USERPROFILE"] = fake_home
             with (
                 mock.patch.dict(os.environ, environ, clear=True),

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure Cargento collection cost, per harness and in total.
+"""Measure Compass collection cost, per harness and in total.
 
 Phase 0 of the event-driven observation plan gates on these numbers, so they
 have to be reproducible on a reviewer's machine rather than quoted from one
@@ -32,7 +32,7 @@ SELECTIVE_REUSE_BAR = 0.25
 
 # The dashboard runtime is not an installed package. server.py imports it with
 # the skill directory as sys.path[0], and this script has to arrange the same.
-SKILL_DIR = Path(__file__).resolve().parents[1] / "cargento" / "skills" / "cargento"
+SKILL_DIR = Path(__file__).resolve().parents[1] / "compass" / "skills" / "compass"
 
 # One synthetic in-window session's shape. Both defaults are measured, not
 # chosen: on the machine that produced Phase 0's numbers the in-window Claude
@@ -531,9 +531,9 @@ def main(argv: list[str]) -> int:
     # Deferred on purpose: sys.path has to carry SKILL_DIR before the runtime
     # resolves, and keeping it out of module scope also lets measure() and
     # format_report() be imported without the runtime tree present.
-    from cargento_runtime import cli  # noqa: PLC0415
+    from compass_runtime import cli  # noqa: PLC0415
 
-    with tempfile.TemporaryDirectory(prefix="cargento-bench-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="compass-bench-") as scratch:
         simulation: dict[str, Any] | None = None
         overrides: dict[str, str] | None = None
         if args.simulate:
@@ -560,7 +560,7 @@ def main(argv: list[str]) -> int:
                 "projects": args.simulate_projects,
             }
         config, state = build_runtime(
-            cli, args, store_root_overrides=overrides, state_home=Path(scratch) / "cargento"
+            cli, args, store_root_overrides=overrides, state_home=Path(scratch) / "compass"
         )
         # build_application, not Application(...): the constructor also requires
         # the harness registry and three injected sinks, and the CLI is what
@@ -597,9 +597,9 @@ def build_runtime(
     off in both branches on purpose: a benchmark must never make an outbound
     vendor quota request, and a fetch would pollute the timing besides.
 
-    A simulation also moves Cargento's own state into ``state_home``. Redirecting
-    the harness stores alone left ``CARGENTO_HOME`` resolving to the owner's real
-    ``~/.cargento``, so every simulated collect recorded its fixture sessions into
+    A simulation also moves Compass's own state into ``state_home``. Redirecting
+    the harness stores alone left ``COMPASS_HOME`` resolving to the owner's real
+    ``~/.compass``, so every simulated collect recorded its fixture sessions into
     their real history store, where at the size cap each one evicts a real row.
     The state is redirected rather than history switched off so the timing still
     includes the history write a real collect pays for.
@@ -615,11 +615,11 @@ def build_runtime(
             started=time.time(),
         )
         return built
-    from cargento_runtime import config as runtime_config  # noqa: PLC0415
-    from cargento_runtime import state as runtime_state  # noqa: PLC0415
+    from compass_runtime import config as runtime_config  # noqa: PLC0415
+    from compass_runtime import state as runtime_state  # noqa: PLC0415
 
     config = runtime_config.build_runtime_config(
-        environ={**os.environ, runtime_config.CARGENTO_HOME_ENV: str(state_home)},
+        environ={**os.environ, runtime_config.COMPASS_HOME_ENV: str(state_home)},
         platform_name=sys.platform,
         os_name=os.name,
         launcher_path=SKILL_DIR / "server.py",

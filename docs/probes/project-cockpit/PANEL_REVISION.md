@@ -2,7 +2,7 @@
 
 Checkpoint under review before revision: `196fecf0034d30f5c8074007425a4f36193d22a2`.
 Focused identity: `codex:01a035ee-2a7b-76f0-873f-eaddc97860c3` inside the exact
-project label `spacedock-research/cargento`.
+project label `spacedock-research/compass`.
 
 Both independent reviewers inspected the live HTTP artifact, DOM behavior, API responses, and
 checkpoint source. No controllable browser was available. Their scores and the evidence below do

@@ -5,7 +5,7 @@
  * (`frontend/test/terminal_backend.py`), serving the React development page, whose entry is swapped for
  * `terminal-harness.tsx` inside a scratch copy of the tree, so no tracked file changes. A test then drives it in
  * Chromium and compares what a reader can observe with the previous interface's recorded observations
- * (`support/golden.mjs`). `CARGENTO_MUTATION` names one deliberate break in the scratch copy (see MUTATIONS in the
+ * (`support/golden.mjs`). `COMPASS_MUTATION` names one deliberate break in the scratch copy (see MUTATIONS in the
  * calling script); the run is then expected to FAIL.
  *
  * `openTracked` is `openPage` plus what these tests need and `openPage` does not record: every frame the
@@ -56,7 +56,7 @@ async function waitForRegistration(origin) {
 
 export async function startWorld({
   mutations = {},
-  mutation = process.env.CARGENTO_MUTATION || '',
+  mutation = process.env.COMPASS_MUTATION || '',
 } = {}) {
   /* Development mounts `terminal-harness.tsx` in a scratch copy. The production run serves the page readers get and the
      proofs reach the timeline and the terminal through the project page's tabs. Without a mutation that page is the
@@ -65,7 +65,7 @@ export async function startWorld({
   const ownsRepository = shipped && !mutation;
   const copy = ownsRepository
     ? REPOSITORY
-    : await mkdtemp(join(tmpdir(), 'cargento-terminal-browser-'));
+    : await mkdtemp(join(tmpdir(), 'compass-terminal-browser-'));
   let dev = null;
   const world = { copy, mutation, shipped, close };
   async function close() {
@@ -81,7 +81,7 @@ export async function startWorld({
           !path.includes('/test-results') &&
           !path.includes('__pycache__'),
       });
-      await cp(join(REPOSITORY, 'cargento'), join(copy, 'cargento'), {
+      await cp(join(REPOSITORY, 'compass'), join(copy, 'compass'), {
         recursive: true,
         filter: (path) =>
           !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),

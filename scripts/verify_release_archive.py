@@ -47,9 +47,9 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-PLUGIN = "cargento"
-SKILL = "cargento/skills/cargento"
-WEB = f"{SKILL}/cargento_runtime/web"
+PLUGIN = "compass"
+SKILL = "compass/skills/compass"
+WEB = f"{SKILL}/compass_runtime/web"
 BUNDLE_FILES = (
     f"{WEB}/react.html",
     f"{WEB}/react.integrity.json",
@@ -71,7 +71,7 @@ GIT = shutil.which("git") or "git"
 PAGE_PROBE = """
 import hashlib, json, sys
 sys.path.insert(0, sys.argv[1])
-from cargento_runtime.web import page
+from compass_runtime.web import page
 data = page.load_frontend_page()
 print(json.dumps({"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}))
 """
@@ -122,7 +122,7 @@ def isolated_env(home: Path) -> dict[str, str]:
         "PATH": str(empty),
         "HOME": str(home),
         "USERPROFILE": str(home),
-        "CARGENTO_HOME": str(home / "state"),
+        "COMPASS_HOME": str(home / "state"),
         "PYTHONNOUSERSITE": "1",
         "LC_ALL": "C.UTF-8",
     }
@@ -193,7 +193,7 @@ def extract_archive(archive: Path, destination: Path) -> None:
             target.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
-ARCHIVE_PATHS = ("cargento", "cargento-gemini", "scripts")
+ARCHIVE_PATHS = ("compass", "compass-gemini", "scripts")
 
 
 def build_archive(repo: Path, commit: str, archive: Path) -> None:
@@ -331,7 +331,7 @@ def verify_archive(repo: Path, commit: str, verified: str, version: str) -> Repo
         raise ArchiveError(message)
     commit = full_sha(repo, "commit", commit)
     verified = full_sha(repo, "verified", verified)
-    scratch = Path(tempfile.mkdtemp(prefix="cargento-release-archive-"))
+    scratch = Path(tempfile.mkdtemp(prefix="compass-release-archive-"))
     report = Report()
     try:
         archive = scratch / "release.tar"

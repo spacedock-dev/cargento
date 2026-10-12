@@ -239,7 +239,7 @@ describe('the way back into a waiting session', () => {
   it('says how far the raise reaches when the run has the capability', async () => {
     await open(attentionBoard({ terminals: true }), { focusCapability: 'abcdef' });
     expect(document.querySelector('.next-attention-caveats')?.textContent).toContain(
-      'Terminal raise: 2 of 5 waiting rows carry a terminal Cargento can reach.',
+      'Terminal raise: 2 of 5 waiting rows carry a terminal Compass can reach.',
     );
   });
 

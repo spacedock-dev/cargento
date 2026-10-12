@@ -99,7 +99,7 @@ function Counts({
       <Why
         name="counts-why"
         summary="What a count does not say"
-        body="A count identifies a session worth reading; it establishes nothing about whether the brief, the agent or Cargento’s own judgement was poor, and those three are not separable from it."
+        body="A count identifies a session worth reading; it establishes nothing about whether the brief, the agent or Compass’s own judgement was poor, and those three are not separable from it."
       />
     </div>
   );

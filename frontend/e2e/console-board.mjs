@@ -5,7 +5,7 @@
  * asks, a stored history, a quota provider, one workflow stage source and a synthetic read-only terminal) serving
  * the React development page, whose entry is swapped for `console-harness.tsx` inside a scratch copy of the tree,
  * so no tracked file changes. A test then drives the React page in one Chromium and compares what a reader can
- * observe with the previous interface's recorded readings (`support/golden.mjs`). `CARGENTO_MUTATION` names one deliberate
+ * observe with the previous interface's recorded readings (`support/golden.mjs`). `COMPASS_MUTATION` names one deliberate
  * break in the scratch copy (see MUTATIONS in the calling script); the run is then expected to FAIL.
  *
  * Nothing here reads a harness store, calls a model, fetches a quota, touches the clipboard or notifications,
@@ -59,7 +59,7 @@ async function waitForRegistration(origin) {
 
 export async function startConsoleWorld({
   mutations = {},
-  mutation = process.env.CARGENTO_MUTATION || '',
+  mutation = process.env.COMPASS_MUTATION || '',
   // false serves the shipped page (the project views the slots are wired into) instead of the harness. The production
   // run serves it by default, so every console surface is proven on the page readers get; development keeps the harness.
   harness = !PRODUCTION,
@@ -69,7 +69,7 @@ export async function startConsoleWorld({
   const ownsRepository = !harness && !mutation && PRODUCTION;
   const copy = ownsRepository
     ? REPOSITORY
-    : await mkdtemp(join(tmpdir(), 'cargento-console-browser-'));
+    : await mkdtemp(join(tmpdir(), 'compass-console-browser-'));
   let dev = null;
   const world = { copy, mutation, close };
   async function close() {
@@ -85,7 +85,7 @@ export async function startConsoleWorld({
           !path.includes('/test-results') &&
           !path.includes('__pycache__'),
       });
-      await cp(join(sourceRoot, 'cargento'), join(copy, 'cargento'), {
+      await cp(join(sourceRoot, 'compass'), join(copy, 'compass'), {
         recursive: true,
         filter: (path) =>
           !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),

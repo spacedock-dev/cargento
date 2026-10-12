@@ -23,7 +23,7 @@ const announce = (page) =>
     globalThis.__fieldPollWake = (globalThis.__fieldPollWake || 0) + 1;
     globalThis.dispatchEvent(
       new globalThis.StorageEvent('storage', {
-        key: 'cargento.next.revision',
+        key: 'compass.next.revision',
         newValue: `${Date.now()}.${globalThis.__fieldPollWake}`,
       }),
     );
@@ -46,7 +46,7 @@ export async function proveFieldPoll() {
   let browser;
   let opened;
   try {
-    for (const folder of ['frontend', 'cargento'])
+    for (const folder of ['frontend', 'compass'])
       await cp(join(REPOSITORY, folder), join(copy, folder), {
         recursive: true,
         filter: copyProofPath,
@@ -121,7 +121,7 @@ export async function proveFieldPoll() {
             ...body,
             sessions: body.sessions.map((row) => ({ ...row, title: 'Discarded answer' })),
           },
-          headers: { 'X-Cargento-Revision': '1.1' },
+          headers: { 'X-Compass-Revision': '1.1' },
         });
         await request;
         if (!shouldWait) await pending;
@@ -138,7 +138,7 @@ export async function proveFieldPoll() {
             ...body,
             sessions: body.sessions.map((row) => ({ ...row, title: 'Rendered successor' })),
           },
-          headers: { 'X-Cargento-Revision': '1.2' },
+          headers: { 'X-Compass-Revision': '1.2' },
         });
         await pending;
         await page.waitForFunction(() =>

@@ -513,7 +513,7 @@ export function factSessionKey(fact: unknown): string {
   return harness && sid ? `${harness}:${sid}` : '';
 }
 
-/** A message the server recognised as a correction the reader copied from Cargento is Cargento's words. */
+/** A message the server recognised as a correction the reader copied from Compass is Compass's words. */
 export function readingCopied(entry: unknown): boolean {
   return String(fieldText(entry, 'type')) === 'user_message' && field(entry, 'copied') === true;
 }
@@ -801,7 +801,7 @@ export function recoveryBriefing(input: BriefingInput): Briefing {
       : 'age unavailable'
     : '';
   const lines = [
-    'Cargento recovery briefing',
+    'Compass recovery briefing',
     `Project: ${scopeLabel(env.group)}`,
     `Scope: ${focus ? `Session ${sessKey(focus)}` : 'Project'}`,
     ...(outcome !== 'Not set' ? [`Outcome (browser-local): ${outcome}`] : []),

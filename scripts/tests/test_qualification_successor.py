@@ -241,7 +241,7 @@ class QualificationSuccessor(unittest.TestCase):
 
     def test_native_charged_wrapper_and_cli_ceiling_select_successor(self) -> None:
         scorer._runtime()
-        from cargento_runtime import observer  # noqa: PLC0415 - actual native module admission
+        from compass_runtime import observer  # noqa: PLC0415 - actual native module admission
 
         binding = native_models.BINDING
         prompt = "Owned synthetic qualification request; no provider transport."

@@ -5,10 +5,10 @@ export const DUPLICATE_LABEL_LIMIT =
   "Same label is not proof of the same directory: the label is the last two segments of each session's path, so sibling worktrees read alike.";
 
 export const UNREAD_SOURCE_NOTE =
-  "Cargento opened this session's store and could not read every part of it. What it names is missing here rather than empty; the rest of the row was read normally.";
+  "Compass opened this session's store and could not read every part of it. What it names is missing here rather than empty; the rest of the row was read normally.";
 
 export const SCAN_ONLY_NOTE =
-  'Cargento reads this session off disk and no event from its harness can reach it, so an idle row here means nothing has changed recently rather than that the turn ended. The rest of the row was read normally.';
+  'Compass reads this session off disk and no event from its harness can reach it, so an idle row here means nothing has changed recently rather than that the turn ended. The rest of the row was read normally.';
 
 export const SCAN_ONLY_LINE = 'Read by scanning: no turn end can be observed here';
 

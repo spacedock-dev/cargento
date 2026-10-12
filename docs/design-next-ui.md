@@ -21,9 +21,9 @@ and they explain a progression rather than a product claim.
 
 The v2 project-level design this interface was built to is kept as the artifact it was
 designed in, not as a description of it:
-[`Cargento-v2.dc.html`](future-ui-exploration/v2-prototype/Cargento-v2.dc.html) holds the five
+[`Compass-v2.dc.html`](future-ui-exploration/v2-prototype/Compass-v2.dc.html) holds the five
 views and
-[`cargento-observed.js`](future-ui-exploration/v2-prototype/cargento-observed.js) the data shape
+[`compass-observed.js`](future-ui-exploration/v2-prototype/compass-observed.js) the data shape
 they read. Both are design artifacts rather than code, and two of their claims did not survive
 contact with the runtime: the end-outcome vocabulary and the delegation floor. Where the
 prototype and this document disagree, this document is what shipped.
@@ -523,10 +523,10 @@ session id. The bare URL, invalid fragments and retired fragments normalize to S
 changes are both navigation output and browser-history input, so reload, pasted links, and back or
 forward preserve the view.
 
-Browser state keeps its `cargento.next.*` namespace. That prefix is no longer a firewall between
+Browser state keeps its `compass.next.*` namespace. That prefix is no longer a firewall between
 two live bundles; it is compatibility with storage written during the preview and protection from
-stale `cargento.leader` records written by the removed dashboard. The current leader uses
-`cargento.next.leader` and `cargento.next.revision` so a stale old lease cannot demote it.
+stale `compass.leader` records written by the removed dashboard. The current leader uses
+`compass.next.leader` and `compass.next.revision` so a stale old lease cannot demote it.
 
 **Retiring a tab slug is a route change, not a layout change.** `nextRouteFromFragment` in
 `next-boot.js` has no alias table, so a three-part fragment whose last part is no longer in
@@ -870,7 +870,7 @@ happened.
 The board carries Your note (this tab only) and TRIPWIRES because the dashboard needs the interaction shape,
 but neither is a session-control surface. The add control reads `+ set a tripwire`. Submitting a steer keeps a bounded draft record in that tab,
 retaining the newest 20 drafts and rendering every retained draft from oldest to newest. Each
-escaped receipt says both that it was not delivered and that Cargento has no session write path. It
+escaped receipt says both that it was not delivered and that Compass has no session write path. It
 makes no request. A disabled field was rejected because it could not demonstrate the interaction,
 while an enabled field with no receipt would look like a successful send.
 
@@ -892,7 +892,7 @@ asserted as a pair.
 until DRC-4611, under an earlier form of this ruling that kept the wording specifically to carry the
 interaction shape. That was the wrong thing to hang it on: `send` names a transport, and nothing
 leaves the board. What actually demonstrates the shape is the enabled field, the caveat above it,
-and the escaped receipt that says both that nothing was delivered and that Cargento has no session
+and the escaped receipt that says both that nothing was delivered and that Compass has no session
 write path -- all three of which a reader meets whatever the button says. The label naming the act
 strengthens the demonstration rather than weakening it, because the control now tells the truth
 before it is pressed as well as after.
@@ -994,9 +994,9 @@ these selectors and keyframes live in the canonical `web/styles.css`.
 
 ## NUI-13: one transport keeps the released namespace
 
-Tabs elect one leader through `cargento.next.leader`, fan revisions out through storage, and retain
-`cargento.next.revision`. Those names survive promotion so stored preview state remains compatible
-and a stale `cargento.leader` lease from the removed dashboard cannot affect the canonical page.
+Tabs elect one leader through `compass.next.leader`, fan revisions out through storage, and retain
+`compass.next.revision`. Those names survive promotion so stored preview state remains compatible
+and a stale `compass.leader` lease from the removed dashboard cannot affect the canonical page.
 There is now one bundle and therefore one leader population.
 
 A permanently closed stream yields and retries on the next two-second election tick. A 20-second
@@ -1368,7 +1368,7 @@ reason, as above.
 
 ## NUI-19: a caveat has three tiers
 
-Cargento pays for its honesty in vertical space, and before this rule it paid the same price for
+Compass pays for its honesty in vertical space, and before this rule it paid the same price for
 every sentence. Each caveat rendered as one `<p class="next-cockpit-reading-why">` in the reading
 flow, so COUNTS closed with sixty-nine words under five numbers and the one operational
 instruction in them was the third sentence. DRC-4587 made this worse rather than better: raising
@@ -1435,7 +1435,7 @@ ship, for two independent reasons, and both are invisible in a diff:
 - An installed plugin has no `docs/` directory beside the page. The link resolves in a checkout
   and 404s everywhere the product actually runs.
 - `RuntimeDecisionCitationsTest` reads every `.py`, `.js`, `.css` and `.html` under
-  `cargento_runtime` as a whole file, not as comments. A bare `DEC-16` in a product string is a
+  `compass_runtime` as a whole file, not as comments. A bare `DEC-16` in a product string is a
   checker hit whether or not a reader ever sees it.
 
 So tier 3 cites from a **source comment**, in the grammar the checker already enforces, and the

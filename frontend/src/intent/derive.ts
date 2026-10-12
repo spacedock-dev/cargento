@@ -159,7 +159,7 @@ export function chosenIsStale(input: DraftInput): boolean {
   return Boolean(chosenCandidate(held, contexts, session)) || choicesSettled(contexts, session);
 }
 
-/* The goal a goal-less session arrives with: the first prompt as Cargento publishes it, or the latest where
+/* The goal a goal-less session arrives with: the first prompt as Compass publishes it, or the latest where
    no first prompt with a time is published, and null where neither can be adopted. Derived from the payload
    on every render and never written, so it holds no reader state; the box's own edits ride the held draft.
    Nothing is drafted over a store this build cannot read, where Save intent could not save. A prompt chosen

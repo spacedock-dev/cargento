@@ -187,7 +187,7 @@ describe('Discard everything', () => {
     await press(discard());
     await settle(silent);
     expect(text('.next-cockpit-held-discard .next-cockpit-held-cue')).toBe(
-      'Cargento did not answer, so this page cannot tell whether the words were discarded.',
+      'Compass did not answer, so this page cannot tell whether the words were discarded.',
     );
     expect(silent.allPosts()).toHaveLength(1);
   });

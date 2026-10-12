@@ -38,7 +38,7 @@ receipt's byte ceiling is re-based to 2,000,000 bytes, to be raised again if a l
 ## End state
 
 Thirteen shadcn components are vendored under `frontend/src/ui/`, using the Base UI flavour and the
-local `cn` merger. The directory also holds Cargento's inline disclosure chevron and Button tests.
+local `cn` merger. The directory also holds Compass's inline disclosure chevron and Button tests.
 The components keep the existing semantic roots, field owners and disclosure store.
 
 | Vendored file | Shipped use | Layer record |
@@ -132,9 +132,9 @@ Three things were not what the plan assumed.
   inline SVGs in `frontend/src/ui/icons.tsx`.
 - Defaults are written for shadcn's own scale: `text-sm`, `rounded-lg`, `h-8`, thirty-two `dark:` classes, and
   `data-open:` and `animate-in` classes that come from `tw-animate-css` and `shadcn/tailwind.css`. Under
-  Cargento's scale reset (below) the size, radius and animation classes generate nothing, silently. The branch
+  Compass's scale reset (below) the size, radius and animation classes generate nothing, silently. The branch
   rewrote them with one script (`text-sm` to `text-body`, `rounded-lg` to `rounded-control`, `h-8` to
-  `min-h-11`, `dark:` and animation classes removed). The vendored files are Cargento's code after that, and a
+  `min-h-11`, `dark:` and animation classes removed). The vendored files are Compass's code after that, and a
   scan test must catch a default-scale class entering one (see the rules).
 - `shadcn/tailwind.css` is not imported. It is 16 KB of custom variants, keyframes and scroll-fade utilities;
   the vendored files use two of its variants (`data-open` and `data-closed`), which are copied into the entry
@@ -184,13 +184,13 @@ uses it, and deleting one with no importer, keeps the scan honest.
 
 `@theme { --text-*: initial; --radius-*: initial; --color-*: initial; }` followed by the five type steps, four
 radii and the semantic colours mapped onto the existing tokens as hex works: a default `text-sm` generates
-nothing. shadcn's own `--accent` and Cargento's `--accent` are different things (a hover surface and a lime
+nothing. shadcn's own `--accent` and Compass's `--accent` are different things (a hover surface and a lime
 colour), so the semantic names are reached only through `--color-*`, and plain `--foreground` and
 `--secondary` are declared because the vendored classes read them directly.
 
 ### tailwind-merge
 
-Kept, as ruled. Unconfigured it reads Cargento's type steps as colours: `twMerge('text-body', 'text-muted-foreground')`
+Kept, as ruled. Unconfigured it reads Compass's type steps as colours: `twMerge('text-body', 'text-muted-foreground')`
 returns only `text-muted-foreground`. shadcn's own `cn` package has the same behaviour. The branch configures
 `extendTailwindMerge` with the five steps and four radii, and a test reads the theme names from the entry
 stylesheet and fails if a step or radius exists that the configuration does not know, and a real conflict
@@ -198,7 +198,7 @@ stylesheet and fails if a step or radius exists that the configuration does not 
 
 ### Flavour
 
-React Aria (`react-aria-components` 1.22) and Base UI were compared in Chromium on the four things Cargento
+React Aria (`react-aria-components` 1.22) and Base UI were compared in Chromium on the four things Compass
 depends on. Base UI is the choice. The detail is in the table.
 
 | Behaviour | Base UI 1.8.0 | React Aria 1.22 |
@@ -292,7 +292,7 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
 | Pattern | Decision | Reason |
 |---|---|---|
 | Button, link-as-button | adopt Button; links use `buttonVariants` on a plain `<a>` | Base UI Button always sets `role="button"`, which would hide a link |
-| Pending button | adopt, `aria-disabled` and `aria-busy` kept, ghost label kept | Base UI keeps it focusable; `aria-busy` and the announcement are Cargento's |
+| Pending button | adopt, `aria-disabled` and `aria-busy` kept, ghost label kept | Base UI keeps it focusable; `aria-busy` and the announcement are Compass's |
 | Disclosure, accordion variant | adopt Accordion and Collapsible with `hiddenUntilFound` | needs the reactive store first; state precedence is specified in that layer |
 | Disclosure, popover variant | adopt Popover (owner ruling), non-modal, initial focus left on the trigger | live regions must stay exposed |
 | Disclosure, menu variant | keep native | not dismissed by Escape by design; not a popover |
@@ -313,7 +313,7 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
    receipts reconciled.
 2. Keep public APIs: `Disclosure`, `ActionButton` and `HeldTextarea` keep their props.
 3. Own the code. A component is vendored into `frontend/src/ui/` in the layer that first uses it, tuned to
-   Cargento's scale, with a header naming the upstream component, the CLI version, the registry source and a
+   Compass's scale, with a header naming the upstream component, the CLI version, the registry source and a
    hash of the upstream file as fetched (the registry serves each item as JSON, so the hash is the hash of its
    `content`). Upstream MIT licence text for copied code ships in `react-licenses.txt`. A vendored file with
    no importer in shipped code is deleted. After every `add`: remove the `cn` package it adds, rewrite the
@@ -578,7 +578,7 @@ a poll or restored-open mount does not scroll it. Positioning flips and shifts a
 viewport with a 16 px collision inset. The body keeps the old reading measure and maximum window
 width, and can scroll internally when larger text leaves less vertical space.
 
-Base UI's Escape callback closes one popup, while Cargento closes all and chooses one trigger.
+Base UI's Escape callback closes one popup, while Compass closes all and chooses one trigger.
 `popoverEscape.ts` keeps only that document-level compatibility rule. In the browser proof, Base UI
 left a popup open when focus moved to another page control after window blur. A blur handler on
 the trigger and portalled popup closes those departures and ignores a missing related target. Outside presses remain with Base UI and deliver the destination's click without
@@ -997,7 +997,7 @@ individual animation steps remain when the proof fixtures do not exercise them. 
 coverage tests check the current sheets, require every baseline proof/mode pair, reject
 stale, covered or unexplained exception identities and fail an added dead-rule mutation.
 `pnpm test:css:coverage` runs that inventory directly. To collect a new run, set
-`CARGENTO_CSS_COVERAGE` to a directory under this worktree and preload the hook with
+`COMPASS_CSS_COVERAGE` to a directory under this worktree and preload the hook with
 `NODE_OPTIONS=--import=<absolute hook path>`. Run the proofs sequentially in each bundle
 mode, then use `node frontend/build/css-coverage.mjs collect <directory>` to produce the
 local union under `docs/screenshots/css-cleanup/` before reviewing it for the tracked record.

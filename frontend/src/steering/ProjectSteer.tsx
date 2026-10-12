@@ -5,7 +5,7 @@ import { DraftInput } from '../controls/DraftField';
 import { useHeldVersion, useSteeringHeld, TEXT_LIMIT } from './held';
 import './steering.css';
 
-/* The project's steering bar. A note to oneself: Cargento has no write path into a session, and the bar says
+/* The project's steering bar. A note to oneself: Compass has no write path into a session, and the bar says
    so before the first keystroke rather than after the press, because a control that promises delivery
    ("Tell this project what to do next", submit "send") and says nothing about what it does would be believed.
 
@@ -42,7 +42,7 @@ export function ProjectSteer({
       <header>
         <span className="next-steer-label">Your note (this tab only)</span>
         <p className="next-steer-caveat">
-          Cargento has no write path into a session. Anything you type here is a note to yourself,
+          Compass has no write path into a session. Anything you type here is a note to yourself,
           kept in this browser tab.
         </p>
       </header>
@@ -78,8 +78,7 @@ export function ProjectSteer({
             >
               <strong>{record.text}</strong>
               <p>
-                Draft recorded in this tab. Not delivered. Cargento has no write path into a
-                session.
+                Draft recorded in this tab. Not delivered. Compass has no write path into a session.
               </p>
             </Card>
           ))}

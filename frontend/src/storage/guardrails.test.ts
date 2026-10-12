@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { blockedBackend, fakeBackend, readOnlyBackend } from '../../test/storage_backends';
 import { createLegacyStorage, decodeGuardrails, guardrailKey, normalizeGuardrail } from '.';
 
-describe('guardrail family (cargento.next.guardrails.)', () => {
+describe('guardrail family (compass.next.guardrails.)', () => {
   it('keys on the encoded project', () => {
-    expect(guardrailKey('my project/é')).toBe('cargento.next.guardrails.my%20project%2F%C3%A9');
+    expect(guardrailKey('my project/é')).toBe('compass.next.guardrails.my%20project%2F%C3%A9');
   });
 
   it('accepts the older plain-string rules as enabled', () => {

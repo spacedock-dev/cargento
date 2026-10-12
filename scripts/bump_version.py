@@ -10,9 +10,9 @@ script is its bump mechanism and refuses anything that is not a strict
 semver increase, so a re-run or a stale tag can never move versions
 backwards. Fields updated together:
 
-    cargento/.claude-plugin/plugin.json  .version   <- source of truth
-    cargento/.codex-plugin/plugin.json   .version
-    cargento-gemini/gemini-extension.json  .version   <- Gemini's own root
+    compass/.claude-plugin/plugin.json  .version   <- source of truth
+    compass/.codex-plugin/plugin.json   .version
+    compass-gemini/gemini-extension.json  .version   <- Gemini's own root
 """
 
 from __future__ import annotations
@@ -26,15 +26,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 # The Claude plugin manifest is the source of truth. It used to be the
 # repository's own marketplace metadata, but that marketplace was retired when
-# cargento moved into spacedock-dev/marketplace, so the truth moved to the
+# compass moved into spacedock-dev/marketplace, so the truth moved to the
 # manifest the plugin actually ships with.
-TRUTH = ROOT / "cargento/.claude-plugin/plugin.json"
+TRUTH = ROOT / "compass/.claude-plugin/plugin.json"
 MANIFESTS = (
     TRUTH,
-    ROOT / "cargento/.codex-plugin/plugin.json",
+    ROOT / "compass/.codex-plugin/plugin.json",
     # Gemini gets its own extension root: both it and Claude Code claim
     # `<root>/hooks/hooks.json` and neither lets that path move.
-    ROOT / "cargento-gemini/gemini-extension.json",
+    ROOT / "compass-gemini/gemini-extension.json",
 )
 SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 

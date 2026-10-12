@@ -85,7 +85,7 @@ describe('the question before the press', () => {
     );
   });
 
-  it('does not count a correction the reader copied from Cargento as something they said', async () => {
+  it('does not count a correction the reader copied from Compass as something they said', async () => {
     const page = mountSession({
       store: SAVED,
       session: SAVED_AT,
@@ -476,7 +476,7 @@ describe('Keep my intent', () => {
     await press(control('direction-keep'));
     await settle(page);
     expect(text('.next-cockpit-direction-question')).toContain(
-      'Nothing was settled and no analysis was started: Cargento could not open the whole text of every direction Keep would settle',
+      'Nothing was settled and no analysis was started: Compass could not open the whole text of every direction Keep would settle',
     );
     expect(page.allPosts().map((p) => p.path)).toEqual(['/api/direction']);
     first = false;

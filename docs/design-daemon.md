@@ -9,8 +9,8 @@ Behavioral detail lives in [`COMPATIBILITY.md`](../COMPATIBILITY.md) (the per-OS
 paths and the `/api/shutdown` exposure are owned by [`SECURITY.md`](../SECURITY.md), and the
 user-facing contract is the skill body. This file explains *why*, not *what*.
 
-The code behind all of it is `cargento_runtime/lifecycle.py` (state file, port probes, status, stop,
-fork and re-spawn) driven by `cargento_runtime/cli.py`, which owns the three serve branches.
+The code behind all of it is `compass_runtime/lifecycle.py` (state file, port probes, status, stop,
+fork and re-spawn) driven by `compass_runtime/cli.py`, which owns the three serve branches.
 `server.py` is a seven-line launcher and holds none of it. Which file owns what, and why the three
 branches stay distinct rather than collapsing into one rule, is owned by
 [`design-runtime-architecture.md`](design-runtime-architecture.md).
@@ -22,7 +22,7 @@ across `*.py` and `*.md` before renumbering anything.
 
 ## The problem these decisions answer
 
-Cargento is started by an agent, in that agent's session, as a background child of the session's
+Compass is started by an agent, in that agent's session, as a background child of the session's
 shell. Two consequences, and they pull against each other.
 
 The dashboard dies with the session that opened it. That is wrong on its own terms (a board
@@ -75,7 +75,7 @@ that as proof, reported success, and handed back a pid belonging to a process it
 while the child it spawned was dying on the bind. The `platform-tests` job on Windows caught it; the
 POSIX path was never affected, because there the bind happens in the parent before any fork. This is
 what the pid in the health payload is for, the same reason `--status` needs it (D-4). A foreign
-answer now reports that the port is already served by a different Cargento and points at `--status`.
+answer now reports that the port is already served by a different Compass and points at `--status`.
 
 The child needs no private flag: it is an ordinary foreground run that happens to own no console. One
 fewer argument, and one fewer way for the two paths to diverge.
@@ -100,22 +100,22 @@ handing to the child.
 
 ## D-3: One state file per port, written by every instance that binds
 
-`~/.cargento/cargento-<port>.json` holds `pid`, `port`, `started`, `log` and `python`;
-`~/.cargento/cargento-<port>.log` is the log. The directory is created `0o700`. `CARGENTO_HOME`
+`~/.compass/compass-<port>.json` holds `pid`, `port`, `started`, `log` and `python`;
+`~/.compass/compass-<port>.log` is the log. The directory is created `0o700`. `COMPASS_HOME`
 relocates it, which is how this project already treats store locations: when the variable is set it
 is authoritative.
 
 One layout on every platform. `XDG_RUNTIME_DIR` on Linux, `%LOCALAPPDATA%` on Windows and a
-`~/.cargento` fallback would be three code paths, three sets of documentation and three ways for
+`~/.compass` fallback would be three code paths, three sets of documentation and three ways for
 `--status` to look in the wrong place, to place a file more correctly than anyone needs.
 
 Foreground runs write it too. A user who started the server without `--daemon` still benefits from
 `--status` and `--stop`, and a state file that exists only sometimes is a state file whose absence
 means nothing.
 
-This adds the only paths Cargento writes. `CONTRIBUTING.md`'s read-only constraint is about harness
+This adds the only paths Compass writes. `CONTRIBUTING.md`'s read-only constraint is about harness
 stores and still holds exactly as written, but `SECURITY.md` has to say what is written and where:
-including that nothing ever deletes or rotates the log, so `~/.cargento` accumulates one log per port
+including that nothing ever deletes or rotates the log, so `~/.compass` accumulates one log per port
 indefinitely.
 
 ## D-4: Liveness is an HTTP probe. Never a signal, and never `os.kill`
@@ -131,13 +131,13 @@ So `--status` requests `/api/health` and reads the state file, in that order of 
 
 | Observation | Report |
 |---|---|
-| answered `/api/health` as Cargento | running, with the pid *it* reported, start time and URL |
-| answered, but not as Cargento | the port belongs to another process, so touch nothing |
+| answered `/api/health` as Compass | running, with the pid *it* reported, start time and URL |
+| answered, but not as Compass | the port belongs to another process, so touch nothing |
 | nothing answered, state file present | stale; `--stop` deletes the file and says so |
 | nothing answered, no state file | absent: nothing recorded and nothing listening |
 
 Row two is why the pid is in the health response at all. Without it, "something is listening" reads
-as "Cargento is running", and the next step is a kill aimed at an innocent process.
+as "Compass is running", and the next step is a kill aimed at an innocent process.
 
 The pid the state file records is deliberately *not* compared against the pid health reports, and
 `--status` believes health when they differ. A state file is a claim about the past. A killed
@@ -193,7 +193,7 @@ still one implementation of stopping and no signal-handling difference between p
 reconcile.
 
 A wedged server that has stopped serving cannot be stopped this way. The existing per-platform kill
-blocks therefore stay in the skill body, demoted from the documented way to stop Cargento to the last
+blocks therefore stay in the skill body, demoted from the documented way to stop Compass to the last
 resort for a server that has stopped answering. A `--force` flag that reimplements them in Python is
 not worth its own cross-platform surface.
 
@@ -300,7 +300,7 @@ refresh failure and must not drive the stalled bookkeeping.
 The one thing this design refused to assume rather than reason about: whether `osascript display
 notification`, fired from a fully double-forked session leader with no controlling terminal, still
 reaches the user's Aqua session. It does. A `--daemon` server, started under a temporary
-`CARGENTO_HOME`, received a `permission_request` POST and answered `{"ok":true}`; its log file stayed
+`COMPASS_HOME`, received a `permission_request` POST and answered `{"ok":true}`; its log file stayed
 at 0 bytes, and `notify_mac()` logs any non-zero `osascript` exit through `diag()`, which in a
 daemon, goes to that same log file, so a silent log is itself the evidence that `osascript`
 reported success. A control `osascript` invocation in the same shell exited 0 for comparison.
@@ -325,7 +325,7 @@ valuable and does not otherwise touch.
   already three code blocks for one idea.
 - **Signals for stopping.** D-4: unusable on Windows, and D-5 gets one code path without them.
 - **`psutil` for process liveness.** Stdlib only, permanently.
-- **An idle timeout that exits on its own.** The request was a way to turn Cargento off, and there is
+- **An idle timeout that exits on its own.** The request was a way to turn Compass off, and there is
   now a button and a flag. A dashboard that vanishes because nobody looked at it is a new surprise,
   not a fix for the old one.
 - **Platform-correct runtime directories.** D-3.
@@ -335,6 +335,6 @@ valuable and does not otherwise touch.
   the macOS CI runner, where seven tests that bind, or spawn something that binds, accounted for
   285 seconds of that leg's 316 while the other 1936 finished in 31. Ubuntu answers the same lookup
   from `/etc/hosts` instantly, which is why it read as a macOS problem rather than as a lookup
-  nobody needed. `CargentoHTTPServer.server_bind` calls `socketserver.TCPServer.server_bind`
+  nobody needed. `CompassHTTPServer.server_bind` calls `socketserver.TCPServer.server_bind`
   directly and sets `server_name` and `server_port` itself. Restoring the `super()` call reinstates
   the stall, for the dashboard's own startup as much as for the suite.

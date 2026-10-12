@@ -18,7 +18,7 @@ function TerminalCoverage({ model }: { readonly model: AttentionModel }) {
   if (!controls.focus) return <p>{FOCUS_OFF_LINE}</p>;
   const reached = rows.filter((subject) => subject.session?.['focusable'] === true).length;
   return (
-    <p>{`Terminal raise: ${String(reached)} of ${String(rows.length)} ${plural(rows.length, 'waiting row carries', 'waiting rows carry')} a terminal Cargento can reach.`}</p>
+    <p>{`Terminal raise: ${String(reached)} of ${String(rows.length)} ${plural(rows.length, 'waiting row carries', 'waiting rows carry')} a terminal Compass can reach.`}</p>
   );
 }
 

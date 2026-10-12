@@ -70,7 +70,7 @@ const root = await mkdtemp(join(scratch, 'proof-'));
 let browser;
 try {
   // A production scratch build exercises these layers' sources without replacing tracked page bytes.
-  for (const directory of ['frontend', 'cargento'])
+  for (const directory of ['frontend', 'compass'])
     await cp(join(REPOSITORY, directory), join(root, directory), {
       recursive: true,
       filter: copyProofPath,
@@ -243,7 +243,7 @@ try {
       await howto.click();
       const popup = page.getByRole('dialog', { name: 'How Intent and drift works', exact: true });
       await popup.waitFor();
-      assert.match(await popup.innerText(), /Cargento never writes into sessions/);
+      assert.match(await popup.innerText(), /Compass never writes into sessions/);
       await page.keyboard.press('Escape');
       await popup.waitFor({ state: 'hidden' });
       await page.evaluate(() => {
@@ -392,7 +392,7 @@ try {
         await page.evaluate(() =>
           globalThis.dispatchEvent(
             new StorageEvent('storage', {
-              key: 'cargento.next.revision',
+              key: 'compass.next.revision',
               newValue: '9999999999.journey',
             }),
           ),

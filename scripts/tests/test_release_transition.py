@@ -623,7 +623,7 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(1, result.returncode)
 
     def test_the_rehearsal_driver_refuses_a_remote_that_is_not_a_local_path(self) -> None:
-        git(self.fx.work, "remote", "set-url", "origin", "https://example.invalid/cargento.git")
+        git(self.fx.work, "remote", "set-url", "origin", "https://example.invalid/compass.git")
         result = self.cli("rehearse", "--tag", "v0.2.0")
         self.assertEqual(1, result.returncode)
         self.assertIn("not a local path", result.stdout)

@@ -339,7 +339,7 @@ class RepeatedQualification(GrantFourAllowance):
                 },
             },
         }
-        from cargento_runtime import (  # noqa: PLC0415 - actual source stamp in synthetic fixture
+        from compass_runtime import (  # noqa: PLC0415 - actual source stamp in synthetic fixture
             observer,
         )
 

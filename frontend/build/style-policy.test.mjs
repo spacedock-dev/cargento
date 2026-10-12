@@ -37,7 +37,7 @@ test('the scale scan rejects defaults and arbitrary type sizes with variants', a
 
 test('only components reachable from the shipped entry have importers', async () => {
   const { unusedUi } = await import('./style-policy.mjs');
-  const copy = await mkdtemp(join(tmpdir(), 'cargento-ui-policy-'));
+  const copy = await mkdtemp(join(tmpdir(), 'compass-ui-policy-'));
   try {
     await mkdir(join(copy, 'frontend/src/ui'), { recursive: true });
     await writeFile(
@@ -79,7 +79,7 @@ test('the CSS count survives Windows checkout line endings and strips only the o
 });
 
 async function policyFixture(run) {
-  const copy = await mkdtemp(join(tmpdir(), 'cargento-style-policy-'));
+  const copy = await mkdtemp(join(tmpdir(), 'compass-style-policy-'));
   try {
     await mkdir(join(copy, 'frontend/src/styles'), { recursive: true });
     await mkdir(join(copy, 'frontend/src/lib'), { recursive: true });
@@ -114,7 +114,7 @@ test('custom variants cannot hide declarations in the excluded Tailwind entry', 
       );
     }
     for (const variant of [
-      '@custom-variant dark (&:where(.cargento-light-mode, .cargento-light-mode *));',
+      '@custom-variant dark (&:where(.compass-light-mode, .compass-light-mode *));',
       '@custom-variant data-open (&:where([data-open]));',
       '@custom-variant data-open { @slot; }',
       '@custom-variant data-closed { &:where([data-closed]) { @slot; } }',

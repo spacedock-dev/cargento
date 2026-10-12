@@ -11,7 +11,7 @@ import { field, isRecord } from './raw';
 
 const LEDES: Readonly<Record<ProjectTab, string>> = {
   now: 'Now: what is running in this project this minute, and how sessions here have ended.',
-  course: 'Course: direction changes Cargento observed in the session record.',
+  course: 'Course: direction changes Compass observed in the session record.',
   decisions: 'Decisions: rulings found in the record, and what each one has been spent on.',
   console: 'Console: the read-only terminal of one selected session, and the controls for it.',
 };

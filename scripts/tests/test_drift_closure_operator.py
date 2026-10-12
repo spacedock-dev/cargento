@@ -63,7 +63,7 @@ class NativeOperator(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
         config, _, _, _, self.reading = replay._runtime()
-        from cargento_runtime import (  # noqa: PLC0415 - native runtime loaded above
+        from compass_runtime import (  # noqa: PLC0415 - native runtime loaded above
             observer,
             reading_route,
         )
@@ -298,7 +298,7 @@ class NativeOperator(unittest.TestCase):
                 },
             },
         }
-        from cargento_runtime.web import page  # noqa: PLC0415 - actual native projection fixture
+        from compass_runtime.web import page  # noqa: PLC0415 - actual native projection fixture
 
         self.proto["input_digest_bindings"]["native_page_projection"] = grading.digest(
             {
@@ -797,7 +797,7 @@ class NativeOperator(unittest.TestCase):
 
 class SyntheticFixtureIsolation(unittest.TestCase):
     def test_fake_native_fixture_runs_on_windows_without_admitting_the_native_route(self) -> None:
-        from cargento_runtime import reading_route  # noqa: PLC0415 - native refusal outside fixture
+        from compass_runtime import reading_route  # noqa: PLC0415 - native refusal outside fixture
 
         with mock.patch.object(platform, "system", return_value="Windows"):
             self.assertEqual("", reading_route.destination("claude"))

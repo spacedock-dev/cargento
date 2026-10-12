@@ -211,7 +211,7 @@ describe('Keep names the revision it drew, however the record moves', () => {
     await settle(page);
     expect(page.allPosts().map((post) => post.path)).toEqual(['/api/direction']);
     expect(text('.next-cockpit-direction-whole')).toContain(
-      'Only the start of this direction is shown; it is longer than Cargento opens.',
+      'Only the start of this direction is shown; it is longer than Compass opens.',
     );
   });
 

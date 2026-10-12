@@ -20,10 +20,10 @@ import levels_cases as lc
 ACTIVE_GAP_SECONDS = 1800.0
 PROOF_KINDS = ("person-correction", "failed-check", "retraction", "sibling-result")
 GAP_CLASSES = ("defect", "status", "scope-or-plan", "communication", "none", "unclear")
-_RUNTIME = Path(__file__).resolve().parents[1] / "cargento/skills/cargento"
+_RUNTIME = Path(__file__).resolve().parents[1] / "compass/skills/compass"
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
-from cargento_runtime.records import injected_prompt  # noqa: E402 - load the canonical filter
+from compass_runtime.records import injected_prompt  # noqa: E402 - load the canonical filter
 
 
 def _number(value: Any) -> float | None:

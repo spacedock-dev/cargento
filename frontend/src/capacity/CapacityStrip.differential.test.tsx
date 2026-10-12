@@ -20,7 +20,7 @@ import { RailUsage } from './UsageConsent';
 const legacy = loadLegacyCapacity();
 const CASES = 80;
 const SEEDS = CASES;
-const CONSENT = 'cargento.next.usage.consent';
+const CONSENT = 'compass.next.usage.consent';
 
 const parse = (html: string): Element[] => {
   const template = document.createElement('template');

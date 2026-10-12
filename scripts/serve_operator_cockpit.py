@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import ClassVar
 
 LOOPBACK = "127.0.0.1"
-DEFAULT_REMOTE = "https://github.com/clkao/cargento.git"
+DEFAULT_REMOTE = "https://github.com/clkao/compass.git"
 DEFAULT_BRANCH = "proto/operator-cockpit"
 HOP_HEADERS = {
     "connection",
@@ -170,7 +170,7 @@ class BackendProcess:
 
 
 class BackendPool:
-    """Blue/green Cargento processes behind one published address."""
+    """Blue/green Compass processes behind one published address."""
 
     def __init__(
         self,
@@ -189,13 +189,13 @@ class BackendPool:
         port = self.ports[0]
         if self.current is not None and self.current.port == port:
             port = self.ports[1]
-        server = root / "cargento" / "skills" / "cargento" / "server.py"
+        server = root / "compass" / "skills" / "compass" / "server.py"
         if not server.is_file():
-            raise IntegrationError(f"checkpoint has no Cargento launcher: {server}")
+            raise IntegrationError(f"checkpoint has no Compass launcher: {server}")
         self.log_dir.mkdir(parents=True, exist_ok=True)
         log_handle = (self.log_dir / f"backend-{port}.log").open("ab")
         environment = os.environ.copy()
-        environment["CARGENTO_HOME"] = str(self.log_dir / "cargento-home")
+        environment["COMPASS_HOME"] = str(self.log_dir / "compass-home")
         process = subprocess.Popen(  # noqa: S603 - argv is fully controlled here
             [str(self.python), str(server), "--port", str(port), "--no-usage"],
             cwd=root,

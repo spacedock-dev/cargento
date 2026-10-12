@@ -29,7 +29,7 @@ const OWNED_PORTS = [4581, 4582, 4583, 4584, 4585, 4586, 4594, 4595, 4597, 4598,
 
 const here = dirname(fileURLToPath(import.meta.url));
 const help = `Usage: node scripts/frontend_fluidity.mjs --output FILE [options]
-  --chrome FILE       Chrome executable (or CARGENTO_FLUIDITY_CHROME, then CARGENTO_BASELINE_CHROME)
+  --chrome FILE       Chrome executable (or COMPASS_FLUIDITY_CHROME, then COMPASS_BASELINE_CHROME)
   --python FILE       Python executable; default python3
   --port NUMBER       Owned backend port 4581..4586, 4594, 4595 or 4597..4599; default 4581, no fallback
   --samples NUMBER    Updates per healthy cohort; default 3
@@ -41,7 +41,7 @@ No model calls, native focus, usage reads, real session stores, or npm dependenc
 `;
 
 function options(argv) {
-  const result = {python: 'python3', chrome: process.env.CARGENTO_FLUIDITY_CHROME || process.env.CARGENTO_BASELINE_CHROME,
+  const result = {python: 'python3', chrome: process.env.COMPASS_FLUIDITY_CHROME || process.env.COMPASS_BASELINE_CHROME,
     port: 4581, samples: 3, navigations: 5, timeoutMs: 15000};
   const keys = {'--output': 'output', '--chrome': 'chrome', '--python': 'python',
     '--port': 'port', '--samples': 'samples', '--navigations': 'navigations', '--timeout-ms': 'timeoutMs'};
@@ -52,7 +52,7 @@ function options(argv) {
     result[key] = ['port', 'samples', 'navigations', 'timeoutMs'].includes(key) ? Number(argv[++i]) : argv[++i];
   }
   if (!result.output) throw Error('--output is required');
-  if (!result.chrome) throw Error('--chrome or CARGENTO_FLUIDITY_CHROME is required');
+  if (!result.chrome) throw Error('--chrome or COMPASS_FLUIDITY_CHROME is required');
   if (!OWNED_PORTS.includes(result.port)) throw Error('port must be 4581..4586, 4594, 4595 or 4597..4599');
   for (const key of ['samples', 'navigations', 'timeoutMs']) {
     if (!Number.isInteger(result[key]) || result[key] < 1 || result[key] > (key === 'timeoutMs' ? 120000 : 100)) {
@@ -262,7 +262,7 @@ async function run(o) {
       if (!ack.ack || ack.sequence !== sequence) throw Error('fixture control refused: ' + JSON.stringify(ack));
       return ack;
     };
-    profile = await mkdtemp(join(tmpdir(), 'cargento-fluidity-chrome-'));
+    profile = await mkdtemp(join(tmpdir(), 'compass-fluidity-chrome-'));
     chrome = spawn(o.chrome, ['--headless=new', '--remote-debugging-port=0',
       `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
       '--disable-background-networking', '--disable-component-update', '--disable-sync',
@@ -421,7 +421,7 @@ async function run(o) {
     // so it holds no stream, and a stream count of zero would say nothing about leaks. Drop the
     // lease and wait for this document to take it (it re-elects every two seconds), so the
     // repeated navigation below runs with the one stream a leading tab owns.
-    await evaluate(`localStorage.removeItem('cargento.next.leader')`);
+    await evaluate(`localStorage.removeItem('compass.next.leader')`);
     report.leadership = {leaderAcquired: await evaluate(`__baseline.wait(() => __baseline.eventSources.size === 1, ${o.timeoutMs}).then(() => true, () => false)`)};
     report.navigation.push({step: 0, ...await footprint()});
     for (let step = 1; step <= o.navigations; step++) {

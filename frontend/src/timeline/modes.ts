@@ -5,7 +5,7 @@ import { graphModeScope, type GraphMode, type GraphModeStore } from '../storage'
 /* The timeline's activity filter as reader state: per project and, when a session is focused, per session,
    kept across a redraw, across navigating away and back, and across a reload.
 
-   The persistence is the released `cargento.next.graph.mode` family in `../storage` (one JSON map, a NUL
+   The persistence is the released `compass.next.graph.mode` family in `../storage` (one JSON map, a NUL
    between project and session, no TTL, an old build's single empty key discarded on read). This file adds
    only what a component needs on top of it: a way to be told that a choice was made, because the storage
    codec is deliberately a plain store with nothing to subscribe to.

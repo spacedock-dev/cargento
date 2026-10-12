@@ -25,7 +25,7 @@
  * coverage step names the surfaces this run has to have reached so an emptied render fails instead of passing.
  *
  * The page is whatever `support/world.mjs` serves: development by default, the production bundle with
- * `CARGENTO_E2E_BUNDLE=production`. Run with `pnpm test:css:browser`. `CARGENTO_MUTATION=<name>` serves a
+ * `COMPASS_E2E_BUNDLE=production`. Run with `pnpm test:css:browser`. `COMPASS_MUTATION=<name>` serves a
  * scratch copy of the tree with one deliberate break (see MUTATIONS) and the run is then expected to FAIL;
  * `CSS_CONTRACT_WORLDS=sessions,intent,console` narrows the worlds (the coverage and light-scheme steps then
  * fail by design). Models, usage, notifications, the clipboard and the terminal are off or replaced, and every
@@ -127,7 +127,7 @@ const INTENT_REFERENCES = {
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 const E = encodeURIComponent;
 const WORLDS = (process.env.CSS_CONTRACT_WORLDS || 'sessions,intent,console').split(',');
-const MUTATION = process.env.CARGENTO_MUTATION || '';
+const MUTATION = process.env.COMPASS_MUTATION || '';
 const INTENT_CHROME_ONLY = process.env.CSS_CONTRACT_INTENT_CHROME_ONLY === '1';
 const PROJECT_ONLY = process.env.CSS_CONTRACT_PROJECT_CHROME_ONLY === '1';
 const PROJECT_SUPPLEMENT = process.env.CSS_CONTRACT_PROJECT_SUPPLEMENT === '1';
@@ -686,8 +686,8 @@ const sweepFocus = (ring, selector) => {
 
 /* ---- the worlds ---- */
 async function scratchCopy() {
-  const copy = await mkdtemp(join(tmpdir(), 'cargento-css-contract-'));
-  for (const folder of ['frontend', 'cargento']) {
+  const copy = await mkdtemp(join(tmpdir(), 'compass-css-contract-'));
+  for (const folder of ['frontend', 'compass']) {
     await cp(join(REPOSITORY, folder), join(copy, folder), {
       recursive: true,
       filter: (path) =>

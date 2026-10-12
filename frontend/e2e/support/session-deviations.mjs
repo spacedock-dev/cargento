@@ -90,7 +90,7 @@ export function normaliseSessionRecord(record, evidence = {}) {
               '',
             )
             .replace(
-              /What analysis does(?:When you analyze drift, Cargento lists where this session departed from your saved goal\. |Choose a goal or use your prompt, then analyze drift: Cargento lists where this session departed from it\. )It never writes into the session, so steering stays yours\./g,
+              /What analysis does(?:When you analyze drift, Compass lists where this session departed from your saved goal\. |Choose a goal or use your prompt, then analyze drift: Compass lists where this session departed from it\. )It never writes into the session, so steering stays yours\./g,
               '',
             )
             .trimEnd();

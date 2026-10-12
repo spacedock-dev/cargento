@@ -24,7 +24,7 @@ test('isolates every store/data input and keeps only Windows loader locations', 
   for (const key of [
     'HOME',
     'USERPROFILE',
-    'CARGENTO_HOME',
+    'COMPASS_HOME',
     'XDG_DATA_HOME',
     'LOCALAPPDATA',
     'APPDATA',
@@ -73,7 +73,7 @@ test('HMAC fixed cross-language vector binds challenge, both origins and both ge
     vite_pid: 12345,
   };
   const signature = handshakeSignature(manifest, '11'.repeat(32));
-  assert.equal(signature, '61b9ed2f5493ce89d676af21bc7bbd27f2e92313d95b629dd4bda7528d7cf9a4');
+  assert.equal(signature, '57b38c7f16c2655778f5e2f994b677722d6c9d55fcd925bd32c2cf003ba8bf63');
   assert.notEqual(
     handshakeSignature({ ...manifest, backend_generation: '44'.repeat(16) }, '11'.repeat(32)),
     signature,

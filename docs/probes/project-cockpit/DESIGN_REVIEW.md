@@ -1,7 +1,7 @@
 # Operator cockpit: design review
 
-This review records the original import of three commits from `clkao/cargento` at `3ed3209`,
-merged with Cargento main through `58caa25`. The captures and final design questions below
+This review records the original import of three commits from `clkao/compass` at `3ed3209`,
+merged with Compass main through `58caa25`. The captures and final design questions below
 predate the v2 reconciliation. The current layout and the decision to keep the cockpit while
 retaining v2's evidence rules are recorded in the
 [reconciliation rationale](../../design-next-ui.md#cockpit-reconciliation).
@@ -22,7 +22,7 @@ behavior. Finished teammates no longer count as active cockpit work.
 Start the server from this branch's worktree, using a spare port:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 18886 --no-usage --no-git
+python3 compass/skills/compass/server.py --port 18886 --no-usage --no-git
 ```
 
 Open `http://127.0.0.1:18886/`. The two switches keep quota fetching and git probes

@@ -1,7 +1,7 @@
 # Design: the usage quota surface
 
 Owner for how quota numbers reach the dashboard: the disk readers, the Claude and Cursor fetchers,
-the consent path, and the exact response fields Cargento reads. The security boundaries themselves
+the consent path, and the exact response fields Compass reads. The security boundaries themselves
 live in SECURITY.md ("Usage quota reads"); this document records how the implementation satisfies
 them and which alternatives were rejected. The module map is owned by
 [design-runtime-architecture.md](design-runtime-architecture.md).
@@ -150,7 +150,7 @@ a forecast. Q-9 fits its slope on a published percentage and projects when that 
 
 <a id="q-2"></a>
 
-## Q-2: The response fields Cargento reads
+## Q-2: The response fields Compass reads
 
 From `GET https://api.anthropic.com/api/oauth/usage` (with `anthropic-beta: oauth-2025-04-20`), two
 fields per window are consumed. The shapes below are measured rather than inferred: two live
@@ -218,7 +218,7 @@ has to label the rows. That one expired differently: the parse and the renderer 
 change, so the shape was settled with its rendering rather than in front of it, and the missing reset
 was the first thing decided rather than the thing inherited (see the bullet above). The entry is not
 kept under "Rejected alternatives worth keeping rejected", because every other entry there describes
-something Cargento does not do, and a heading that promises a standing rejection over an entry the
+something Compass does not do, and a heading that promises a standing rejection over an entry the
 code has overtaken misleads any reader who skims the headings. What is worth carrying forward is the
 sequence: prose about a payload was wrong in a way tests could not catch, and one recorded response
 both settled it and changed the decision.
@@ -279,7 +279,7 @@ other two platforms is what unblocks them.
 ## Q-12: budget against clock, and why there is still no verdict
 
 A9 asked for one safe-to-start light and was cancelled: every quota producer signals failure as an
-empty list, so a composed light reads "safe" exactly when Cargento can see nothing. A5 fitted a burn
+empty list, so a composed light reads "safe" exactly when Compass can see nothing. A5 fitted a burn
 projection and produced five false greens across three review rounds, every one inside the binary
 race verdict and not one in the numbers; the fitted rate and its band survived a 4,000-case
 randomised sweep. Q-9 then retired the client-side projection along with the browser buffer it
@@ -451,7 +451,7 @@ Failures are deliberately not one bucket, and there are three of them.
 A stored `expiresAt` in the past publishes `lapsed`, read from disk with no request made at all. It
 was published as `expired` alongside the refusal below until a reader on 0.14.0 was told her token
 had expired and to sign in again while every one of her Claude Code sessions was working normally.
-Nothing was wrong with her account. Cargento never refreshes a token, so it reads whatever storage
+Nothing was wrong with her account. Compass never refreshes a token, so it reads whatever storage
 holds, and Claude Code rewrites that file only while it runs, so a session already open keeps
 working on a token it holds in memory. A lapsed stamp beside healthy sessions is therefore the
 expected payload pairing for anyone whose harness was closed overnight, not a contradiction. Start
@@ -469,7 +469,7 @@ band entirely, because a sign-in is wrong advice when the harness session may be
 surfaces in diagnostics as a fixed category word plus an exception type name; no value read from a
 credential source or a response is ever interpolated.
 
-Droid has no token Cargento may read, and DEC-10 (DRC-4333) settled what it sends instead. The
+Droid has no token Compass may read, and DEC-10 (DRC-4333) settled what it sends instead. The
 Droid CLI keeps a 44-byte encryption key in the macOS Keychain, service `Factory CLI`, account
 `auth-encryption-key-security-cli`, and the session token encrypted with it in
 `~/.factory/auth.v2.loginkeychain`, beside a refresh lock the CLI takes when it rotates the session.
@@ -477,7 +477,7 @@ Reading that would mean decrypting another program's store to lift a credential 
 itself, and the never-refresh rule above has nothing to bound in that arrangement, so it is
 rejected below. The vendor documents one other route, an API key the user creates and the CLI
 accepts through `FACTORY_API_KEY` on the same bearer header. When the reader ships it takes that
-variable from Cargento's own process environment, presents it to one endpoint as a bearer token,
+variable from Compass's own process environment, presents it to one endpoint as a bearer token,
 and does nothing else with it: not written, not logged, not served, not exchanged. A missing
 variable keeps Droid out of the band with no sign-in advice, since the harness may be signed in and
 working normally without it. Whether the limits endpoint accepts a key is unmeasured until an
@@ -489,7 +489,7 @@ same PR as the reader.
 Antigravity keeps no quota on disk and its stored credential is not usable as a bearer token, so
 neither the Codex approach nor the Claude one applies. What it does do is invoke a user-configured
 command on every agent-state change and pipe it a JSON state payload, and that payload carries a
-first-class `quota` object. Pointing that command at Cargento is the whole integration.
+first-class `quota` object. Pointing that command at Compass is the whole integration.
 
 **No new script ships for this.** `notify_hook.py` was already a stdin-reading loopback forwarder
 that validates its target, disables proxying, refuses redirects and always exits 0, with the URL as
@@ -501,7 +501,7 @@ python3 <skill-dir>/notify_hook.py http://127.0.0.1:4553/api/usage
 
 `POST /api/usage` mirrors `/api/notify` exactly: the same `_local_ok()` gate, the declared length
 checked before any read, and a malformed or non-object body degraded to `{}` rather than raised.
-Receipts live in memory beside the fetch cache under the same lock, so Cargento's two written paths
+Receipts live in memory beside the fetch cache under the same lock, so Compass's two written paths
 are unchanged and `--diagnose` stays free of side effects by construction.
 
 Three decisions worth keeping:
@@ -531,7 +531,7 @@ first-run banner must not appear; the user installed the forwarder deliberately,
 `--no-usage` still drops the provider, because a user turning usage off means the section, not just
 its network half, and it also drops the quota fields at ingest so a receipt pushed while the flag is
 set is not retained. The endpoint still answers 200: a status-line command must never see an error
-from Cargento.
+from Compass.
 
 ## Q-10: A capacity comparison is between authorities, inside one horizon, with its holes on screen
 
@@ -542,19 +542,19 @@ harness rows already publish quota into the band above. What has never been agre
 figures mean placed side by side, and a comparison built without settling that does not skip the
 question, it answers it silently in whatever way the first renderer happens to. So this section
 settles it before anything is built: what the unit of comparison is, which authorities may enter
-one, what Cargento refuses to compute, and what the surface says on a machine where it can compare
+one, what Compass refuses to compute, and what the surface says on a machine where it can compare
 nothing. DEC-1's consent posture is unchanged by any of it.
 
 ### What each authority publishes, and when it is there
 
-Six authorities are named in Cargento today, five of them with a reader, and the table below is the
+Six authorities are named in Compass today, five of them with a reader, and the table below is the
 whole of question one. It is not a closed list of what a user can spend. Pi supports twenty-odd
-providers, most of them direct API keys with no Cargento presence at all, and a Gemini CLI session
+providers, most of them direct API keys with no Compass presence at all, and a Gemini CLI session
 on an enterprise Code Assist or API-key route is Google again, with nothing saying its allowance is
 the one Antigravity's receipt reports. Those are absent from the table because nothing reads them,
 which is itself one of the states question three has to render rather than hide.
 
-| Authority | Harness rows spending it | What Cargento reads | There when |
+| Authority | Harness rows spending it | What Compass reads | There when |
 |---|---|---|---|
 | Anthropic | Claude Code, and any harness signed in to the same subscription | percent of a 5 hour and a 7 day rolling window (Q-2) | the store exists, the disclosure has been answered, and the last fetch landed inside `window_hours` |
 | OpenAI | Codex | percent per window, classified by the window's own length (Q-1) | Codex left a snapshot inside `window_hours` |
@@ -572,7 +572,7 @@ done against, and the record is
 Droid's `/limits` command is `GET https://api.factory.ai/api/billing/limits`, and on that account
 it answered with four top-level fields and no `limits` object, because `usesTokenRateLimitsBilling`
 is false there; Droid's own panel then said it was unable to fetch credit limits. So for that
-account the vendor publishes no window, which is a finding and not the absence of one, and Cargento
+account the vendor publishes no window, which is a finding and not the absence of one, and Compass
 can show nothing the CLI cannot. Individual plans are metered differently, three independent rolling
 windows of Factory Standard Credits at 5 hours, 7 days and 30 days, and the CLI is written against
 `limits.standard.fiveHour`, `weekly` and `monthly`, each with a `usedPercent`; that shape is read in
@@ -622,9 +622,9 @@ number no authority publishes, an entitlement or a price or a plan equivalence, 
 invented here, and an invented percentage renders identically to a measured one. This is the rule
 that already keeps Q-6's figure out of the burn projection, applied one layer out.
 
-Cargento also does not name the harness to move to. It publishes each authority's percentage, the
+Compass also does not name the harness to move to. It publishes each authority's percentage, the
 horizon that percentage is over, and the authorities it could not read, and the reader picks. Two
-reasons, and the second is the one that is easy to lose. A destination depends on facts Cargento
+reasons, and the second is the one that is easy to lose. A destination depends on facts Compass
 does not hold: whether the task needs a particular model, which tools and servers are wired into
 that harness, whether the repository is even checked out where it runs. And a recommendation is a
 verdict composed over inputs that can be missing, which is what killed A9 on the Visibility board
@@ -690,7 +690,7 @@ payload gets captured before a parser gets written.
 
 So attribution for every passthrough harness, measured against a live store, is a precondition for
 the comparison rather than a detail of it. Until a row names the authority its turns spend, that row
-enters no total: it renders as a route Cargento cannot attribute, which is a third state again, and
+enters no total: it renders as a route Compass cannot attribute, which is a third state again, and
 not as its own authority and not folded into a guess. The obvious guess is available and is refused
 below.
 
@@ -745,7 +745,7 @@ the difference between the two is the whole decision.
 Consumption's absence is a fact about the harness. Nine harnesses keep no billing ledger, so a line
 with no `used` in it is telling the truth about the world: there is nothing to report. Model's
 absence is never a fact about the world. Every session runs on some model, so an unset value is only
-a gap in Cargento's reading, and a blank slot is indistinguishable from a measurement. That is the
+a gap in Compass's reading, and a blank slot is indistinguishable from a measurement. That is the
 same argument the rate meter already settled, where an omitted meter left a blank corner reading as
 zero and the fix was to print "rate unknown" instead.
 
@@ -873,7 +873,7 @@ file, reproduce the CLI's decryption. It is not done, for two reasons that do no
 cleverer implementation. The store belongs to another program and its format is that program's to
 change without notice, so a reader here would break silently on the next Droid release and, worse,
 could read the wrong bytes and present them as a credential. And the session it protects is one the
-CLI rotates under a refresh lock, so Cargento would be lifting a value out from under a process that
+CLI rotates under a refresh lock, so Compass would be lifting a value out from under a process that
 is about to replace it, which is the race the never-refresh rule exists to stay out of. The API key
 route in Q-5 costs the user one key and has neither problem.
 
@@ -926,7 +926,7 @@ before writing any parser.
 
 The Admin, Analytics and AI Code Tracking APIs are Cursor's only documented ones, and they are
 org-scoped, with the latter two Enterprise-gated. `GetTeamSpend` answers 401 "Team ID is required".
-Cargento serves individuals, so none of them qualify, exactly as the survey behind DEC-1 predicted.
+Compass serves individuals, so none of them qualify, exactly as the survey behind DEC-1 predicted.
 
 ### Rendering Cursor's monthly cycle in the weekly slot
 
@@ -943,7 +943,7 @@ Scope note before the detail: it is the *fetch* that is rejected here. Antigravi
 by reading what the CLI pushes to its own status-line command, which is Q-7. Nothing below was
 wasted, but none of it is the reason the tile works today.
 
-Antigravity is the Google authority, and it is the obvious second vendor: Cargento already reads
+Antigravity is the Google authority, and it is the obvious second vendor: Compass already reads
 its sessions, and its CLI displays quota on a status line. It was attempted with the owner's
 approval, against a live install, and it does not work. Recorded here at length because everything
 about it looks promising until the last step, so the next person will otherwise repeat the work.
@@ -974,7 +974,7 @@ Where it fails, on two independent grounds:
    that a refresh happened, never what it returned. The cache is in memory.
 
 The opt-in sidecar that DEC-1 kept as a fallback does not rescue this: a sidecar would meet the same
-opaque credential. So the blocker is the credential format, not Cargento's architecture, and no
+opaque credential. So the blocker is the credential format, not Compass's architecture, and no
 option in DEC-1 reaches it.
 
 Two things learned that outlive the attempt. First, Google's quota shape is not this contract's
@@ -1024,7 +1024,7 @@ wrong number looks wrong. A wrong verdict looks like good news.
 
 So the row states what was measured: the rate, the uncertainty on it, and the interval in which the
 window is projected to fill. The reader compares that against the reset countdown Q-1 already puts
-on the same row, and Cargento gives up the one bit it could not compute reliably while keeping every
+on the same row, and Compass gives up the one bit it could not compute reliably while keeping every
 figure the reader needs to compute it.
 
 This is the judgement that killed A9 on the Visibility board, "a single safe-to-start light": a
@@ -1042,7 +1042,7 @@ is why they will be proposed again.
 One normalized headroom score per authority, so that a percentage, a dollar figure and an AI Unit
 count all land on a 0 to 100 axis. It needs an exchange rate between a subscription window and a
 metered dollar and a unit whose entitlement is not published, and no authority publishes any of
-those, so the rate would be chosen here. The number would then be a Cargento opinion rendered in the
+those, so the rate would be chosen here. The number would then be a Compass opinion rendered in the
 same type as four measured percentages, and the reader would have no way to tell which was which.
 
 Giving Copilot a denominator by inferring an entitlement from observed spend, or from the plan name,

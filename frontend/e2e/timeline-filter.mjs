@@ -4,14 +4,14 @@
  * The React page runs in Chromium over a synthetic board; the project context answers with one fixed semantic
  * model (`frontend/test/terminal_backend.py`), so there are events to filter and fold. A differential compares what
  * a reader can observe with what the previous interface showed: the heading, which filter button is pressed, the
- * events each choice shows (id, kind and lane, in order), and the one `cargento.next.graph.mode` map written, byte
+ * events each choice shows (id, kind and lane, in order), and the one `compass.next.graph.mode` map written, byte
  * for byte. What a unit test cannot see is proved here: the choice surviving a reload, project and session scopes
  * staying independent, an old build's empty key being discarded, an open disclosure keeping its state (and its
  * node) across live updates and leaving the route, keyboard focus staying on the button that was pressed, no
  * duplicate reads under StrictMode, and the layout at 320 and 375 CSS px.
  *
  * Run with `node frontend/e2e/timeline-filter.mjs` (it is the second half of `pnpm test:terminal:browser`);
- * `CARGENTO_E2E_STEPS=<regex>`, `CARGENTO_SCREENSHOTS=1` and `CARGENTO_MUTATION=<name>` behave as in
+ * `COMPASS_E2E_STEPS=<regex>`, `COMPASS_SCREENSHOTS=1` and `COMPASS_MUTATION=<name>` behave as in
  * `terminal-parity.mjs`.
  *
  * What the previous interface said is read through `support/golden.mjs` from
@@ -41,9 +41,9 @@ import { PRODUCTION as SHIPPED } from './support/world.mjs';
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 
 const SHOTS = join(REPOSITORY, 'docs/screenshots');
-const shots = process.env.CARGENTO_SCREENSHOTS === '1';
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
-const KEY = 'cargento.next.graph.mode';
+const shots = process.env.COMPASS_SCREENSHOTS === '1';
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
+const KEY = 'compass.next.graph.mode';
 
 const MUTATIONS = {
   // A choice is held for the tab and never written: a reload forgets it.

@@ -1,4 +1,4 @@
-# Cargento future UI: visual walkthrough
+# Compass future UI: visual walkthrough
 
 This collection explains the accepted `future-ui-command-surface` experiment. It compares the original inventory-first UI with a new exception-first command surface designed to answer five questions quickly:
 
@@ -12,7 +12,7 @@ The “after” screenshots were captured from the live local payload on 2026-09
 
 ## The 30-second explanation
 
-> Cargento used to start with what exists. The new direction starts with what needs understanding or action. Attention summarizes the observed fleet and says how complete the evidence is; Projects and Sessions remain one click away as full maps. Drill-downs only show facts that harnesses actually publish. Missing source data is qualified or omitted instead of being turned into a vague error or an invented status.
+> Compass used to start with what exists. The new direction starts with what needs understanding or action. Attention summarizes the observed fleet and says how complete the evidence is; Projects and Sessions remain one click away as full maps. Drill-downs only show facts that harnesses actually publish. Missing source data is qualified or omitted instead of being turned into a vague error or an invented status.
 
 ## Before: the lede was buried
 
@@ -32,7 +32,7 @@ The original overview starts with a generic “Refresh stalled” error, a globa
 
 ![Original session page with empty Assignment, Next, and Captain cells](03-before-session.png)
 
-Assignment, Next, and Captain appeared even when the harness had not published those facts. The result implies that Cargento failed to find expected information, when the more honest statement is that those concepts are not available from every source.
+Assignment, Next, and Captain appeared even when the harness had not published those facts. The result implies that Compass failed to find expected information, when the more honest statement is that those concepts are not available from every source.
 
 ## After: attention first, evidence always reachable
 
@@ -48,7 +48,7 @@ Only a source-published request can create Captain responsibility. When there is
 
 ![Expanded evidence coverage by harness](12-after-attention-coverage.jpg)
 
-The evidence disclosure explains which harnesses report needs-input and token-rate signals and which do not. “Unknown” therefore has a concrete boundary. It no longer masquerades as “stalled,” “unavailable,” or a fact Cargento can infer.
+The evidence disclosure explains which harnesses report needs-input and token-rate signals and which do not. “Unknown” therefore has a concrete boundary. It no longer masquerades as “stalled,” “unavailable,” or a fact Compass can infer.
 
 ### 6. The full project map remains one click away
 
@@ -86,7 +86,7 @@ The Claude example includes Assignment because the transcript provides it. This 
 
 ![Antigravity session detail showing only available activity](10-after-session-antigravity.jpg)
 
-The Antigravity example shows only what its source supports. Cargento does not fabricate Assignment, Next, or Captain placeholders to make every harness look structurally identical.
+The Antigravity example shows only what its source supports. Compass does not fabricate Assignment, Next, or Captain placeholders to make every harness look structurally identical.
 
 ## Responsive behavior
 

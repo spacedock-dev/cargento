@@ -58,7 +58,7 @@ export function openedWithControl(session: Row | null | undefined): boolean {
 }
 
 /* The agent's published instruction when it carries `label`, or null. A correction the reader copied
-   from Cargento is never their words, so a copied instruction is not returned. */
+   from Compass is never their words, so a copied instruction is not returned. */
 export function sessionInstruction(session: Row | null | undefined, label: string): Row | null {
   const instruction = session?.['instruction'];
   if (!isRecord(instruction) || promptCopied(session, 'instruction')) return null;
@@ -105,7 +105,7 @@ export interface DraftOptions {
   readonly unreadable: string;
 }
 
-/* The goal a goal-less session arrives with: the first prompt as Cargento publishes it, or the latest
+/* The goal a goal-less session arrives with: the first prompt as Compass publishes it, or the latest
    where no first prompt with a time is published, and null where neither can be adopted. Derived from the
    payload and never written. Nothing is drafted over a store this build cannot read, where saving could
    not save, and nothing over a session that opened with a harness control. */

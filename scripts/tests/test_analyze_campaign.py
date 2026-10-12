@@ -543,7 +543,7 @@ class CampaignReservations(unittest.TestCase):
         self.addCleanup(patch.stop)
         scoring = importlib.import_module("score_abstention")
         scoring._runtime()
-        from cargento_runtime import observer  # noqa: PLC0415 - admitted synthetic delegate seam
+        from compass_runtime import observer  # noqa: PLC0415 - admitted synthetic delegate seam
 
         prompt = "owned synthetic qualification input"
         opening_binding = self.module.request_digest(
@@ -695,7 +695,7 @@ class CampaignReservations(unittest.TestCase):
         c = self.charge("replay", slot)
         self.campaign().settle(c, "usable")
         with (
-            mock.patch.dict("os.environ", {"CARGENTO_HOME": str(self.root / "another")}),
+            mock.patch.dict("os.environ", {"COMPASS_HOME": str(self.root / "another")}),
             self.assertRaises(ledger.LedgerError),
         ):
             self.charge("replay", slot)

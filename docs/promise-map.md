@@ -1,10 +1,10 @@
-# What Cargento promises
+# What Compass promises
 
-Run as many coding agents as you like. Cargento tells you which ones need you, which ones are
+Run as many coding agents as you like. Compass tells you which ones need you, which ones are
 fine, and when it is safe to walk away. One local screen, every harness you use, and nothing
 leaves your machine that you cannot switch off.
 
-This file says what Cargento answers today, what backs each answer, and where each answer stops.
+This file says what Compass answers today, what backs each answer, and where each answer stops.
 The five promises below follow the questions a reader asks during a day of coding-agent work.
 
 It is written for someone who runs several coding agents at once and cannot see most of them.
@@ -16,11 +16,11 @@ week's quota on the wrong branch.
 Four steps, and only the first two are required.
 
 1. Install the plugin. For Claude Code that is `claude plugin marketplace add spacedock-dev/marketplace`
-   followed by `claude plugin install cargento@spacedock`. Codex, Antigravity and Gemini CLI each
+   followed by `claude plugin install compass@spacedock`. Codex, Antigravity and Gemini CLI each
    have a one-line equivalent in the [README](../README.md). There is nothing to install alongside
    it: the server is Python 3.11 or newer and stdlib only, and it runs standalone with no harness
    plugin at all.
-2. Say "open cargento". A local dashboard opens at `http://127.0.0.1:4553`, and it maps every
+2. Say "open compass". A local dashboard opens at `http://127.0.0.1:4553`, and it maps every
    harness it finds on the machine regardless of which one launched it. No account, no cloud
    service, no repository token. The server binds IPv4 loopback and nothing else.
 3. Use Intent and drift to compare a session's recorded work with your goal. Open a session, set a
@@ -81,7 +81,7 @@ Reader-requested readings are capped at twelve attempts per rolling twenty-four 
 goal, a check can adopt your latest Claude Code or Codex prompt; the goal field also offers your
 first prompt. Adopted words are marked, and missing source times refuse adoption.
 Claude Code and Codex hooks also report matched destructive command shapes; a match does not
-prove success. Cargento saves a stage you choose for a Spacedock workflow and alerts once when
+prove success. Compass saves a stage you choose for a Spacedock workflow and alerts once when
 it observes an entity enter that stage; gaps and unavailable sources are stated, and a
 notification request does not prove a banner appeared.
 
@@ -121,7 +121,7 @@ Reports are incomplete, may repeat, and last only for the current dashboard run.
 and unmatched commands can look the same. The exact forms and limits belong to the security
 section linked below.
 
-Where it stops: Cargento reads a tool call's name and whether it failed, and reads what it
+Where it stops: Compass reads a tool call's name and whether it failed, and reads what it
 contained only at the few places
 [SECURITY.md](../SECURITY.md#irreversible-actions-hook-side-destructive-shape-matching) names, each
 reduced to a short summary as it is read. A plan and a question are the two that reach the board: a
@@ -147,7 +147,7 @@ estimate reads checks and file paths, not the meaning of your intent; too little
 "Not enough recorded yet"
 ([DEC-26](design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)).
 A reading reads them only after you allow tool output for the destination the page names, and
-where Cargento cannot name that destination it sends none and says so. A recorded pass is what the
+where Compass cannot name that destination it sends none and says so. A recorded pass is what the
 tool reported, never an inspection of the work, and a reading labels it that way; a result the
 record does not carry reads as not recorded rather than as a pass.
 
@@ -159,7 +159,7 @@ has waited. A session can also ask you a question directly and wait for your ans
 Backed by the merged gate queue with a keyboard pass over it, the wait reason surfaced without
 opening the session, the standing wait duration, a control on the row that copies the command which
 puts you back in the waiting session, a second one that raises that session's terminal where
-Cargento can reach it, and the ask lane: a session calls one tool, the question lands
+Compass can reach it, and the ask lane: a session calls one tool, the question lands
 on the dashboard, the answer goes back, and the session continues. An arriving
 question raises a notification rather than sitting there unseen.
 
@@ -176,14 +176,14 @@ approval nor tool success. The re-entry command is narrower again: two of the te
 publish a session id their own CLI takes, so a row from the other eight offers no command rather
 than a guessed one. Raising the terminal is narrower still, and on most rows it is not offered at
 all: the session has to be running under tmux, to have started while this server has been up, and
-to have exactly one terminal attached, or Cargento declines rather than guessing which window you
+to have exactly one terminal attached, or Compass declines rather than guessing which window you
 meant. A raise moves what that terminal displays and does not bring its window to the front of your
 desk. Where no raise is offered the queue says how far the feature reached rather than repeating
-the absence on every row, and the copy control is what remains. Cargento does not answer a prompt
-for you. The one shape it is allowed is the session asking and Cargento
+the absence on every row, and the copy control is what remains. Compass does not answer a prompt
+for you. The one shape it is allowed is the session asking and Compass
 answering, as the [ask lane design](design-ask-lane.md) describes.
 
-Cargento can now check a session against your words while you are away and raise a departure
+Compass can now check a session against your words while you are away and raise a departure
 without being asked, which is off by default and the only thing here that spends your model capacity
 with nobody watching. Where it stops is the part worth reading: it raises a departure and never a
 reassurance, because an unasked "this looks fine" is the output the evidence-floor ruling called
@@ -218,7 +218,7 @@ so rather than reading zero, which covers the switch being off with nothing on r
 checks never having read this particular session. An empty list is the same value in either case.
 With the switch off and raises on record the figure is the rows the review actually drew. A count identifies a
 session
-worth reading and settles nothing about whether the brief, the agent or Cargento's own judgement
+worth reading and settles nothing about whether the brief, the agent or Compass's own judgement
 was poor.
 
 A notification the board raised now carries what became of it, so a signal that never left the
@@ -240,7 +240,7 @@ disclosure, Codex and Copilot are read from files they already write to disk, an
 forwards its own figures through a status-line receipt. Each window shows how much of its allowance
 is spent against how much of its time is gone, the pace that comparison implies, when the budget
 runs out at that pace, and when the window resets. Beneath it, what the remaining budget buys in
-minutes at both paces Cargento has measured, and how long sessions have actually worked in the
+minutes at both paces Compass has measured, and how long sessions have actually worked in the
 project that consumed the most measured working time on this machine. On top of that sit
 per-model sub-limits.
 
@@ -255,10 +255,10 @@ Credential-backed fetching happens only once the disclosure is answered, `--no-u
 a run, and the token is never written, logged, or served. Quota that is expired, rejected, missing,
 or stale is withheld rather than rendered as zero.
 
-**Cargento never tells you that you are going to overrun.** It puts the budget's end time beside
+**Compass never tells you that you are going to overrun.** It puts the budget's end time beside
 the window's reset time and leaves the comparison to you, including on the day they are ninety
 seconds apart. There is deliberately no single safe-to-start light and no likelihood: every quota
-producer signals failure as an empty list, so a composed verdict reads green exactly when Cargento
+producer signals failure as an empty list, so a composed verdict reads green exactly when Compass
 can see nothing.
 
 ### P5. Did anything die quietly?
@@ -268,7 +268,7 @@ session that ends leaving uncommitted changes says so.
 
 Backed by the finished-and-unread flag, the mark that separates a turn that stopped from a session
 still waiting on a reply that never came, the mark that a session is over so it stops reading as one
-waiting at its prompt, kept on disk so what Cargento saw end stays ended across a restart of the
+waiting at its prompt, kept on disk so what Compass saw end stays ended across a restart of the
 board, the note on a row read off disk saying that no turn end can be observed
 there, a way to mark a session handled so it leaves the board, and the
 end-of-session git probe that shipped in 0.19. And, since the annotation store landed, by what you
@@ -303,7 +303,7 @@ A quiet session is published as idle with nothing elapsed behind it: there is no
 so going quiet is a state here and not a reading. The row says how long ago the session was last
 active, which is a timestamp and never a verdict that it is still open or has closed. The git probe runs one bounded command as a
 session ends and publishes two numbers, whether the tree is dirty and how many porcelain entries
-changed. Cargento runs no program of its own there, though a repository can carry a committed
+changed. Compass runs no program of its own there, though a repository can carry a committed
 attribute that makes git invoke a filter driver you already have installed, git-lfs being the common
 one, and that driver may then write inside the repository. It is a residual
 [SECURITY.md](../SECURITY.md#the-residual-a-filter-driver-can-still-run-and-can-still-write) states
@@ -317,10 +317,10 @@ than a research project.
 
 Walking away from the desk is the promise this map most wants to make and cannot yet. It needs a
 session that is genuinely wedged to be told apart from one that is merely quiet, and it needs
-Cargento to reach you somewhere other than a browser tab you are not looking at. The first half
+Compass to reach you somewhere other than a browser tab you are not looking at. The first half
 reaches Claude only: the turn's failure total and the turn where nothing succeeded are published,
 and the other nine harnesses record tool failure in no shape this can read. The second half is a
-build rather than a call now. DEC-4 ruled on 2026-09-02 that Cargento may post a count to an
+build rather than a call now. DEC-4 ruled on 2026-09-02 that Compass may post a count to an
 endpoint you supply, and [SECURITY.md](../SECURITY.md) writes that boundary down before the code
 lands.
 

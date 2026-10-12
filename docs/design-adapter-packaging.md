@@ -17,7 +17,7 @@ before renumbering anything.
 
 ## The problem these decisions answer
 
-Cargento's event lane was built for harnesses whose hooks are hook-shaped, which `event_hook.py`
+Compass's event lane was built for harnesses whose hooks are hook-shaped, which `event_hook.py`
 defines in its own header as a fresh process per event, one JSON payload on stdin, and a
 `hook_event_name` naming what happened. Claude Code, Codex and Gemini CLI all are. Antigravity is
 not, and it already has its own adapter for that reason.
@@ -25,11 +25,11 @@ not, and it already has its own adapter for that reason.
 OpenCode and Pi use callbacks inside the host process. Their shipped JavaScript adapters implement
 the decision below; the historical validator gaps are now covered by executed native callbacks.
 
-## A-1: first-class JavaScript ships outside `cargento_runtime/web/`
+## A-1: first-class JavaScript ships outside `compass_runtime/web/`
 
 Decided 2026-09-07 by the owner, under DEC-11's sibling decision (Linear DRC-4428).
 
-An adapter may be written in JavaScript and bundled outside `cargento_runtime/web/`, which held all
+An adapter may be written in JavaScript and bundled outside `compass_runtime/web/`, which held all
 non-Python runtime code when this decision was made. The four checks in A-3 now cover the shipped adapters.
 
 **Rejected: a thin shim that spawns the Python entry point.** The alternative was a small
@@ -40,7 +40,7 @@ recording properly, because it will look attractive again:
 - it satisfies `event_hook.py`'s hook-shaped contract literally, so the envelope, the capability
   handling and the vocabulary validation are all reused unchanged;
 - it touches none of the four validator surfaces, because the only file that ships is one the
-  harness loads and Cargento never validates;
+  harness loads and Compass never validates;
 - the `EVENTS_BY_HARNESS` entry stays honest, so the gate-coverage oracle passes without being
   edited.
 
@@ -106,7 +106,7 @@ runs without Node skip explicitly; the required JavaScript lint job requires and
 
 These were four separate gaps. Each now has an independent check:
 
-1. **Runtime inventory:** `CARGENTO_RUNTIME_FILES` names both JavaScript files explicitly; discovery
+1. **Runtime inventory:** `COMPASS_RUNTIME_FILES` names both JavaScript files explicitly; discovery
    parity includes top-level `.js` alongside `.py`, and installed-copy checks reject a missing file.
 2. **Syntax:** each adapter is imported as an ES module under Node, outside the web bundle, by the
    `validate_plugins.py` probes and by `test_opencode_plugin` and `test_pi_extension`; a syntax error fails there.
@@ -122,10 +122,10 @@ not a new adapter framework or a third transport API for the shipped files to im
 
 ## A-4: `EVENTS_BY_HARNESS` is a multi-file edit
 
-`event_hook.py` ships three times: in the shared plugin root (`cargento/skills/cargento/event_hook.py`),
-in the Gemini extension root (`cargento-gemini/hooks/event_hook.py`), and in the Droid plugin root
-(`cargento-droid/hooks/event_hook.py`). `notify_hook.py` ships twice (in `cargento/skills/cargento/notify_hook.py`
-and `cargento-droid/hooks/notify_hook.py`). All copies are byte-identical by validator rule. Editing one
+`event_hook.py` ships three times: in the shared plugin root (`compass/skills/compass/event_hook.py`),
+in the Gemini extension root (`compass-gemini/hooks/event_hook.py`), and in the Droid plugin root
+(`compass-droid/hooks/event_hook.py`). `notify_hook.py` ships twice (in `compass/skills/compass/notify_hook.py`
+and `compass-droid/hooks/notify_hook.py`). All copies are byte-identical by validator rule. Editing one
 without syncing the others is a red build. Recorded here because the table reads like a single constant
 and the other copies are in directories nothing else about the event lane touches.
 
@@ -134,7 +134,7 @@ and the other copies are in directories nothing else about the event lane touche
 Decided 2026-09-15 under DRC-4574 (Linear DRC-4208).
 
 Droid loads plugin hooks from `<root>/hooks/hooks.json` and parses `.claude-plugin/plugin.json`
-by default. When Cargento's Claude plugin was installed in a project used by Droid, Droid loaded
+by default. When Compass's Claude plugin was installed in a project used by Droid, Droid loaded
 the Claude hooks and executed every hook command with the literal argument `claude`. This sent
 Droid lifecycle events to `/api/events/claude`, where they matched no Claude session row and were
 silently dropped, while `/api/events/droid` refused events because `IDENTITY_NORMALIZERS` had no
@@ -148,11 +148,11 @@ sentinel values in noninteractive executions, meaning presence alone is not a tr
 of which harness spawned the process. Environment inheritance and dual registrations make variable
 presence unsafe.
 
-**The chosen shape: dedicated `cargento-droid/` plugin root.**
-Like Gemini CLI (`cargento-gemini/`), Droid ships its own dedicated root with `.factory-plugin/plugin.json`,
+**The chosen shape: dedicated `compass-droid/` plugin root.**
+Like Gemini CLI (`compass-gemini/`), Droid ships its own dedicated root with `.factory-plugin/plugin.json`,
 its own `hooks/hooks.json` mapping only the measured `SessionStart` and `SessionEnd` events to
 `event_hook.py` with the literal harness argument `droid`, and byte-identical copies of `event_hook.py`
-and `notify_hook.py`. Droid users install from `cargento-droid` (migrating away from `cargento/` if
+and `notify_hook.py`. Droid users install from `compass-droid` (migrating away from `compass/` if
 previously installed).
 
 `events.py` registers `"droid": _whole_uuid_sid` in `IDENTITY_NORMALIZERS`, preserving the measured

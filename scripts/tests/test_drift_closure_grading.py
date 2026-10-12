@@ -14,7 +14,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import drift_closure_grading as grading
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cargento/skills/cargento"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "compass/skills/compass"))
 import abstention_ledger as authority
 import analyze_campaign as campaigns
 import drift_replay
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from tests import test_drift_closure_operator as operator_cases
 else:
     import test_drift_closure_operator as operator_cases
-from cargento_runtime import reading
+from compass_runtime import reading
 
 
 def sha(value: Any) -> str:

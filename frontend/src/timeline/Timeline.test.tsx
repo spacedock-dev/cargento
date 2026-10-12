@@ -123,7 +123,7 @@ function world(options: { backend?: FakeBackend; script?: Partial<Script> } = {}
             sessions: [],
             harnesses: [{ key: 'codex', label: 'Codex' }],
           }),
-          { status: 200, headers: { 'X-Cargento-Revision': `r${String(script.generated)}` } },
+          { status: 200, headers: { 'X-Compass-Revision': `r${String(script.generated)}` } },
         ),
       );
     }
@@ -326,10 +326,10 @@ describe('the activity filter', () => {
       'true',
     );
     // The runtime's own leader lease is not this panel's; the panel's one write is the filter map.
-    expect(w.backend.writes.filter((key) => key !== 'cargento.next.leader')).toEqual([
-      'cargento.next.graph.mode',
+    expect(w.backend.writes.filter((key) => key !== 'compass.next.leader')).toEqual([
+      'compass.next.graph.mode',
     ]);
-    expect(w.backend.data.get('cargento.next.graph.mode')).toBe(
+    expect(w.backend.data.get('compass.next.graph.mode')).toBe(
       '{"alpha/app\\u0000codex:focus-1":"all"}',
     );
     w.release();

@@ -537,7 +537,7 @@ something, a position, a handle, and a cursor. What it deliberately did not add 
 which gates you have dealt with.
 
 That is the obvious feature and it was rejected. A "handled" mark would be the page asserting
-something no collector measured: Cargento never writes to a session and cannot observe an answer, so
+something no collector measured: Compass never writes to a session and cannot observe an answer, so
 the mark could only record that a person clicked something. Two failure modes follow, and the second
 is the serious one. A mark that is right is redundant: the session leaves `needs_input` within a
 poll and the row goes on its own. A mark that is wrong **hides a gate that is still open**, which is
@@ -575,7 +575,7 @@ carries; anything richer would be a guess dressed as an ordering.
 ### The carve-out: a question the session asked is answerable, because it is measured
 
 The rejection above rests on one fact and not on a preference. A native gate is unanswerable here
-because Cargento cannot observe the answer: it never writes to a session, so a mark could only record
+because Compass cannot observe the answer: it never writes to a session, so a mark could only record
 that a person clicked something, which is the page asserting a state no collector measured. Every word
 of that still holds for every gate on the needs-input band, and nothing about it is softened by what
 follows.
@@ -689,7 +689,7 @@ constant and requires the prose to agree, because otherwise the two can only mat
   `acquisition`, which was defined for this. A test holds the collectors to it. *Amended
   2026-09-08: this bullet said the field "rendered nowhere until now", written when the stamping
   site landed, and it stayed false for two and a half weeks. Nothing under
-  `cargento_runtime/web/` read the name at all, so the disclosure the rejection rests on was
+  `compass_runtime/web/` read the name at all, so the disclosure the rejection rests on was
   published and never shown. DRC-4473 put it on the row; where and in what words is
   [design-scan-only-rows.md](design-scan-only-rows.md).*
 
@@ -919,8 +919,8 @@ ninety seconds crosses the threshold without the harness declaring anything.
 overlay patches `active: False` alongside `state: "idle"`, and `active` is in `events.PATCHABLE`, so
 `_apply_overlays` writes it onto the collected row. A `nextNotifyEdge` that tested
 `session.active !== true` first therefore refused precisely the transition the nudge exists to
-report, and refused it on the **default** install, since `cargento/hooks/hooks.json` and
-`cargento/hooks/codex-hooks.json` both declare `Stop`. Worse, the edge was then spent for good:
+report, and refused it on the **default** install, since `compass/hooks/hooks.json` and
+`compass/hooks/codex-hooks.json` both declare `Stop`. Worse, the edge was then spent for good:
 the suppressed render still recorded `idle` in `nextNotifyState`, so a later idle row with
 `active: true` raised nothing either. Measured: the instrumented arm went 0 to 1 once the quiet
 branch moved above the gate, with no double-fire when the overlay later retires.

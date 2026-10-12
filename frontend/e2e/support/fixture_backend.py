@@ -15,9 +15,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "cargento/skills/cargento"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "compass/skills/compass"))
 
-from cargento_runtime import aggregate, cli, sessions
+from compass_runtime import aggregate, cli, sessions
 
 # Fixed at start, so the board's revision does not move on its own and a test can tell a read it
 # caused from one the stream announced.

@@ -21,7 +21,7 @@ import { entryNumbers } from '../intent/work';
 
 /* Steer back: the button that opens the correction, and the box that holds it. The box is Copy only: the
    words are the reader's to edit and to paste where they choose, and nothing here is ever sent to the
-   session ([DEC-16](../../../docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)). */
+   session ([DEC-16](../../../docs/design-reading-a-session.md#dec-16-compass-does-not-write-into-a-session)). */
 
 export function SteerButton({ primary }: { readonly primary: boolean }) {
   const { ctx, model } = useDrift();

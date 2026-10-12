@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { WorkstreamStore } from '../storage';
 
 /* The workstream panel's collapse: one reader-owned flag, shared by every project, that survives a reload
-   (`cargento.next.workstream.collapsed`, raw `1` or `0`) and falls back to the tab when storage refuses. The
+   (`compass.next.workstream.collapsed`, raw `1` or `0`) and falls back to the tab when storage refuses. The
    storage family owns the key, its read-once rule and the memory-before-storage order; this only lets a
    view subscribe to it. The legacy unnamespaced storage is not adopted: this key, exactly. */
 const holders = new WeakMap<object, ReturnType<typeof create>>();

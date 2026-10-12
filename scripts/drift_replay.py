@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay recorded pushback sessions through Cargento's drift detectors, against the owner's marks.
+"""Replay recorded pushback sessions through Compass's drift detectors, against the owner's marks.
 
 The golden key is `tests/annotated_sessions/<sid>/annotation.md`: where the person pushed back, what
 the agent did that drifted, and why. The data is the session log: the redacted copy under
@@ -23,7 +23,7 @@ Modes, in the order the README requires:
                  marking; no detector, arm or result is in it
     --claims-mark    mark each item: was the claim true, and could the person see it at the time
 
-Everything that names a session, a cut or a word stays under `$CARGENTO_HOME/drift-replay/`. The
+Everything that names a session, a cut or a word stays under `$COMPASS_HOME/drift-replay/`. The
 repository receives a marks digest and a summary keyed by salted case ids, nothing else.
 """
 
@@ -49,6 +49,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import legacy_paths
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(_ROOT, "scripts") not in sys.path:
     sys.path.insert(0, os.path.join(_ROOT, "scripts"))
@@ -65,7 +67,7 @@ except ImportError:  # Windows: no advisory lock, so the cap holds for one run a
 
 HAS_LOCK = fcntl is not None
 
-HOME = os.environ.get("CARGENTO_HOME") or os.path.expanduser("~/.cargento")
+HOME = legacy_paths.store_home()
 SUBDIR = "drift-replay"
 FIXTURES = os.path.join(_ROOT, "tests", "raw_sessions")
 ANNOTATIONS = os.path.join(_ROOT, "tests", "annotated_sessions")
@@ -73,8 +75,8 @@ DIGEST_PATH = os.path.join(_ROOT, "docs", "drift-replay", "marks-digest.json")
 CLAIM_DIGEST_PATH = os.path.join(_ROOT, "docs", "drift-replay", "claim-marks-digest.json")
 RESULTS_PATH = os.path.join(_ROOT, "docs", "drift-replay", "results.json")
 ORIGINALS = os.path.expanduser("~/.claude/projects")
-# Pinned under the operator's own home, not CARGENTO_HOME: moving the home must not reset the spend.
-LEDGER_PATH = os.path.expanduser("~/.cargento/drift-replay/spend.json")
+# Pinned under the operator's own home, not COMPASS_HOME: moving the home must not reset the spend.
+LEDGER_PATH = campaign_authority.canonical_store_path("drift-replay", "spend.json")
 
 # Ordinary turn stops sampled per session as negatives, and the seed that picks them, so a rebuild
 # picks the same stops. Eight per session gives about thirty, the size the review asked for.
@@ -472,9 +474,7 @@ def _home_refusal(home: str) -> str:
     if sys.platform == "darwin":  # a default macOS volume ignores case, so the guard must too
         where, root = where.lower(), root.lower()
     if lc._inside(where, root):  # noqa: SLF001 - the sibling's guard
-        return (
-            "CARGENTO_HOME is inside the repository; these files name sessions. Nothing was done."
-        )
+        return "COMPASS_HOME is inside the repository; these files name sessions. Nothing was done."
     return ""
 
 
@@ -755,7 +755,7 @@ _SETTLE_EXTRA = 1.0
 def _runtime() -> tuple[Any, Any, Any, Any, Any]:
     """(config, project_context, live_estimate, correction, reading), as levels_cases does."""
     _config_mod, project_context, _levels = lc._runtime()  # noqa: SLF001
-    from cargento_runtime import correction, live_estimate, reading  # noqa: PLC0415
+    from compass_runtime import correction, live_estimate, reading  # noqa: PLC0415
 
     return lc._config(), project_context, live_estimate, correction, reading  # noqa: SLF001
 
@@ -940,7 +940,7 @@ def _history_at(
     cut: float,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Bounded, title-only semantic history as a counterfactual cold board could retain."""
-    from cargento_runtime import semantic_history  # noqa: PLC0415
+    from compass_runtime import semantic_history  # noqa: PLC0415
 
     events = project_context._semantic_history_source_events(  # noqa: SLF001
         config,
@@ -1101,7 +1101,7 @@ def _correction_kinds(text: str) -> list[str]:
 def _page_states(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The shipped page's resolved criteria, answer and None-or-low guard, without a browser."""
     _runtime()
-    from cargento_runtime.web import page  # noqa: PLC0415
+    from compass_runtime.web import page  # noqa: PLC0415
 
     node = shutil.which("node")
     if node is None:
@@ -1133,7 +1133,7 @@ def _live_measured(
     This standalone runner is serial. The wrapper is restored even on refusal, and cached
     equivalent arms reuse only a measurement made during this pass.
     """
-    from cargento_runtime import levels  # noqa: PLC0415
+    from compass_runtime import levels  # noqa: PLC0415
 
     measured: dict[str, Any] = {}
     original = levels.live_level
@@ -1164,7 +1164,7 @@ def _live_measured(
 
 def correction_count(row: Mapping[str, Any], facts: list[dict[str, Any]], floor: float) -> int:
     """The direction count used in the live cache identity."""
-    from cargento_runtime import correction  # noqa: PLC0415
+    from compass_runtime import correction  # noqa: PLC0415
 
     return int(correction.unsettled_directions(row, facts, floor=floor))
 
@@ -1340,7 +1340,7 @@ def _study_mode(args: argparse.Namespace) -> int:
             )
         elif args.codex_study is not None:
             _runtime()
-            from cargento_runtime.records import mask_prose  # noqa: PLC0415 - after runtime loader
+            from compass_runtime.records import mask_prose  # noqa: PLC0415 - after runtime loader
 
             result = study.import_codex(
                 Path(HOME), Path(_ROOT), args.tag, _study_source(args.codex_study), mask_prose
@@ -1443,12 +1443,14 @@ class Ledger:
 
     def __init__(
         self,
-        path: str,
+        path: str | None,
         cap: int = MAX_CALLS,
         floor: int = 0,
         *,
         binding: tuple[str, Mapping[str, Any]] | None = None,
     ) -> None:
+        if path is None:
+            raise LedgerError("the account home for the spend ledger is unavailable")
         self.path = path
         self.cap = cap
         self.floor = floor
@@ -1558,7 +1560,7 @@ class _Charged:
                 self.ledger.path
             ) != os.path.realpath(campaign_guard.REPLAY_PATH):
                 raise LedgerError("the campaign cannot use a different native replay ledger")
-            from cargento_runtime import observer  # noqa: PLC0415 - runtime after replay admission
+            from compass_runtime import observer  # noqa: PLC0415 - runtime after replay admission
 
             try:
                 campaign_guard.validate_transport_binding(self.transport_binding)
@@ -1749,7 +1751,7 @@ def _read_refusal(
 
 
 def _read_model_config(config: Any, selected: str | None) -> Any:
-    from cargento_runtime import config as runtime_config  # noqa: PLC0415
+    from compass_runtime import config as runtime_config  # noqa: PLC0415
 
     if selected is None:
         return config
@@ -1870,7 +1872,7 @@ def read(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - explicit isolated-
     if reading_override is not None:
         reading = reading_override
     import score_abstention  # noqa: PLC0415 - the verified, pinned CLI the qualification uses
-    from cargento_runtime import observer, reading_route  # noqa: PLC0415
+    from compass_runtime import observer, reading_route  # noqa: PLC0415
 
     try:
         config = _read_model_config(config, claude_model)
@@ -2036,8 +2038,8 @@ def _read_cases(  # noqa: C901, PLR0913 - native pipeline with explicit isolated
     config, project_context, _live, _correction, reading = _runtime()
     if reading_override is not None:
         reading = reading_override
-    from cargento_runtime import observer, reading_route  # noqa: PLC0415
-    from cargento_runtime.state import build_runtime_state  # noqa: PLC0415
+    from compass_runtime import observer, reading_route  # noqa: PLC0415
+    from compass_runtime.state import build_runtime_state  # noqa: PLC0415
 
     if runtime_config is not None:
         config = runtime_config
@@ -2581,7 +2583,7 @@ def import_claim_marks(*, home: str, path: str, say: Callable[[str], Any] = prin
         )
         return 1
     _runtime()
-    from cargento_runtime import records  # noqa: PLC0415
+    from compass_runtime import records  # noqa: PLC0415
 
     marks = lc._load(paths["claim_marks"]).get("marks") or {}  # noqa: SLF001
     for key, mark in incoming.items():
@@ -2739,7 +2741,7 @@ def _score_pages(
 ) -> dict[tuple[str, str], dict[str, Any]]:
     """Re-cut stored reads with their original arm/window definition and ask the page."""
     config, pc, _live, correction, _reading = _runtime()
-    from cargento_runtime import levels  # noqa: PLC0415
+    from compass_runtime import levels  # noqa: PLC0415
 
     current = lc._load(paths["current"]).get("intents") or {}  # noqa: SLF001
     payloads: list[dict[str, Any]] = []
@@ -3109,7 +3111,7 @@ def score(
 
 def _claude_model_arg(value: str) -> str:
     _runtime()
-    from cargento_runtime import cli  # noqa: PLC0415 - import after installing the runtime path
+    from compass_runtime import cli  # noqa: PLC0415 - import after installing the runtime path
 
     return cli.claude_reading_model_arg(value)
 

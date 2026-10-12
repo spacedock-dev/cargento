@@ -33,7 +33,7 @@ export function isolatedEnvironment(scratch, ambient, platform = process.platfor
   Object.assign(result, {
     HOME: scratch,
     USERPROFILE: scratch,
-    CARGENTO_HOME: join(scratch, 'state'),
+    COMPASS_HOME: join(scratch, 'state'),
     XDG_DATA_HOME: join(scratch, 'data'),
     APPDATA: join(scratch, 'roaming'),
     LOCALAPPDATA: join(scratch, 'local'),
@@ -71,7 +71,7 @@ export function handshakeSignature(manifest, challenge) {
   )
     throw Error('Invalid development handshake fields.');
   const message = [
-    'cargento-vite-dev-v1',
+    'compass-vite-dev-v1',
     challenge,
     manifest.python_origin,
     manifest.vite_origin,

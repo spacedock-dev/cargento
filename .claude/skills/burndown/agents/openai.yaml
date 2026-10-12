@@ -1,4 +1,4 @@
 interface:
   display_name: "Milestone Burndown"
-  short_description: "Burn down a Cargento milestone in grouped, stacked PRs"
-  default_prompt: "Use $burndown to plan, build and close the named Cargento milestone."
+  short_description: "Burn down a Compass milestone in grouped, stacked PRs"
+  default_prompt: "Use $burndown to plan, build and close the named Compass milestone."

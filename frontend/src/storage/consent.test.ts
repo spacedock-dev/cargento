@@ -3,8 +3,8 @@ import { blockedBackend, fakeBackend, readOnlyBackend } from '../../test/storage
 import { createLegacyStorage, STORAGE_KEYS } from '.';
 
 const families = [
-  ['usage consent', 'usageConsent', 'cargento.next.usage.consent'],
-  ['observer consent', 'observerConsent', 'cargento.observer-model-consent.v1'],
+  ['usage consent', 'usageConsent', 'compass.next.usage.consent'],
+  ['observer consent', 'observerConsent', 'compass.observer-model-consent.v1'],
 ] as const;
 
 describe.each(families)('%s', (_name, family, key) => {
@@ -71,6 +71,6 @@ describe('the two consents', () => {
     const storage = createLegacyStorage(() => backend);
     storage.usageConsent.set('granted');
     expect(storage.observerConsent.get()).toBeNull();
-    expect(backend.data.has('cargento.observer-model-consent.v1')).toBe(false);
+    expect(backend.data.has('compass.observer-model-consent.v1')).toBe(false);
   });
 });

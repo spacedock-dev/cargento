@@ -482,7 +482,7 @@ export const LANE_OFF_RECORD =
 export function laneOffWhy(reason: unknown): string {
   return reason === 'run-disabled'
     ? 'The model off switch refuses unasked checks. Restart with --unasked-readings and without either --no-harness-usage or --no-observer-model to enable them.'
-    : 'Nothing watches for a departure on its own. Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.';
+    : 'Nothing watches for a departure on its own. Start with --unasked-readings to have Compass check a session against what you asked for while you are away.';
 }
 
 export function unaskedDepartures(session: Row): Departures | null {

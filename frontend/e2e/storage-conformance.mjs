@@ -26,24 +26,25 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { build } from 'vite';
 import { BROWSER_CONTEXT, digest, goldenFor } from './support/golden.mjs';
+import { recordedName } from '../test/recorded-name.ts';
 
 const golden = goldenFor('storage-conformance');
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const PROJECT = 'storage-conformance';
 const CLAUDE = { harness: 'claude', sid: 'claude-sid:one' };
 const KEYS = {
-  memo: 'cargento.cockpit.memo.v2:',
-  graphMode: 'cargento.next.graph.mode',
-  guardrails: 'cargento.next.guardrails.',
-  leader: 'cargento.next.leader',
-  liveEstimate: 'cargento.next.live-estimate:',
-  revision: 'cargento.next.revision',
-  usageConsent: 'cargento.next.usage.consent',
-  workstream: 'cargento.next.workstream.collapsed',
-  observerConsent: 'cargento.observer-model-consent.v1',
-  cockpitProject: 'cargento.projectCockpitProject',
-  goal: 'cargento.projectGoal.v1:',
-  usage: 'cargento.projectUsage.v1',
+  memo: 'compass.cockpit.memo.v2:',
+  graphMode: 'compass.next.graph.mode',
+  guardrails: 'compass.next.guardrails.',
+  leader: 'compass.next.leader',
+  liveEstimate: 'compass.next.live-estimate:',
+  revision: 'compass.next.revision',
+  usageConsent: 'compass.next.usage.consent',
+  workstream: 'compass.next.workstream.collapsed',
+  observerConsent: 'compass.observer-model-consent.v1',
+  cockpitProject: 'compass.projectCockpitProject',
+  goal: 'compass.projectGoal.v1:',
+  usage: 'compass.projectUsage.v1',
 };
 
 const receipt = new Map(
@@ -63,10 +64,10 @@ function proved(family, direction, how, what) {
   side.get(how).push(what);
 }
 
-/* The React side here is the codec, not a served page. In production mode (`CARGENTO_E2E_BUNDLE=production`) it is
+/* The React side here is the codec, not a served page. In production mode (`COMPASS_E2E_BUNDLE=production`) it is
    bundled minified, as the shipped page's copy of it is, so a rename or dead-code removal the minifier performs
    shows up as a failed conformance check; the development run keeps it readable. */
-const minify = process.env.CARGENTO_E2E_BUNDLE === 'production';
+const minify = process.env.COMPASS_E2E_BUNDLE === 'production';
 
 async function buildBundle(entry, name) {
   const output = await build({
@@ -83,9 +84,9 @@ async function buildBundle(entry, name) {
 // The identity helpers are the API layer's own, so the memo and live-estimate keys are derived the way the client derives them.
 const bundle =
   (await buildBundle(
-    process.env.CARGENTO_STORAGE_ENTRY || 'frontend/src/storage/index.ts',
-    'CargentoStorage',
-  )) + (await buildBundle('frontend/src/api/identity.ts', 'CargentoIdentity'));
+    process.env.COMPASS_STORAGE_ENTRY || 'frontend/src/storage/index.ts',
+    'CompassStorage',
+  )) + (await buildBundle('frontend/src/api/identity.ts', 'CompassIdentity'));
 // Only blank documents are served from routes, so the origin names a host that nothing listens on.
 const origin = 'http://storage-conformance.invalid';
 const browser = await chromium.launch();
@@ -208,6 +209,7 @@ async function apply(page, delta) {
 /** One interaction with the previous page, answered from the recording: its recorded changes are applied to the
  *  blank page `page`, and its recorded answer comes back. */
 async function recorded(page, label) {
+  label = recordedName(label, true);
   place.step += 1;
   const key = `${place.scenario} | #${place.step} ${label.length > 160 ? `${label.slice(0, 120)}~${digest(label)}` : label}`;
   const answer = golden.observe(key);
@@ -236,7 +238,7 @@ async function codec(page, path, args = [], { fresh = false } = {}) {
   return page.evaluate(
     ([where, values, reset]) => {
       const g = globalThis;
-      if (reset || !g.__storage) g.__storage = g.CargentoStorage.createLegacyStorage();
+      if (reset || !g.__storage) g.__storage = g.CompassStorage.createLegacyStorage();
       const parts = where.split('.');
       const name = parts.pop();
       let target = g.__storage;
@@ -251,7 +253,7 @@ async function codec(page, path, args = [], { fresh = false } = {}) {
 async function pure(page, name, args = []) {
   return page.evaluate(
     ([fn, values]) => {
-      const result = globalThis.CargentoStorage[fn](...values);
+      const result = globalThis.CompassStorage[fn](...values);
       return result instanceof Map ? Object.fromEntries(result) : result;
     },
     [name, args],
@@ -259,7 +261,7 @@ async function pure(page, name, args = []) {
 }
 
 async function identity(page, name, args = []) {
-  return page.evaluate(([fn, values]) => globalThis.CargentoIdentity[fn](...values), [name, args]);
+  return page.evaluate(([fn, values]) => globalThis.CompassIdentity[fn](...values), [name, args]);
 }
 
 const raw = (page, key) => page.evaluate((storageKey) => localStorage.getItem(storageKey), key);
@@ -1456,8 +1458,8 @@ try {
           Object.keys(localStorage).map((key) => [key, localStorage.getItem(key)]),
         );
         try {
-          const s = globalThis.CargentoStorage.createLegacyStorage();
-          const scopeKey = globalThis.CargentoStorage.graphModeScope(project, null);
+          const s = globalThis.CompassStorage.createLegacyStorage();
+          const scopeKey = globalThis.CompassStorage.graphModeScope(project, null);
           for (let pass = 0; pass < 2; pass += 1) {
             s.usage.counts();
             s.guardrails.rules(project);

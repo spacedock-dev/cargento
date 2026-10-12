@@ -30,7 +30,7 @@ else:
     from release_fixture import MANIFESTS, WEB, Fixture, git
 
 BUNDLE = f"{WEB}/react.html"
-RUNTIME_FILE = "cargento/skills/cargento/cargento_runtime/http_api.py"
+RUNTIME_FILE = "compass/skills/compass/compass_runtime/http_api.py"
 
 
 class ArchiveProofTest(unittest.TestCase):
@@ -128,7 +128,7 @@ class ArchiveProofTest(unittest.TestCase):
         self.assertIn("changed after verification", str(caught.exception))
 
     def test_a_launcher_that_cannot_start_is_refused(self) -> None:
-        launcher = "cargento/skills/cargento/server.py"
+        launcher = "compass/skills/compass/server.py"
         self.fx.commit("fix: broken launcher", files={launcher: "raise SystemExit(3)\n"})
         broken = git(self.fx.work, "rev-parse", "HEAD")
         rt.bump(self.fx.work, "0.2.0")
@@ -172,11 +172,11 @@ class IsolationTest(unittest.TestCase):
             with mock.patch.dict(os.environ, planted):
                 env = vra.isolated_env(Path(home))
             self.assertEqual(
-                {"PATH", "HOME", "USERPROFILE", "CARGENTO_HOME", "PYTHONNOUSERSITE", "LC_ALL"},
+                {"PATH", "HOME", "USERPROFILE", "COMPASS_HOME", "PYTHONNOUSERSITE", "LC_ALL"},
                 set(env),
             )
             self.assertEqual(home, env["HOME"])
-            self.assertTrue(env["CARGENTO_HOME"].startswith(home))
+            self.assertTrue(env["COMPASS_HOME"].startswith(home))
             path = Path(env["PATH"])
             self.assertTrue(path.is_dir())
             self.assertEqual([], list(path.iterdir()), "no executable, so no Node, is reachable")
@@ -315,7 +315,7 @@ class StricterProofTest(unittest.TestCase):
         self.commit_and_prove("beyond the version")
 
     def test_a_deleted_file_is_a_change(self) -> None:
-        git(self.fx.work, "rm", "-q", "cargento/hooks.json")
+        git(self.fx.work, "rm", "-q", "compass/hooks.json")
         self.commit_and_prove("beyond the version")
 
     def test_a_deleted_manifest_is_a_change(self) -> None:
@@ -333,8 +333,8 @@ class StricterProofTest(unittest.TestCase):
         text = script.read_text(encoding="utf-8")
         script.write_text(
             text.replace(
-                '    ROOT / "cargento-gemini/gemini-extension.json",',
-                '    ROOT / "cargento-gemini/gemini-extension.json",\n    ROOT / "README.md",',
+                '    ROOT / "compass-gemini/gemini-extension.json",',
+                '    ROOT / "compass-gemini/gemini-extension.json",\n    ROOT / "README.md",',
             ),
             encoding="utf-8",
         )

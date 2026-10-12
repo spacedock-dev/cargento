@@ -17,11 +17,11 @@ export const STALLED_AFTER_FAILURES = 2;
 
 const RESET_DETAIL: Readonly<Record<HistoryResetReason, string>> = {
   unreadable: 'The saved file could not be read.',
-  version: 'It was written by a different version of Cargento.',
+  version: 'It was written by a different version of Compass.',
 };
 
 const BUILD_WHY =
-  'Cargento was restarted with a different version after this page loaded, and this page may send what that version refuses.';
+  'Compass was restarted with a different version after this page loaded, and this page may send what that version refuses.';
 
 export interface NoticesProps {
   readonly snapshot: BoardSnapshot;

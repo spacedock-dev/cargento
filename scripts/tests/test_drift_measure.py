@@ -111,7 +111,7 @@ class TheReplayKeepsItsBaselineAndText(unittest.TestCase):
 
     def test_history_age_and_cap_are_counted_separately_after_coalescing(self) -> None:
         config, context, _live, _correction, _reading = dr._runtime()
-        from cargento_runtime import semantic_history  # noqa: PLC0415
+        from compass_runtime import semantic_history  # noqa: PLC0415
 
         cut = 200_000
         candidates = [
@@ -183,7 +183,7 @@ class TheReplayKeepsItsBaselineAndText(unittest.TestCase):
                 self.assertEqual(plan["calls"], len(plan["prompts"]))
                 self.assertTrue(all(p["bytes"] > 0 for p in plan["prompts"].values()))
                 import score_abstention  # noqa: PLC0415
-                from cargento_runtime import reading_route  # noqa: PLC0415
+                from compass_runtime import reading_route  # noqa: PLC0415
 
                 with (
                     mock.patch.object(
@@ -295,7 +295,7 @@ class TheReplayKeepsItsBaselineAndText(unittest.TestCase):
 
     def test_folder_diagnostics_use_the_exact_evidence_the_live_level_read(self) -> None:
         dr._runtime()
-        from cargento_runtime import levels  # noqa: PLC0415
+        from compass_runtime import levels  # noqa: PLC0415
 
         evidence = levels.Evidence(
             (

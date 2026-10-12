@@ -98,7 +98,7 @@ export function eligibility(
 /* The short line beside an inert Analyze drift, one per token the board can publish as
    `reading_eligibility.reason`. Codex, which reads only while a turn runs and has no session end the board
    can observe, gets its own line for both idle tokens. No line promises Analyze opens "once this session
-   finishes a turn": the turn may have finished where Cargento could not see it. */
+   finishes a turn": the turn may have finished where Compass could not see it. */
 export function pressLine(session: Row | null | undefined, held: Row): string {
   const reason = String(held['reason']);
   const harness = String(session?.['harness'] || '');
@@ -146,7 +146,7 @@ export function policyReason(policy: unknown): string {
   if (!isRecord(policy)) return MODEL_UNREAD;
   if (policy['reason'] === 'run-disabled') return MODEL_OFF;
   if (policy['reason'] === 'store-unavailable') {
-    return 'Reading permission or its daily budget could not be read or saved. Restore access to the Cargento store before analyzing drift.';
+    return 'Reading permission or its daily budget could not be read or saved. Restore access to the Compass store before analyzing drift.';
   }
   if (policy['reason'] === 'daily-cap') {
     const at = nextNumber(policy['retry_at']);

@@ -31,10 +31,10 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "cargento/skills/cargento"))
+sys.path.insert(0, str(HERE.parents[1] / "compass/skills/compass"))
 sys.path.insert(0, str(HERE))
 
-from cargento_runtime import aggregate, asks, cli, observation, sessions, state  # noqa: E402
+from compass_runtime import aggregate, asks, cli, observation, sessions, state  # noqa: E402
 
 STARTED = time.time()
 ENDED = STARTED - 90

@@ -21,7 +21,7 @@ function fixture() {
         JSON.stringify({ generated: requests.length, sessions: [{ harness: 'claude', sid: 's' }] }),
         {
           status: 200,
-          headers: { 'X-Cargento-Revision': `1.${String(requests.length)}` },
+          headers: { 'X-Compass-Revision': `1.${String(requests.length)}` },
         },
       ),
     );

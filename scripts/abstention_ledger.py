@@ -10,7 +10,7 @@ counts them.
 
 Four properties, each closing a bypass the review of 2026-09-24 reproduced:
 
-- **One fixed path.** It never follows `CARGENTO_HOME`: a per-home ledger let a
+- **One fixed path.** It never follows `COMPASS_HOME`: a per-home ledger let a
   fresh, dated packet directory start again from zero. Nor does it follow
   `HOME`: the home is the account's own, from the password database, because
   `HOME=/tmp/x` gave a fresh ledger with the real CLI in verification (V1).
@@ -46,6 +46,8 @@ import time
 import uuid
 from typing import IO, TYPE_CHECKING, Any
 
+import legacy_paths
+
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
@@ -80,14 +82,19 @@ def canonical_path(*parts: str) -> str | None:
     return None if home is None else os.path.join(home, *parts)
 
 
+def canonical_store_path(*parts: str) -> str | None:
+    home = canonical_home()
+    return None if home is None else os.path.join(legacy_paths.default_home(home), *parts)
+
+
 def home_moved() -> bool:
     """Whether `HOME` names another directory than the account's own."""
     home = canonical_home()
     return home is None or os.path.realpath(os.path.expanduser("~")) != os.path.realpath(home)
 
 
-# Under the account's ~/.cargento at a fixed name, never under CARGENTO_HOME or HOME.
-LEDGER_PATH = canonical_path(".cargento", "drc-4666-spend.json")
+# In the account's selected default home, never under COMPASS_HOME or HOME.
+LEDGER_PATH = canonical_store_path("drc-4666-spend.json")
 # The committed result whose ledger chain freezes the key even if the ledger is deleted.
 CLAUDE_SUMMARY_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

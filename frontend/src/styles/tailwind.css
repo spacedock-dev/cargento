@@ -64,7 +64,7 @@
 }
 
 /* The page palette and five type steps stay present even when no utility names them. Semantic colours
-   bridge to these properties: shadcn uses accent for a hover surface, while Cargento uses it for lime.
+   bridge to these properties: shadcn uses accent for a hover surface, while Compass uses it for lime.
    Base UI sets the measured panel properties on its elements; these defaults keep the compiled variable
    contract complete before any panel is measured. */
 @theme static {
@@ -126,7 +126,7 @@
 
 /* Tailwind's default `dark:` variant emits a `prefers-color-scheme` rule, and this page is dark only.
    Redefined to a selector nothing carries, so a vendored `dark:` class emits an inert rule at most. */
-@custom-variant dark (&:where(.cargento-light-mode, .cargento-light-mode *));
+@custom-variant dark (&:where(.compass-light-mode, .compass-light-mode *));
 
 /* Copied from shadcn/tailwind.css (shadcn 4.21.4, MIT): the two variants the vendored files use. The rest of
    that file (keyframes, scroll-fade utilities) is not imported. */

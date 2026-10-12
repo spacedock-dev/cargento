@@ -77,7 +77,7 @@ that it is, and a recent observation cannot prove a harness is still open.
 - A turn the scanner has not finished reading. A request-wide claim must be withheld, not published
   off a partial view.
 
-**The limit:** Cargento reads a tool call's name and whether it failed, never what it contained.
+**The limit:** Compass reads a tool call's name and whether it failed, never what it contained.
 
 ## P3. Is anything waiting on me?
 
@@ -85,7 +85,7 @@ that it is, and a recent observation cannot prove a harness is still open.
 > session can also ask you a question directly and wait for your answer.
 
 **On screen:** the gate queue at `#n=attention`, the wait reason, the standing duration, and on a row
-Cargento can reach, the controls. `COPY COMMAND` copies the harness's own re-entry verb; `RAISE`
+Compass can reach, the controls. `COPY COMMAND` copies the harness's own re-entry verb; `RAISE`
 switches that terminal to the session. They sit together where both apply, and the raise stands alone
 where the harness documents no re-entry verb.
 
