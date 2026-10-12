@@ -2235,6 +2235,19 @@
             "step": "finding jumps resolve fact ids after renumbering without requests or launches"
           }
         ]
+      },
+      "An open run of checks": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/WorkListView.test.tsx",
+            "test": "keeps a fold open across a board refresh, remount and a new check at the newest end"
+          },
+          {
+            "vitest": "frontend/src/drift/foldRuns.test.ts",
+            "test": "always sees a failed check outside a fold, splitting the run"
+          }
+        ]
       }
     },
     "storage": {

@@ -33,6 +33,8 @@ const config: StorybookConfig = {
           '@base-ui/react/select',
           '@base-ui/react/separator',
           '@base-ui/react/tabs',
+          '@base-ui/react/tooltip',
+          'react-icons/pi',
           '@base-ui/react/merge-props',
           '@base-ui/react/use-render',
           'class-variance-authority',

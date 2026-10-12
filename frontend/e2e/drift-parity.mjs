@@ -209,11 +209,46 @@ const summarizeCard = () => {
     ]),
     levels: [...card.querySelectorAll('.next-session-drift-seg[data-on]')].length,
     pill: norm(document.querySelector('[data-next-drift-pill]')),
-    work: norm(document.querySelector('[data-next-cockpit-work]')),
-    entries: [...document.querySelectorAll('[data-next-entry]')].map((node) => [
-      node.dataset.nextEntry,
-      node.dataset.nextEntryId,
-    ]),
+    // The page draws the activity list newest first and the recorded answer oldest first: restate the rows in
+    // number order, on a copy, before comparing. The departure is recorded in docs/design-frontend-migration.md.
+    work: (() => {
+      const panel = document.querySelector('[data-next-cockpit-work]');
+      if (!panel) return norm(panel);
+      const copy = panel.cloneNode(true);
+      const rows = copy.querySelector('.next-cockpit-work-rows');
+      if (rows) {
+        // Mounted members carry their own original words. Flatten folds only in the copy, then restore
+        // the retired head and body time placement; new short marks and headers are asserted in stories.
+        const entries = [...rows.querySelectorAll('[data-next-entry-id]')];
+        for (const row of entries) {
+          const head = row.querySelector('.next-cockpit-work-head');
+          const body = row.querySelector('.next-cockpit-work-body');
+          const time = row.querySelector('.next-cockpit-work-at');
+          const lastTurn = row.querySelector('.next-cockpit-work-turn');
+          const words = row.getAttribute('data-next-entry-words');
+          if (words && head && body) {
+            const flags = [...head.querySelectorAll('[data-next-entry-flag]')];
+            head.replaceChildren(document.createTextNode(words), ...flags);
+            const add = body.querySelector('[data-next-cockpit-action="direction-add"]');
+            if (time) body.insertBefore(time, add);
+            if (lastTurn) {
+              lastTurn.textContent = 'from the last turn';
+              body.insertBefore(lastTurn, add);
+            }
+          } else {
+            // The same narrow recorded-side projection as recorded-activity.ts.
+            const type = head?.querySelector('.next-cockpit-work-type');
+            if (type?.textContent === 'Agent said') type.textContent = 'said';
+          }
+        }
+        rows.replaceChildren(...entries.reverse());
+      }
+      copy.querySelector('[data-activity-legend]')?.remove();
+      return norm(copy);
+    })(),
+    entries: [...document.querySelectorAll('[data-next-entry]')]
+      .reverse()
+      .map((node) => [node.dataset.nextEntry, node.dataset.nextEntryId]),
     meta: norm(document.querySelector('.next-session-detail-meta')),
   };
 };
