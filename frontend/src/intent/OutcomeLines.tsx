@@ -5,6 +5,7 @@ import { annotationLines, storeUnreadable, OUTCOME_LINES_MAX } from './annotatio
 import { heldSentence } from './cues';
 import { directionWhy, linesDraft, linesKey, linesToSend, lineSource } from './derive';
 import { ActionButton } from './ActionButton';
+import { DirectionActionButton } from './DirectionActionButton';
 import {
   cancelDirection,
   replaceDirection,
@@ -35,16 +36,18 @@ export function DirectionGoalButton({
   const { ctx, session } = usePanel();
   if (!['claude', 'codex'].includes(String(session['harness'] || '')) || !factId) return null;
   const key = compatSessKey(session);
+  const focus = `direction-goal:${key}:${scope}:${factId}`;
   return (
-    <ActionButton
+    <DirectionActionButton
+      feedbackKey={focus}
       weight="secondary"
       label="Use this as my goal"
       pendingKey={`direction-goal:${key}`}
       busyLabel="Opening…"
       action="direction-goal"
       arg={factId}
-      focusKey={`direction-goal:${key}:${scope}:${factId}`}
-      onPress={() => void adoptDirectionAsGoal(ctx, session, factId)}
+      focusKey={focus}
+      onPress={() => void adoptDirectionAsGoal(ctx, session, factId, focus)}
     />
   );
 }

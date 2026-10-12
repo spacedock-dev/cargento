@@ -74,6 +74,23 @@ not a guarantee that arbitrary-size JSON records can be decoded. Pagination
 follows file order and sorts each returned page by time; it does not sort an
 unread portion of a transcript whose timestamps disagree with file order.
 
+
+## Shared reads for Intent actions
+
+`scan_source` shares this reader's chunks, line boundaries and regular-file
+identity checks with the direction and prompt lookups. It has no cursor, retains
+no page, and supplies each complete line to a private visitor inside the clock
+allowance. Unlike a page cursor, an Intent read requires the exact stamp to remain
+unchanged, including size. It never stops at the first match: a conflicting source
+identity later in the consumed allowance must still be able to refuse the words.
+The direction and opening-source allowances, reason tokens, measured costs and
+limits belong to the [long-session Intent contract](design-reading-a-session.md#long-session-direction-and-prompt-reads).
+A `POST /api/direction` batch feeds every requested id through one such walk,
+sharing its allowance and file-stamp checks without retaining source words on the
+server. Each id is checked for conflicting copies throughout the consumed range.
+The linked Intent contract owns the request bounds and ordered result shapes.
+Record pagination and its public response remain unchanged.
+
 ## Why semantic history could stay thin
 
 Synthetic failing-first tests proved that age pruning and the 512-event project

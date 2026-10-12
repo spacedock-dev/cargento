@@ -10,12 +10,13 @@ import os
 import re
 import stat
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from . import project_context
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import BinaryIO
 
     from .config import RuntimeConfig
@@ -113,6 +114,7 @@ class _Scan:
     scanned: int = 0
     bound: str | None = None
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)
+    skipped: bool = False
 
 
 def _take_lines(
@@ -123,6 +125,7 @@ def _take_lines(
     sid: str,
     limit: int,
     deadline: float,
+    visit: Callable[[bytes], None] | None = None,
 ) -> tuple[bytes, bool]:
     while pending:
         boundary = pending.rfind(b"\n")
@@ -136,19 +139,31 @@ def _take_lines(
         scan.resume = start
         if scan.discard:
             scan.discard = False
+        elif visit is not None:
+            if raw:
+                visit(raw)
         else:
             fact = _fact(config, raw, harness, sid) if raw else None
             if fact is not None:
                 scan.entries.setdefault(str(fact["fact_id"]), fact)
-        if len(scan.entries) == limit:
+        if limit and len(scan.entries) == limit:
             return pending, True
     return pending, False
 
 
 def _scan(
-    config: RuntimeConfig, source: BinaryIO, scan: _Scan, harness: str, sid: str, limit: int
+    config: RuntimeConfig,
+    source: BinaryIO,
+    scan: _Scan,
+    harness: str,
+    sid: str,
+    limit: int,
+    visit: Callable[[bytes], None] | None = None,
+    deadline: float | None = None,
 ) -> None:
-    deadline = time.monotonic() + config.record_page_max_seconds
+    deadline = (
+        deadline if deadline is not None else time.monotonic() + config.record_page_max_seconds
+    )
     pending = b""
     initial_end = scan.position
     while scan.position or pending:
@@ -174,12 +189,76 @@ def _scan(
             if len(chunk) != count:
                 raise OSError("source changed during record scan")
             pending = chunk + pending
-        pending, stopped = _take_lines(config, scan, pending, harness, sid, limit, deadline)
+        pending, stopped = _take_lines(config, scan, pending, harness, sid, limit, deadline, visit)
         if stopped:
             return
+        # A press gets a larger total allowance than a page, not an unbounded
+        # single JSON line. Skip its remainder through the next delimiter.
+        if visit is not None and len(pending) >= 16 * 1024 * 1024:
+            pending = b""
+            scan.discard = True
+            scan.skipped = True
         if not scan.position:
             scan.resume = 0
             return
+
+
+@dataclass(frozen=True)
+class SourceScan:
+    """Measured coverage of a press-only read, with no retained source words."""
+
+    state: str
+    scanned_bytes: int = 0
+    reached_start: bool = False
+    bound: str | None = None
+    stamp: tuple[int, int, int, int] | None = None
+    skipped: bool = False
+    start: int = 0
+
+
+def scan_source(
+    config: RuntimeConfig,
+    path: str,
+    visit: Callable[[bytes], None],
+    *,
+    max_bytes: int,
+    deadline: float,
+    end: int | None = None,
+    expected_stamp: tuple[int, int, int, int] | None = None,
+) -> SourceScan:
+    """Share page boundaries and chunk reads, but require an unchanged file.
+
+    Directions inspect the whole allowance after a match, so another copy of
+    the identity in that coverage can still refuse it. No cursor or cache.
+    """
+    scan: _Scan | None = None
+    try:
+        with open(path, "rb") as source:
+            info = os.fstat(source.fileno())
+            device, inode, size, mtime, _, _ = _cursor_position(info, None, "")
+            stamp = (device, inode, size, mtime)
+            if expected_stamp is not None and expected_stamp != stamp:
+                return SourceScan("stale")
+            position = min(size, end) if end is not None else size
+            discard = False
+            boundary_bytes = 0
+            if position and position < size:
+                source.seek(position - 1)
+                discard = source.read(1) != b"\n"
+                boundary_bytes = 1
+            scan = _Scan(position, position, discard, scanned=boundary_bytes)
+            bounded = replace(config, record_page_max_bytes=max_bytes)
+            _scan(bounded, source, scan, "", "", 0, visit, deadline)
+            after = os.stat(path)
+            if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != stamp:
+                return SourceScan("stale", scan.scanned)
+    except (OSError, ValueError):
+        return SourceScan(
+            "stale" if scan is not None else "unavailable", scan.scanned if scan else 0
+        )
+    return SourceScan(
+        "ok", scan.scanned, scan.resume == 0, scan.bound, stamp, scan.skipped, scan.resume
+    )
 
 
 def _cursor_position(

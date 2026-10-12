@@ -57,7 +57,7 @@ MATCHES_PER_SESSION = 32
 _MESSAGE_READ_CAP = 4 * CORRECTION_CAP_CHARS + 1
 # The newest bytes of a transcript read for a match: the bound the semantic history store's
 # backfill reads a source to, so a message that store publishes is one this can recognise.
-_SCAN_CAP_BYTES = project_context.SEMANTIC_BACKFILL_MAX_BYTES
+_OPENING_SCAN_CAP_BYTES = project_context.SEMANTIC_BACKFILL_MAX_BYTES
 # A store past this reads back as nothing, un-marking every recognised paste at once, so it sits
 # well above the full bound. Measured: a copy is about 150 bytes on disk and a match about 93, and
 # at their widest (a 64-character sid, 17-digit times, 64-bit inode and offset) 173 and 97, so 256
@@ -402,14 +402,16 @@ def _scan(
         if start > 0:
             handle.seek(start - 1)
             if handle.read(1) != b"\n":
-                position += len(handle.readline())
+                position += len(handle.readline(max(0, end - start)))
         handle.seek(position)
         while position < end:
             raw = handle.readline(end - position)
             if not raw.endswith(b"\n"):
                 break
             here, position = position, position + len(raw)
-            if not raw.lstrip().startswith(b"{"):
+            if not raw.lstrip().startswith(b"{") or not project_context._could_be_instruction(  # noqa: SLF001
+                raw, "claude"
+            ):
                 continue
             try:
                 record = json.loads(raw)
@@ -442,6 +444,29 @@ def _scan(
     return out, position
 
 
+def _opening_messages(
+    config: RuntimeConfig,
+    path: str,
+    sid: str,
+    info: os.stat_result,
+    cached: dict[str, Any] | None,
+    start: int,
+    end: int,
+    tail_start: int,
+) -> list[_Message]:
+    """Copied exclusions must cover the same opening sources the prompt menu can offer."""
+    if start >= tail_start or start >= end:
+        return []
+    if (
+        cached is not None
+        and cached["ino"] == info.st_ino
+        and cached.get("opening_start") == start
+        and cached.get("opening_end") == end
+    ):
+        return list(cached.get("opening", ()))
+    return _scan(config, path, sid, start, end)[0]
+
+
 def _messages(
     config: RuntimeConfig, state: RuntimeState, path: str, sid: str, start: int
 ) -> tuple[list[_Message], int, int]:
@@ -452,7 +477,8 @@ def _messages(
     per collection. First of a duplicate pair, as `direction_text` keeps it.
     """
     info = os.stat(path)
-    start = max(start, info.st_size - _SCAN_CAP_BYTES, 0)
+    opening_start = max(start, 0)
+    start = max(start, info.st_size - config.direction_scan_max_bytes, 0)
     cache_key = f"copied-corrections:{sid}:{path}"
     with state.cache_lock:
         cached = state.metadata_cache.get(cache_key)
@@ -462,10 +488,13 @@ def _messages(
         and cached["start"] <= start
         and cached["end"] <= info.st_size
     ):
-        more, end = _scan(config, path, sid, cached["end"], info.st_size)
+        more, end = _scan(config, path, sid, max(cached["end"], start), info.st_size)
         found = [m for m in cached["messages"] if m.position >= start] + more
     else:
         found, end = _scan(config, path, sid, start, info.st_size)
+    opening_end = min(info.st_size, _OPENING_SCAN_CAP_BYTES)
+    opening = _opening_messages(config, path, sid, info, cached, opening_start, opening_end, start)
+    found = sorted([*opening, *found], key=lambda message: message.position)
     seen: set[str] = set()
     messages = []
     for message in found:
@@ -476,7 +505,15 @@ def _messages(
         runtime_state.bounded_put(
             state.metadata_cache,
             cache_key,
-            {"ino": info.st_ino, "start": start, "end": end, "messages": tuple(messages)},
+            {
+                "ino": info.st_ino,
+                "start": start,
+                "end": end,
+                "messages": tuple(messages),
+                "opening_start": opening_start,
+                "opening_end": opening_end,
+                "opening": tuple(opening),
+            },
             limit=config.max_cache_entries,
         )
     return messages, info.st_ino, info.st_size

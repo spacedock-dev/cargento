@@ -575,7 +575,8 @@ UNSWEPT_GET = {"/api/stream"}
 CONTEXT_READERS = {
     "_project_context": "publishes the context, through `for_page`",
     "_compose_reading": "hands the facts to the producer and answers a job",
-    "_session_facts": "the helper the next three call",
+    "_session_facts": "the bounded fact helper",
+    "_direction": "shares listed facts for misses; answers only independently verified native words",
     "_typed_window_start": "a window start, a number",
     "_later_direction": "a time and one message's text from `direction_text`, bounded on its own",
     "_correction": "Steer back's parts, from the reader's saved lines and fact ids",
@@ -658,6 +659,33 @@ class EveryPageRouteDropsTheWordsTest(_Collected):
         (choice,) = json.loads(body)["prompt_choices"]
         self.assertTrue(choice["cut"])
         self.assertLessEqual(len(choice["text"]), PROMPT_CHOICE_CAP)
+
+    def test_a_reader_never_gets_listed_words_as_a_fallback_for_a_missed_batch_direction(
+        self,
+    ) -> None:
+        facts = self.context()["semantic"]["facts"]
+        ids = [facts[0]["fact_id"], "missing"]
+        with (
+            mock.patch.object(
+                project_context,
+                "direction_lookups",
+                return_value=[
+                    project_context.DirectionLookup(project_context.DirectionText("")) for _ in ids
+                ],
+            ),
+            mock.patch.object(
+                http_api._RequestHandler, "_session_facts", return_value=facts
+            ) as listed,
+            self.serving() as port,
+        ):
+            status, body = self.request(
+                port, "POST", "/api/direction", {"harness": "claude", "sid": SHORT, "fact_ids": ids}
+            )
+        self.assertEqual(200, status)
+        self.assertEqual(1, listed.call_count)
+        self.assertNotIn(FIELD.encode(), body)
+        self.assertNotIn(SENTINEL.encode(), body)
+        self.assertEqual([False, False], [result["ok"] for result in json.loads(body)["results"]])
 
     def test_every_handler_reading_a_context_is_one_reviewed(self) -> None:
         readers = set()

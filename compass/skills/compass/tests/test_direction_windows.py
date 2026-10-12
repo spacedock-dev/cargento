@@ -14,9 +14,16 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from compass_runtime import aggregate, http_api, levels, project_context, reading, records
+from compass_runtime import (
+    aggregate,
+    http_api,
+    levels,
+    project_context,
+    reading,
+    record_pages,
+    records,
+)
 from compass_runtime import annotations as annotation_store
-from compass_runtime import io as runtime_io
 
 from . import test_correction as correction_tests
 from .support import make_runtime, make_server, serve_until_closed
@@ -196,7 +203,7 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         for failure in (FileNotFoundError, PermissionError):
             with (
                 self.subTest(failure=failure.__name__),
-                mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=failure),
+                mock.patch("compass_runtime.record_pages.open", side_effect=failure, create=True),
             ):
                 self.assertEqual(
                     "",
@@ -233,6 +240,7 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
 
     def test_a_child_identity_is_never_offered_as_the_parent_prompt(self) -> None:
         fact = self.direction()
+        fact["fact_id"] = "fact:child"
         fact["source_session"] = {"harness": "claude", "sid": "other"}
         app = SimpleNamespace(config=self.config, state=self.state)
         got = http_api._with_prompt_choices(
@@ -242,11 +250,15 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
             ("claude", SHORT),
             "billing",
         )
-        self.assertEqual([], got["prompt_choices"])
+        self.assertTrue(
+            all(choice["fact_id"] != fact["fact_id"] for choice in got["prompt_choices"])
+        )
 
     def test_a_direction_beyond_the_source_budget_is_refused(self) -> None:
         fact_id = str(self.direction()["fact_id"])
-        with mock.patch.object(project_context, "SEMANTIC_BACKFILL_MAX_BYTES", 16):
+        with mock.patch.object(
+            self, "config", dataclasses.replace(self.config, direction_scan_max_bytes=16)
+        ):
             self.assertEqual(
                 "",
                 project_context.direction_text(
@@ -256,15 +268,15 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
 
     def test_a_file_changed_while_opening_a_direction_is_refused(self) -> None:
         fact_id = str(self.direction()["fact_id"])
-        original = runtime_io.read_prefix_bytes
+        original = record_pages.scan_source
 
-        def moving(*args: Any, **kwargs: Any) -> bytes:
+        def moving(*args: Any, **kwargs: Any) -> record_pages.SourceScan:
             value = original(*args, **kwargs)
             with self.path.open("a") as handle:
                 handle.write("\n")
             return value
 
-        with mock.patch.object(runtime_io, "read_prefix_bytes", moving):
+        with mock.patch.object(record_pages, "scan_source", moving):
             self.assertEqual(
                 "",
                 project_context.direction_text(
@@ -291,7 +303,12 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         self.session.save(self.path)
         app = SimpleNamespace(config=self.config, state=self.state)
         choices = http_api._prompt_facts(app, _row(), [fact])
-        self.assertEqual([], annotation_store.prompt_choices(_row(), choices, 240))
+        self.assertFalse(
+            any(
+                choice["fact_id"] == fact["fact_id"]
+                for choice in annotation_store.prompt_choices(_row(), choices, 240)
+            )
+        )
 
     def test_goal_menu_masking_does_not_change_or_poison_analyze_words(self) -> None:
         self.session.prompt("Keep retry. AKIAIOSFODNN7\nEXAMPLE")
@@ -318,7 +335,9 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
             key=lambda item: item["at"],
         )
         app = SimpleNamespace(config=self.config, state=self.state)
-        with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=PermissionError):
+        with mock.patch(
+            "compass_runtime.record_pages.open", side_effect=PermissionError, create=True
+        ):
             restored = http_api._prompt_facts(app, _row(), [fact])
             self.assertEqual([], annotation_store.prompt_choices(_row(), restored, 240))
 
@@ -343,7 +362,9 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         explicit = annotation_store.prompt_choice(
             str(fact["fact_id"]), float(fact["at"]), raw.text, 240, cut=raw.cut
         )
-        self.assertEqual([explicit], choices)
+        self.assertEqual(
+            [explicit], [choice for choice in choices if choice["fact_id"] == fact["fact_id"]]
+        )
 
     def test_an_ambiguity_after_the_fact_cap_still_refuses_an_earlier_choice(self) -> None:
         words = "Keep   retries bounded.\nUse the original boundary."
@@ -362,15 +383,18 @@ class AListedDirectionReachesItsSource(_ClaudeSession):
         self.session.rows.append(duplicate)
         self.session.save(self.path)
         self.assertLess(self.path.stat().st_size, project_context.SEMANTIC_BACKFILL_MAX_BYTES)
+        # The fact cap is what this test measures, so the wall-clock allowance must not end the read first:
+        # under coverage tracing the default two seconds stopped it at 1,281 facts on CI.
+        config = dataclasses.replace(self.config, direction_scan_max_seconds=600.0)
         source = project_context.transcript_user_facts(
-            self.config, self.state, str(self.path), "claude", SHORT, goal_choices=True
+            config, self.state, str(self.path), "claude", SHORT, goal_choices=True
         )
         self.assertEqual(project_context.TRANSCRIPT_USER_FACTS_MAX, len(source))
-        app = SimpleNamespace(config=self.config, state=self.state)
+        app = SimpleNamespace(config=config, state=self.state)
         choices = annotation_store.prompt_choices(
             _row(), http_api._prompt_facts(app, _row(), [fact]), 240
         )
-        self.assertEqual([], choices)
+        self.assertFalse(any(choice["fact_id"] == fact["fact_id"] for choice in choices))
 
 
 class AReadingKeepsTheBaselineItRead(unittest.TestCase):

@@ -1399,10 +1399,105 @@ class DirectionRouteTest(_ClaudeSession):
             ]
         expected = (
             200,
-            {"ok": False, "reason": "unavailable", "why": annotation_store.DIRECTION_UNAVAILABLE},
+            {
+                "ok": False,
+                "reason": "not_found",
+                "why": "Compass could not find that later direction in the session's current record. Nothing was opened.",
+            },
         )
         for answer in answers:
             self.assertEqual(expected, answer)
+
+    def test_a_reader_can_open_a_batch_with_the_single_answer_shapes_in_request_order(self) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        ids = ["missing", fact_id, fact_id]
+        with self._serving() as port:
+            single = self._open(port, fact_id)[1]
+            with mock.patch.object(
+                project_context, "direction_lookups", wraps=project_context.direction_lookups
+            ) as scan:
+                status, body = self._post(
+                    port, "/api/direction", {"harness": "claude", "sid": SHORT, "fact_ids": ids}
+                )
+        self.assertEqual(200, status)
+        self.assertEqual(1, scan.call_count)
+        self.assertEqual("not_found", body["results"][0]["reason"])
+        self.assertEqual([single, single], body["results"][1:])
+
+    def test_a_reader_cannot_send_an_unbounded_or_mixed_direction_batch(self) -> None:
+        cases: tuple[dict[str, Any], ...] = (
+            {"fact_ids": []},
+            {"fact_ids": ["x"] * 65},
+            {"fact_ids": ["x" * 257]},
+            {"fact_ids": [1]},
+            {"fact_ids": "x"},
+            {"fact_ids": ["x"], "fact_id": "x"},
+        )
+        with self._serving() as port:
+            for fields in cases:
+                status, _ = self._post(
+                    port, "/api/direction", {"harness": "claude", "sid": SHORT, **fields}
+                )
+                self.assertEqual(400, status)
+
+    def test_a_reader_gets_a_distinct_reason_when_a_later_direction_is_beyond_the_search(
+        self,
+    ) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        with (
+            self._serving() as port,
+            mock.patch.object(
+                project_context,
+                "direction_lookup",
+                return_value=project_context.DirectionLookup(
+                    project_context.DirectionText(""), "out_of_reach"
+                ),
+            ),
+        ):
+            status, body = self._open(port, fact_id)
+        self.assertEqual(200, status)
+        self.assertEqual("out_of_reach", body["reason"])
+        self.assertIn("search", body["why"])
+
+    def test_a_reader_can_open_a_paged_direction_after_it_left_semantic_history(self) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        with (
+            self._serving() as port,
+            mock.patch.object(http_api._RequestHandler, "_session_facts", return_value=[]),
+        ):
+            status, body = self._open(port, fact_id)
+        self.assertEqual(200, status)
+        self.assertTrue(body["ok"])
+        self.assertEqual(LONG.replace("\n", " "), body["text"])
+
+    def test_a_reader_opening_a_verified_native_direction_does_not_repeat_project_collection(
+        self,
+    ) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        with (
+            self._serving() as port,
+            mock.patch.object(
+                http_api._RequestHandler, "_session_facts", return_value=[]
+            ) as collections,
+        ):
+            status, body = self._open(port, fact_id)
+        self.assertEqual(200, status)
+        self.assertTrue(body["ok"])
+        self.assertEqual(0, collections.call_count)
+
+    def test_a_reader_gets_not_found_for_a_known_earlier_prompt_even_when_the_search_is_bounded(
+        self,
+    ) -> None:
+        first_id = next(
+            str(f["fact_id"])
+            for f in self.facts()
+            if f.get("type") == "user_message" and f["at"] == FIRST_AT
+        )
+        narrow = dataclasses.replace(self.config, direction_scan_max_bytes=16)
+        with mock.patch.object(self, "config", narrow), self._serving() as port:
+            status, body = self._open(port, first_id)
+        self.assertEqual(200, status)
+        self.assertEqual("not_found", body["reason"])
 
     def test_a_direction_older_than_the_tail_is_opened_and_added_from_its_source(self) -> None:
         # The fact still resolves (history keeps it) while the tail no longer

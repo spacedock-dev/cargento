@@ -250,9 +250,9 @@ class TheMenuOverARealSocket(_App):
         self.now = START.timestamp() + self.session.seconds + 1
         with self.serving() as port:
             choices = self._choices(port)
-        self.assertEqual([FIRST, OWN], [c["text"] for c in choices])
+        self.assertEqual([OWN, FIRST], [c["text"] for c in choices])
         self.assertNotIn(pasted_at, [c["at"] for c in choices])
-        self.assertEqual(own_at, choices[1]["at"])
+        self.assertEqual(own_at, choices[0]["at"])
         self.assertNotIn(STORED.split("\n", 1)[0], json.dumps(choices))
 
     def test_choosing_one_adopts_it_and_a_forged_choice_adopts_nothing(self) -> None:
@@ -261,7 +261,7 @@ class TheMenuOverARealSocket(_App):
         self.now = START.timestamp() + self.session.seconds + 1
         with self.serving() as port:
             choices = self._choices(port)
-            latest = choices[1]
+            latest = choices[0]
             for forged in (
                 {"prompt_fact": "fact:ffffffffffffffff"},
                 {"expected_prompt": latest["text"] + " and more"},

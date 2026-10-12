@@ -14,7 +14,8 @@ import shlex
 import shutil
 import stat
 import subprocess
-from collections.abc import Iterable, Mapping
+import time
+from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from . import claude_data, events, observer, records, semantic_history, spacedock, transcripts
@@ -4881,52 +4882,120 @@ def transcript_user_facts(
     sid: str,
     *,
     goal_choices: bool = False,
+    coverage: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Press-only user words from a bounded forward scan, never the published ledger.
+    """Press-only user words from bounded newest and opening reads, never the ledger.
 
-    Starting at the beginning restores adopted prompts that left the tail. The
-    existing backfill byte allowance bounds the scan; an incomplete final record
-    is ignored. Cache only redacted, capped words and give each caller its own copy.
+    The opening read restores adopted prompts that left the tail; the newest
+    read restores recent choices and line sources. They share one clock, skip
+    incomplete boundary records and report any unread gap through `coverage`.
+    Cache only redacted, capped words and give each caller
+    its own copy.
     The uncached goal-menu arm additionally masks named forms before folding raw
     separators; it never changes the default Analyze words or their cache.
     """
-    if harness not in {"claude", "codex"}:
+    if coverage is not None:
+        coverage.update(state="unavailable", bound=None)
+    source_version = transcript_stamp(path) if harness in {"claude", "codex"} else None
+    if source_version is None:
         return []
     key = (path, harness, sid)
     try:
-        stamp = os.stat(path)
-        if not stat.S_ISREG(stamp.st_mode):
-            return []
-        source_version = (stamp.st_dev, stamp.st_ino, stamp.st_size, stamp.st_mtime_ns)
         with state.cache_lock:
             cached = state.transcript_user_cache.get(key)
             if (
                 not goal_choices
+                and coverage is None
                 and cached is not None
-                and cached[:2] == (stamp.st_size, stamp.st_mtime_ns)
-                and all(fact.get("request_source_stamp") == source_version for fact in cached[2])
+                and cached[0] == source_version
             ):
-                return copy.deepcopy(cached[2])
-        raw = runtime_io.read_prefix_bytes(path, max_bytes=SEMANTIC_BACKFILL_MAX_BYTES)
-        if len(raw) < stamp.st_size and not raw.endswith(b"\n"):
-            raw = raw.rsplit(b"\n", 1)[0] if b"\n" in raw else b""
-        facts = _transcript_user_scan(config, raw, harness, sid, goal_choices=goal_choices)
+                return copy.deepcopy(cached[1])
+        facts = _read_user_sources(
+            config, path, harness, sid, source_version, goal_choices, coverage
+        )
+        if facts is None:
+            return []
         after = os.stat(path)
         if (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) != source_version:
-            return []
+            return _failed_user_read(coverage)
         for fact in facts:
             fact["request_source_stamp"] = source_version
     except OSError:
-        return []
+        return _failed_user_read(coverage)
     if not goal_choices:
         with state.cache_lock:
             runtime_state.bounded_put(
                 state.transcript_user_cache,
                 key,
-                (stamp.st_size, stamp.st_mtime_ns, facts),
+                (source_version, facts),
                 limit=TRANSCRIPT_USER_CACHE_ENTRIES,
             )
     return copy.deepcopy(facts)
+
+
+def _failed_user_read(coverage: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if coverage is not None:
+        coverage.update(state="unavailable", bound=None)
+    return []
+
+
+def _read_user_sources(
+    config: RuntimeConfig,
+    path: str,
+    harness: str,
+    sid: str,
+    source_version: tuple[int, int, int, int],
+    goal_choices: bool,
+    coverage: dict[str, Any] | None,
+) -> list[dict[str, Any]] | None:
+    """Share one clock across newest and opening coverage; never scan overlapping records."""
+    from . import record_pages  # noqa: PLC0415 - shared reader imports the fact builders
+
+    deadline = time.monotonic() + config.direction_scan_max_seconds
+    scans: list[record_pages.SourceScan] = []
+
+    def read(visit: Callable[[bytes], None]) -> None:
+        tail = record_pages.scan_source(
+            config,
+            path,
+            visit,
+            max_bytes=config.direction_scan_max_bytes,
+            deadline=deadline,
+            expected_stamp=source_version,
+        )
+        scans.append(tail)
+        if tail.state == "ok" and not tail.reached_start:
+            scans.append(
+                record_pages.scan_source(
+                    config,
+                    path,
+                    visit,
+                    max_bytes=SEMANTIC_BACKFILL_MAX_BYTES,
+                    deadline=deadline,
+                    end=min(SEMANTIC_BACKFILL_MAX_BYTES - 1, tail.start),
+                    expected_stamp=source_version,
+                )
+            )
+
+    facts = _transcript_user_scan(config, b"", harness, sid, goal_choices=goal_choices, read=read)
+    if any(scan.state != "ok" for scan in scans):
+        if coverage is not None:
+            coverage.update(state="unavailable", bound=None)
+        return None
+    complete = scans[0].reached_start or (
+        len(scans) == 2 and scans[1].reached_start and scans[0].start < SEMANTIC_BACKFILL_MAX_BYTES
+    )
+    if coverage is not None:
+        coverage.update(
+            state="ok",
+            bound=None
+            if complete and not any(scan.skipped for scan in scans)
+            else "time"
+            if any(scan.bound == "time" for scan in scans)
+            else "bytes",
+            scanned_bytes=sum(scan.scanned_bytes for scan in scans),
+        )
+    return facts
 
 
 def _instruction_facts(
@@ -4934,6 +5003,8 @@ def _instruction_facts(
 ) -> Iterable[tuple[dict[str, Any], dict[str, Any], bytes]]:
     """The same bounded records used by the words and their private source proof."""
     for line in raw.splitlines():
+        if not _could_be_instruction(line, harness):
+            continue
         try:
             record = json.loads(line)
         except (ValueError, RecursionError):
@@ -4975,18 +5046,92 @@ def _complete_request_digest(source: DirectionText) -> str:
     ).hexdigest()
 
 
+def _user_source_slot(facts: list[dict[str, Any]], fact: dict[str, Any]) -> dict[str, Any] | None:
+    """Reserve the oldest source as well as the newest facts when the fact allowance fills."""
+    ordered = sorted([*facts, fact], key=lambda item: float(item["at"]))
+    retained = ordered[:1] + (
+        ordered[-(TRANSCRIPT_USER_FACTS_MAX - 1) :] if TRANSCRIPT_USER_FACTS_MAX > 1 else []
+    )
+    if fact not in retained:
+        return None
+    evicted = next(item for item in facts if item not in retained)
+    facts.remove(evicted)
+    return evicted
+
+
+def _forget_user_source(
+    evicted: dict[str, Any],
+    request_seen: set[str],
+    request_ambiguous: set[str],
+    goal_sources: dict[str, tuple[DirectionText, bytes]],
+    seen: set[tuple[str, str]],
+    request_times: dict[str, set[str]],
+) -> None:
+    old_id = str(evicted["fact_id"])
+    request_seen.discard(old_id)
+    request_ambiguous.discard(old_id)
+    goal_sources.pop(old_id, None)
+    seen.difference_update({key for key in seen if key[0] == old_id})
+    old_time = str(evicted.get("at"))
+    request_times.get(old_time, set()).discard(old_id)
+    if not request_times.get(old_time):
+        request_times.pop(old_time, None)
+
+
+def _admit_user_source(
+    facts: list[dict[str, Any]],
+    fact: dict[str, Any],
+    request_seen: set[str],
+    request_ambiguous: set[str],
+    goal_sources: dict[str, tuple[DirectionText, bytes]],
+    seen: set[tuple[str, str]],
+    request_times: dict[str, set[str]],
+) -> bool:
+    fact_id = str(fact["fact_id"])
+    previous = request_times.get(str(fact.get("at")), set())
+    collision = bool(previous)
+    # A same-time record can disprove a retained request even when it earns no
+    # returned slot. Record that before eviction removes the earlier identity.
+    request_ambiguous.update(previous)
+    if fact_id not in request_seen and len(facts) >= TRANSCRIPT_USER_FACTS_MAX:
+        evicted = _user_source_slot(facts, fact)
+        if evicted is None:
+            return False
+        _forget_user_source(
+            evicted, request_seen, request_ambiguous, goal_sources, seen, request_times
+        )
+    if collision:
+        request_ambiguous.add(fact_id)
+    return True
+
+
 def _transcript_user_scan(
-    config: RuntimeConfig, raw: bytes, harness: str, sid: str, *, goal_choices: bool = False
+    config: RuntimeConfig,
+    raw: bytes,
+    harness: str,
+    sid: str,
+    *,
+    goal_choices: bool = False,
+    read: Callable[[Callable[[bytes], None]], None] | None = None,
 ) -> list[dict[str, Any]]:
     facts: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
-    goal_sources: dict[str, DirectionText] = {}
+    goal_sources: dict[str, tuple[DirectionText, bytes]] = {}
     ambiguous: set[str] = set()
     request_seen: set[str] = set()
     request_times: dict[str, set[str]] = {}
     request_ambiguous: set[str] = set()
-    for record, fact, line in _instruction_facts(config, raw, harness, sid):
+
+    def consume(line: bytes) -> None:
+        item = next(iter(_instruction_facts(config, line, harness, sid)), None)
+        if item is None:
+            return
+        record, fact, line = item
         fact_id = str(fact["fact_id"])
+        if not _admit_user_source(
+            facts, fact, request_seen, request_ambiguous, goal_sources, seen, request_times
+        ):
+            return
         if not _remember_request(
             fact,
             full=len(facts) >= TRANSCRIPT_USER_FACTS_MAX,
@@ -4994,7 +5139,7 @@ def _transcript_user_scan(
             times=request_times,
             ambiguous=request_ambiguous,
         ):
-            continue
+            return
         fact["request_source_digest"] = hashlib.sha256(line).hexdigest()
         source_words = _direction_words(config, record, harness)
         fact["request_words_digest"] = _complete_request_digest(source_words)
@@ -5003,9 +5148,10 @@ def _transcript_user_scan(
             # The returned list stays bounded, but a later conflicting source
             # inside the byte budget must still invalidate an offered identity.
             previous = goal_sources.get(fact_id)
-            if previous is not None and previous != source_words:
+            source = (source_words, _direction_signature(record, harness))
+            if previous is not None and previous != source:
                 ambiguous.add(fact_id)
-            goal_sources[fact_id] = source_words
+            goal_sources[fact_id] = source
             # This uncached menu-only arm sees raw separators before masking;
             # the default Analyze words and its cache remain unchanged.
             fact[READER_WORDS_FIELD] = records.safe_text(
@@ -5014,10 +5160,37 @@ def _transcript_user_scan(
             fact[records.GOAL_SOURCE_CUT_FIELD] = source_words.cut
         key = (str(fact["fact_id"]), str(fact.get(READER_WORDS_FIELD) or ""))
         if key in seen:
-            continue
+            return
         seen.add(key)
         if len(facts) < TRANSCRIPT_USER_FACTS_MAX:
             facts.append(fact)
+
+    _feed_user_scan(raw, consume, read)
+    return _checked_user_facts(facts, goal_choices, request_ambiguous, ambiguous)
+
+
+def _feed_user_scan(
+    raw: bytes,
+    consume: Callable[[bytes], None],
+    read: Callable[[Callable[[bytes], None]], None] | None,
+) -> None:
+    if read is None:
+        for line in raw.splitlines():
+            consume(line)
+    else:
+        read(consume)
+
+
+def _checked_user_facts(
+    facts: list[dict[str, Any]],
+    goal_choices: bool,
+    request_ambiguous: set[str],
+    ambiguous: set[str],
+) -> list[dict[str, Any]]:
+    if goal_choices:
+        facts.sort(key=lambda fact: -float(fact["at"]))
+    else:
+        facts.sort(key=lambda fact: float(fact["at"]))
     # Keep an empty, verified source match for an ambiguous identity, so a
     # menu caller cannot fall back to its already-folded published words.
     for fact in facts:
@@ -5202,58 +5375,124 @@ class DirectionText(NamedTuple):
     cut: bool = False
 
 
+class DirectionLookup(NamedTuple):
+    """Private source coverage; only the refusal token and reviewed words leave it."""
+
+    words: DirectionText
+    reason: str = "not_found"
+    scanned_bytes: int = 0
+    at: float | None = None
+    fact: dict[str, Any] | None = None
+
+
+def _could_be_instruction(raw: bytes, harness: str) -> bool:
+    if b"\\u" in raw:
+        return True
+    if harness == "claude":
+        return bool(re.search(rb'"type"\s*:\s*"user"', raw)) and (
+            b'"tool_result"' not in raw or b'"text"' in raw
+        )
+    if harness == "codex":
+        return bool(re.search(rb'"role"\s*:\s*"user"', raw))
+    return True
+
+
 def direction_text(
     config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_id: str
 ) -> DirectionText:
-    """The source words of one direction, verified by its published fact id.
+    """The source words of one direction, verified by its published fact id."""
+    return direction_lookup(config, state, harness, sid, fact_id).words
 
-    Claude and Codex search a bounded prefix so a history-listed message can
-    still be opened after it leaves the live tail. Other harnesses keep their
-    existing source bounds. Recompute the published identity rather than
-    trusting a summary; refuse missing, changing or ambiguous source records.
+
+def direction_lookup(
+    config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_id: str
+) -> DirectionLookup:
+    """Open one fact through the same stateless scan as a batch."""
+    return direction_lookups(config, state, harness, sid, [fact_id])[0]
+
+
+def _direction_result(
+    match: tuple[bytes, DirectionText, dict[str, Any]] | None,
+    ambiguous: bool,
+    stable: bool,
+    bounded: bool,
+    scanned: int,
+) -> DirectionLookup:
+    if not stable or ambiguous:
+        return DirectionLookup(DirectionText(""), "not_found", scanned)
+    if match is not None:
+        _, words, fact = match
+        return DirectionLookup(words, "", scanned, float(fact["at"]), fact)
+    return DirectionLookup(DirectionText(""), "out_of_reach" if bounded else "not_found", scanned)
+
+
+def direction_lookups(
+    config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_ids: list[str]
+) -> list[DirectionLookup]:
+    """Verify every requested identity in one scan, retaining request order.
+
+    docs/design-reading-a-session.md#long-session-direction-and-prompt-reads
+    owns the bounded ambiguity guarantee and the unsearched-source limit.
     """
-    transcript_path = observer.resolve_transcript(
+    from . import record_pages  # noqa: PLC0415 - shared reader imports the fact builders
+
+    path = observer.resolve_transcript(config, state, harness, sid) or observer.resolve_directions(
         config, state, harness, sid
-    ) or observer.resolve_directions(config, state, harness, sid)
-    if not transcript_path:
-        return DirectionText("")
-    follow = harness not in observer.DIRECTION_HARNESSES
-    stamp = transcript_stamp(transcript_path)
-    if stamp is None:
-        return DirectionText("")
-    try:
-        lines = _direction_lines(config, transcript_path, harness, stamp, follow)
-    except OSError:
-        return DirectionText("")
-    matches: set[DirectionText] = set()
-    for raw_line in lines:
-        if not raw_line or not raw_line.lstrip().startswith("{"):
-            continue
+    )
+    stamp = transcript_stamp(path) if path else None
+    if not path or stamp is None:
+        return [DirectionLookup(DirectionText("")) for _ in fact_ids]
+    wanted = set(fact_ids)
+    matches: dict[str, tuple[bytes, DirectionText, dict[str, Any]]] = {}
+    ambiguous: set[str] = set()
+
+    def visit(raw: bytes) -> None:
+        for record, fact, _ in _instruction_facts(config, raw, harness, sid):
+            fact_id = str(fact["fact_id"])
+            if fact_id not in wanted:
+                continue
+            signature = _direction_signature(record, harness)
+            previous = matches.get(fact_id)
+            if previous is not None and previous[0] != signature:
+                ambiguous.add(fact_id)
+            elif previous is None:
+                matches[fact_id] = (signature, _direction_words(config, record, harness), fact)
+
+    if harness in record_pages.HARNESSES:
+        scan = record_pages.scan_source(
+            config,
+            path,
+            visit,
+            max_bytes=config.direction_scan_max_bytes,
+            deadline=time.monotonic() + config.direction_scan_max_seconds,
+            expected_stamp=stamp,
+        )
+        scanned = scan.scanned_bytes
+        bounded = not scan.reached_start or scan.skipped
+        stable = scan.state == "ok"
+    else:
         try:
-            record = json.loads(raw_line)
-        except (ValueError, RecursionError):
-            continue
-        event = _instruction_event(config, record, harness, sid)
-        if event is None:
-            continue
-        fact = _semantic_fact_from_event(event, "steer", _SEMANTIC_FACT_TYPES["steer"], "")
-        if fact["fact_id"] == fact_id:
-            matches.add(_direction_words(config, record, harness))
-    # A repeated identity with different words is not a choice the server can verify.
-    if transcript_stamp(transcript_path) != stamp or len(matches) != 1:
-        return DirectionText("")
-    return next(iter(matches))
+            for line in runtime_io.read_tail(
+                config, path, follow_links=harness not in observer.DIRECTION_HARNESSES
+            ):
+                visit(line.encode())
+        except OSError:
+            return [DirectionLookup(DirectionText("")) for _ in fact_ids]
+        scanned, bounded, stable = 0, False, True
+    stable = stable and transcript_stamp(path) == stamp
+    return [
+        _direction_result(matches.get(fact_id), fact_id in ambiguous, stable, bounded, scanned)
+        for fact_id in fact_ids
+    ]
 
 
-def _direction_lines(
-    config: RuntimeConfig, path: str, harness: str, stamp: tuple[int, int, int, int], follow: bool
-) -> list[str]:
+def _direction_signature(record: Any, harness: str) -> bytes:
     if harness in {"claude", "codex"}:
-        raw = runtime_io.read_prefix_bytes(path, max_bytes=SEMANTIC_BACKFILL_MAX_BYTES)
-        if len(raw) < stamp[2] and not raw.endswith(b"\n"):
-            raw = raw.rsplit(b"\n", 1)[0] if b"\n" in raw else b""
-        return raw.decode("utf-8", errors="replace").splitlines()
-    return runtime_io.read_tail(config, path, follow_links=follow)
+        message = records.as_dict(
+            records.as_dict(record).get("payload" if harness == "codex" else "message")
+        )
+        return records.record_fingerprint(message.get("content"))
+    return records.record_fingerprint(record)
 
 
 def _direction_words(config: RuntimeConfig, record: Any, harness: str) -> DirectionText:

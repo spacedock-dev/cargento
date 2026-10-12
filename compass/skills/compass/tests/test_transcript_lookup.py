@@ -6,11 +6,11 @@ import json
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
-from compass_runtime import io as runtime_io
-from compass_runtime import project_context, reading
+from compass_runtime import project_context, reading, record_pages
 from compass_runtime.config import build_runtime_config
 from compass_runtime.state import build_runtime_state
 
@@ -79,6 +79,7 @@ class TranscriptSourceLookupTest(unittest.TestCase):
         self.assertEqual(self.words, self.lookup()[0]["reader_words"])
 
     def test_read_bound_never_treats_a_partial_record_as_a_prompt(self) -> None:
+        self.config = replace(self.config, direction_scan_max_bytes=40)
         with mock.patch.object(project_context, "SEMANTIC_BACKFILL_MAX_BYTES", 40):
             self.assertEqual([], self.lookup())
 
@@ -96,7 +97,7 @@ class TranscriptSourceLookupTest(unittest.TestCase):
 
     def test_a_cached_source_survives_a_redundant_read_failure(self) -> None:
         self.lookup()
-        with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=OSError):
+        with mock.patch.object(record_pages, "scan_source", side_effect=OSError):
             self.assertEqual(self.words, self.lookup()[0]["reader_words"])
 
     def test_one_cache_entry_cannot_be_reused_for_a_different_session(self) -> None:
@@ -115,12 +116,13 @@ class TranscriptSourceLookupTest(unittest.TestCase):
         )
 
     def test_a_read_failure_does_not_cache_an_empty_source(self) -> None:
-        with mock.patch.object(runtime_io, "read_prefix_bytes", side_effect=OSError):
+        with mock.patch.object(record_pages, "scan_source", side_effect=OSError):
             self.assertEqual([], self.lookup())
         self.assertEqual(self.words, self.lookup()[0]["reader_words"])
 
     def test_only_complete_prefix_records_survive_a_read_bound(self) -> None:
         first_line = self.path.read_bytes().split(b"\n", 1)[0]
+        self.config = replace(self.config, direction_scan_max_bytes=40)
         with mock.patch.object(
             project_context, "SEMANTIC_BACKFILL_MAX_BYTES", len(first_line) + 20
         ):

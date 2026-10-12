@@ -7,6 +7,7 @@ import type {
   ApiResult,
   CorrectionReceipt,
   DirectionReceipt,
+  DirectionBatchReceipt,
   DismissReceipt,
   FocusOutcome,
   FocusReceipt,
@@ -192,6 +193,10 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
       post<AnnotateReceipt>('/api/annotate', body, signal),
     postDirection: (body: SessionIdentity & { readonly fact_id: string }, signal?: AbortSignal) =>
       post<DirectionReceipt>('/api/direction', body, signal),
+    postDirections: (
+      body: SessionIdentity & { readonly fact_ids: readonly string[] },
+      signal?: AbortSignal,
+    ) => post<DirectionBatchReceipt>('/api/direction', body, signal),
     postReading: (body: ReadingRequest, signal?: AbortSignal) =>
       post<ReadingReceipt>('/api/reading', body, signal),
     postReadingCancel: (

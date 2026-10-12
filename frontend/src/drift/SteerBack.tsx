@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useFocusKey } from '../controls';
 import { openPendingDirection } from '../intent/api';
-import { ActionButton } from '../intent/ActionButton';
+import { DirectionActionButton } from '../intent/DirectionActionButton';
 import { useDrift } from './context';
 import { correctionLength, type HeldCorrection } from './correction';
 import { attachEditor } from './editor';
@@ -55,7 +55,8 @@ export function UpdateIntentButton({ factId }: { readonly factId: string }) {
   const { ctx, model } = useDrift();
   const { identity } = model;
   return (
-    <ActionButton
+    <DirectionActionButton
+      feedbackKey={`update-intent:${model.key}`}
       weight="secondary"
       label="Update intent instead"
       busyLabel="Opening…"

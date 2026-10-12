@@ -1,7 +1,7 @@
 import { act, fireEvent } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { RecordedRequest } from '../intent/testing';
-import { byAction, check, driftBoard, json, mountDrift, press, textOf } from './testing';
+import { byAction, check, driftBoard, fact, json, mountDrift, press, textOf } from './testing';
 
 const ASSESSMENT = {
   revision_read: 3,
@@ -35,6 +35,25 @@ function mountSteer(extra: Record<string, unknown> = {}) {
 }
 
 describe('Steer back', () => {
+  it('tells a reader beside Update intent when its offered direction cannot be opened', async () => {
+    const page = mountSteer({
+      facts: [...FACTS, fact('d1', 995)],
+      store: { settled_through: 995 },
+      session: { ...session, annotation_settled_at: 1000, annotation_settled_revision: 3 },
+      routes: { '/api/direction': () => json({ ok: false, reason: 'out_of_reach' }) },
+    });
+    await page.settle();
+    await page.settle();
+    const button = byAction('update-intent') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    button.focus();
+    await press(button);
+    await page.settle();
+    expect(button.parentElement?.querySelector('[data-next-action-feedback]')?.textContent).toBe(
+      'That direction is beyond the part of the record Compass could search. No outcome line was added.',
+    );
+    expect(document.activeElement).toBe(button);
+  });
   it('composes nothing until pressed, then once, and writes nothing into the session', async () => {
     const page = mountSteer({ strict: true });
     await page.settle();

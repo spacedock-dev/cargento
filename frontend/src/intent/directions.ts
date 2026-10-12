@@ -35,15 +35,16 @@ import type { DirectionLine } from './held';
 import { forgetAdopted, outcomeKind } from './save';
 import {
   DIRECTION_UNOPENED,
+  directionFailure,
   HELD_CUES,
   INTENT_CHOSEN_SAID,
   INTENT_EDITED,
-  KEEP_ALLOW,
-  KEEP_NO_ANALYSIS,
+  keptDirections,
   KEEP_READ_FIRST,
   KEEP_REFUSED,
   KEEP_UNCONFIRMED,
   KEEP_UNOPENED,
+  KEEP_BATCH_LIMIT,
 } from './sentences';
 import { laterDirections, workSource, type WorkEntry } from './work';
 
@@ -54,6 +55,17 @@ import { laterDirections, workSource, type WorkEntry } from './work';
    sentence. */
 
 const compat = compatSessKey;
+
+function feedback(ctx: Ctx, control: string, message: string): void {
+  ctx.held.actionFeedback.set(control, message);
+  announce(ctx, `action:${control}`, message);
+  ctx.held.notify();
+}
+
+function startFeedback(ctx: Ctx, control: string): void {
+  ctx.held.actionFeedback.delete(control);
+  ctx.shell.announcer.forget(`action:${control}`);
+}
 
 /* The session's focused observed record, read from the contexts the board holds. */
 function sourceOf(ctx: Ctx, input: DraftInput, projectKey: string) {
@@ -111,6 +123,7 @@ export async function openDirection(
   n: number | null,
   later = false,
   action = 'direction-add',
+  focusControl?: string,
 ): Promise<void> {
   const identity = identityOf(row);
   if (!identity) return;
@@ -122,7 +135,8 @@ export async function openDirection(
     if (!open.opening) ctx.held.requestFocus(`direction:${key}`);
     return;
   }
-  const control = `${action}:${key}`;
+  const control = focusControl ?? `${action}:${key}`;
+  startFeedback(ctx, control);
   const press = pendingStart(ctx, control, 'Opening…');
   if (!press) return;
   const snapshot = ctx.shell.runtime.store.getSnapshot();
@@ -155,7 +169,7 @@ export async function openDirection(
         replace: null,
       };
     } else if (body && body.ok === false) {
-      held = { factId, n, later, error: String(body.why || DIRECTION_UNOPENED) };
+      held = { factId, n, later, error: directionFailure('add', body.reason) };
     } else {
       throw new Error('direction not opened');
     }
@@ -165,6 +179,7 @@ export async function openDirection(
     pendingEnd(ctx, control, press);
   }
   ctx.held.directions.set(key, { ...held, ...origin });
+  if (held.error) feedback(ctx, control, held.error);
   ctx.held.requestFocus(held.error ? control : `direction:${key}`);
 }
 
@@ -174,6 +189,7 @@ export function typeDirection(ctx: Ctx, row: Row, raw: string): string {
   const held = ctx.held.directions.get(compat(row));
   const value = scrub(raw);
   if (!held || typeof held.text !== 'string') return value;
+  ctx.held.clearActionFeedback(compat(row));
   held.text = value;
   held.cue = '';
   ctx.held.notify();
@@ -182,6 +198,7 @@ export function typeDirection(ctx: Ctx, row: Row, raw: string): string {
 
 export function cancelDirection(ctx: Ctx, row: Row): void {
   const key = compat(row);
+  ctx.held.clearActionFeedback(key);
   ctx.held.directions.delete(key);
   ctx.held.requestFocus(`direction-add:${key}`);
 }
@@ -326,7 +343,12 @@ export async function saveDirection(ctx: Ctx, row: Row): Promise<void> {
 
 /* "Use this as my goal": fills the goal box with the direction as a pending adoption, over words that are not
    on screen only after the reader has saved or undone their edit. Never from a poll, a mount or a retry. */
-export async function adoptDirectionAsGoal(ctx: Ctx, row: Row, factId: string): Promise<void> {
+export async function adoptDirectionAsGoal(
+  ctx: Ctx,
+  row: Row,
+  factId: string,
+  focusControl?: string,
+): Promise<void> {
   const identity = identityOf(row);
   if (!identity) return;
   const first = readInput(ctx, identity, row);
@@ -337,16 +359,13 @@ export async function adoptDirectionAsGoal(ctx: Ctx, row: Row, factId: string): 
     return;
   }
   const control = `direction-goal:${compat(row)}`;
+  const focus = focusControl ?? control;
+  startFeedback(ctx, focus);
   const press = pendingStart(ctx, control, 'Opening…');
   if (!press) return;
   const key = goalKey(row);
-  const refuse = () =>
-    ctx.held.directions.set(compat(row), {
-      factId,
-      n: null,
-      later: false,
-      error: DIRECTION_UNOPENED,
-    });
+  let filled = false;
+  const refuse = (reason?: string) => feedback(ctx, focus, directionFailure('goal', reason));
   try {
     const reply = answered(
       await ctx.shell.runtime.client.postDirection({ ...identity, fact_id: factId }, press.signal),
@@ -373,9 +392,10 @@ export async function adoptDirectionAsGoal(ctx: Ctx, row: Row, factId: string): 
       !record['text'].trim() ||
       !((nextNumber(record['at']) || 0) > 0)
     ) {
-      refuse();
+      refuse(answer?.reason);
       return;
     }
+    filled = true;
     ctx.held.chosen.set(key, {
       factId,
       text: record['text'],
@@ -391,7 +411,7 @@ export async function adoptDirectionAsGoal(ctx: Ctx, row: Row, factId: string): 
     refuse();
   } finally {
     pendingEnd(ctx, control, press);
-    ctx.held.requestFocus(key);
+    ctx.held.requestFocus(filled ? key : focus);
   }
 }
 
@@ -400,6 +420,7 @@ export async function adoptDirectionAsGoal(ctx: Ctx, row: Row, factId: string): 
 export function answerLines(ctx: Ctx, row: Row, answer: 'keep' | 'clear'): void {
   const choice = ctx.held.chosen.get(goalKey(row));
   if (!choice) return;
+  ctx.held.clearActionFeedback(compat(row));
   choice.linesAnswer = answer;
   if (answer === 'clear') {
     ctx.held.lines.set(linesKey(row), []);
@@ -410,7 +431,10 @@ export function answerLines(ctx: Ctx, row: Row, answer: 'keep' | 'clear'): void 
 
 /* ---- Keep ---- */
 
-export type WholeResult = 'read' | 'shown' | 'refused';
+export type WholeResult = {
+  readonly kind: 'read' | 'shown' | 'refused';
+  readonly message?: string;
+};
 
 // The count-only summary shows no direction text. Every Keep first draws all words,
 // including a sole short direction, before a later press may settle them (DEC-27).
@@ -429,34 +453,61 @@ async function readWhole(
     revision: null,
   };
   ctx.held.wholes.set(key, held);
+  let refusal = KEEP_UNOPENED;
   let refused = false;
-  for (const entry of pending) {
-    const id = String(entry.id || '');
-    if (held.texts.has(id)) continue;
-    let opened: { text: string; clipped: boolean } | null = null;
+  const alreadyShown = new Set(
+    pending
+      .map((entry) => String(entry.id || ''))
+      .filter((id) => held.drawn.has(id) && !held.texts.get(id)?.clipped),
+  );
+  const missing = pending.filter(
+    (entry) =>
+      !held.texts.has(String(entry.id || '')) || held.texts.get(String(entry.id || ''))?.clipped,
+  );
+  // One scan checks all identities, including conflicting copies after a match.
+  if (missing.length > 64) return { kind: 'refused', message: KEEP_BATCH_LIMIT };
+  if (missing.length) {
     try {
       const reply = answered(
-        await ctx.shell.runtime.client.postDirection({ ...identity, fact_id: id }, signal),
+        await ctx.shell.runtime.client.postDirections(
+          { ...identity, fact_ids: missing.map((entry) => String(entry.id || '')) },
+          signal,
+        ),
       );
-      const body = reply.kind === 'answered' && reply.ok ? reply.body : null;
-      if (body && body.ok === true && typeof body.text === 'string') {
-        opened = { text: body.text, clipped: body.clipped === true };
+      const results = reply.kind === 'answered' && reply.ok ? reply.body?.results : null;
+      if (!Array.isArray(results) || results.length !== missing.length) {
+        refused = true;
+      } else {
+        for (const [index, entry] of missing.entries()) {
+          const body = results[index];
+          const id = String(entry.id || '');
+          if (body?.ok === true && typeof body.text === 'string') {
+            held.texts.set(id, { text: body.text, clipped: body.clipped === true });
+            if (body.clipped === true) refused = true;
+          } else {
+            if (!refused && body?.ok === false) refusal = directionFailure('keep', body.reason);
+            refused = true;
+          }
+        }
       }
     } catch {
-      opened = null;
-    }
-    if (!opened) {
       refused = true;
-      break;
     }
-    held.texts.set(id, opened);
   }
-  if (refused) return 'refused';
+  if (signal.aborted || pending.some((entry) => held.texts.get(String(entry.id || ''))?.clipped))
+    refused = true;
+  if (refused) {
+    held.drawn = new Set(
+      pending.map((entry) => String(entry.id || '')).filter((id) => held.texts.has(id)),
+    );
+    held.revision = revision;
+    return { kind: 'refused', message: refusal };
+  }
   const ids = pending.map((entry) => String(entry.id || ''));
-  if (ids.every((id) => held.drawn.has(id))) return 'read';
+  if (ids.every((id) => alreadyShown.has(id))) return { kind: 'read' };
   held.drawn = new Set(ids);
   held.revision = revision;
-  return 'shown';
+  return { kind: 'shown' };
 }
 
 /* What a reading, once B's Analyze exists, is asked to do for a Keep that may analyze. It is the Analyze
@@ -513,6 +564,7 @@ export async function keepIntent(
   const pending = directionsOpen(input, sourceOf(ctx, input, projectKey));
   if (!pending.length) return;
   keepUnsay(ctx, key);
+  startFeedback(ctx, control);
   if (intentUnsaved(input)) {
     const edited = editedRefusal(pendingHas(ctx, `${intentKey(row)}:save`));
     ctx.held.requests.set(key, { pending: false, message: edited, refusal: true, announced: true });
@@ -541,8 +593,8 @@ export async function keepIntent(
   ctx.held.notify();
   try {
     const read = await readWhole(ctx, identity, row, pending, drawnAt, press.signal);
-    if (read !== 'read') {
-      request.message = read === 'refused' ? KEEP_UNOPENED : KEEP_READ_FIRST;
+    if (read.kind !== 'read') {
+      request.message = read.kind === 'refused' ? (read.message ?? KEEP_UNOPENED) : KEEP_READ_FIRST;
       return;
     }
     /* A press after the list was drawn names the revision it was drawn against, so words saved since then
@@ -562,9 +614,7 @@ export async function keepIntent(
       const outcome = String(body.outcome || '');
       const settled = ['stored', 'unchanged'].includes(outcome) && body.persisted !== false;
       request.message = settled
-        ? owed
-          ? KEEP_ALLOW
-          : KEEP_NO_ANALYSIS
+        ? keptDirections(pending.length, owed)
         : outcome === 'untrusted'
           ? (HELD_CUES['settle-untrusted'] ?? KEEP_REFUSED)
           : KEEP_REFUSED;
@@ -595,7 +645,7 @@ export async function keepIntent(
     if (outcome.kind === 'ended') {
       if (outcome.settled) forgetAdopted(ctx, row, draft);
       request.message = outcome.settled
-        ? [KEEP_NO_ANALYSIS, outcome.why].filter(Boolean).join(' ')
+        ? [keptDirections(pending.length), outcome.why].filter(Boolean).join(' ')
         : KEEP_UNCONFIRMED;
     } else {
       forgetAdopted(ctx, row, draft);
@@ -608,7 +658,10 @@ export async function keepIntent(
     pendingEnd(ctx, control, press);
     /* The persistent polite region, and only there: the paragraph beside the control is drawn without a
        role, so the outcome is announced once. */
-    if (request.message) announce(ctx, `keep:${key}`, request.message);
+    if (request.message) {
+      ctx.held.actionFeedback.set(control, request.message);
+      announce(ctx, `keep:${key}`, request.message);
+    }
     ctx.held.notify();
     if (request.message === KEEP_READ_FIRST) ctx.held.requestFocus(`direction-whole:${key}`);
   }

@@ -14,8 +14,15 @@ from typing import Any, cast
 from unittest import mock
 
 from compass_runtime import annotations as annotation_store
-from compass_runtime import correction, http_api, levels, live_estimate, project_context, reading
-from compass_runtime import io as runtime_io
+from compass_runtime import (
+    correction,
+    http_api,
+    levels,
+    live_estimate,
+    project_context,
+    reading,
+    record_pages,
+)
 from compass_runtime import observer as runtime_observer
 
 from .support import make_runtime
@@ -505,9 +512,9 @@ class SourceContinuityIncludesWordsOutsideTheVisibleClip(unittest.TestCase):
             with (
                 mock.patch.object(runtime_observer, "resolve_transcript", return_value=str(path)),
                 mock.patch.object(
-                    runtime_io,
-                    "read_prefix_bytes",
-                    wraps=runtime_io.read_prefix_bytes,
+                    record_pages,
+                    "scan_source",
+                    wraps=record_pages.scan_source,
                 ) as reads,
             ):
                 verified = http_api._request_sources(app, PARENT, listed, entry)

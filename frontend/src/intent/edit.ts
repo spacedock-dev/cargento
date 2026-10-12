@@ -24,6 +24,7 @@ function bounded(raw: string, input: DraftInput): string {
 export function typeGoal(ctx: Ctx, input: DraftInput, raw: string): string {
   const key = goalKey(input.session);
   const value = bounded(raw, input);
+  ctx.held.clearActionFeedback(compatSessKey(input.session));
   ctx.held.goals.set(key, value);
   ctx.held.drop(key);
   ctx.held.drop(intentKey(input.session));
@@ -35,6 +36,7 @@ export function typeGoal(ctx: Ctx, input: DraftInput, raw: string): string {
    knew it exists still lands in its place. */
 export function typeLine(input: DraftInput, index: number, raw: string): string {
   const { held, session, annotation } = input;
+  held.clearActionFeedback(compatSessKey(session));
   const key = linesKey(session);
   const value = bounded(raw, input);
   const draft = linesDraft(held, session, annotation);
@@ -56,6 +58,7 @@ export function typeLine(input: DraftInput, index: number, raw: string): string 
    goes live and the reader commits the clearing deliberately. */
 export function clearGoal(ctx: Ctx, input: DraftInput): void {
   const key = goalKey(input.session);
+  ctx.held.clearActionFeedback(compatSessKey(input.session));
   ctx.held.goals.set(key, '');
   ctx.held.chosen.delete(key);
   ctx.held.drop(key);
@@ -68,6 +71,7 @@ export function clearGoal(ctx: Ctx, input: DraftInput): void {
 export function escapeGoal(ctx: Ctx, input: DraftInput): boolean {
   if (pendingHas(ctx, `${intentKey(input.session)}:save`)) return false;
   const key = goalKey(input.session);
+  ctx.held.clearActionFeedback(compatSessKey(input.session));
   ctx.held.goals.delete(key);
   ctx.held.chosen.delete(key);
   ctx.held.drop(key);
@@ -80,6 +84,7 @@ export function escapeGoal(ctx: Ctx, input: DraftInput): boolean {
 export function escapeLines(ctx: Ctx, input: DraftInput): boolean {
   if (pendingHas(ctx, `${intentKey(input.session)}:save`)) return false;
   const key = linesKey(input.session);
+  ctx.held.clearActionFeedback(compatSessKey(input.session));
   ctx.held.lines.delete(key);
   ctx.held.origins.delete(key);
   ctx.held.drop(key);
@@ -90,6 +95,7 @@ export function escapeLines(ctx: Ctx, input: DraftInput): boolean {
 /* A new empty outcome line, focused, or the six-line refusal said in place. */
 export function addLine(ctx: Ctx, input: DraftInput): void {
   const { held, session, annotation } = input;
+  held.clearActionFeedback(compatSessKey(session));
   const key = linesKey(session);
   const draft = linesDraft(held, session, annotation);
   const origins = linesOrigins(held, key, draft);
@@ -114,6 +120,7 @@ export function addLine(ctx: Ctx, input: DraftInput): void {
 
 export function removeLine(input: DraftInput, index: number): void {
   const { held, session, annotation } = input;
+  held.clearActionFeedback(compatSessKey(session));
   const key = linesKey(session);
   const draft = linesDraft(held, session, annotation);
   const origins = linesOrigins(held, key, draft);
@@ -129,6 +136,7 @@ export function removeLine(input: DraftInput, index: number): void {
    overwritten with the saved words. Never under a save still being answered: its words stay in the box. */
 export function undoChanges(ctx: Ctx, input: DraftInput): void {
   const { held, session } = input;
+  held.clearActionFeedback(compatSessKey(session));
   if (pendingHas(ctx, `${intentKey(session)}:save`)) return;
   held.chosen.delete(goalKey(session));
   held.goals.delete(goalKey(session));
@@ -156,6 +164,7 @@ export function choosePrompt(
   const found = choices.find((choice) => choice.factId === factId);
   if (!found) return;
   const key = goalKey(input.session);
+  ctx.held.clearActionFeedback(compatSessKey(input.session));
   ctx.held.chosen.set(key, { factId: found.factId, text: found.text, at: found.at });
   ctx.held.goals.delete(key);
   ctx.held.drop(key);
@@ -165,6 +174,7 @@ export function choosePrompt(
 
 /* The selected later direction, kept for the life of the tab. */
 export function pickDirection(ctx: Ctx, session: Row, factId: string): void {
+  ctx.held.clearActionFeedback(compatSessKey(session));
   ctx.held.picks.set(compatSessKey(session), factId);
   ctx.held.notify();
 }

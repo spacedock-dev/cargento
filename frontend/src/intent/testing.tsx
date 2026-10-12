@@ -62,7 +62,15 @@ export function mountIntent(options: IntentShellOptions = {}) {
           state.held.push({ path, release: resolve });
         });
       }
-      return Promise.resolve(answer);
+      return Promise.resolve(answer).then(async (response) => {
+        // Older fixtures script identical source words for every id; explicit batch
+        // fixtures already carry results. Requests are still counted once, as sent.
+        const ids = path === '/api/direction' ? parsed?.['fact_ids'] : null;
+        if (!Array.isArray(ids) || !response.ok) return response;
+        const body = (await response.clone().json()) as Record<string, unknown>;
+        if (Array.isArray(body['results'])) return response;
+        return json({ results: ids.map(() => body) });
+      });
     }
     if (path !== '/api/data') return Promise.resolve(new Response('not scripted', { status: 404 }));
     if (state.data === undefined || state.data === null)

@@ -512,7 +512,7 @@ def _request_sources(
     facts: list[Any],
     entry: annotation_store.Annotation | None = None,
 ) -> list[Mapping[str, Any]]:
-    """One version-checked bounded prefix read, shared by this operation's consumers."""
+    """One version-checked newest and opening read, shared by this operation's consumers."""
     if entry is not None and (
         not entry["revisions"] or not runtime_reading.has_line_requests(entry["revisions"][-1])
     ):
@@ -532,49 +532,43 @@ def _request_sources(
 
 
 def _prompt_facts(
-    application: Any, row: Mapping[str, Any], facts: list[Any]
+    application: Any,
+    row: Mapping[str, Any],
+    facts: list[Any],
+    coverage: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Restore only this session's listed person words, when the menu is opened."""
+    """Verify this session's person words from the native source when the menu opens."""
     harness, sid = str(row.get("harness") or ""), str(row.get("sid") or "")
     wanted = {"harness": harness, "sid": sid}
     path = runtime_observer.resolve_transcript(application.config, application.state, harness, sid)
     source = (
         runtime_project_context.transcript_user_facts(
-            application.config, application.state, path, harness, sid, goal_choices=True
+            application.config,
+            application.state,
+            path,
+            harness,
+            sid,
+            goal_choices=True,
+            coverage=coverage,
         )
         if path
         else []
     )
-    restored: list[dict[str, Any]] = []
-    for fact in facts:
-        if (
-            not isinstance(fact, dict)
-            or fact.get("source_session") != wanted
-            or fact.get("type") != "user_message"
-            or runtime_reading.author_of(fact) != runtime_reading.AUTHOR_PERSON
-        ):
-            continue
-        matches = {
-            (
-                str(item.get(runtime_reading.WORDS_FIELD) or ""),
-                item.get(records.GOAL_SOURCE_CUT_FIELD) is True,
-            )
-            for item in source
-            if item.get("fact_id") == fact.get("fact_id")
-            and item.get("at") == fact.get("at")
-            and item.get("source_session") == wanted
-        }
-        if len(matches) != 1:
-            continue
-        words, cut = next(iter(matches))
-        restored.append(
-            {
-                **fact,
-                runtime_reading.WORDS_FIELD: words,
-                records.GOAL_SOURCE_CUT_FIELD: cut,
-            }
-        )
-    return restored
+    copied_ids = {
+        fact.get("fact_id")
+        for fact in facts
+        if isinstance(fact, dict)
+        and fact.get(runtime_reading.COPIED_FLAG) is True
+        and fact.get("source_session") == wanted
+    }
+    marked = copied_corrections.mark({"semantic": {"facts": source}}, [row])
+    return [
+        fact
+        for fact in marked["semantic"]["facts"]
+        if fact.get("source_session") == wanted
+        and fact.get("fact_id") not in copied_ids
+        and runtime_reading.author_of(fact) == runtime_reading.AUTHOR_PERSON
+    ]
 
 
 def _with_prompt_choices(
@@ -600,16 +594,21 @@ def _with_prompt_choices(
         and project
         in {str(r.get("project_key") or r.get("project") or ""), str(r.get("project") or "")}
     ]
+    coverage: dict[str, Any] = {"state": "unavailable", "bound": None}
     choices = (
         annotation_store.prompt_choices(
             matching[0],
-            _prompt_facts(application, matching[0], _facts_of(context)),
+            _prompt_facts(application, matching[0], _facts_of(context), coverage),
             application.config.annotation_text_cap_chars,
         )
         if application.config.annotations_enabled and len(matching) == 1
         else []
     )
-    return {**context, "prompt_choices": choices}
+    return {
+        **context,
+        "prompt_choices": sorted(choices, key=lambda choice: -choice["at"]),
+        "prompt_scan": {"state": coverage["state"], "bound": coverage["bound"]},
+    }
 
 
 def _press_content(harness: str) -> int:
@@ -2481,7 +2480,13 @@ class _RequestHandler(BaseHTTPRequestHandler):
         return None
 
     def _later_direction(
-        self, row: dict[str, Any], fact_id: str, adopt_source: str | None = None
+        self,
+        row: dict[str, Any],
+        fact_id: str,
+        adopt_source: str | None = None,
+        refusal: dict[str, str] | None = None,
+        lookup: runtime_project_context.DirectionLookup | None = None,
+        listed_facts: list[dict[str, Any]] | None = None,
     ) -> tuple[float, str, bool] | None:
         """A later direction's time, whole raw text and whether it was cut, or None.
 
@@ -2494,25 +2499,56 @@ class _RequestHandler(BaseHTTPRequestHandler):
         """
         application = self.server.application
         harness, sid = str(row.get("harness")), str(row.get("sid"))
-        fact = next((f for f in self._session_facts(row) if f.get("fact_id") == fact_id), None)
-        if (
-            not isinstance(fact, dict)
-            or fact.get("type") != "user_message"
-            or fact.get("source_session") != {"harness": harness, "sid": sid}
-            or fact.get(runtime_reading.COPIED_FLAG) is True
-        ):
-            return None
-        at = runtime_reading.valid_prompt_time(fact.get("at"))
         entry = annotation_store.find(
             annotation_store.active(application.config, application.state), harness, sid
         )
         floor = annotation_store.direction_floor(entry, row, adopt_source)
-        if at is None or floor is None or at <= floor:
+        if floor is None:
             return None
-        read = runtime_project_context.direction_text(
+        lookup = lookup or runtime_project_context.direction_lookup(
             application.config, application.state, harness, sid, fact_id
         )
-        return (at, read.text, read.cut) if read.text.strip() else None
+        if refusal is not None and lookup.reason:
+            refusal["reason"] = lookup.reason
+        if not lookup.words.text.strip():
+            # A known earlier request is not out of reach, even when this read
+            # misses it. Successful native reads already prove identity, author
+            # and time; recomposing the project for each Keep source exceeded
+            # the control deadline on the real long-session scratch board.
+            listed = next(
+                (
+                    f
+                    for f in (
+                        listed_facts if listed_facts is not None else self._session_facts(row)
+                    )
+                    if f.get("fact_id") == fact_id
+                ),
+                None,
+            )
+            listed_at = runtime_reading.valid_prompt_time(listed.get("at")) if listed else None
+            if (
+                refusal is not None
+                and listed is not None
+                and (listed_at is None or listed_at <= floor)
+            ):
+                refusal["reason"] = "not_found"
+            return None
+        fact = lookup.fact
+        if not isinstance(fact, dict):
+            return None
+        marked = copied_corrections.mark({"semantic": {"facts": [fact]}}, [row])
+        fact = marked["semantic"]["facts"][0]
+        if (
+            fact.get("type") != "user_message"
+            or fact.get("source_session") != {"harness": harness, "sid": sid}
+            or fact.get(runtime_reading.COPIED_FLAG) is True
+            or fact.get("at") != lookup.at
+        ):
+            return None
+        at = runtime_reading.valid_prompt_time(fact.get("at"))
+        if at is None or at <= floor:
+            return None
+        return at, lookup.words.text, lookup.words.cut
 
     def _add_direction(self, harness: str, sid: str, payload: dict[str, Any]) -> str:
         """The `add_direction` arm: a verified later direction saved as an outcome line.
@@ -2552,7 +2588,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         )
 
     def _direction(self) -> None:
-        """Open one later direction's whole text for review (DRC-4682).
+        """Open later directions' whole text for review (DRC-4682).
 
         Reads and writes nothing but the reply: the page opens the direction
         as a pending outcome line, and only the `add_direction` arm of
@@ -2584,17 +2620,74 @@ class _RequestHandler(BaseHTTPRequestHandler):
             payload = {}
         if not isinstance(payload, dict):
             payload = {}
-        harness, sid, fact_id = payload.get("harness"), payload.get("sid"), payload.get("fact_id")
-        if not all(isinstance(part, str) and part for part in (harness, sid, fact_id)):
+        harness, sid = payload.get("harness"), payload.get("sid")
+        if not all(isinstance(part, str) and part for part in (harness, sid)):
+            self._reject(400)
+            return
+        batch = "fact_ids" in payload
+        ids = payload.get("fact_ids") if batch else [payload.get("fact_id")]
+        if (
+            not isinstance(ids, list)
+            or not ids
+            or (batch and ("fact_id" in payload or len(ids) > 64))
+            or not all(
+                isinstance(part, str) and part and (not batch or len(part) <= 256) for part in ids
+            )
+        ):
             self._reject(400)
             return
         row = self._session_row(str(harness), str(sid))
-        found = self._later_direction(row, str(fact_id)) if row is not None else None
+        lookups = (
+            runtime_project_context.direction_lookups(
+                config, application.state, str(harness), str(sid), ids
+            )
+            if batch and row is not None
+            else [None] * len(ids)
+        )
+        listed_facts = (
+            self._session_facts(row)
+            if batch
+            and row is not None
+            and any(lookup and not lookup.words.text.strip() for lookup in lookups)
+            else None
+        )
+        answers = [
+            self._direction_answer(row, str(harness), fact_id, lookup, listed_facts)
+            for fact_id, lookup in zip(ids, lookups, strict=True)
+        ]
+        answer = {"results": answers} if batch else answers[0]
+        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+
+    def _direction_answer(
+        self,
+        row: dict[str, Any] | None,
+        harness: str,
+        fact_id: str,
+        lookup: runtime_project_context.DirectionLookup | None,
+        listed_facts: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        config = self.server.application.config
+        refusal = {"reason": "not_found"}
+        found = (
+            self._later_direction(
+                row, fact_id, refusal=refusal, lookup=lookup, listed_facts=listed_facts
+            )
+            if row is not None
+            else None
+        )
         if found is None:
             answer: dict[str, Any] = {
                 "ok": False,
-                "reason": "unavailable",
-                "why": annotation_store.DIRECTION_UNAVAILABLE,
+                "reason": refusal["reason"],
+                "why": (
+                    "Compass's search stopped before reaching that direction "
+                    "in the session's record. "
+                    "Nothing was opened."
+                    if refusal["reason"] == "out_of_reach"
+                    else "Compass could not find that later direction "
+                    "in the session's current record. "
+                    "Nothing was opened."
+                ),
             }
         else:
             text, clipped, fits = annotation_store.direction_review(
@@ -2613,7 +2706,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 and not records.harness_control(found[1])
                 else None,
             }
-        self._send(json.dumps(answer, separators=(",", ":")).encode(), "application/json")
+        return answer
 
     def _correction(self) -> None:
         """Compose Steer back's correction for one session (DRC-4681).
