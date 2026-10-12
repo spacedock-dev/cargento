@@ -12,6 +12,47 @@ const routes = {
 const session = { annotation_goal_saved_at: 500, annotation_at: 500 };
 
 describe('Keep my intent and analyze', () => {
+  it('tells a reader beside Keep and analyze when the source cannot be reached and sends no reading', async () => {
+    const page = mountDrift({
+      facts: [LATER],
+      session,
+      routes: { ...routes, '/api/direction': () => json({ ok: false, reason: 'out_of_reach' }) },
+    });
+    await page.settle();
+    await page.settle();
+    const button = byAction('direction-keep') as HTMLButtonElement;
+    expect(button.textContent).toBe('Keep my intent and analyze');
+    button.focus();
+    await press(button);
+    await page.settle();
+    expect(button.parentElement?.querySelector('[data-next-action-feedback]')?.textContent).toBe(
+      'That direction is beyond the part of the record Compass could search. Nothing was settled and no analysis was started.',
+    );
+    expect(document.activeElement).toBe(button);
+    expect(readingPosts(page)).toHaveLength(0);
+  });
+
+  it('announces the settlement refusal at Keep and analyze after the reader has seen the whole direction', async () => {
+    const page = mountDrift({
+      facts: [LATER],
+      session,
+      routes: { ...routes, '/api/reading': () => json({ ok: false, adoption_refused: true }, 422) },
+    });
+    await page.settle();
+    await page.settle();
+    await press(byAction('direction-keep'));
+    await page.settle();
+    const button = byAction('direction-keep') as HTMLButtonElement;
+    button.focus();
+    await press(button);
+    await page.settle();
+    const message = button.parentElement?.querySelector('[data-next-action-feedback]')?.textContent;
+    expect(message).toMatch(/Nothing was settled.*Review your intent and press again\.$/);
+    expect(document.querySelector('#next-cockpit-cue-status')?.textContent).toBe(message);
+    expect(document.activeElement).toBe(button);
+    expect(readingPosts(page)).toHaveLength(1);
+    expect(readingPosts(page)[0]?.body).not.toHaveProperty('allow');
+  });
   it('settles and starts the analysis in one reading request, once', async () => {
     const page = mountDrift({
       facts: [LATER],

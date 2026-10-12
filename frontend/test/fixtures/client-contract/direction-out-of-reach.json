@@ -1,10 +1,10 @@
 {
   "format": 1,
-  "name": "direction-unavailable",
-  "notes": "A direction the session record cannot open answers one 200 body, never a 404.",
+  "name": "direction-out-of-reach",
+  "notes": "A known direction beyond the search allowance is distinct from a missing record, still HTTP 200.",
   "request": {
     "body": {
-      "fact_id": "fact-1",
+      "fact_id": "fact:4aae9c22a7d95d9a",
       "harness": "claude",
       "sid": "a1b2c3d4"
     },
@@ -18,12 +18,12 @@
   "response": {
     "body": {
       "ok": false,
-      "reason": "unavailable",
-      "why": "Compass could not open that direction from the session's record, so nothing was added. The part of the record it reads may no longer reach back to it, or it may not be later than your intent. Type the line yourself instead."
+      "reason": "out_of_reach",
+      "why": "Compass's search stopped before reaching that direction in the session's record. Nothing was opened."
     },
     "headers": {
       "Cache-Control": "no-store",
-      "Content-Length": "267",
+      "Content-Length": "145",
       "Content-Security-Policy": "frame-ancestors 'none'",
       "Content-Type": "application/json"
     },

@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 RECORD_PAGE_MAX_BYTES = 16 * 1024 * 1024
 RECORD_PAGE_MAX_SECONDS = 2.0
+DIRECTION_SCAN_MAX_BYTES = 64 * 1024 * 1024
+DIRECTION_SCAN_MAX_SECONDS = 2.0
 
 STORE_ENV_VARS = (
     "CLAUDE_CONFIG_DIR",
@@ -238,6 +240,8 @@ class RuntimeConfig:
     record_page_max_bytes: int
     record_page_max_seconds: float
     record_page_chunk_bytes: int
+    direction_scan_max_bytes: int
+    direction_scan_max_seconds: float
     popup_cooldown_sec: float
     global_popup_cooldown_sec: float
     popup_repeat_suppress_sec: float
@@ -804,6 +808,8 @@ def build_runtime_config(
         record_page_max_bytes=RECORD_PAGE_MAX_BYTES,
         record_page_max_seconds=RECORD_PAGE_MAX_SECONDS,
         record_page_chunk_bytes=64 * 1024,
+        direction_scan_max_bytes=DIRECTION_SCAN_MAX_BYTES,
+        direction_scan_max_seconds=DIRECTION_SCAN_MAX_SECONDS,
         popup_cooldown_sec=60,
         global_popup_cooldown_sec=15,
         popup_repeat_suppress_sec=600,

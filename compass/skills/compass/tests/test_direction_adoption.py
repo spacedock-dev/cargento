@@ -1399,10 +1399,73 @@ class DirectionRouteTest(_ClaudeSession):
             ]
         expected = (
             200,
-            {"ok": False, "reason": "unavailable", "why": annotation_store.DIRECTION_UNAVAILABLE},
+            {
+                "ok": False,
+                "reason": "not_found",
+                "why": "Compass could not find that later direction in the session's current record. Nothing was opened.",
+            },
         )
         for answer in answers:
             self.assertEqual(expected, answer)
+
+    def test_a_reader_gets_a_distinct_reason_when_a_later_direction_is_beyond_the_search(
+        self,
+    ) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        with (
+            self._serving() as port,
+            mock.patch.object(
+                project_context,
+                "direction_lookup",
+                return_value=project_context.DirectionLookup(
+                    project_context.DirectionText(""), "out_of_reach"
+                ),
+            ),
+        ):
+            status, body = self._open(port, fact_id)
+        self.assertEqual(200, status)
+        self.assertEqual("out_of_reach", body["reason"])
+        self.assertIn("search", body["why"])
+
+    def test_a_reader_can_open_a_paged_direction_after_it_left_semantic_history(self) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        with (
+            self._serving() as port,
+            mock.patch.object(http_api._RequestHandler, "_session_facts", return_value=[]),
+        ):
+            status, body = self._open(port, fact_id)
+        self.assertEqual(200, status)
+        self.assertTrue(body["ok"])
+        self.assertEqual(LONG.replace("\n", " "), body["text"])
+
+    def test_a_reader_opening_a_verified_native_direction_does_not_repeat_project_collection(
+        self,
+    ) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        with (
+            self._serving() as port,
+            mock.patch.object(
+                http_api._RequestHandler, "_session_facts", return_value=[]
+            ) as collections,
+        ):
+            status, body = self._open(port, fact_id)
+        self.assertEqual(200, status)
+        self.assertTrue(body["ok"])
+        self.assertEqual(0, collections.call_count)
+
+    def test_a_reader_gets_not_found_for_a_known_earlier_prompt_even_when_the_search_is_bounded(
+        self,
+    ) -> None:
+        first_id = next(
+            str(f["fact_id"])
+            for f in self.facts()
+            if f.get("type") == "user_message" and f["at"] == FIRST_AT
+        )
+        narrow = dataclasses.replace(self.config, direction_scan_max_bytes=16)
+        with mock.patch.object(self, "config", narrow), self._serving() as port:
+            status, body = self._open(port, first_id)
+        self.assertEqual(200, status)
+        self.assertEqual("not_found", body["reason"])
 
     def test_a_direction_older_than_the_tail_is_opened_and_added_from_its_source(self) -> None:
         # The fact still resolves (history keeps it) while the tail no longer

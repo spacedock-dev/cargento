@@ -1145,7 +1145,8 @@ half, in place of the goal box's 240 characters; the goal stored and shown stays
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-owner-an-adopted-goal-is-read-whole)).
 The owner, approving the Analyze drift plan, amended the source lookup on 2026-10-04. A reader's
 press can find that adopted source outside the recent transcript tail: a forward scan reads at
-most the first 32 MiB and retains at most 4,096 user-message facts. Only the adopted source can
+most the newest 64 MiB plus the opening 32 MiB under one two-second clock, and retains
+at most 4,096 user-message facts. Only the adopted source can
 replace the Goal; the other facts do not enter the reading's evidence ledger. The runtime caches
 the redacted, 1,000-character fields in memory for at most eight transcripts on its default arm,
 keyed by path, harness, session, size and modification time. A reader's press uses the uncached
@@ -1731,12 +1732,16 @@ hide a flag removed first, while the joiners that spell words and emoji are kept
 shape like every published string, with line breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
 it was clipped (a message the record reader already cut at that bound counts as clipped), and a flag saying whether the store would take it as a line (at most 240
 characters). It returns nothing for a message that is not a person's message in that session's
-own record, one not later than the words it would join, or one older than the tail of the
-transcript Compass already reads: all of those, an unknown session and an unknown fact alike,
-answer one 200 body with one sentence, so the route says nothing about which sessions exist.
+own record, one not later than the words it would join, or one beyond the bounded source search.
+Every refusal is an HTTP 200 body. `not_found` covers an unverified source or a
+request not later than the intent, including unknown sessions; `out_of_reach` says
+the search ended before reaching the record's start. The budget token describes search coverage, not whether the requested direction
+exists. Session identities remain the same loopback data already published by
+`/api/data`; unknown sessions have no separate HTTP status. The [long-session lookup](docs/design-reading-a-session.md#long-session-direction-and-prompt-reads)
+owns its 64 MiB and two-second limits and the bounded ambiguity guarantee.
 Prose shapes outside those named forms come back as typed: a password written into a sentence,
 `token: value`, a JSON field and a `?token=` query are not masked, and only a value with a
-credential's own shape is redacted there. The text is read again from the transcript Compass already tails, found by `observer.resolve_transcript`
+credential's own shape is redacted there. The text is read again from the bounded native transcript source, found by `observer.resolve_transcript`
 from the session's harness and id, and never from a path a client names. It is served to the same
 callers as `/api/data`: loopback only, same-origin, and refused to a document navigation and to a
 same-site or cross-site fetch, as `POST /api/reading` is, and it answers 503 under
@@ -1745,7 +1750,7 @@ machine, and the text never enters session history: no published field carries i
 history prompt-text allowlist is unchanged. A local process running as you gains nothing it could
 not read from the transcript file itself. Another account on the machine can reach this route as
 it can reach `/api/data` (Known and accepted), and for that account it is wider: the whole text of
-any later direction in any session's transcript tail, each fact id listed by
+any verified later direction within a session's bounded source search, each fact id listed by
 `GET /api/project-context`, where that route gives only the first sentence. A loop over those ids
 reads every one of them, so the ids bound nothing. A Claude Code slash command is the one message
 the record names by more than its first sentence: the record and this route both give the command
@@ -1830,7 +1835,8 @@ waiting answers without storing anything, so registering one twice earns no seco
 Claude Code sessions are read for a match. A user message written after the point the transcript
 had reached when the text was copied, whose digest computed from its raw text before any redaction
 or clipping matches exactly, is Compass-assisted, whatever either clock says. The transcript is
-read from that point to its end, at most its newest 32 MiB, the bound the semantic history store
+read from that point to its end, at most its newest 64 MiB plus its opening 32 MiB, matching the Intent source reads,
+under the same unchanged digest and first-paste rules; the semantic history store
 reads a source to, so a paste the bounded tail never held is still recognised. Each digest binds the
 first such message, and nothing before it, and a recognised message stays recognised after the
 tail moves past it. An assisted message is `derived` rather than person-authored evidence, is never
@@ -2913,13 +2919,18 @@ built only when the reader opens it. A listed later direction may also be explic
 "Use this as my goal". The server resolves its fact id in the same session's own source record,
 requires a person-authored message after the goal's direction floor, and verifies the displayed
 words, source time and saved revision again before adoption. Claude and Codex use a stable,
-bounded 32 MiB prefix so a listed history message can be reached after it leaves the live tail;
-missing, changing and ambiguous sources are refused. The draft asks whether to keep or clear
+bounded backward 64 MiB search so recent messages in long files and paged entries
+can be reached after they leave the live tail or semantic history. Missing,
+changing and ambiguous sources are refused. A duplicate outside the consumed
+byte or clock allowance is not checked. The draft asks whether to keep or clear
 standing outcome lines and saves only on Save intent. No list or whole source text is stored.
 Every offered goal choice masks named credential forms before raw line breaks are folded and
 before the goal cap is applied. This goal-only scan is uncached; Analyze keeps its own words.
-It returns at most 4,096 source facts but checks the rest of the bounded prefix for conflicting
-copies of those identities. Known source clipping remains an excerpt even after whitespace folds.
+The prompt lookup returns at most 4,096 source facts from the newest 64 MiB and
+opening 32 MiB, sharing a two-second clock. It checks conflicting copies of
+retained identities throughout those consumed ranges. The menu still publishes
+at most five choices and no whole records. `prompt_scan` adds only a state and
+byte or clock stop token, so a partial read is disclosed beside the choices. Known source clipping remains an excerpt even after whitespace folds.
 Adopted goals never authorize unasked checks, even when the same revision has a typed output.
 
 The history record also keeps `first_prompt_at`, `annotation_goal_source`,

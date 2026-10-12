@@ -1082,7 +1082,7 @@
         "frontend/src/drift/KeepAnalyze.test.tsx",
         "frontend/e2e/drift-parity.mjs"
       ],
-      "contract": "Keep whole directions+draw revision; first press reads all, new arrival is unread, next settle names drawn revision; sole fully quoted unclipped direction may settle once.",
+      "contract": "Keep holds whole directions and the drawn revision. Its first press reads and shows every direction, a new arrival is unread, and a later settlement names that drawn revision. The count-only question permits no one-press settlement.",
       "disposition": "store-held"
     },
     {
@@ -1302,6 +1302,19 @@
       ],
       "contract": "How Intent and drift works is keyed by project and exact session identity, persists across redraws and remounts for this tab, and uses shared Popover dismissal/focus rules without browser storage.",
       "disposition": "stable-identity"
+    },
+    {
+      "name": "A direction action's refusal",
+      "owner": "DRC-4825",
+      "oracles": [
+        "frontend/src/intent/IntentDirections.test.tsx",
+        "frontend/src/drift/KeepAnalyze.test.tsx",
+        "frontend/src/drift/SteerBack.test.tsx",
+        "frontend/src/intent/held.test.ts",
+        "frontend/stories/IntentDirections.stories.tsx"
+      ],
+      "contract": "The exact question, goal, activity-row or Update intent control holds its own refusal across polls until the next press or an intent edit; a persistent polite region announces it, and failure retains that control focus without filling an editor. Exact session keys keep another session's feedback.",
+      "disposition": "store-held"
     }
   ],
   "storage": [

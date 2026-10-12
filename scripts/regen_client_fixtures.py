@@ -1079,7 +1079,7 @@ def copy_and_direction_scenarios(recorder: Recorder, scratch: Scratch) -> None:
     try:
         recorder.capture(
             rig,
-            "direction-unavailable",
+            "direction-not-found",
             post("/api/direction", {**SESSION, "fact_id": "fact-1"}),
             "A direction the session record cannot open answers one 200 body, never a 404.",
         )
@@ -1394,6 +1394,16 @@ def adoption_scenarios(recorder: Recorder, scratch: Scratch) -> None:
             "Adopting the first prompt as the goal: stored, and saved_revision names the "
             "revision this adoption wrote.",
         )
+        original_config = rig.application.config
+        rig.application.config = dataclasses.replace(original_config, direction_scan_max_bytes=16)
+        recorder.capture(
+            rig,
+            "direction-out-of-reach",
+            post("/api/direction", {**SESSION, "fact_id": later["fact_id"]}),
+            "A known direction beyond the search allowance is distinct from a missing record, "
+            "still HTTP 200.",
+        )
+        rig.application.config = original_config
         recorder.capture(
             rig,
             "direction-opened",

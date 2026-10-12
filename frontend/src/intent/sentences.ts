@@ -17,6 +17,22 @@ export const DIRECTION_CLIPPED =
 export const DIRECTION_UNOPENED =
   'Could not open that direction, so nothing was added. Press again to retry.';
 
+export function directionFailure(action: 'goal' | 'add' | 'keep', reason?: string): string {
+  const source =
+    reason === 'out_of_reach'
+      ? 'That direction is beyond the part of the record Compass could search.'
+      : reason === 'not_found'
+        ? 'That direction could not be verified as later than your intent in the current record.'
+        : 'Compass could not open that direction.';
+  const outcome =
+    action === 'goal'
+      ? 'Your goal has not changed.'
+      : action === 'add'
+        ? 'No outcome line was added.'
+        : 'Nothing was settled and no analysis was started.';
+  return `${source} ${outcome}`;
+}
+
 /* Analyze or Keep over an unsaved edit would read words that are not on screen, so the press is refused. Add's
    save has its own sentence, beside its line. */
 export const INTENT_EDITED = 'Save your intent, or undo your edit, to analyze drift.';
@@ -92,6 +108,13 @@ export const KEEP_NO_ANALYSIS =
    disclosure does the sending. */
 export const KEEP_ALLOW =
   'Kept your intent and settled the direction. Press Allow and analyze to send it for a reading.';
+
+export function keptDirections(count: number, owed = false): string {
+  const sentence = owed ? KEEP_ALLOW : KEEP_NO_ANALYSIS;
+  return count === 1
+    ? sentence
+    : sentence.replace('the direction.', `all ${String(count)} directions.`);
+}
 export const KEEP_REFUSED =
   'Nothing was settled and no analysis was started: your intent changed since this page was drawn, or the store refused the mark. Review your intent and press again.';
 export const KEEP_READ_FIRST =

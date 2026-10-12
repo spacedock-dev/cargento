@@ -26,6 +26,7 @@ export async function loadPromptChoices(
   ctx.held.notify();
   let choices: PromptChoice[] = [];
   let failed = false;
+  let bounded = false;
   try {
     const result = await ctx.shell.runtime.client.getProjectContext({
       project: projectKey,
@@ -46,6 +47,9 @@ export async function loadPromptChoices(
           entry['sid'] === input.session['sid'],
       );
     const offered = body?.['prompt_choices'];
+    const scan = isRecord(body?.['prompt_scan']) ? body['prompt_scan'] : null;
+    failed = failed || scan?.['state'] === 'unavailable';
+    bounded = scan?.['bound'] === 'bytes' || scan?.['bound'] === 'time';
     choices = Array.isArray(offered)
       ? offered.filter(isRecord).map((choice) => ({
           factId: String(choice['fact_id'] ?? ''),
@@ -63,6 +67,7 @@ export async function loadPromptChoices(
     open: ctx.held.prompts.get(key)?.open === true,
     choices,
     failed,
+    bounded,
   });
   ctx.held.notify();
 }

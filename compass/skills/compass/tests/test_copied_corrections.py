@@ -276,6 +276,41 @@ class CopyStoreTest(_Store):
 
 
 class MatchingTest(_Store):
+    def test_a_reader_restarting_a_long_session_does_not_adopt_a_copied_correction_from_the_opening_range(
+        self,
+    ) -> None:
+        copied_position = self.position()
+        copied_at = START.timestamp() + self.session.seconds + 1
+        pasted_at = _paste(self.session, STORED)
+        self.session.save(self.path)
+        padding = json.dumps({"type": "progress", "data": "x" * (1024 * 1024)}).encode() + b"\n"
+        for size in (40, 100):
+            with self.subTest(size=size):
+                self.session.save(self.path)
+                copies.forget(self.config)
+                copies.register(
+                    self.config, "claude", SHORT, COPIED, now=copied_at, position=copied_position
+                )
+                with self.path.open("ab") as handle:
+                    for _ in range(size):
+                        handle.write(padding)
+                restarted = build_runtime_state(self.config, started=NOW)
+                matches = copies.matched(self.config, restarted, "claude", SHORT)
+                self.assertEqual([pasted_at], [entry["at"] for entry in matches])
+                row = _row()
+                copies.attach(self.config, restarted, [row])
+                app = aggregate.Application(
+                    self.config,
+                    restarted,
+                    (),
+                    native_notifier=lambda _p: "",
+                    popup_notifier=lambda _t, _b: None,
+                    diagnostic_sink=lambda _m: None,
+                    clock=lambda: NOW,
+                )
+                facts = http_api._prompt_facts(app, row, [])
+                self.assertFalse(any(fact["at"] == pasted_at for fact in facts))
+
     """The collector half: each user message's digest from its raw text, before any clipping."""
 
     def test_an_exact_paste_after_the_copy_is_recognised_and_a_different_message_is_not(

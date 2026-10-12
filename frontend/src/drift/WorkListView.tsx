@@ -1,6 +1,7 @@
 import { Card } from '../ui/card';
-import { Button } from '../ui/button';
 import { openDirection } from '../intent/directions';
+import { DirectionActionButton } from '../intent/DirectionActionButton';
+import { compatSessKey } from '../api/identity';
 import { useDrift } from './context';
 import { WORK_AS_REPORTED } from './sentences';
 import { foldRuns, workList, type CheckRunModel } from './workList';
@@ -206,21 +207,30 @@ export function WorkListView() {
                         {row.source}
                       </span>
                       {row.add ? (
-                        <Button
+                        <DirectionActionButton
+                          feedbackKey={`direction-row:${compatSessKey(model.session)}:${entry.id}`}
+                          focusKey={`direction-row:${compatSessKey(model.session)}:${entry.id}`}
+                          pendingKey={`direction-row:${compatSessKey(model.session)}:${entry.id}`}
                           className="self-start"
-                          variant="bare"
-                          type="button"
-                          data-next-cockpit-action="direction-add"
-                          data-arg={entry.id}
-                          onClick={(event) => {
-                            event.preventDefault();
+                          weight="quiet"
+                          label="Add to my intent"
+                          busyLabel="Opening…"
+                          action="direction-add"
+                          arg={entry.id}
+                          onPress={() => {
                             if (model.identity && entry.id) {
-                              void openDirection(ctx.intent, model.session, entry.id, row.n, true);
+                              void openDirection(
+                                ctx.intent,
+                                model.session,
+                                entry.id,
+                                row.n,
+                                true,
+                                'direction-add',
+                                `direction-row:${compatSessKey(model.session)}:${entry.id}`,
+                              );
                             }
                           }}
-                        >
-                          Add to my intent
-                        </Button>
+                        />
                       ) : null}
                     </div>
                   </div>

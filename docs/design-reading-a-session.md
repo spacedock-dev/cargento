@@ -1831,8 +1831,8 @@ in one session cut off the instruction that mattered and in another kept only pl
   its words have no room, the reading reads the clip and the cutoff sentence says which.
 - The owner, approving the Analyze drift plan, amended this on 2026-10-04. The tail lookup
   fell back to the goal clip in all 123 adopted readings in the replay. At a press, a separate
-  forward lookup now finds the source in the transcript's first 32 MiB, retaining at most 4,096
-  user-message facts. It uses the same author, source-time and ambiguity checks as the tail lookup.
+  source lookup now uses the [newest and opening reads](#long-session-direction-and-prompt-reads),
+  retaining at most 4,096 user-message facts. It uses the same author, source-time and ambiguity checks as the tail lookup.
   Its capped, redacted words stay in memory, cached for at most eight transcripts by path,
   harness, session, size and modification time. Neither the cache nor its facts enter a store or
   a page response. They supply only the adopted Goal, leaving the evidence ledger unchanged.
@@ -1864,7 +1864,7 @@ transcript.
 The recovered words stay in memory, up to 1,000 characters each, and replace titles only within
 the reader's existing share. Credentials are masked before whitespace is folded, including before
 slash-command arguments are rendered. This press-only scan is uncached. The adopted Goal still
-uses its separate prefix lookup; the press uses its uncached raw-masking arm. Default callers keep
+uses its separate [newest and opening lookup](#long-session-direction-and-prompt-reads); the press uses its uncached raw-masking arm. Default callers keep
 the existing lookup cache and prompt. Nothing new is stored or published, and an unasked reading
 does not run this recovery. Other harnesses retain their existing in-tail words.
 
@@ -2850,7 +2850,8 @@ parent fact and the line's words. A missing or changed source leaves age unknown
 build may discard this optional binding, which also leaves age unknown. No time is guessed for
 older lines.
 
-Source proof comes from the existing bounded transcript prefix, not from historical summaries.
+Source proof comes from the bounded newest and opening transcript reads, not from historical summaries.
+The [long-session lookup](#long-session-direction-and-prompt-reads) owns their current bounds.
 Each operation reuses one source lookup; the bounded cache checks device, inode, size and
 modification time before reuse. A record beyond the byte or fact bound supplies no proof. The
 transient raw-record and complete-word digests and source version never reach the page, model
@@ -3686,7 +3687,8 @@ asks whether to keep standing outcome lines, and waits for Save intent. A refuse
 Add offers that choice; its line editor says "Write the rule, not the moment". The menu's five
 choices are resolved only when opened, under the same source checks as adoption.
 They retain known source clipping after whitespace folds. The source-list cap limits returned
-facts, not ambiguity checks against their identities within the bounded prefix.
+facts, not ambiguity checks against their identities within the consumed source ranges.
+The [long-session lookup](#long-session-direction-and-prompt-reads) owns the current bounds.
 
 A stored reading keeps the baseline it read: only unsettled directions at or before its
 `read_at` demote its intent rows, answer, level and correction. A later message instead labels
@@ -3722,8 +3724,8 @@ can start. The page half comes after it.
   characters first, so raw text that reaches the bound counts as clipped; one of exactly 2,000 is
   flagged too, which says less was shown than was, the safe error.
 - One refusal body. An unknown session or fact, another session's entry, one that is not a
-  person's message, one not later than the words and one outside the source bound all answer the same
-  200 body, so the route says nothing about which sessions exist.
+  person's message, one not later than the words and one outside the source bound answer HTTP 200. The [long-session lookup](#long-session-direction-and-prompt-reads)
+  now distinguishes an unfinished search from an unverified direction without a separate unknown-session HTTP status.
 - The write. The line, the settlement through that direction's time and, over a draft, the adopted
   goal go in one store write, under the revision the page drafted against. A full list is refused
   unless the body names the line to replace, counted from 0 as `origins` is. A settlement never
@@ -3740,6 +3742,109 @@ can start. The page half comes after it.
   store can still race, and these writes share that gap with every other save (DRC-4661).
 - Not permanent. A line added from an entry becomes a typed line once the reader edits it and
   saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
+
+
+### Long-session direction and prompt reads
+
+A failing-first 74 MB synthetic session proved that the earlier prefix lookup could
+not open a recent direction or restore the recent prompt choices. A second test
+proved that a paged direction could be present in the native record but absent
+from semantic history. Opening and adopting a direction now recomputes its fact
+identity from its own native source, independently of that history. The same
+person-message parser, copied-correction exclusions, direction floor, redaction,
+2,000-character review cap and saved revision checks still apply.
+
+`config.DIRECTION_SCAN_MAX_BYTES` is 64 MiB and
+`config.DIRECTION_SCAN_MAX_SECONDS` is two seconds. The direction lookup uses
+`record_pages.scan_source`, the page reader's chunk and line-boundary machinery,
+from the newest end. It compares device, inode, size and modification time before
+and after the read and refuses any change, including an append during the request.
+A conservative byte prefilter avoids decoding tool-result-only records; escaped
+keys still reach the authoritative JSON parser. Lines larger than 16 MiB are
+skipped to their delimiter and count as incomplete coverage. A local filesystem
+operation or one decode must return before the next clock check can run.
+
+Finding a match does not stop the scan. Every conflicting raw-content fingerprint for that identity
+within the consumed allowance still refuses the words, even when the difference
+is beyond the 2,000-character review crop. Copies outside the byte
+or clock allowance cannot be checked; this is a bounded source verification,
+not a claim that the entire transcript contains no conflicting copy. A direction
+that is not found before an unfinished search answers `out_of_reach`. A complete
+search with no match, a changed or ambiguous source, or a known request that is
+not later than the intent answers `not_found`. Both remain an HTTP 200 body;
+unknown sessions use the latter body too. Older pages can read the `why` sentence
+without understanding the new tokens. No fallback substitutes a listed summary.
+
+The prompt and request-source lookup adds the newest 64 MiB to the opening read
+of at most 32 MiB, with the same two-second clock shared across both. The ranges
+do not duplicate complete records; a boundary fragment can be reread. At most
+4,096 facts survive, reserving the oldest source alongside the newest facts so
+an adopted opening prompt does not disappear merely because recent prompts fill
+the allowance. Conflicting identities and same-time request ambiguity are checked
+throughout the consumed ranges, including after the fact allowance fills for
+identities still retained. Its cache binds the full file stamp, even when the
+cached result is empty. The menu arm remains uncached and masks raw separators
+before folding words. Analyze retains its separate word masking and ledger.
+
+The focused prompt response carries `prompt_scan.state` and `prompt_scan.bound`,
+never source paths, stamps or whole records. The menu offers at most five verified
+native prompts, newest first, preserving an opening choice when it qualifies.
+It no longer depends on semantic titles surviving eviction. A byte or clock stop
+is stated beside the choices: "The prompt search reached its limit. Older prompts
+may be outside this read." An empty successful read says "No usable prompts were
+found in the parts of this session Compass read." A failed read states that it
+could not read the prompts. Selecting still fills a draft and saves nothing.
+
+Copied-correction recognition now covers the same newest 64 MiB and opening
+32 MiB sources. A restart cannot expose an unmarked copied prompt merely because
+it is farther than the former 32 MiB tail. Incremental reads also clamp their
+cached end to the current tail allowance after a large append; they do not read
+an unbounded gap. Opening-range matches are cached separately and overlap is
+deduplicated in physical file order, preserving the first matching paste rule.
+The store still holds only digests, offsets and recognized identities.
+
+A refused Goal, Add, activity-row Add or Keep says what happened beside the
+control pressed, with a persistent polite announcement, and keeps focus there.
+The answer survives polls and remains until the next press or an intent edit,
+including an edit in a pending direction line. Keys compare exact session
+identities. Update intent instead uses the same local feedback path.
+Successful Goal and Add still focus their respective editors. Keep first shows
+every direction whole, and a later press alone settles it. A failure never focuses
+the Goal box or draws a pending outcome line as though the read succeeded. A
+successful Keep derives its settled count from the directions that press showed,
+so several directions are not described as one.
+
+Successful direction lookups use the freshly recomputed native fact as their author,
+identity and timestamp proof. They no longer recompose project evidence for each source.
+A failed lookup still checks the listed record to distinguish a known earlier request
+from an out-of-reach one. The real scratch audit exposed the repeated composition cost
+after the individual Add reads had all succeeded.
+
+Keep opens missing sources through four concurrent lanes under the existing 15-second
+control deadline. The real scratch board had 21 unsettled directions: reading them
+serially exhausted that deadline even though each row opened on its own. A clock-driven
+regression proves 22 two-second source replies are all drawn before a second press can
+settle them. A failed lane stops admitting more work, waits for the other active lanes,
+and preserves successful reads for a retry. It neither increases the request deadline
+nor grants reading consent.
+
+Measured locally on 2026-10-12 with synthetic one-MiB tool-result lines:
+
+| Fixture bytes | Direction | Bytes read | Milliseconds | Result |
+|---|---|---:|---:|---|
+| 73,407,766 | Recent | 67,108,864 | 517.272 | Opened |
+| 73,407,766 | Older, inside allowance | 67,108,864 | 518.431 | Opened |
+| 73,407,766 | Opening, beyond allowance | 67,108,864 | 519.706 | Out of reach |
+| 104,868,016 | Recent | 67,108,864 | 519.571 | Opened |
+| 104,868,016 | Older, inside allowance | 67,108,864 | 526.601 | Opened |
+| 104,868,016 | Opening, beyond allowance | 67,108,864 | 518.880 | Out of reach |
+
+The menu returned all three synthetic prompts and request sources on both files.
+Its two ranges read 74,449,762 bytes on the smaller file, including reread boundary
+fragments, and 100,663,296 bytes on the larger file. The latter reported a byte
+stop for the unread middle. Fixture construction is excluded from timings.
+The two-second allowance leaves headroom over those reads; it does not guarantee
+those timings on a loaded machine. No real prompt corpus was copied.
 
 ### Amended 2026-10-05: an adoption reply names its own saved revision
 
@@ -4247,6 +4352,7 @@ types one.
   publish it as a control (`/clear` 326, `/login` 115, `/plugin` 36, `/mcp` 24), and 9 of 469
   Codex sessions do. Before, every one of them drafted the command as the goal; now none does,
   and the other 1,051 Claude Code sessions draft as before.
+
 
 ## DEC-26: four drift levels, and a live estimate after every turn
 

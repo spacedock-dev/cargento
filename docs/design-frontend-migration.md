@@ -490,6 +490,16 @@ below the trigger, scrolls without shifting the page, and clamps each titled ite
 Escape closes only the popup before any disclosure or route dismissal. A choice fills a pending
 adoption and saves nothing. The request still runs once per opening, never on a poll or mount.
 
+Direction action feedback now stays beside the exact control pressed, including
+activity-row Add and Update intent instead. It is held across polls until the next press or an intent edit, including the pending line,
+announced through the existing persistent polite region, and keeps focus at a
+failed action. The two source refusal tokens have separate page-owned sentences;
+no failed Goal adoption focuses the Goal box. The prompt menu shows newest choices
+first and states an unfinished search beside the list. These repairs are covered
+by `IntentDirections.test.tsx`, `PromptSelect.test.tsx` and
+`IntentDirections.stories.tsx`, including the phone pending-line layout. No
+recorded golden answer was regenerated.
+
 `PromptSelect.test.tsx` covers same-popup loading, arrival, absence and dismissal.
 `intent-parity.mjs` checks first-frame opening and stable widths at 1280, 375 and 320 px, with
 `auto-prompt-width` and `wide-select` mutations. The four select rows in

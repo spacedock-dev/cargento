@@ -2265,6 +2265,21 @@
             "test": "a reader leaving a session aborts its request even when the network ignores cancellation"
           }
         ]
+      },
+      "A direction action's refusal": {
+        "status": "deviation",
+        "deviation": "docs/design-frontend-migration.md#the-intent-log-and-the-intent-panel",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "keeps a complete settlement refusal beside Keep until the reader edits their intent"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "tells a reader at the activity row when its direction is beyond the search and retains that row focus"
+          }
+        ],
+        "note": "Direction refusals survive polls in per-control held state, are adjacent and announced, and clear on the next press or edit. The new Storybook plays verify focus and phone-width pending edits; no browser proof or fluidity run was added."
       }
     },
     "storage": {

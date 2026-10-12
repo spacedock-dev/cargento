@@ -16,6 +16,16 @@ function setup() {
 }
 
 describe('the cue lane', () => {
+  it('keeps another reader session’s action feedback when its id shares a prefix', () => {
+    const { held } = setup();
+    held.actionFeedback.set('direction-add:claude:s10', 'A refusal for the other session.');
+    held.actionFeedback.set('direction-goal:claude:s1:line:f1', 'A refusal for this session.');
+    held.clearActionFeedback('claude:s1');
+    expect(held.actionFeedback.get('direction-add:claude:s10')).toBe(
+      'A refusal for the other session.',
+    );
+    expect(held.actionFeedback.has('direction-goal:claude:s1:line:f1')).toBe(false);
+  });
   it('restores a mark for thirty seconds and not longer', () => {
     const { held, clock } = setup();
     held.mark('a', 'saved');

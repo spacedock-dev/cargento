@@ -1574,6 +1574,7 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "compass_runtime.config",
             "compass_runtime.io",
             "compass_runtime.observer",
+            "compass_runtime.record_pages",
             "compass_runtime.records",
             "compass_runtime.semantic_history",
             "compass_runtime.sessions",
@@ -1581,8 +1582,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "compass_runtime.state",
             "compass_runtime.transcripts",
         },
-        # Request-only record composition reaches the existing fact builders;
-        # project context and the reading producers never reach paged evidence.
+        # Project context shares the stateless chunk walker through a local import;
+        # pages still reach its fact builders, without an import-time cycle.
         "compass_runtime.record_pages": {
             "compass_runtime.config",
             "compass_runtime.project_context",

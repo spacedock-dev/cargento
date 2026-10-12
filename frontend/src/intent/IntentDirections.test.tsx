@@ -245,7 +245,9 @@ describe('Add it to my intent', () => {
     await press(control('direction-add'));
     await settle(page);
     expect(document.querySelector('[data-next-cockpit-direction-key]')).toBeNull();
-    expect(document.body.textContent).toContain('That entry is no longer in the record.');
+    expect(document.body.textContent).toContain(
+      'Compass could not open that direction. No outcome line was added.',
+    );
     await press(control('direction-add'));
     await settle(page);
     expect(
@@ -366,6 +368,67 @@ describe('Add it to my intent', () => {
 });
 
 describe('Keep my intent', () => {
+  it('lets a reader review twenty-two slow source reads before the Keep deadline, then settles only after another press', async () => {
+    const facts = Array.from({ length: 22 }, (_, n) =>
+      fact(`slow${String(n)}`, 600 + n, `Synthetic direction ${String(n)}.`),
+    );
+    const page = mountSession({
+      store: SAVED,
+      session: SAVED_AT,
+      routes: {
+        '/api/project-context': record(...facts),
+        '/api/direction': () => 'hold',
+        '/api/annotate': () => stored(1, { outcome: 'unchanged' }),
+      },
+    });
+    await settle(page);
+    await press(control('direction-keep'));
+    for (let round = 0; round < 6; round++) {
+      const answering = page.state.held.filter((entry) => entry.path === '/api/direction').length;
+      await page.advance(2000);
+      for (let n = 0; n < answering; n++) {
+        await page.release(
+          '/api/direction',
+          json({ ok: true, text: 'Synthetic complete direction.', clipped: false }),
+        );
+      }
+    }
+    await settle(page);
+    expect(document.querySelectorAll('.next-cockpit-direction-whole-item')).toHaveLength(22);
+    expect(control('direction-keep')?.getAttribute('aria-busy')).not.toBe('true');
+    expect(page.posts('/api/annotate')).toBe(0);
+    expect(text('#next-cockpit-cue-status')).toBe(
+      'Nothing was settled yet. Each direction Keep settles is now shown whole. Read it, then press again.',
+    );
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(page.posts('/api/annotate')).toBe(1);
+    expect(text('#next-cockpit-cue-status')).toBe(
+      'Kept your intent and settled all 22 directions. No analysis was started.',
+    );
+  });
+  it('tells a reader how many of their several later directions were settled', async () => {
+    const page = mountSession({
+      store: SAVED,
+      session: SAVED_AT,
+      routes: {
+        '/api/project-context': record(
+          fact('f1', 600, 'First direction.'),
+          fact('f2', 700, 'Second direction.'),
+        ),
+        '/api/direction': () => json({ ok: true, text: 'Synthetic direction.', clipped: false }),
+        '/api/annotate': () => stored(1, { outcome: 'unchanged' }),
+      },
+    });
+    await settle(page);
+    await press(control('direction-keep'));
+    await settle(page);
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(text('.next-cockpit-direction-question')).toContain(
+      'Kept your intent and settled all 2 directions. No analysis was started.',
+    );
+  });
   const routes = (page: () => ReturnType<typeof mountSession>) => ({
     '/api/project-context': record(
       fact('f1', 600, 'Do it the careful way, and then verify it on a clean checkout.'),
@@ -476,7 +539,7 @@ describe('Keep my intent', () => {
     await press(control('direction-keep'));
     await settle(page);
     expect(text('.next-cockpit-direction-question')).toContain(
-      'Nothing was settled and no analysis was started: Compass could not open the whole text of every direction Keep would settle',
+      'Compass could not open that direction. Nothing was settled and no analysis was started.',
     );
     expect(page.allPosts().map((p) => p.path)).toEqual(['/api/direction']);
     first = false;
@@ -552,4 +615,137 @@ describe('Use this as my goal', () => {
     expect(lineBoxes().map((b) => b.value)).toEqual(['']);
     expect(inert(control('held-save'))).toBe(false);
   });
+});
+
+describe('a direction press that cannot finish', () => {
+  it('clears a line-level goal refusal when the reader edits their pending outcome', async () => {
+    let opened = false;
+    const page = mountSession({
+      store: SAVED,
+      session: SAVED_AT,
+      routes: {
+        '/api/project-context': record(...ONE),
+        '/api/direction': () => {
+          if (opened) return json({ ok: false, reason: 'out_of_reach' });
+          opened = true;
+          return json({ ok: true, text: 'A synthetic pending outcome', clipped: true });
+        },
+      },
+    });
+    await settle(page);
+    await press(control('direction-add'));
+    await settle(page);
+    const line = document.querySelector('[data-next-cockpit-direction-line]') as HTMLElement;
+    const goal = line.querySelector(
+      '[data-next-cockpit-action="direction-goal"]',
+    ) as HTMLButtonElement;
+    await press(goal);
+    await settle(page);
+    expect(goal.parentElement?.querySelector('[data-next-action-feedback]')).not.toBeNull();
+    type(line.querySelector('textarea') as HTMLTextAreaElement, 'My own reviewed line');
+    await settle(page);
+    expect(goal.parentElement?.querySelector('[data-next-action-feedback]')).toBeNull();
+  });
+  it('tells a reader at the activity row when its direction is beyond the search and retains that row focus', async () => {
+    const page = mountSession({
+      store: SAVED,
+      session: SAVED_AT,
+      routes: {
+        '/api/project-context': record(...ONE),
+        '/api/direction': () => json({ ok: false, reason: 'out_of_reach' }),
+      },
+    });
+    await settle(page);
+    const row = document.querySelector('[data-next-entry-id="f1"]') as HTMLElement;
+    const button = row.querySelector(
+      'button[data-next-cockpit-action="direction-add"]',
+    ) as HTMLButtonElement;
+    button.focus();
+    await press(button);
+    await settle(page);
+    const message =
+      'That direction is beyond the part of the record Compass could search. No outcome line was added.';
+    expect(button.parentElement?.querySelector('[data-next-action-feedback]')?.textContent).toBe(
+      message,
+    );
+    expect(document.querySelector('#next-cockpit-cue-status')?.textContent).toBe(message);
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('keeps a complete settlement refusal beside Keep until the reader edits their intent', async () => {
+    const page = mountSession({
+      store: SAVED,
+      session: SAVED_AT,
+      routes: {
+        '/api/project-context': record(...ONE),
+        '/api/direction': () =>
+          json({ ok: true, text: 'Synthetic later direction', clipped: false }),
+        '/api/annotate': () => json({ ok: true, outcome: 'refused', persisted: false }),
+      },
+    });
+    await settle(page);
+    await press(control('direction-keep'));
+    await settle(page);
+    const button = control('direction-keep') as HTMLButtonElement;
+    button.focus();
+    await press(button);
+    await settle(page);
+    const message = button.parentElement?.querySelector('[data-next-action-feedback]');
+    expect(message?.textContent).toMatch(
+      /Nothing was settled.*Review your intent and press again\.$/,
+    );
+    expect(document.querySelector('#next-cockpit-cue-status')?.textContent).toBe(
+      message?.textContent,
+    );
+    expect(document.activeElement).toBe(button);
+    type(goalBox(), 'An edited goal');
+    await settle(page);
+    expect(button.parentElement?.querySelector('[data-next-action-feedback]')).toBeNull();
+  });
+
+  for (const [reason, explanation] of [
+    [
+      'not_found',
+      'That direction could not be verified as later than your intent in the current record.',
+    ],
+    ['out_of_reach', 'That direction is beyond the part of the record Compass could search.'],
+  ] as const) {
+    for (const [action, ending] of [
+      ['direction-goal', 'Your goal has not changed.'],
+      ['direction-add', 'No outcome line was added.'],
+      ['direction-keep', 'Nothing was settled and no analysis was started.'],
+    ] as const) {
+      it(`tells a reader at ${action} why ${reason} changed nothing and keeps their focus`, async () => {
+        const page = mountSession({
+          store: SAVED,
+          session: SAVED_AT,
+          routes: {
+            '/api/project-context': record(...ONE),
+            '/api/direction': () => json({ ok: false, reason, why: 'Server source explanation.' }),
+          },
+        });
+        await settle(page);
+        const button = control(action) as HTMLButtonElement;
+        button.focus();
+        await press(button);
+        await settle(page);
+        const message = `${explanation} ${ending}`;
+        expect(
+          button.parentElement?.querySelector('[data-next-action-feedback]')?.textContent,
+        ).toBe(message);
+        expect(document.querySelector('#next-cockpit-cue-status')?.textContent).toBe(message);
+        expect(document.querySelector('#next-cockpit-cue-status')?.getAttribute('aria-live')).toBe(
+          'polite',
+        );
+        expect(document.activeElement).toBe(button);
+        expect(goalBox().value).toBe(SAVED.goal);
+        expect(document.querySelector('[data-next-cockpit-direction-key]')).toBeNull();
+        await page.poll(board(SAVED_AT, SAVED));
+        await settle(page);
+        expect(
+          button.parentElement?.querySelector('[data-next-action-feedback]')?.textContent,
+        ).toBe(message);
+      });
+    }
+  }
 });
