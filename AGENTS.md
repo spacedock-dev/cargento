@@ -48,13 +48,13 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │                           # legacy script parts stay for the paused study only, never served
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
-frontend/                           # React sources, unit tests and browser proofs (Node and pnpm; not shipped)
+frontend/                           # React sources, unit tests, Storybook stories and on-demand browser proofs (Node and pnpm; not shipped)
 ├── .storybook/                     # offline component explorer and Chromium test config
 ├── stories/                        # component examples with play-function assertions
 ├── src/                            # the React page; `pnpm build` packages it into `web/react.html`
 ├── test/                           # test support, synthetic backends and the recorded answers
 │                                   # (`test/golden/`: fixtures of record, never regenerated)
-├── e2e/                            # Playwright browser proofs, run by `pnpm test:*:browser`
+├── e2e/                            # Playwright browser proofs, run on demand by `pnpm test:*:browser`; not required by CI or the pre-PR list
 └── build/ dev/                     # the packager and the contributor development supervisor
 cargento-gemini/                    # extension root: Gemini CLI (hooks only)
 └── hooks/
@@ -226,8 +226,11 @@ root-document prose allowlist by hand. The unfiltered validate suite remains the
 misclassification; the detector's job is to request all measurable jobs with `code=true` for
 these dependencies.
 
-The local frontend proofs below remain required before a PR even where CI no longer runs their
-development-server mode. CI now exercises macOS and Linux; Windows dashboard and frontend
+The interface is verified in Storybook: a visible change is proven by a story whose `play` function
+asserts it, and `pnpm build:storybook` with `pnpm test:stories` are required before a PR. The Playwright
+browser proofs under `frontend/e2e` were retired from CI and from this list by the owner on 2026-10-12.
+They stay in the repository and run on demand with `pnpm test:*:browser`, for example to investigate a
+regression, but nothing requires them. CI exercises macOS and Linux; Windows dashboard and frontend
 checks require a local run. See [Quality Gate](#quality-gate) for the retained jobs.
 
 ```bash
@@ -253,24 +256,6 @@ pnpm test:dev
 pnpm build
 pnpm build:check
 pnpm exec playwright install chromium   # lockfile-pinned browser, once per installation
-pnpm test:browser
-pnpm test:parser
-pnpm test:installed
-pnpm test:dev:browser
-pnpm test:storage:browser
-pnpm test:shell:browser
-pnpm test:controls:browser
-pnpm test:sessions:browser
-pnpm test:terminal:browser
-pnpm test:intent:browser
-pnpm test:drift:browser
-pnpm test:journey:browser
-pnpm test:project:browser
-pnpm test:console:browser
-pnpm test:attention:browser
-pnpm test:capacity:browser
-pnpm test:css:browser         # computed-style readability contract: type floor, absences, inks, controls, variables, focus rings, Button gallery targets
-pnpm test:production:browser   # the same parity proofs against the shipped bundle: CARGENTO_E2E_BUNDLE=production, two shards in CI
 coverage erase
 python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
@@ -480,18 +465,14 @@ suite or the frontend. `platform-tests` keeps the macOS dashboard leg and three 
 the Linux coverage and runtime-floor jobs still run both Python suites.
 
 `Frontend (macos-latest)` uses pinned Node and pnpm for lint, strict types, unit tests and a clean
-preview build. It checks the hand-written CSS record against the actual pull request base, hostile
-HTML literals and an installed Python 3.11 copy in pinned Chromium, with Node hidden from the backend
-and external asset requests refused. It also exercises owned development startup/cleanup, real
-Python/Vite hot refresh, API/SSE, backend restart and inert capability guards with models, usage and
-native actions disabled, followed by storage, shell, shared-controls and session browser proofs.
-The separate `Frontend proofs` job has been retired after the major frontend refactor. Its longer
-development-server proofs remain runnable through the unchanged local pre-PR command list.
+preview build. It checks the hand-written CSS record against the actual pull request base, and it
+exercises owned development startup and cleanup (`pnpm test:dev`, Node tests). The browser proofs that
+used to follow, including the separate `Frontend proofs` job retired earlier, are no longer part of
+the gate (owner, 2026-10-12); the interface is verified by Storybook.
 
-`Frontend production bundle` runs on Linux in two shards: it rebuilds and compares the tracked
-artifact, then runs all thirteen parity proofs against the shipped bundle, with shard membership
-kept in `frontend/e2e/production-shards.json`. The `Storybook (ubuntu-latest)` job builds the offline explorer and runs component assertions in
-pinned Chromium. All three frontend jobs are in the aggregator's
+`Frontend production bundle` runs on Linux: it rebuilds the tracked artifact from its sources and
+compares it, and runs no proof. The `Storybook (ubuntu-latest)` job builds the offline explorer and
+runs the component assertions in pinned Chromium. All three frontend jobs are in the aggregator's
 `needs`, and a skipped result passes only when the detector said `code=false`. The required status
 checks on main remain `validate`, `version-guard` and `quality-gate`. Native harness canary Node
 requirements remain independent of this build toolchain.
@@ -532,7 +513,9 @@ no longer published about an end published seconds later. The comment above the
 anything in that sequence, because three of the calls around it are ordered for reasons of their
 own and one of them is deliberately ordered by convention alone.
 
-A change to a component or view updates its story and passes `pnpm test:stories`.
+A change to a component or view updates its story and passes `pnpm test:stories`. Storybook is where the
+interface is verified now: a story's `play` function asserts what a reader sees and does, in pinned
+Chromium, offline. New UI or UX behaviour is proven there, not in a new browser proof.
 
 ## Code Comments
 

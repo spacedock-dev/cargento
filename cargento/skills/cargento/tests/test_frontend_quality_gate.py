@@ -255,36 +255,26 @@ class FrontendWiringControlsTest(unittest.TestCase):
             for name in ("NODE_AUTH_TOKEN", "NPM_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
                 self.assertNotIn(name, step.get("env", {}))
 
-    def test_retained_development_proofs_run_once_on_macos(self) -> None:
+    def test_the_macos_job_runs_the_lifecycle_tests_once_and_no_browser_proof(self) -> None:
+        """The browser proofs left the gate (owner, 2026-10-12): the UI is verified by the Storybook job."""
         steps = jobs()["frontend"]["steps"]
-        for command in (
-            "pnpm test:dev",
-            "pnpm test:dev:browser",
-            "pnpm test:storage:browser",
-            "pnpm test:shell:browser",
-            "pnpm test:controls:browser",
-            "pnpm test:sessions:browser",
-        ):
-            with self.subTest(command=command):
-                matches = [step for step in steps if step.get("run") == command]
-                self.assertEqual(1, len(matches), "development proof must run exactly once")
-                step = matches[0]
-                self.assertNotIn("if", step, "all native runners must exercise development")
-                self.assertNotIn("continue-on-error", step)
-                self.assertGreater(step.get("timeout-minutes", 0), 0)
-                self.assertEqual(
-                    "${{ steps.python.outputs.python-path }}",
-                    step["env"]["CARGENTO_TEST_PYTHON"],
+        matches = [step for step in steps if step.get("run") == "pnpm test:dev"]
+        self.assertEqual(1, len(matches), "the lifecycle tests run exactly once")
+        step = matches[0]
+        self.assertNotIn("if", step)
+        self.assertNotIn("continue-on-error", step)
+        self.assertGreater(step.get("timeout-minutes", 0), 0)
+        self.assertEqual(
+            "${{ steps.python.outputs.python-path }}", step["env"]["CARGENTO_TEST_PYTHON"]
+        )
+        for name in ("frontend", "frontend-production"):
+            with self.subTest(job=name):
+                commands = [step.get("run", "") for step in jobs()[name]["steps"]]
+                self.assertFalse(
+                    any(":browser" in command or "playwright" in command for command in commands),
+                    commands,
                 )
-                self.assertNotIn(
-                    "CARGENTO_E2E_BUNDLE", step["env"], "development must stay development"
-                )
-        commands = [step.get("run") for step in steps]
-        install = commands.index("pnpm exec playwright install --with-deps chromium")
-        for command in commands:
-            if command and command.endswith(":browser") and command.startswith("pnpm test:"):
-                with self.subTest(command=command):
-                    self.assertLess(install, commands.index(command))
+                self.assertFalse(any("pnpm test:installed" in command for command in commands))
 
     def test_each_browser_script_runs_every_proof_it_names(self) -> None:
         """A script that chains two proofs is one workflow step, so the step test alone cannot see one dropped."""
@@ -308,16 +298,16 @@ class FrontendWiringControlsTest(unittest.TestCase):
                 with self.subTest(script=name, proof=file):
                     self.assertIn(f"frontend/e2e/{file}", scripts[name])
 
-    def test_production_bundle_job_runs_every_parity_proof_in_two_shards(self) -> None:
+    def test_production_bundle_job_compares_the_rebuilt_artifact_and_runs_no_proof(self) -> None:
         job = jobs()["frontend-production"]
         self.assertEqual("ubuntu-latest", job["runs-on"])
         self.assertEqual("changes", job["needs"])
         self.assertEqual("needs.changes.outputs.code == 'true'", job["if"])
-        self.assertFalse(job["strategy"]["fail-fast"])
-        self.assertLessEqual(job["timeout-minutes"], 30)
+        self.assertNotIn("strategy", job, "one rebuild, no shards")
+        self.assertLessEqual(job["timeout-minutes"], 15)
         self.assertNotIn("permissions", job, "the job inherits the workflow's read-only token")
         self.assertEqual("read", yaml.safe_load(WORKFLOW.read_text())["permissions"]["contents"])
-        self.assertTrue(job["name"].startswith("Frontend production bundle (ubuntu-latest"))
+        self.assertEqual("Frontend production bundle (ubuntu-latest)", job["name"])
         steps = job["steps"]
         for step in steps:
             self.assertNotIn("continue-on-error", step)
@@ -325,20 +315,13 @@ class FrontendWiringControlsTest(unittest.TestCase):
             if "run" in step:
                 self.assertGreater(step.get("timeout-minutes", 0), 0)
         commands = [step.get("run") for step in steps]
-        proof = "pnpm test:production:browser --shard ${{ matrix.shard }}"
-        self.assertEqual(1, commands.count(proof), "the production proofs run exactly once")
-        step = steps[commands.index(proof)]
-        self.assertEqual(
-            "${{ steps.python.outputs.python-path }}", step["env"]["CARGENTO_TEST_PYTHON"]
+        self.assertEqual(1, commands.count("pnpm build:check"))
+        build = steps[commands.index("pnpm build:check")]
+        self.assertNotIn("if", build)
+        self.assertLess(
+            commands.index("pnpm install --frozen-lockfile --ignore-scripts"),
+            commands.index("pnpm build:check"),
         )
-        self.assertNotIn("if", step)
-        # The tracked artifact is verified against its sources, then the chromium, then the proofs.
-        build = commands.index("pnpm build:check")
-        self.assertNotIn("if", steps[build])
-        install = commands.index("pnpm exec playwright install --with-deps chromium")
-        self.assertLess(commands.index("pnpm install --frozen-lockfile --ignore-scripts"), build)
-        self.assertLess(build, commands.index(proof))
-        self.assertLess(install, commands.index(proof))
 
     def test_storybook_job_builds_and_tests_offline_in_pinned_chromium(self) -> None:
         job = jobs()["storybook"]
@@ -357,35 +340,6 @@ class FrontendWiringControlsTest(unittest.TestCase):
             if "run" in step:
                 self.assertGreater(step.get("timeout-minutes", 0), 0)
                 self.assertNotIn("if", step)
-
-    def test_production_shards_cover_every_parity_proof_exactly_once(self) -> None:
-        shards = json.loads((ROOT / "frontend/e2e/production-shards.json").read_text())
-        matrix = jobs()["frontend-production"]["strategy"]["matrix"]["shard"]
-        self.assertEqual(sorted(shards), sorted(matrix), "one matrix leg per shard")
-        listed = [name for names in shards.values() for name in names]
-        self.assertEqual(len(listed), len(set(listed)), "a proof is in two shards")
-        scripts = json.loads((ROOT / "package.json").read_text())["scripts"]
-        expected = {
-            "test:shell:browser",
-            "test:project:browser",
-            "test:capacity:browser",
-            "test:sessions:browser",
-            "test:terminal:browser",
-            "test:intent:browser",
-            "test:drift:browser",
-            "test:journey:browser",
-            "test:console:browser",
-            "test:attention:browser",
-            "test:storage:browser",
-            "test:controls:browser",
-            "test:css:browser",
-        }
-        self.assertEqual(expected, set(listed), "a parity proof has no production run")
-        for name in listed:
-            self.assertIn(name, scripts)
-        self.assertIn("frontend/e2e/production-proofs.mjs", scripts["test:production:browser"])
-        runner = (ROOT / "frontend/e2e/production-proofs.mjs").read_text()
-        self.assertIn("CARGENTO_E2E_BUNDLE: 'production'", runner)
 
     def test_no_frontend_job_can_fail_open(self) -> None:
         """A job-level `continue-on-error` makes `needs.<job>.result` read success for a red job; a weakened `if`
@@ -425,15 +379,15 @@ class FrontendWiringControlsTest(unittest.TestCase):
                 self.assertIn("Usage:", result.stderr)
                 self.assertNotIn("===", result.stdout, "a proof started")
 
-    def test_native_build_is_separate_from_canonical_check_and_installed_smoke(self) -> None:
+    def test_native_build_is_separate_from_the_canonical_artifact_check(self) -> None:
         steps = jobs()["frontend"]["steps"]
         commands = {step.get("run"): step for step in steps if "run" in step}
         for command in (
             "pnpm lint",
             "pnpm typecheck",
             "pnpm test",
+            "pnpm test:dev",
             "pnpm build:preview",
-            "pnpm test:parser",
         ):
             self.assertIn(command, commands)
             self.assertNotIn("if", commands[command])
@@ -444,11 +398,6 @@ class FrontendWiringControlsTest(unittest.TestCase):
             if step.get("run") == "pnpm build:check"
         )
         self.assertNotIn("if", production_build)
-        installed = commands["pnpm test:installed"]
-        self.assertNotIn("if", installed)
-        self.assertEqual(
-            "${{ steps.python.outputs.python-path }}", installed["env"]["CARGENTO_TEST_PYTHON"]
-        )
         self.assertTrue(all("pnpm preview" not in command for command in commands))
         self.assertTrue(all("pnpm test:browser" not in command for command in commands))
         self.assertTrue(all(step.get("timeout-minutes", 0) > 0 for step in steps if "run" in step))
@@ -457,15 +406,15 @@ class FrontendWiringControlsTest(unittest.TestCase):
 
     def test_no_step_runs_the_retired_embedded_linter_or_a_legacy_recording_mode(self) -> None:
         # The embedded linter checked the previous interface's sources and went with them; Biome,
-        # strict types, the unit tests, the hostile-literal parser proof and `pnpm build:check`
-        # (the production job) are what check the React sources and the page built from them.
+        # strict types, the unit tests, Storybook and `pnpm build:check` (the production job) are what
+        # check the React sources and the page built from them.
         text = WORKFLOW.read_text()
         self.assertNotIn("lint_embedded", text)
         self.assertNotIn("CARGENTO_LEGACY", text)
         lint_steps = [step.get("run", "") for step in jobs()["lint"]["steps"]]
         self.assertFalse(any("scripts/" in command for command in lint_steps), lint_steps)
         frontend = {step.get("run") for step in jobs()["frontend"]["steps"]}
-        for command in ("pnpm lint", "pnpm typecheck", "pnpm test", "pnpm test:parser"):
+        for command in ("pnpm lint", "pnpm typecheck", "pnpm test"):
             self.assertIn(command, frontend)
 
 
