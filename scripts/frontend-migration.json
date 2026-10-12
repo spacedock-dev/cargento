@@ -780,6 +780,16 @@
       "disposition": "stable-identity"
     },
     {
+      "name": "An open run of checks",
+      "owner": "DRC-4825",
+      "oracles": [
+        "frontend/src/drift/WorkListView.test.tsx",
+        "frontend/src/drift/foldRuns.test.ts"
+      ],
+      "contract": "Run openings follow the shared disclosure store by project, exact session scope and oldest member id, across refreshes, remounts and a new check at the newest end. Failed, earlier-failed, cited, selected-finding and file-written entries split runs and remain listed.",
+      "disposition": "store-held"
+    },
+    {
       "name": "An expanded Attention section",
       "owner": "DRC-4827",
       "oracles": [

@@ -47,7 +47,7 @@ const ENTRY_KIND = new Map([
   ['decision', 'Decision'],
   ['assignment', 'Assignment'],
   ['stage_transition', 'Stage'],
-  ['agent_message', 'Agent said'],
+  ['agent_message', 'said'],
 ]);
 
 /* A check's or a written path's own line under its summary: who, what, and what the tool reported. The result
@@ -63,19 +63,77 @@ const CHECK_RESULTS: Readonly<Record<string, string>> = {
 
 /* A check's or a file's own line in parts: who, what it was, and the notes about its result. The row draws the
    notes at the right edge, as a reader's flag is, and `toolReportLine` is the same words in one line. */
+export type CheckResult = 'unrecorded' | 'passed' | 'failed';
+export interface ActivityMark {
+  readonly icon: CheckResult | 'stale' | 'earlier-failed';
+  readonly short: string;
+  readonly words: string;
+}
+export interface CheckMarks {
+  readonly result: CheckResult;
+  readonly stale: boolean;
+  readonly earlierFailed: boolean;
+  readonly marks: readonly ActivityMark[];
+}
+export const RESULT_MARKS: Readonly<Record<CheckResult, ActivityMark>> = {
+  unrecorded: { icon: 'unrecorded', short: 'No result', words: 'Ran, result not recorded' },
+  passed: { icon: 'passed', short: 'Passed', words: 'Passed, as the tool reported' },
+  failed: { icon: 'failed', short: 'Failed', words: 'Failed, as the tool reported' },
+};
+export const STALE_MARK: ActivityMark = {
+  icon: 'stale',
+  short: '',
+  words: 'Before the last change',
+};
+export const EARLIER_FAILED_MARK: ActivityMark = {
+  icon: 'earlier-failed',
+  short: '',
+  words: 'An earlier run failed',
+};
+export const LAST_TURN_MARK = { short: 'Last turn', words: 'from the last turn' };
+export const MARK_LEGEND = [
+  RESULT_MARKS.unrecorded,
+  RESULT_MARKS.passed,
+  RESULT_MARKS.failed,
+  STALE_MARK,
+  EARLIER_FAILED_MARK,
+];
+
 export function toolReportParts(entry: WorkEntry): {
   readonly actor: string;
   readonly type: string;
   readonly notes: readonly string[];
+  readonly check: CheckMarks | null;
 } {
-  if (entry.subject !== 'check') return { actor: 'Agent', type: 'file written', notes: [] };
+  if (entry.subject !== 'check')
+    return { actor: 'Agent', type: 'file written', notes: [], check: null };
   const key = `${entry.result} ${entry.resultSource}`;
-  const notes = [
-    Object.hasOwn(CHECK_RESULTS, key) ? (CHECK_RESULTS[key] as string) : 'ran, result not recorded',
-  ];
+  const recorded = Object.hasOwn(CHECK_RESULTS, key);
+  const result: CheckResult =
+    recorded && key.startsWith('failed')
+      ? 'failed'
+      : recorded && key.startsWith('passed')
+        ? 'passed'
+        : 'unrecorded';
+  const phrase = recorded ? (CHECK_RESULTS[key] as string) : 'ran, result not recorded';
+  const notes = [phrase];
   if (entry.earlierFailed) notes.push('an earlier run failed');
   if (entry.beforeLastChange) notes.push('before the last change');
-  return { actor: 'Agent', type: 'check', notes };
+  return {
+    actor: 'Agent',
+    type: 'check',
+    notes,
+    check: {
+      result,
+      stale: Boolean(entry.beforeLastChange),
+      earlierFailed: Boolean(entry.earlierFailed),
+      marks: [
+        { ...RESULT_MARKS[result], words: phrase[0]?.toUpperCase() + phrase.slice(1) },
+        ...(entry.earlierFailed ? [EARLIER_FAILED_MARK] : []),
+        ...(entry.beforeLastChange ? [STALE_MARK] : []),
+      ],
+    },
+  };
 }
 
 export function toolReportLine(entry: WorkEntry): string {
@@ -249,6 +307,7 @@ export interface WorkRow {
         readonly actor: string;
         readonly type: string;
         readonly notes: readonly string[];
+        readonly check: CheckMarks | null;
       }
     | { readonly actor: string; readonly type: string };
   readonly flags: readonly ('later' | 'cited')[];
@@ -256,6 +315,72 @@ export interface WorkRow {
   readonly at: string;
   readonly turn: boolean;
   readonly add: boolean;
+}
+
+export interface CheckRunModel {
+  readonly kind: 'run';
+  readonly rows: readonly WorkRow[];
+  readonly counts: Readonly<Record<CheckResult, number>>;
+  readonly first: WorkRow;
+  readonly last: WorkRow;
+  readonly label: string;
+  readonly range: string;
+  readonly at: string;
+}
+export type FoldedItem = { readonly kind: 'row'; readonly row: WorkRow } | CheckRunModel;
+
+/* Cited and failed evidence stays reachable without a disclosure. Runs are formed in drawn order,
+   never time-sorted a second time. docs/design-reader-state.md#the-inventory owns their oldest-id key. */
+export function foldRuns(
+  rows: readonly WorkRow[],
+  revealed: ReadonlySet<string> = new Set(),
+): FoldedItem[] {
+  const items: FoldedItem[] = [];
+  let pending: WorkRow[] = [];
+  const flush = () => {
+    const first = pending[0];
+    const last = pending.at(-1);
+    if (pending.length < 3 || !first || !last) {
+      items.push(...pending.map((row): FoldedItem => ({ kind: 'row', row })));
+    } else {
+      const counts = { passed: 0, failed: 0, unrecorded: 0 };
+      for (const row of pending) {
+        if ('check' in row.head && row.head.check) counts[row.head.check.result] += 1;
+      }
+      items.push({
+        kind: 'run',
+        rows: pending,
+        counts,
+        first,
+        last,
+        label: `${String(pending.length)} checks`,
+        range:
+          first.n === null || last.n === null
+            ? 'Entries not numbered in this view'
+            : `#${String(last.n)} to #${String(first.n)}`,
+        at: first.at === last.at ? first.at : `${first.at.replace(/ ago$/, '')} to ${last.at}`,
+      });
+    }
+    pending = [];
+  };
+  for (const row of rows) {
+    const check = 'check' in row.head ? row.head.check : null;
+    if (
+      row.entry.type === 'tool_report' &&
+      check &&
+      check.result !== 'failed' &&
+      !check.earlierFailed &&
+      !row.flags.includes('cited') &&
+      !revealed.has(row.entry.id)
+    ) {
+      pending.push(row);
+    } else {
+      flush();
+      items.push({ kind: 'row', row });
+    }
+  }
+  flush();
+  return items;
 }
 
 export interface WorkList {

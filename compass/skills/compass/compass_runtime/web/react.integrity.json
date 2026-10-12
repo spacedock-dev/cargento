@@ -1,15 +1,15 @@
 {
   "document": {
-    "bytes": 1673923,
+    "bytes": 1707435,
     "file": "react.html",
-    "sha256": "3e9f27cba485ea36b0e8d49df707b116828e3fb72d210c76859b8a612ffb0b40"
+    "sha256": "1c5f7fdbc29906b3fc3ef8d3e65f97e32446f2b4c8b65dd3ce4756499d580fc2"
   },
   "format": 1,
   "frontend": "react",
   "licenses": {
-    "bytes": 36889,
+    "bytes": 41797,
     "file": "react-licenses.txt",
-    "sha256": "c2155081276c9edcbb4162aa3bdbf23d8df76470e2272d9d72e4656295c75397"
+    "sha256": "7401c14f5d397b76b461c3d6e121d0097b78ba43fe53b92971e661e13f5c115b"
   },
   "optionalTerminal": {
     "javascript": {
@@ -186,6 +186,13 @@
         "name": "react-dom",
         "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93",
         "version": "19.3.0"
+      },
+      {
+        "license": "MIT",
+        "licenseFile": "LICENSE",
+        "name": "react-icons",
+        "sha256": "a0c1e5484fb4c79e2a683834253864e640e1ca57cb57b807bd5bddb72bbbf74f",
+        "version": "5.7.0"
       },
       {
         "license": "MIT",
@@ -511,6 +518,18 @@
         "sha256": "9ebd44e86f70f3078850398aa69d0b5972f1b01f435db42cc5f39195a34f8fe8"
       },
       {
+        "file": "frontend/src/drift/ActivityHead.tsx",
+        "sha256": "56da6e876dbf9b406138d835b6383bf0015bd6e39c4811c701b962bc8ab1bfcc"
+      },
+      {
+        "file": "frontend/src/drift/ActivityMarks.tsx",
+        "sha256": "877a87f0db6854bd4297a08228ddcc8f879fb73e93a9d7145d62da7f56296acb"
+      },
+      {
+        "file": "frontend/src/drift/CheckRun.tsx",
+        "sha256": "c0c5d8831ba8cbda91246f78f0b7184ade4f7296597bded7ece22a0cddabc092"
+      },
+      {
         "file": "frontend/src/drift/Departures.tsx",
         "sha256": "e10ec510e27960222d1862a8803e01a6eb58618d08f889450dcda2702ee0a5fa"
       },
@@ -548,7 +567,7 @@
       },
       {
         "file": "frontend/src/drift/WorkListView.tsx",
-        "sha256": "aef07f0856e52592924a75bd9a2db54fc0690365aecfc56f54d24897f586a010"
+        "sha256": "7db15b1408f003dc7f6e4b06aadb3f01e195f7c395fe43f5ffc5d5af22ce2eb0"
       },
       {
         "file": "frontend/src/drift/actions.ts",
@@ -564,7 +583,7 @@
       },
       {
         "file": "frontend/src/drift/drift.css",
-        "sha256": "7e966f842e3c6a11f3c2cec2ca88f01b2ec3ead30a601a2053030ec7541d5633"
+        "sha256": "f95712f4bfd55fe5f69f0c0af8f18e18ce018525ddb482f661da9a6ece2d86e2"
       },
       {
         "file": "frontend/src/drift/editor.ts",
@@ -632,7 +651,7 @@
       },
       {
         "file": "frontend/src/drift/workList.ts",
-        "sha256": "903b9fd4ae827af812689851a2682af6af1ac5e2bb0c2da3098ee62d7357f356"
+        "sha256": "4b9bc9564170ccea7b838700cac8c9702de5eaba636c9d36ed6fbda73b1afb9c"
       },
       {
         "file": "frontend/src/intent/ActionButton.tsx",
@@ -1204,7 +1223,7 @@
       },
       {
         "file": "frontend/src/styles/tailwind.css",
-        "sha256": "dda6161870f87f0be3b2cadb531bd46876540b6d259d7da0913d35d7e4a1e1f8"
+        "sha256": "e61848f988558c2b84df2a5075399964bbddded5cbf8331db841082cc5a41a14"
       },
       {
         "file": "frontend/src/terminal/TerminalSurface.tsx",
@@ -1364,11 +1383,15 @@
       },
       {
         "file": "frontend/src/ui/collapsible.tsx",
-        "sha256": "4ab29da1fe47686ba12c048f3790df7d7092946a816b243fb55d85fe1bd175ac"
+        "sha256": "50952589eae926db51f4ddbabb3b95edbd173e1ea407d21970dba893ed17888c"
       },
       {
         "file": "frontend/src/ui/disclosureChevron.tsx",
         "sha256": "45e589e0d7390c346534636f0f8fe3fc386d57e5aa93bbd1f8f8a8f81ed3b44b"
+      },
+      {
+        "file": "frontend/src/ui/icons.tsx",
+        "sha256": "c53ac1ef799f538c1fda7f09bc47f4c882dfa2d076adf87c43a928a730872ebc"
       },
       {
         "file": "frontend/src/ui/input.tsx",
@@ -1397,6 +1420,10 @@
       {
         "file": "frontend/src/ui/textarea.tsx",
         "sha256": "c607aa81971a414679dade56842c0de82aa588133cc2915d3a2053611ff4f5e0"
+      },
+      {
+        "file": "frontend/src/ui/tooltip.tsx",
+        "sha256": "b92c16207f8ac5a8167d4a34cf0a49e61f9f936a4f76d37b71b3b4a1c00cdb32"
       },
       {
         "file": "frontend/src/workstream/ChangesPanel.tsx",
@@ -1428,11 +1455,11 @@
       },
       {
         "file": "package.json",
-        "sha256": "dc14c5e7f7f4851ebbb2bf16f325f663bc9b8675c973a244a788a9c1e48344f0"
+        "sha256": "fa642d105fc2a2ef078ad6034d32fa86b081c37d9bc3115bf5eb8f42e959192e"
       },
       {
         "file": "pnpm-lock.yaml",
-        "sha256": "fb6256b7a55277375258ae9ff81e3707f6ff10c43c955441843b5b8a9e302744"
+        "sha256": "f5f4267a3b2e7b5d6fdc650cde22790d29e2296e7c4fdbb40389aacfe410143e"
       }
     ]
   }

@@ -216,7 +216,34 @@ const summarizeCard = () => {
       if (!panel) return norm(panel);
       const copy = panel.cloneNode(true);
       const rows = copy.querySelector('.next-cockpit-work-rows');
-      if (rows) for (const row of [...rows.children].reverse()) rows.append(row);
+      if (rows) {
+        // Mounted members carry their own original words. Flatten folds only in the copy, then restore
+        // the retired head and body time placement; new short marks and headers are asserted in stories.
+        const entries = [...rows.querySelectorAll('[data-next-entry-id]')];
+        for (const row of entries) {
+          const head = row.querySelector('.next-cockpit-work-head');
+          const body = row.querySelector('.next-cockpit-work-body');
+          const time = row.querySelector('.next-cockpit-work-at');
+          const lastTurn = row.querySelector('.next-cockpit-work-turn');
+          const words = row.getAttribute('data-next-entry-words');
+          if (words && head && body) {
+            const flags = [...head.querySelectorAll('[data-next-entry-flag]')];
+            head.replaceChildren(document.createTextNode(words), ...flags);
+            const add = body.querySelector('[data-next-cockpit-action="direction-add"]');
+            if (time) body.insertBefore(time, add);
+            if (lastTurn) {
+              lastTurn.textContent = 'from the last turn';
+              body.insertBefore(lastTurn, add);
+            }
+          } else {
+            // The same narrow recorded-side projection as recorded-activity.ts.
+            const type = head?.querySelector('.next-cockpit-work-type');
+            if (type?.textContent === 'Agent said') type.textContent = 'said';
+          }
+        }
+        rows.replaceChildren(...entries.reverse());
+      }
+      copy.querySelector('[data-activity-legend]')?.remove();
       return norm(copy);
     })(),
     entries: [...document.querySelectorAll('[data-next-entry]')]

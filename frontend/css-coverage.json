@@ -834,7 +834,6 @@
     "|.next-cockpit-work-row|display:grid;grid-template-columns:4chminmax(0,1fr);align-items:baseline;gap:3px10px;padding-left:9px;border-left:1pxsolidvar(--rule)",
     "|.next-cockpit-work-source|grid-column:1/-1;color:var(--ink-caption);font-family:var(--mono);font-size:var(--fs-label);overflow-wrap:anywhere",
     "|.next-cockpit-work-summary|font:var(--fs-body)/1.55var(--sans);overflow-wrap:anywhere",
-    "|.next-cockpit-work-turn|grid-column:1/-1;color:var(--ink-label);font:var(--fs-label)var(--mono);letter-spacing:.07em",
     "|.next-cockpit-work-type|color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em",
     "|.next-control>header|color:var(--ink-label);font-family:var(--mono);font-size:var(--fs-label);font-weight:600;letter-spacing:.07em",
     "|.next-course-direction p|font-family:var(--sans)",

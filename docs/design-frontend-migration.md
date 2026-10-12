@@ -973,6 +973,32 @@ the agent wrote sits between the prompts either side of it. Where the rows look 
 for the session holds no entry of the other kind in that stretch: the agent's messages come from a
 bounded transcript tail and are never stored, so they reach back only as far as that tail does.
 
+The same ruling shortens the row head. The actor and type now say "Agent said" once. The model
+keeps the original `toolReportLine` words exactly, while a check shows "No result", "Passed" or
+"Failed" beside a Phosphor mark. Each mark carries the full result words as its accessible name and
+hover tooltip; "About this record" also states every mark in its Marks legend. "Before the last
+change" and "An earlier run failed" are icon-only alongside the result. All marks use muted caption
+ink, including the hollow absence circle. Time moves into the head's right cluster after flags and
+"Last turn", whose accessible name and tooltip remain "from the last turn". The entry's own words
+remain in its body.
+
+Three or more consecutive eligible checks fold into a closed Collapsible. Failed checks, checks
+with an earlier failure, cited checks, selected finding entries and written files split a run and
+stay listed. The header states counts, number range and newest-to-oldest times. Members stay mounted
+under `hiddenUntilFound`; expanding shows them in drawn order. The footer still counts entries.
+Open state belongs to the existing disclosure store under the oldest member id, project and exact
+session scope. A new check at the newest end does not close it. The [reader-state inventory](design-reader-state.md#the-inventory)
+and both migration records map that state to the mounted survival test.
+
+`frontend/test/recorded-activity.ts` projects only the retired "Agent said" type to "said" on the
+recorded side of the model differential. No fixture or assertion is loosened. On its cloned panel,
+`frontend/e2e/drift-parity.mjs` flattens mounted fold members, omits headers and the new legend,
+restates heads from `data-next-entry-words`, and puts time and the full last-turn phrase back in the
+body before comparing oldest first. It applies the same exact actor correction to the recorded
+head. The browser proof was edited but not run for this change. Component stories assert marks,
+hover, fold opening, failure splits and narrow head wrapping. No browser or fluidity measurement
+is claimed by those stories.
+
 ### Popover snapshot ancestry
 
 Popover bodies move through a portal inside the app root, retaining their mounted content while

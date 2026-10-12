@@ -2814,7 +2814,7 @@ the later-direction floor (item 9).
     person-authored message at or before the save, else the save time. It is stored on the revision
     beside the save time, as a new revision field admitted under DEC-15b, and a build that does not
     know it falls back to the save time. The page shows both times and labels work before the save
-    as "from the last turn". The unasked lane still withholds at a turn stop.
+    with a "Last turn" word beside the head time, carrying "from the last turn" as its accessible name and tooltip. The unasked lane still withholds at a turn stop.
 14. The answer reducer. Any valid departure gives "Departs from your intent", and other lines keep
     their own state. Otherwise any saved constraint without a valid `departure` or `consistent`,
     including a malformed or missing result and a line the reading could not ask, gives "Can't
@@ -2905,7 +2905,7 @@ within the milestone's scope and recorded on the issue.
   22 recorded Bash calls had a message from the reader between the call and its result. Using the
   result time would move layer 1's published timestamps, so it is filed separately.
 - The page reads the window from the reading, and derives it the old way for a reading stored
-  without one. It labels work "from the last turn" only on a Claude Code session waiting at its
+  without one. It labels work "Last turn" beside its head time, with "from the last turn" as the accessible name and tooltip, only on a Claude Code session waiting at its
   prompt, and only the observed last turn inside the window: from the reader's latest message at or
   before the stop (or the window start, if later) up to the stop, never on the reader's own messages.
   The first build labelled from the window start to the save. That range is fixed at the save, so

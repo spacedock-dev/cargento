@@ -4,6 +4,7 @@
    MIT; the full upstream notice ships in react-licenses.txt.
    Native surface chrome stays in legacy; panel motion uses the existing tokens.
    docs/design-shadcn-adoption.md#accordion-and-collapsible-layer owns the tuning. */
+import type { ReactNode } from 'react';
 import { Collapsible as CollapsiblePrimitive } from '@base-ui/react/collapsible';
 import { cn } from '../lib/utils';
 import { disclosureMotion, disclosureTrigger } from './accordion';
@@ -15,8 +16,9 @@ export function Collapsible(props: CollapsiblePrimitive.Root.Props) {
 export function CollapsibleTrigger({
   className,
   children,
+  chevron = <DisclosureChevron />,
   ...props
-}: CollapsiblePrimitive.Trigger.Props) {
+}: CollapsiblePrimitive.Trigger.Props & { readonly chevron?: ReactNode }) {
   return (
     <CollapsiblePrimitive.Trigger
       data-slot="collapsible-trigger"
@@ -24,7 +26,7 @@ export function CollapsibleTrigger({
       {...props}
     >
       {children}
-      <DisclosureChevron />
+      {chevron}
     </CollapsiblePrimitive.Trigger>
   );
 }

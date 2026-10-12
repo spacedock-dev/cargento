@@ -37,8 +37,9 @@ receipt's byte ceiling is re-based to 2,000,000 bytes, to be raised again if a l
 
 ## End state
 
-Thirteen shadcn components are vendored under `frontend/src/ui/`, using the Base UI flavour and the
-local `cn` merger. The directory also holds Compass's inline disclosure chevron and Button tests.
+Fourteen shadcn components are vendored under `frontend/src/ui/`, using the Base UI flavour and the
+local `cn` merger. The directory also holds Compass's inline disclosure chevron, Phosphor icon
+gateway and Button tests.
 The components keep the existing semantic roots, field owners and disclosure store.
 
 | Vendored file | Shipped use | Layer record |
@@ -55,6 +56,7 @@ The components keep the existing semantic roots, field owners and disclosure sto
 | `card.tsx` | Session rows and panels, Intent and Drift panels, project and Console surfaces, timeline evidence, terminal chrome, Attention queues and Capacity windows and consent. | [Sessions](#sessions-layer), [Intent and Drift](#intent-drift-and-steering-layer), [Project](#project-console-timeline-shell-and-terminal-layer), [Attention](#attention-capacity-and-consent-layer) |
 | `alert.tsx` | Health notes, polite failures and shell or observer status; static log, drift, timeline and terminal messages disable announcements. | [Sessions](#sessions-layer), [Intent and Drift](#intent-drift-and-steering-layer), [Project](#project-console-timeline-shell-and-terminal-layer), [Attention](#attention-capacity-and-consent-layer) |
 | `separator.tsx` | The decorative notification boundary in session details. | [Sessions](#sessions-layer) |
+| `tooltip.tsx` | Activity marks and the Last turn word, with accessible full words and a text legend. | [Icons and tooltips](#icons-and-tooltips) |
 | `tabs.tsx` | Route-controlled `ProjectTabs` with automatic keyboard activation; only Root, List and Trigger are retained. | [Project](#project-console-timeline-shell-and-terminal-layer) |
 
 Native menus keep their deliberate exemption from Escape dismissal. Select choices use Base UI popup and keyboard handling; uncontrolled
@@ -1054,3 +1056,38 @@ the built page matches its recorded source provenance. It hashes the complete pa
 and lockfile, so dependency edits require a new integrity record even when HTML and licenses
 remain identical. See [Component stories](../CONTRIBUTING.md#component-stories)
 for contributor commands and the current prompt-select fixture boundary.
+
+## Icons and tooltips
+
+The activity list adopts Phosphor through `react-icons` 5.7.0 (MIT). Only
+`frontend/src/ui/icons.tsx` imports the icon package. One family keeps stroke, corners and optical
+weight consistent across result marks and run controls. Phosphor's weights keep the hollow versus
+marked circle in one hand, and its status coverage includes the clock-counter-clockwise, warning,
+checks and caret shapes. These distinctions and MIT licensing made it the choice over Lucide,
+shadcn's default, and the other families in React Icons. The package declares `sideEffects: false`;
+the build retains only imported glyphs and their shared runtime. The final measured build delta
+is recorded below, rather than inferred from the package's installed size.
+
+The existing hand SVG `DisclosureChevron` stays for the other disclosures, and native title
+tooltips elsewhere stay. The fold alone passes a Phosphor caret to the existing Collapsible trigger.
+The tooltip is the vendored shadcn Base UI Tooltip, with local `cn`, the page's popup surface,
+border and shadow instead of an inverted pill, no arrow or registry animation classes, bounded
+width, the existing motion tokens and an explicit tooltip role, which the pinned Base UI popup
+does not supply. The existing copied-source shadcn MIT notice in the bundle's license file also
+covers Tooltip.
+
+One TooltipProvider serves the activity list. Non-focusable spans open on hover without adding
+Tab stops. Short result words and icon shapes remain visible; full words are accessible names,
+and the Marks legend states all five meanings for touch. A tooltip therefore never carries the
+only copy, preserving the earlier ruling about hover text on touch. The unknown circle uses the
+same muted caption ink as the other marks, with no green or filled success state. The story checks
+the dark theme ink; the palette's `--ink2` (#cdc7b4) against `--panel` (#24231b) has a 9.3:1
+contrast ratio. The fold trigger retains the 44px control floor. Mounted members preserve row
+hooks while closed; failed and cited evidence never requires expansion.
+
+Measured with pinned Node 26.10.0 and `pnpm build` on this worktree: before the activity change,
+the React core was 1,674,151 bytes with 13 bundled package licenses. Afterward it is 1,707,435
+bytes with 14 package licenses, an increase of 33,284 bytes for the icons, Tooltip, activity
+components and their utilities together. The notices file adds the full `react-icons@5.7.0`
+license, including its icon-family attribution list and Phosphor MIT reference; the existing
+shadcn copied-source notice is unchanged. These are byte measurements, not a fluidity qualification.
