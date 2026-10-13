@@ -25,7 +25,6 @@ The user-facing workflow lives in `compass/skills/compass/`. Every user-facing w
 compass/                           # plugin root: Claude Code, Codex, Antigravity
 ├── .claude-plugin/plugin.json      # Claude Code manifest
 ├── .codex-plugin/plugin.json       # Codex manifest
-├── bin/cargento                    # launcher the Spacedock installer links as `cargento` and `spacedock-compass`
 ├── plugin.json                     # Antigravity / AGY manifest
 ├── hooks/hooks.json                # Claude Code lifecycle hooks (its path, by convention)
 ├── hooks/codex-hooks.json          # Codex lifecycle hooks (declared in its manifest)
@@ -583,11 +582,7 @@ an unreadable `main` refuses rather than passing, and `scripts/tests/test_releas
 against temporary repositories. Do not edit or delete the file to get a release through; the owner lifts
 it in a reviewed pull request. The `compass-release` skill owns the procedure.
 
-After a release lands, `scripts/publish-cli.sh vX.Y.Z` attaches the installer archives Spacedock reads
-(`cargento_X.Y.Z_<os>_<arch>.tar.gz` and `checksums.txt`, built by `scripts/package-cli.sh`); the
-`cargento-release` skill owns that step too.
-
-Which number to cut is a separate question from how to cut it, and the `cargento-release` skill owns it: it reads the surfaces changed since the last tag rather than the commit prefixes, and its own history section carries the measured reason why. It also owns the pre-flight checks, the post-tag verification, and the optional Slack announcement. Invoke it rather than reasoning from the commit log by hand. To release:
+Which number to cut is a separate question from how to cut it, and the `compass-release` skill owns it: it reads the surfaces changed since the last tag rather than the commit prefixes, and its own history section carries the measured reason why. It also owns the pre-flight checks, the post-tag verification, and the optional Slack announcement. Invoke it rather than reasoning from the commit log by hand. To release:
 
 ```bash
 git checkout main && git pull
@@ -595,11 +590,15 @@ git tag v0.2.0        # v-prefixed is canonical (bare 0.2.0 also works — pick 
 git push origin v0.2.0
 ```
 
-The Release workflow is four jobs, split by what each may hold:
+The Release workflow is six jobs, split by what each may hold:
 
 - `resolve` (read-only token, no key) validates the tag (must be on main, strict semver, strictly greater than every existing release tag — back-tagging is impossible) and fixes one **target** commit before anything runs: the main tip for a fresh release, or the existing `chore(release): <tag>` commit for a resume.
 - `verify-frontend` and `verify-tree` (read-only token, checkout with `persist-credentials: false`, no deploy key) check out exactly that target. The first installs the pinned Node and pnpm with dependency scripts denied, rebuilds the React bundle and compares it with the tracked artifact, runs lint, types and tests, and runs the Python-only installed proof. The second runs the contract validator, its own tests, the bump-version tests and the whole dashboard test suite, and exists because several of those start `node` whenever it is on PATH. Neither is the quality gate, which already ran on every commit that reached main.
-- `release` is the only job with `RELEASE_DEPLOY_KEY` and the write token, and it runs no Node, pnpm, npm, corepack or frontend dependency code. Its first command is plain shell: fresh mode checks `HEAD` equals the target, resume mode detaches onto the target, so no repository script runs while `HEAD` is unverified. Then `assert-checkout` confirms both verifiers recorded that same SHA, one `chore(release)` bump commit is written via `scripts/bump_version.py`, `git archive` of that exact commit is proven with Python only (`scripts/verify_release_archive.py`: version parity, a diff confined to the `version` value of the owned manifests, a byte-identical React bundle, the runtime inventory, the page integrity check and a launcher start under an empty PATH), and only then the bump is pushed, the tag moved onto it, `stable` advanced (forward only) and a GitHub Release published.
+- `build-cli` (read-only token, checkout of the target with `persist-credentials: false`, no deploy key) runs once per release target, on a host of that OS and architecture because PyInstaller cannot cross-compile: `macos-15`, `macos-15-intel`, `ubuntu-22.04-arm` and `ubuntu-22.04`. Each installs the exactly pinned toolchain from `requirements-cli.txt`, wheels only, under the pinned Python 3.12 that becomes the interpreter embedded in the binary, runs `scripts/package-cli.sh`, runs the packed archive with `scripts/smoke-cli.sh`, and uploads it as an artifact. The Linux hosts are the oldest images offered, because a PyInstaller binary needs at least the glibc of the machine that built it. `release` waits for all four, so a failed build stops the release before anything is pushed, tagged or published.
+- `release` is the only job with `RELEASE_DEPLOY_KEY`, and it runs no Node, pnpm, npm, corepack or frontend dependency code. Its first command is plain shell: fresh mode checks `HEAD` equals the target, resume mode detaches onto the target, so no repository script runs while `HEAD` is unverified. Then `assert-checkout` confirms both verifiers recorded that same SHA, one `chore(release)` bump commit is written via `scripts/bump_version.py`, `git archive` of that exact commit is proven with Python only (`scripts/verify_release_archive.py`: version parity, a diff confined to the `version` value of the owned manifests, a byte-identical React bundle, the runtime inventory, the page integrity check and a launcher start under an empty PATH), and only then the bump is pushed, the tag moved onto it, `stable` advanced (forward only) and a GitHub Release published.
+- `attach-cli` holds the repository write token and no deploy key, so it can add files to a release and cannot push to main or move a tag. It downloads the four archives the build jobs made, then `scripts/publish-cli.sh` refuses anything but exactly `compass_<version>_<os>_<arch>.tar.gz` for the four targets, writes `checksums.txt` and runs `gh release upload --clobber`. It is its own job so that no artifact, which a third-party build dependency could have shaped, reaches the job that holds the key; it treats the archives as data and never unpacks or runs one. The cost is that `releases/latest` has no archives for about a minute after the release is created. A re-run attaches again.
+
+The archives are what Spacedock's installer reads. Each unpacks to one `compass/` directory holding the `compass` program and the interpreter and modules it carries, so a user needs no Python, and Spacedock's install table row for it is kind `tree` with program `compass/compass`. The `CLI package` workflow (`.github/workflows/cli-package.yml`) runs the same build and smoke run on all four targets for any pull request that touches the runtime, the packaging scripts or `requirements-cli.txt`, so a break is found in review instead of in a release; it is not a required check, because a path filter would leave a required context pending. COMPATIBILITY.md owns what the binary does and does not cover.
 
 The decisions live in `scripts/release_transition.py`, not in YAML, and are tested against temporary repositories with a bare origin (`scripts/tests/test_release_transition.py`, `scripts/tests/test_verify_release_archive.py`); the job boundaries are pinned by `compass/skills/compass/tests/test_release_workflow.py`. The React bundle is version-independent, so a bump must leave it untouched; a changed bundle byte after verification stops the release before `stable` moves.
 

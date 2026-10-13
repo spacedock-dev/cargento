@@ -35,13 +35,12 @@ This file owns the Python floor. The dashboard server is stdlib-only Python 3.11
 `datetime.UTC` setting the floor, and it runs identically regardless of which harness launched it.
 `sqlite3.Connection.blobopen` holds it there too, since the Antigravity collector uses it to read
 the last 64 bytes of a generation blob without materialising a row that can run past 700 KB.
-The floor is restated in twelve other places across nine files, which must all move together:
+The floor is restated in eleven other places across eight files, which must all move together:
 `README.md`, `CONTRIBUTING.md` (three times, in the prerequisites, in the `runtime-floor` bullet of
 the quality-gate list, and in the dashboard implementation constraints),
 `compass/skills/compass/SKILL.md`, `docs/promise-map.md`, `.github/PULL_REQUEST_TEMPLATE.md`,
 `AGENTS.md`'s quality-gate paragraph, and `pyproject.toml` (`[tool.ruff] target-version` and
-`[tool.mypy] python_version`), the version check in the installer launcher
-`cargento/bin/cargento`, plus the Python 3.11 direct-launch smoke in
+`[tool.mypy] python_version`), plus the Python 3.11 direct-launch smoke in
 `.github/workflows/quality-gate.yml`. The documentation-matches-code test guards three of them, the
 `SKILL.md` copy and both `pyproject.toml` fields, and the runtime-floor job exercises the shipped
 entry point on Python 3.11. The rest are on you.
@@ -137,6 +136,33 @@ on macOS. This is an exact tested version, not a minimum-version claim. The depr
 0.73.1 package has no prompt-event surface. Coverage requires the adapter, enabled events,
 and a persisted session; stock startup trust is excluded. See
 [setup](HOW_TO_USE.md#report-pi-extension-prompts) and [measured evidence](docs/captures/pi/README.md).
+
+### Standalone binary
+
+Each release attaches `compass_<version>_<os>_<arch>.tar.gz` for `darwin` and `linux` on `arm64`
+and `amd64`, with a `checksums.txt` of their SHA-256 sums. One archive unpacks to a `compass/`
+directory whose `compass` program carries its own Python interpreter and the dashboard, built with
+[PyInstaller](https://pyinstaller.org/en/stable/), so nothing needs installing beside it. It takes
+the same options as `server.py`, daemon mode included.
+
+The release workflow builds under Python 3.12, so that is the interpreter in every binary. The 3.11
+floor above governs running `server.py` from source or a plugin; it does not constrain the binary,
+which never runs on an interpreter the user picked.
+
+PyInstaller embeds the interpreter it runs under and cannot cross-compile, so each archive is built
+on a host of its own OS and architecture. The Linux hosts are Ubuntu 22.04, the oldest image the
+workflow can use, because a PyInstaller binary needs at least the glibc of the machine that built
+it. A distribution with an older glibc may not run it, and musl-based distributions are not built
+for.
+
+On macOS the Apple silicon program is signed ad hoc, as that platform requires, but neither build
+is signed with a developer identity or notarized. Fetching it with `curl` runs. A copy downloaded
+through a browser carries the quarantine flag, and Gatekeeper may refuse it until you run
+`xattr -dr com.apple.quarantine compass`.
+
+There is no Windows binary; run `server.py` with Python 3.11 or newer there. The binary is the
+dashboard server only. Hooks, skills and the MCP server still come from the plugin or are set up by
+hand; see [HOW_TO_USE.md](HOW_TO_USE.md).
 
 ## Validation
 

@@ -272,7 +272,7 @@ gh run list --workflow Release --limit 1 --json status,conclusion,headBranch,dat
 gh run watch <id> --exit-status
 ```
 
-Then confirm all four outcomes, because the workflow does four separate things and a partial run
+Then confirm all five outcomes, because the workflow does five separate things and a partial run
 leaves some of them undone:
 
 ```bash
@@ -282,15 +282,13 @@ git log --oneline -1                       # the chore(release) bump commit, if 
 python3 scripts/bump_version.py --current  # equals the new version
 git rev-parse "v$VERSION^{commit}" && git rev-parse origin/stable   # tag moved, stable advanced
 gh release view "v$VERSION" --json name,tagName,url
+gh release view "v$VERSION" --json assets --jq '[.assets[].name] | sort'   # the standalone binaries
 ```
 
-Then attach the archives the Spacedock installer reads, built from the tag, and confirm they are there:
-
-```bash
-scripts/publish-cli.sh "v$VERSION" --dry-run   # names the five files it will upload
-scripts/publish-cli.sh "v$VERSION"
-gh release view "v$VERSION" --json assets --jq '[.assets[].name]'
-```
+The last line must list five files: `compass_$VERSION_<os>_<arch>.tar.gz` for `darwin_arm64`,
+`darwin_amd64`, `linux_arm64` and `linux_amd64`, and `checksums.txt`. They land a minute or so after
+the release itself, from the `attach-cli` job, so look again before calling it missing. The
+Spacedock installer reads exactly these names from `releases/latest`.
 
 The bump commit is the one outcome that is conditional: the workflow skips it when the manifests
 already carry the tagged version, which is the initial-release path and the resume path. Step 1's
@@ -322,6 +320,15 @@ Read which job failed first:
   nothing was pushed, tagged or moved. Read the failing check in the log (versions, changes,
   bundle, inventory, page, launch); `changes` and `bundle` mean the bump commit shipped something
   other than what was verified, which should never happen and needs an owner before any re-run.
+- **`build-cli` failed.** Nothing was pushed, tagged or published, because `release` waits for all
+  four builds. It ran PyInstaller on a host of each target, so read which target and whether it was
+  the build or the packed archive's smoke run. The `CLI package` workflow runs the same build on any
+  pull request touching the runtime, so a break here that it did not catch is usually a runner
+  image change. A fix goes through a PR, then Re-run all jobs; a fix to `release.yml` itself needs
+  the next version number.
+- **`attach-cli` failed.** The release exists and is correct; it only lacks its archives, so the
+  Spacedock installer skips Compass until they are there. Re-run all jobs: the workflow resumes, finds
+  the release already published, and attaches again (`--clobber` makes that safe).
 - **A later step failed (push, tag, `stable`, publish).** Re-run all jobs: the workflow finds this
   tag's release commit on `main`, verifies that commit, and publishes it, never a newer `main`. It
   moves `stable` forward only, so resuming an older release after a newer one leaves `stable` where

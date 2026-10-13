@@ -1,0 +1,11 @@
+# Build toolchain for the standalone `compass` binary (scripts/package-cli.sh).
+# Pinned exactly and installed wheels-only, like the rest of the release toolchain: the
+# binary embeds the interpreter and every module it imports, so a drifting build
+# dependency changes what ships. The dashboard itself is stdlib-only and adds nothing here.
+# Bumps are deliberate edits; keep every pin at least two weeks old.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+altgraph==0.17.5
+macholib==1.16.4; sys_platform == "darwin"
+packaging==26.3
+setuptools==84.0.0

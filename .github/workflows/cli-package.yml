@@ -1,0 +1,74 @@
+name: CLI package
+
+# Builds the standalone `compass` binary on every release target and runs the packed archive,
+# on pull requests that could change what it contains. The release workflow does the same
+# build; this runs it before a tag does, so a change that breaks PyInstaller, the bundled page
+# or a runner label is found in review rather than in a release. Not a required check: a path
+# filter would leave a required context pending forever.
+#
+# Security model: read-only token, no secrets, checkout without persisted credentials, every
+# action pinned to an immutable SHA. The archives are built to be run and discarded.
+
+on:
+  pull_request:
+    paths:
+      - 'compass/skills/compass/**'
+      - 'scripts/package-cli.sh'
+      - 'scripts/smoke-cli.sh'
+      - 'requirements-cli.txt'
+      - '.github/workflows/cli-package.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package the CLI (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin_arm64
+            runner: macos-15
+          - target: darwin_amd64
+            runner: macos-15-intel
+          - target: linux_arm64
+            runner: ubuntu-22.04-arm
+          - target: linux_amd64
+            runner: ubuntu-22.04
+    env:
+      ARCHIVE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        id: python
+        with:
+          python-version: "3.12"
+      - name: Install the pinned build toolchain, wheels only
+        timeout-minutes: 5
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "$PYTHON" -m pip install --disable-pip-version-check --only-binary=:all: --requirement requirements-cli.txt
+      - name: Build the binary and pack the archive
+        timeout-minutes: 10
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          scripts/package-cli.sh 0.0.0 "$RUNNER_TEMP/cli" .
+          test -f "$RUNNER_TEMP/cli/compass_0.0.0_${ARCHIVE_TARGET}.tar.gz"
+      - name: Run the packed archive
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          scripts/smoke-cli.sh "$RUNNER_TEMP/cli/compass_0.0.0_${ARCHIVE_TARGET}.tar.gz"

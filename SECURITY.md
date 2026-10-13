@@ -3752,6 +3752,15 @@ that was verified, never a newer `main`, and a `stable` that has already moved f
 back. Whether the ruleset bypass, the key handling of `actions/checkout` and the runner image behave
 as described can only be shown by a real run.
 
+The standalone `compass` binaries are built the same way: by four jobs with a read-only token, no
+secrets and a checkout without persisted credentials, under an exactly pinned PyInstaller toolchain
+installed from wheels only. A third-party build dependency runs there, so what those jobs produce is
+treated as data. It never reaches the job that holds the key. A separate job that holds only the
+repository write token downloads the archives, checksums them and uploads them to the release,
+and never unpacks or runs one. That job cannot push to `main` or move a tag. The checksums file
+lives beside the archives, so it detects a corrupted download and not a hostile release; the
+binaries carry no signature of their own, and on macOS no developer identity or notarization.
+
 ## Reporting a vulnerability
 
 Please do not open a public issue for security problems. Instead:
