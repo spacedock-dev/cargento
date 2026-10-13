@@ -32,8 +32,12 @@ function readingOf(payload: Row, key: string): string {
    never from a render: a region and its first message must not arrive in the same mutation.
 
    `drawn` is the ids of the boxes the committed card drew. A job first seen undrawn never announces its
-   start, even if its box is drawn later: the reader did not watch it begin. */
-export function trackJobs(ctx: DriftCtx, payload: Row, drawn: ReadonlySet<string>): void {
+   start, even if its box is drawn later: the reader did not watch it begin.
+
+   Returns the sessions whose watched analysis just stored a reading, so the card can ask for the older
+   record pages that reading cites. A withheld, cancelled or interrupted end stored none and is not one. */
+export function trackJobs(ctx: DriftCtx, payload: Row, drawn: ReadonlySet<string>): string[] {
+  const finished: string[] = [];
   const { drift } = ctx;
   const rawJobs = payload['reading_jobs'];
   const jobs: Record<string, unknown> = isRecord(rawJobs) ? rawJobs : {};
@@ -57,6 +61,7 @@ export function trackJobs(ctx: DriftCtx, payload: Row, drawn: ReadonlySet<string
     const said = seen.drawn ? outcome(payload, key, seen.reading) : '';
     if (said) {
       say(`job:${seen.id}`, said);
+      if (said === READING_FINISHED) finished.push(key);
     } else {
       /* Ended unannounced: a virtual cursor must not still find "Analyzing drift" in the region, and the
          next start must not set that same text again, which is not read. */
@@ -75,4 +80,5 @@ export function trackJobs(ctx: DriftCtx, payload: Row, drawn: ReadonlySet<string
     drift.jobsSeen.set(key, { id: job['id'], drawn: isDrawn, reading: readingOf(payload, key) });
     if (primed && isDrawn) say(`job:${job['id']}`, JOB_TITLE);
   }
+  return finished;
 }

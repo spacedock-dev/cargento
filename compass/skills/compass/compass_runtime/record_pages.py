@@ -115,6 +115,9 @@ class _Scan:
     bound: str | None = None
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)
     skipped: bool = False
+    # Asked after each visited line, with whether a region has been skipped so far. A press that
+    # knows when it has read enough ends the scan; one that cannot trust a gap learns of it here.
+    stop: Callable[[bool], bool] | None = None
 
 
 def _take_lines(
@@ -142,6 +145,8 @@ def _take_lines(
         elif visit is not None:
             if raw:
                 visit(raw)
+                if scan.stop is not None and scan.stop(scan.skipped):
+                    return pending, True
         else:
             fact = _fact(config, raw, harness, sid) if raw else None
             if fact is not None:
@@ -149,6 +154,60 @@ def _take_lines(
         if limit and len(scan.entries) == limit:
             return pending, True
     return pending, False
+
+
+@dataclass
+class _Held:
+    """Chunks read before the pending line with no line boundary in them, newest read last.
+
+    Joining each one as it was read re-copied a growing partial line every time, so a single 20 MiB
+    line cost 1.8 s and a 65 MiB line spent a 5-second clock at 33 MiB. They are joined once, when a
+    boundary or the start arrives. The pending line holds no newline whenever a chunk is read.
+    """
+
+    chunks: list[bytes] = field(default_factory=list)
+    size: int = 0
+
+    def add(self, chunk: bytes) -> None:
+        self.chunks.append(chunk)
+        self.size += len(chunk)
+
+    def join(self, chunk: bytes, pending: bytes) -> bytes:
+        joined = chunk + b"".join(reversed(self.chunks)) + pending
+        self.clear()
+        return joined
+
+    def clear(self) -> None:
+        self.chunks, self.size = [], 0
+
+
+def _skip_oversized(
+    scan: _Scan, visit: Callable[[bytes], None] | None, held: _Held, pending: bytes
+) -> bytes:
+    """A press gets a larger total allowance than a page, not an unbounded single JSON line.
+
+    Its remainder is skipped through the next delimiter, and what was held for it is dropped.
+    """
+    if visit is None or held.size + len(pending) < 16 * 1024 * 1024:
+        return pending
+    scan.discard = True
+    scan.skipped = True
+    held.clear()
+    return b""
+
+
+def _read_chunk(source: BinaryIO, scan: _Scan, count: int, held: _Held, pending: bytes) -> bytes:
+    """Read the chunk before the scan position; hold it unless it brings a boundary or the start."""
+    scan.position -= count
+    source.seek(scan.position)
+    chunk = source.read(count)
+    scan.scanned += len(chunk)
+    if len(chunk) != count:
+        raise OSError("source changed during record scan")
+    if scan.position and b"\n" not in chunk:
+        held.add(chunk)
+        return pending
+    return held.join(chunk, pending)
 
 
 def _scan(
@@ -165,6 +224,7 @@ def _scan(
         deadline if deadline is not None else time.monotonic() + config.record_page_max_seconds
     )
     pending = b""
+    held = _Held()
     initial_end = scan.position
     while scan.position or pending:
         if time.monotonic() >= deadline:
@@ -182,22 +242,14 @@ def _scan(
             return
         count = min(scan.position, config.record_page_chunk_bytes, available)
         if count:
-            scan.position -= count
-            source.seek(scan.position)
-            chunk = source.read(count)
-            scan.scanned += len(chunk)
-            if len(chunk) != count:
-                raise OSError("source changed during record scan")
-            pending = chunk + pending
-        pending, stopped = _take_lines(config, scan, pending, harness, sid, limit, deadline, visit)
-        if stopped:
-            return
-        # A press gets a larger total allowance than a page, not an unbounded
-        # single JSON line. Skip its remainder through the next delimiter.
-        if visit is not None and len(pending) >= 16 * 1024 * 1024:
-            pending = b""
-            scan.discard = True
-            scan.skipped = True
+            pending = _read_chunk(source, scan, count, held, pending)
+        if not held.size:
+            pending, stopped = _take_lines(
+                config, scan, pending, harness, sid, limit, deadline, visit
+            )
+            if stopped:
+                return
+        pending = _skip_oversized(scan, visit, held, pending)
         if not scan.position:
             scan.resume = 0
             return
@@ -225,8 +277,12 @@ def scan_source(
     deadline: float,
     end: int | None = None,
     expected_stamp: tuple[int, int, int, int] | None = None,
+    stop: Callable[[bool], bool] | None = None,
 ) -> SourceScan:
     """Share page boundaries and chunk reads, but require an unchanged file.
+
+    `stop` is asked after each visited line, with whether a region has been skipped so far, and
+    ends the scan early; the caller owns why, since the scan reports only its own bounds.
 
     Directions inspect the whole allowance after a match, so another copy of
     the identity in that coverage can still refuse it. No cursor or cache.
@@ -246,7 +302,7 @@ def scan_source(
                 source.seek(position - 1)
                 discard = source.read(1) != b"\n"
                 boundary_bytes = 1
-            scan = _Scan(position, position, discard, scanned=boundary_bytes)
+            scan = _Scan(position, position, discard, scanned=boundary_bytes, stop=stop)
             bounded = replace(config, record_page_max_bytes=max_bytes)
             _scan(bounded, source, scan, "", "", 0, visit, deadline)
             after = os.stat(path)

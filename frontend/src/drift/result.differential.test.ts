@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import type { WorkEntry } from '../intent/work';
 import { genAnnotation, genAssessment, genEntries, mulberry32, pick } from './generate.test.helper';
-import { loadLegacyDrift } from './legacy.test.helper';
+import { loadLegacyDrift, withoutKey } from './legacy.test.helper';
 import {
   arrivedLine,
   claimsDrawn,
@@ -183,7 +183,10 @@ describe('the result stage says what the legacy page says', () => {
       const answerA = legacy.call('nextDriftAnswer', legacyShape, entries, scan);
       const answerB = driftAnswer(same, entries as unknown as WorkEntry[], scan);
       note(`answer:${answerB.kind}`);
-      const foundAnswer = firstDifference(canonical(answerA), canonical(answerB));
+      const foundAnswer = firstDifference(
+        canonical(answerA),
+        canonical(withoutKey(answerB, 'unloaded')),
+      );
       if (foundAnswer) failures.push(`seed ${String(seed)} answer: ${foundAnswer}`);
       const drawn = legacy.call<unknown[]>('nextCockpitClaimsDrawn', legacyShape).length;
       if (drawn !== claimsDrawn(same).length) failures.push(`seed ${String(seed)} claims drawn`);
@@ -257,7 +260,11 @@ describe('the result stage says what the legacy page says', () => {
       if (arrivedA !== squash(arrivedLine(annotation, entries as unknown as WorkEntry[]))) {
         failures.push(`seed ${String(seed)} arrived: ${arrivedA}`);
       }
-      const coverageA = text(legacy.call<string>('nextCockpitReadingCoverage', legacyShape2(same)));
+      const coverageA = text(
+        legacy
+          .call<string>('nextCockpitReadingCoverage', legacyShape2(same))
+          .replace(RETIRED_GOAL_SENTENCE, GOAL_SENTENCE),
+      );
       if (coverageA !== squash(coverageLine(same))) {
         failures.push(`seed ${String(seed)} coverage: ${coverageA} / ${coverageLine(same)}`);
       }
@@ -275,6 +282,17 @@ describe('the result stage says what the legacy page says', () => {
 });
 
 /* The legacy functions read plain fields off the shape, and the React shape has the same names. */
+/* The shape the retired page's functions are called with. `unloaded` is this page's own count of cited ids
+   it holds no entry for; the retired page had no such field and its recorded answers are keyed by their
+   arguments, so it is dropped here (docs/design-frontend-migration.md#held-to-recorded-answers). */
 function legacyShape2(shape: unknown): unknown {
-  return shape;
+  return withoutKey(shape, 'unloaded');
 }
+
+/* A named departure from the retired page. Its goal-source sentence said "Analyze read up to 1,000
+   characters" and printed it for a prompt of any length, so it read as a limit that bit. The cap is real
+   (a reading takes the head of a prompt's words) and the new sentence says only that. The recorded text is
+   compared after this one sentence is swapped. */
+const RETIRED_GOAL_SENTENCE = 'The adopted source was found; Analyze read up to 1,000 characters.';
+const GOAL_SENTENCE =
+  'The adopted source was found. Analyze reads at most the first 1,000 characters of any prompt.';

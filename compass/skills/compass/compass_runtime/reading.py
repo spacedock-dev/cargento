@@ -2107,6 +2107,10 @@ def cutoff_text(
     if not selected:
         opening = empty + (" " + tail_note if partial else "")
     omissions = []
+    if tail_truncated is True and measured.get("tail_start") is None:
+        # The page says this too. A read that stopped before the window with nothing in it to name
+        # must not leave the cutoff silent, which would read as a complete record.
+        omissions.append("the message tail was truncated and its start time was not recorded")
     if unlisted:
         kind = "pass or write" if unlisted == 1 else "passes or writes"
         omissions.append(

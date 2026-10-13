@@ -14,8 +14,7 @@ import { useControlledDisclosureState } from '../controls/useDisclosureState';
 import { Why } from './Why';
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { contextKey } from '../api/identity';
-import { nextNumber } from '../api/bootstrap';
-import { entryWindow } from '../intent/work';
+import { entryWindow, recordPastWindow } from '../intent/work';
 import { useDisplayed, useShell } from '../shell/context';
 import { ShowMore } from './ShowMore';
 
@@ -75,12 +74,7 @@ export function WorkListView() {
   const jumped = useRef<object | null>(null);
   const pagingFocus = useRef<{ button: HTMLElement; before: ReadonlySet<string> } | null>(null);
   const opened = entryWindow(model.session, model.payload);
-  const pastWindow =
-    opened !== null &&
-    (record?.entries ?? []).some((entry) => {
-      const at = nextNumber(entry.at);
-      return at !== null && at > 0 && at < opened;
-    });
+  const pastWindow = recordPastWindow(record, opened);
   const readMore = () => {
     if (!model.identity || pastWindow) return;
     const before = new Set(list.rows.map((row) => row.entry.id));

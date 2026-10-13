@@ -635,6 +635,195 @@ def agent_message_events(
     return _agent_message_lines(config, runtime_io.read_tail(config, transcript_path), harness, sid)
 
 
+# A press stops reading back once this many timestamped records in a row are older than the
+# window. One older record is not enough: a resumed transcript can rewrite earlier records after
+# newer ones (see the note in `observer`), and stopping there would drop what sits before them.
+PRESS_OLDER_RUN = 16
+# A press does not read a message whose text is longer than this. Redaction is not linear in the
+# worst case (a megabyte of token-like text took seconds), the clock is only asked between records,
+# and a message worth reading is a few kilobytes. It counts as an unread region, as a skipped
+# oversized line does. The text is measured, not the record: a pasted screenshot makes a user record
+# several megabytes of image data around a short question, and parsing that costs milliseconds.
+PRESS_TEXT_MAX_CHARS = 256 * 1024
+
+
+class MessageReach(NamedTuple):
+    """How far a press read back, measured from the records it visited and nothing else.
+
+    `reached` is whether the window's start was read: a record older than it, or the file's start,
+    with no unread region inside the window. `earliest` is where the contiguous read began: the
+    oldest timestamp seen when it reached, else the oldest in-window time before the first thing it
+    could not read (None when it read none). `stopped_by` says why the read ended.
+    """
+
+    reached: bool
+    earliest: float | None
+    stopped_by: str
+
+
+class PressMessages(NamedTuple):
+    events: list[dict[str, Any]]
+    reach: MessageReach
+
+
+class PressWindow(NamedTuple):
+    """A press's request to read messages back: the window's start and the file it stamped."""
+
+    start: float
+    stamp: tuple[int, int, int, int] | None
+
+
+def _message_text_chars(record: Mapping[str, Any]) -> int:
+    """The characters of text a transcript record carries, which is what a reading would redact."""
+    message = record.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return len(content)
+    if not isinstance(content, list):
+        return 0
+    return sum(
+        len(block["text"])
+        for block in content
+        if isinstance(block, dict) and isinstance(block.get("text"), str)
+    )
+
+
+class _MessageRead:
+    """The visitor for one press read. Its fields are the read's whole state.
+
+    `begun` is where the contiguous read of the window began: the oldest in-window time seen before
+    any region the read could not take. A record older than the window never lowers it, so one
+    replayed record cannot make a partial read look complete, and an unread region freezes it.
+    """
+
+    def __init__(self, config: RuntimeConfig, harness: str, sid: str, window_start: float) -> None:
+        self.config, self.harness, self.sid = config, harness, sid
+        self.window_start = window_start
+        self.found: list[dict[str, Any]] = []
+        self.keys: set[tuple[object, ...]] = set()
+        self.older = 0
+        self.seen_older = False
+        self.earliest: float | None = None
+        self.begun: float | None = None
+        self.gap = False
+        self._before: float | None = None
+
+    @property
+    def at_window(self) -> bool:
+        return self.older >= PRESS_OLDER_RUN
+
+    @property
+    def full(self) -> bool:
+        # One past the cap: a window of exactly the cap's size, read to its start, is complete.
+        return len(self.found) > MAX_PROJECT_EVENTS
+
+    def stop(self, skipped: bool = False) -> bool:
+        if skipped:
+            self.unread(self._before)
+        return self.at_window or self.full
+
+    def unread(self, begun: float | None) -> None:
+        """A region the read could not take. Only one inside the window matters: once a record older
+        than the window has been seen, what lies further back is outside it."""
+        if not (self.gap or self.seen_older):
+            self.gap, self.begun = True, begun
+
+    def visit(self, raw: bytes) -> None:
+        self._before = self.begun
+        if not (_ASSISTANT_TYPE_RE.search(raw) or _could_be_instruction(raw, self.harness)):
+            return
+        text = raw.decode("utf-8", "replace")
+        try:
+            record = json.loads(text)
+        except (ValueError, RecursionError):
+            return
+        at = _record_timestamp(record) if isinstance(record, dict) else None
+        if at is None:
+            return
+        if _message_text_chars(record) > PRESS_TEXT_MAX_CHARS:
+            self._seen(at)
+            self.unread(self.begun)
+            return
+        self._seen(at)
+        if at < self.window_start:
+            self.older += 1
+            self.seen_older = True
+            return
+        self.older = 0
+        if not self.gap and (self.begun is None or at < self.begun):
+            self.begun = at
+        self._take("instruction", _instruction_event(self.config, record, self.harness, self.sid))
+        said = _agent_message_event(self.config, record, self.harness, self.sid, text_cap=len(text))
+        self._take("agent", said)
+
+    def _seen(self, at: float) -> None:
+        if self.earliest is None or at < self.earliest:
+            self.earliest = at
+
+    def _take(self, kind: str, event: dict[str, Any] | None) -> None:
+        if event is None:
+            return
+        key = (kind, event["at"], event["title"], str(event.get("record_id") or ""))
+        if key not in self.keys:
+            self.keys.add(key)
+            self.found.append(event)
+
+
+def press_message_events(
+    config: RuntimeConfig,
+    transcript_path: str,
+    harness: str,
+    sid: str,
+    window: PressWindow,
+) -> PressMessages | None:
+    """The session's person and agent messages, read back from the end to the window's start.
+
+    A reader's Analyze press only. The tail reads above cover 400,000 bytes, which a long session
+    outgrows before its first turn: measured on a 1.82 MB transcript the tail began four minutes
+    after the Goal, so what the agent said it had done was outside it. This reads backward under
+    the press bounds (`direction_scan_max_*`) and stops at `PRESS_OLDER_RUN` records older than the
+    window, or when it holds `MAX_PROJECT_EVENTS` messages, which is all the project cap can keep.
+    Enlarging `tail_bytes` instead is a recorded rejection: docs/design-session-record-pages.md,
+    "Rejected alternatives".
+
+    Both kinds are emitted although the history store also supplies person messages: coverage
+    claims the whole message record was read, and that claim cannot rest on a backfill this read
+    did not measure. Nothing is retained after it returns. None means the file moved or could not
+    be read, so the caller keeps its tail reads and its tail coverage.
+    """
+    if harness not in AGENT_MESSAGE_HARNESSES:
+        return None
+    from . import record_pages  # noqa: PLC0415 - shared reader imports the fact builders
+
+    read = _MessageRead(config, harness, sid, window.start)
+    scan = record_pages.scan_source(
+        config,
+        transcript_path,
+        read.visit,
+        max_bytes=config.direction_scan_max_bytes,
+        deadline=time.monotonic() + config.direction_scan_max_seconds,
+        expected_stamp=window.stamp,
+        stop=read.stop,
+    )
+    if scan.state != "ok":
+        return None
+    # A region skipped after the last visited line never reached `stop`.
+    read.stop(scan.skipped)
+    if read.gap:
+        stopped_by = "skipped"
+    elif read.at_window:
+        stopped_by = "window"
+    elif read.full:
+        stopped_by = "count"
+    else:
+        stopped_by = scan.bound or "start"
+    reached = stopped_by in {"window", "start"}
+    read.found.reverse()
+    return PressMessages(
+        read.found, MessageReach(reached, read.earliest if reached else read.begun, stopped_by)
+    )
+
+
 def for_page(value: Any) -> Any:
     """A project context with every message's whole words removed, for a page route.
 
@@ -7667,7 +7856,86 @@ def _collect_without_transcript(
         history_source_scans[f"{harness}:{sid}"] = signature
 
 
-def collect(
+def _usable_reach(window: PressWindow | None, now: float) -> bool:
+    """A window start a press may read back to: finite, after zero, and not in the future."""
+    return window is not None and math.isfinite(window.start) and 0 < window.start <= now
+
+
+def _session_messages(
+    config: RuntimeConfig,
+    events: list[dict[str, Any]],
+    transcript_path: str,
+    identity: tuple[str, str],
+    window: PressWindow | None,
+    now: float,
+) -> PressMessages | None:
+    """Append one session's person and agent messages, from the press's read where it has one.
+
+    Returns that read, or None when the tail reads supplied them: ordinary collection, a harness
+    without agent messages, no usable window, or a file the read could not hold still.
+    """
+    harness, sid = identity
+    pressed = (
+        press_message_events(config, transcript_path, harness, sid, window)
+        if window is not None and _usable_reach(window, now)
+        else None
+    )
+    if pressed is None:
+        events.extend(instruction_events(config, transcript_path, harness, sid))
+        events.extend(agent_message_events(config, transcript_path, harness, sid))
+        return None
+    events.extend(pressed.events)
+    return pressed
+
+
+_MESSAGE_KINDS = frozenset({"steer", _AGENT_SAY})
+
+
+def _message_key(event: Mapping[str, Any]) -> tuple[object, ...]:
+    return (event.get("kind"), event.get("at"), event.get("title"), event.get("record_id"))
+
+
+def _message_reach_source(
+    reached: PressMessages | None, timeline: list[dict[str, Any]], focus: tuple[str, str] | None
+) -> dict[str, Any]:
+    kept = _kept_message_reach(reached, timeline, focus)
+    return {} if kept is None else {"message_reach": kept}
+
+
+def _kept_message_reach(
+    reached: PressMessages | None, timeline: list[dict[str, Any]], focus: tuple[str, str] | None
+) -> dict[str, Any] | None:
+    """What a press's message read amounts to once the project cap has been applied.
+
+    The scan alone would say the window was covered while `MAX_PROJECT_EVENTS` dropped its oldest
+    messages, so this reads the timeline. Same keys as `transcript_tail_coverage`: a figure that
+    read what was scanned rather than what was kept would be a fact about the read, not the record.
+    """
+    if reached is None or focus is None:
+        return None
+    kept = [
+        event
+        for event in timeline
+        if (event.get("harness"), event.get("sid")) == focus and event.get("kind") in _MESSAGE_KINDS
+    ]
+    kept_keys = {_message_key(event) for event in kept}
+    dropped = [
+        event
+        for event in reached.events
+        if event.get("kind") in _MESSAGE_KINDS and _message_key(event) not in kept_keys
+    ]
+    if dropped:
+        # The record is whole only after the newest message the cap lost. The cap keeps a
+        # session's own reader messages ahead of the agent's, so the oldest message kept is usually
+        # the Goal's own prompt at the window start, and reporting that would call a partial record
+        # complete.
+        lost = max(float(event["at"]) for event in dropped)
+        later = (float(event["at"]) for event in kept if float(event["at"]) > lost)
+        return {"tail_truncated": True, "tail_start": min(later, default=lost)}
+    return {"tail_truncated": not reached.reach.reached, "tail_start": reached.reach.earliest}
+
+
+def collect(  # noqa: PLR0913 - the press's window rides beside the focus it belongs to
     config: RuntimeConfig,
     state: RuntimeState,
     sessions: Sequence[Mapping[str, Any]],
@@ -7677,8 +7945,14 @@ def collect(
     refresh: bool = False,
     focus: tuple[str, str] | None = None,
     model_consent: bool = False,
+    message_reach: PressWindow | None = None,
 ) -> dict[str, Any]:
-    """Observer results and a real project event log for exact-label sessions."""
+    """Observer results and a real project event log for exact-label sessions.
+
+    `message_reach` is a reader's Analyze press only: the focused Claude session's messages are
+    read back to its window start instead of from the 400,000-byte tail, and the result's
+    `sources.message_reach` says how far that got once the project cap has been applied.
+    """
     analysis_sessions, omitted, scope, surrounding_active = _analysis_context_sessions(
         sessions, project, focus
     )
@@ -7709,6 +7983,7 @@ def collect(
         "suppressed_tool_calls": 0,
         "collapsed_contributors": 0,
     }
+    reached: PressMessages | None = None
     omitted_rows = [
         {
             "harness": str(session.get("harness") or ""),
@@ -7762,8 +8037,17 @@ def collect(
                     else "bounded transcript and entity state",
                 }
             )
-        events.extend(instruction_events(config, transcript_path, harness, sid))
-        events.extend(agent_message_events(config, transcript_path, harness, sid))
+        reached = (
+            _session_messages(
+                config,
+                events,
+                transcript_path,
+                (harness, sid),
+                message_reach if is_focused else None,
+                now,
+            )
+            or reached
+        )
         work_support = _session_work_evidence(
             config, transcript_path, session, events, tool_report_scans
         )
@@ -7869,5 +8153,7 @@ def collect(
                 "unavailable": unavailable,
                 "omitted": omitted_rows,
             },
+            # Only a press that read back carries it, so no page payload gains a key.
+            **_message_reach_source(reached, timeline, focus),
         },
     }

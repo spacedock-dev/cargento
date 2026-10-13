@@ -99,7 +99,43 @@ export const WindowCovered: Story = {
   },
 };
 
-function SessionRecordExample({ intent = false }: { readonly intent?: boolean }) {
+/* A stored reading whose Goal cites an entry that sits on the older page (`e5`), so the first page holds
+   nothing it can resolve it against. */
+const ASSESSMENT = {
+  revision_read: 1,
+  revision_read_at: 1900000000 - 190,
+  window_start: 1900000000 - 200,
+  read_at: 1900000000 - 10,
+  evidence_through: 1900000000 - 10,
+  goal_source: 'typed',
+  scope: 'last-turn',
+  scope_text: 'Read up to its last turn.',
+  stamp: 'model · m',
+  cutoff: 'Evidence read to its end.',
+  coverage: {
+    tail_truncated: false,
+    tail_start: null,
+    unlisted: 0,
+    unread_checks: 0,
+    goal_source: 'typed',
+  },
+  criteria: {
+    goal: {
+      result: 'consistent with the evidence read',
+      cites: ['e5'],
+      detail: '',
+      clause: 'Synthetic goal',
+    },
+  },
+};
+
+function SessionRecordExample({
+  intent = false,
+  reading = false,
+}: {
+  readonly intent?: boolean;
+  readonly reading?: boolean;
+}) {
   const [shell] = useState(() => {
     const history = fakeRouterEnvironment('#n=session:demo:claude:s1');
     const clock = createFakeClock();
@@ -124,6 +160,7 @@ function SessionRecordExample({ intent = false }: { readonly intent?: boolean })
                 annotation_window_start: 1900000000 - 200,
               }
             : {}),
+          ...(reading ? { annotation_reading_count: 1, annotation_assessment: ASSESSMENT } : {}),
         },
       ],
     };
@@ -233,5 +270,27 @@ export const OlderDirectionDraftSurvivesNavigation: Story = {
     );
     await expect(await canvas.findByDisplayValue('Synthetic older direction')).toBeVisible();
     await expect(canvasElement.querySelector('[data-next-entry-id="e50"]')).toBeNull();
+  },
+};
+
+export const ReadingNamesEntriesItHasNotLoaded: Story = {
+  render: () => <SessionRecordExample intent reading />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const note = await waitFor(() => {
+      const found = canvasElement.querySelector('[data-next-unloaded]');
+      if (!found) throw new Error('the reading has not said what it is missing yet');
+      return found;
+    });
+    await expect(note).toHaveTextContent(
+      'This reading cites an entry that is not listed. Show more, under the list, may load it.',
+    );
+    // The page loads nothing by itself: the entry arrives only when the reader asks.
+    await expect(canvasElement.querySelectorAll('[data-next-entry-id]')).toHaveLength(50);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Show 50 older entries' }));
+    await waitFor(() =>
+      expect(canvasElement.querySelectorAll('[data-next-entry-id]')).toHaveLength(100),
+    );
+    await waitFor(() => expect(canvasElement.querySelector('[data-next-unloaded]')).toBeNull());
   },
 };

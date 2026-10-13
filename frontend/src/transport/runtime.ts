@@ -2,7 +2,7 @@ import { readBootstrap } from '../api/bootstrap';
 import { createApiClient, type FetchLike } from '../api/client';
 import { exactIdentity } from '../api/identity';
 import type { FocusOutcome, SessionIdentity } from '../api/types';
-import { createBoardStore } from '../store/board';
+import { createBoardStore, type BoardSnapshot } from '../store/board';
 import { createContextLoader, type ContextScope } from './context';
 import { createRecordLoader, type RecordScope } from './record';
 import { createLiveTransport } from './live';
@@ -194,6 +194,12 @@ export function createBoardRuntime(options: RuntimeOptions) {
       owned?.record.open(scope) ?? (() => undefined),
     readMoreRecord: (scope: RecordScope): Promise<void> =>
       owned?.record.more(scope) ?? Promise.resolve(),
+    /* The one read the page makes for the reader: the older pages a reading their own press finished cites.
+       It ends on the test, the record's start, a page that moved nothing, or RESOLVE_MAX_PAGES. */
+    resolveRecord: (
+      scope: RecordScope,
+      until: (snapshot: BoardSnapshot) => boolean,
+    ): Promise<void> => owned?.record.resolve(scope, until) ?? Promise.resolve(),
     requestObserverSummary: (scope: ContextScope): Promise<void> =>
       owned?.context.requestObserverSummary(scope) ?? Promise.resolve(),
 

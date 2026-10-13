@@ -1159,6 +1159,17 @@ a file changed since collection. A missing or unverifiable source keeps its list
 no fact id, stores no words and does not run for an unasked reading. The history and listing bounds
 still hold; this is not a whole-transcript evidence ledger. Other harnesses keep their existing
 in-tail words.
+A Claude Code press also reads the focused session's person and agent messages back to the reading's
+window start instead of from the 400,000-byte tail (2026-10-13, `project_context.press_message_events`,
+[the amendment](docs/design-reading-a-session.md#amended-2026-10-13-a-press-reads-the-message-record-back-to-the-window-start)).
+The read is backward and memory-only, under the same allowance as the adopted-source lookup: the newest
+64 MiB under one two-second clock, a stamp check that refuses a file changed since the press began, and
+a stop after sixteen timestamped records in a row older than the window or once it holds more than 100
+messages, the project event cap. A message whose text is over 256 Ki characters is not read and counts as an unread region. It
+adds no content class. The messages it finds are the person and agent messages
+a reading already sends, redacted and capped the same way, `for_page` still strips both words fields,
+and nothing is stored or retained after the press. Ordinary collection and every other harness keep the
+tail, and `CONTENT_VERSION` is unchanged.
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
@@ -1909,6 +1920,10 @@ bind the measurement to fact collection stays in memory and is not part of that 
 legacy coverage stays unknown. The metadata is never sent to a model, copied into session history
 or used to alter a verdict. It permits no additional transcript text to be stored or published
 ([the ruling](docs/design-reading-a-session.md#amended-2026-10-04-owner-disclose-measured-reading-coverage)).
+For a Claude Code press that read back (2026-10-13), the two message measurements describe what the
+project cap kept rather than the 400,000-byte tail: the boolean is true when the read stopped before the
+window start, left an unread region inside it or the cap dropped an in-window message of the session, and
+the time is where the record is whole from. The keys, types and exposure are unchanged.
 
 ### The abstention check
 

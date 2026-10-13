@@ -1,15 +1,20 @@
 import type { ApiClient } from '../api/client';
 import { compatSessKey, contextKey } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
-import { EMPTY_RECORD, type BoardStore } from '../store/board';
+import { EMPTY_RECORD, type BoardSnapshot, type BoardStore } from '../store/board';
 
 export const RECORD_PAGE_SIZE = 50;
+/* The most pages one finished press may read to find what its reading cites: 1,000 entries at fifty a page.
+   Past it the reader's own Show more continues, so a reading that cites an id the record never held cannot
+   walk a session's whole history. docs/design-reader-state.md#the-inventory owns this exception. */
+export const RESOLVE_MAX_PAGES = 20;
 export interface RecordScope {
   readonly projectKey: string;
   readonly focus: SessionIdentity;
 }
 
-// docs/design-reader-state.md#the-inventory owns this short lifetime. No subscription loads pages.
+// docs/design-reader-state.md#the-inventory owns this short lifetime. No subscription loads pages: the
+// reader's Show more does, and so does `resolve`, once, for the reading their own press just finished.
 export function createRecordLoader({
   client,
   store,
@@ -21,6 +26,9 @@ export function createRecordLoader({
     holders: number;
     request: AbortController | null;
     pending: Promise<void> | null;
+    /* The one resolution this opening runs, with the test it stops on. A second press while it runs
+       replaces the test and shares the run, so two presses never read two sets of pages. */
+    resolution: { until: (snapshot: BoardSnapshot) => boolean; run: Promise<void> } | null;
   }
   const openings = new Map<string, Opening>();
   let disposed = false;
@@ -112,6 +120,39 @@ export function createRecordLoader({
     return opening.pending;
   }
 
+  /* Reads older pages until `until` holds, the record reaches its start, a page makes no progress, or the page
+     cap is spent. Only this opening's own pages are read, so a reader who leaves the session ends it at the
+     next page: `close` removes the opening and aborts the request in flight. */
+  function resolve(
+    scope: RecordScope,
+    until: (snapshot: BoardSnapshot) => boolean,
+    opening: Opening,
+  ): Promise<void> {
+    if (opening.resolution) {
+      opening.resolution.until = until;
+      return opening.resolution.run;
+    }
+    const key = contextKey(scope.projectKey, scope.focus);
+    const held = { until, run: Promise.resolve() };
+    held.run = (async () => {
+      for (let step = 0; step < RESOLVE_MAX_PAGES; step += 1) {
+        // The newest page may still be in flight; it is the first page, not one this loop asks for.
+        if (opening.pending) await opening.pending;
+        if (disposed || openings.get(key) !== opening) return;
+        const snapshot = store.getSnapshot();
+        const record = snapshot.records.get(key) ?? EMPTY_RECORD;
+        if (record.status !== 'loaded' || record.reachedStart || held.until(snapshot)) return;
+        await read(scope, opening);
+        // A page that moved nothing (an error, a leave, a record that reset) ends the loop.
+        if ((store.getSnapshot().records.get(key) ?? EMPTY_RECORD).pages === record.pages) return;
+      }
+    })().finally(() => {
+      if (opening.resolution === held) opening.resolution = null;
+    });
+    opening.resolution = held;
+    return held.run;
+  }
+
   function close(key: string, opening: Opening): void {
     if (openings.get(key) !== opening) return;
     openings.delete(key);
@@ -125,7 +166,7 @@ export function createRecordLoader({
       const key = contextKey(scope.projectKey, scope.focus);
       let opening = openings.get(key);
       if (!opening) {
-        opening = { holders: 0, request: null, pending: null };
+        opening = { holders: 0, request: null, pending: null, resolution: null };
         openings.set(key, opening);
         store.setRecord(key, EMPTY_RECORD);
         void read(scope, opening);
@@ -142,6 +183,10 @@ export function createRecordLoader({
           if (held.holders === 0) close(key, held);
         });
       };
+    },
+    resolve(scope: RecordScope, until: (snapshot: BoardSnapshot) => boolean): Promise<void> {
+      const opening = openings.get(contextKey(scope.projectKey, scope.focus));
+      return opening ? resolve(scope, until, opening) : Promise.resolve();
     },
     more(scope: RecordScope): Promise<void> {
       const opening = openings.get(contextKey(scope.projectKey, scope.focus));

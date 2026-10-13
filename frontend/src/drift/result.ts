@@ -397,7 +397,9 @@ export function coverageLine(shape: Shape): string {
       'The adopted source could not be read whole; this reading used the saved excerpt. Put the instruction you meant in the goal box, then analyze again.',
     );
   } else if (measured && measured.goal_source === 'whole') {
-    clauses.push('The adopted source was found; Analyze read up to 1,000 characters.');
+    clauses.push(
+      'The adopted source was found. Analyze reads at most the first 1,000 characters of any prompt.',
+    );
   }
   return clauses.join(' ');
 }
