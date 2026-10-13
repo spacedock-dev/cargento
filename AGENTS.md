@@ -573,10 +573,10 @@ enforces both.
 
 Version fields are **owned by the tag-driven Release workflow** — never edit them in a PR (the `version-guard` check fails any PR that does).
 
-**Releases are on hold** while a `RELEASE_HOLD` file is tracked at the repository root. React is the
-only dashboard page: the legacy page and its `--frontend legacy` rollback were removed, and the hold
-lasts until the Python-only install and backend-connected development checks pass on
-one build of `main`. The guard is not prose:
+**A tracked `RELEASE_HOLD` file at the repository root puts releases on hold**, and none is tracked
+now. The hold that covered the React cutover lifted for 1.0.0, after the legacy page and its
+`--frontend legacy` rollback were removed and the Python-only install and backend-connected
+development checks passed on one build of `main`. The guard is not prose:
 `scripts/release_transition.py resolve` refuses while the file is on `main`, for a fresh release and a
 resume, before any verifier or credential, `assert-checkout` asks again before anything is published,
 an unreadable `main` refuses rather than passing, and `scripts/tests/test_release_transition.py` rehearses it

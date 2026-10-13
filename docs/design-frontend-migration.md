@@ -935,7 +935,7 @@ proofs differ from the shipped page in composition, which the receipt's `product
 The two native `frontend` legs share their proofs with a second job, `Frontend proofs`, so no leg runs
 every proof in one sitting.
 
-The hold is a tracked `RELEASE_HOLD` file at the repository root. `release_transition.py resolve`
+The hold was a tracked `RELEASE_HOLD` file at the repository root, and was lifted for 1.0.0. `release_transition.py resolve`
 refuses while main carries it, so a fresh release and a resume stop in the credential-free job
 before any verifier, tag move or push, and `assert-checkout` reads main again in the publishing job, so a hold
 merged while the verifiers ran still stops a resume before the bump, the tag move or `stable`; the owner lifts it by deleting the file in a reviewed pull
