@@ -615,6 +615,11 @@ released commit, advances the `stable` branch to it (forward only, never back to
 and publishes a GitHub Release with generated notes. `stable` is what the shared
 [spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace) listing tracks, so a
 release that did not move it would leave the marketplace serving an older Compass.
+Beside that, four jobs with no credentials build the standalone `compass` binary with PyInstaller,
+one on each OS and architecture, and the release waits for all four, so a failed build stops it
+before anything is published. After the release is created, a separate job that holds the write
+token but not the key attaches the four archives and `checksums.txt` to it. The `CLI package`
+workflow runs the same build on pull requests that touch the runtime, so a break shows up in review.
 The bump is skipped when the manifests already carry the tagged version, which is also how you
 release the current version as-is. Every step is idempotent, so a partially failed release is
 finished by **Re-run all jobs** on the same run. That is the only re-run that resolves the release

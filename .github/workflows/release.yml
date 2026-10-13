@@ -5,7 +5,7 @@ name: Release
 #
 #     git tag v0.2.0 && git push origin v0.2.0
 #
-# Four jobs, split by what each may hold:
+# Six jobs, split by what each may hold:
 #
 #   resolve          read-only token, no Node, no key. Fixes ONE commit (the target)
 #                    before anything runs: for a fresh release the main tip, captured
@@ -22,12 +22,33 @@ name: Release
 #   verify-tree      the same (no credentials). The repository validation suite on the
 #                    target; it starts `node` whenever `node` is on PATH, so it cannot
 #                    share a job with the deploy key.
+#   build-cli        read-only token, no key, one job per release target. Builds the
+#                    standalone `compass` binary with PyInstaller on a host of that OS and
+#                    architecture (it cannot cross-compile), proves the packed archive
+#                    runs, and hands it on as a build artifact. It runs third-party build
+#                    dependencies, so what it produces is data to every later job.
 #   release          holds the deploy key and runs NO Node, pnpm, npm, corepack or
 #                    frontend dependency code. Refuses to continue unless its own
 #                    checkout IS the target both verifiers saw, then writes the bump
 #                    commit, proves `git archive` of the exact release commit with
 #                    Python only, and only then pushes the bump, moves the tag, advances
 #                    `stable` and publishes.
+#   attach-cli       the write token, no deploy key. Downloads the four archives the
+#                    build jobs made and attaches them, with `checksums.txt`, to the
+#                    release by running scripts/publish-cli.sh.
+#
+# The binary embeds the interpreter and the runtime package and carries no manifest, so
+# building the target (before the bump) and building the bump commit produce the same
+# program; the archive name takes the version from the tag. `release` needs build-cli only
+# as a gate: a build that fails stops the release before anything is pushed, tagged or
+# published. attach-cli then runs after `release`, holds the write token but not the deploy
+# key, and attaches the four archives and `checksums.txt` by running scripts/publish-cli.sh,
+# which refuses anything but exactly those four. It is a separate job so that no artifact,
+# which a third-party build dependency could have shaped, reaches the job that holds the key.
+# The price is that releases/latest has no archives for the minute attach-cli takes; the
+# installer reports a missing archive and installs the rest. If this repository ever turns
+# on immutable releases, assets must go up with the release instead. A resume of a release
+# commit that predates scripts/package-cli.sh cannot pass build-cli and needs a manual release.
 #
 # If main advanced while the frontend was being verified, `release` fails before it
 # mutates anything. Use "Re-run all jobs" on the same run: only that re-runs `resolve`,
@@ -54,7 +75,8 @@ name: Release
 # Humans cannot delete or move release tags at all.
 #
 # Security model:
-#   - The key and the write token exist in one job. Every job that runs dependency
+#   - The key exists in one job, and the write token in two: `release`, and `attach-cli`,
+#     which has no key and runs no dependency code. Every job that runs dependency
 #     code has `contents: read` and a checkout with persist-credentials: false;
 #     tests pin that boundary (compass/skills/compass/tests/test_release_workflow.py).
 #   - Tag names reach shell only through env: and are validated against a strict
@@ -255,9 +277,89 @@ jobs:
           fi
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
+  build-cli:
+    name: Build the CLI (${{ matrix.target }})
+    needs: resolve
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - target: darwin_arm64
+            runner: macos-15
+          - target: darwin_amd64
+            runner: macos-15-intel
+          # The Linux hosts are the oldest image still offered: a PyInstaller binary
+          # needs at least the glibc of the machine that built it, so building on the
+          # newest image would shut out every older distribution for nothing.
+          - target: linux_arm64
+            runner: ubuntu-22.04-arm
+          - target: linux_amd64
+            runner: ubuntu-22.04
+    env:
+      TARGET: ${{ needs.resolve.outputs.target }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      ARCHIVE_TARGET: ${{ matrix.target }}
+    steps:
+      - name: Checkout exactly the target, without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.resolve.outputs.target }}
+          persist-credentials: false
+
+      # The interpreter PyInstaller runs under is the one embedded in the binary, so the
+      # version is pinned here and is the whole of "which Python do users get". It also
+      # runs the target check below: ubuntu-22.04's own python3 is 3.10, under the floor.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        id: python
+        with:
+          python-version: "3.12"
+
+      - name: Confirm the checkout is the target
+        timeout-minutes: 1
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "$PYTHON" scripts/release_transition.py assert-head --expected "$TARGET"
+
+      - name: Install the pinned build toolchain, wheels only
+        timeout-minutes: 5
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "$PYTHON" -m pip install --disable-pip-version-check --only-binary=:all: --requirement requirements-cli.txt
+
+      - name: Build the binary and pack the archive
+        timeout-minutes: 10
+        env:
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          scripts/package-cli.sh "$VERSION" "$RUNNER_TEMP/cli" .
+          test -f "$RUNNER_TEMP/cli/compass_${VERSION}_${ARCHIVE_TARGET}.tar.gz"
+
+      - name: Run the packed archive
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          scripts/smoke-cli.sh "$RUNNER_TEMP/cli/compass_${VERSION}_${ARCHIVE_TARGET}.tar.gz"
+
+      - name: Keep the archive for the publishing job
+        # actions/upload-artifact@v7, the same pin as quality-gate.yml.
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: compass-cli-${{ matrix.target }}
+          path: ${{ runner.temp }}/cli/compass_${{ needs.resolve.outputs.version }}_${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Publish the release
-    needs: [resolve, verify-frontend, verify-tree]
+    needs: [resolve, verify-frontend, verify-tree, build-cli]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -437,3 +539,47 @@ jobs:
             --title "Compass $VERSION" \
             --notes-file "$NOTES_FILE" \
             --verify-tag
+
+  attach-cli:
+    name: Attach the CLI archives
+    needs: [resolve, build-cli, release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The repository write token and nothing else: no deploy key, so no push to main and
+    # no tag move. It can add files to a release and do no more. The archives come from
+    # the build jobs, which run third-party dependencies, so this job treats them as data:
+    # it checksums and uploads them, and never unpacks or runs one.
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      TARGET: ${{ needs.resolve.outputs.target }}
+    steps:
+      - name: Checkout exactly the target, without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.resolve.outputs.target }}
+          persist-credentials: false
+
+      - name: Confirm the checkout is the target
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 scripts/release_transition.py assert-head --expected "$TARGET"
+
+      - name: Fetch the CLI archives the build jobs made
+        # actions/download-artifact@v8.0.1, pinned to an immutable SHA.
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: compass-cli-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/cli
+
+      - name: Attach the archives and checksums to the release
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # --clobber inside the script makes a re-run of an interrupted release safe.
+          scripts/publish-cli.sh "$TAG" "$RUNNER_TEMP/cli"

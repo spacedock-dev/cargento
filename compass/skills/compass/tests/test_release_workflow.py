@@ -132,13 +132,19 @@ def serialized(value: Any) -> str:
 
 
 class JobGraphTest(unittest.TestCase):
-    def test_the_release_is_resolve_then_verify_then_publish(self) -> None:
-        self.assertEqual({"resolve", "verify-frontend", "verify-tree", "release"}, set(jobs()))
+    def test_the_release_is_resolve_then_verify_and_build_then_publish_then_attach(self) -> None:
+        self.assertEqual(
+            {"resolve", "verify-frontend", "verify-tree", "build-cli", "release", "attach-cli"},
+            set(jobs()),
+        )
         self.assertEqual("resolve", jobs()["verify-frontend"]["needs"])
         self.assertEqual("resolve", jobs()["verify-tree"]["needs"])
+        self.assertEqual("resolve", jobs()["build-cli"]["needs"])
         self.assertEqual(
-            {"resolve", "verify-frontend", "verify-tree"}, set(jobs()["release"]["needs"])
+            {"resolve", "verify-frontend", "verify-tree", "build-cli"},
+            set(jobs()["release"]["needs"]),
         )
+        self.assertEqual({"resolve", "build-cli", "release"}, set(jobs()["attach-cli"]["needs"]))
         self.assertNotIn("needs", jobs()["resolve"])
 
     def test_only_a_tag_push_triggers_it_and_it_never_cancels_a_running_release(self) -> None:
@@ -172,7 +178,7 @@ class JobGraphTest(unittest.TestCase):
 
 
 class CredentialBoundaryTest(unittest.TestCase):
-    def test_the_deploy_key_and_write_token_belong_to_the_publishing_job_alone(self) -> None:
+    def test_the_deploy_key_belongs_to_the_publishing_job_alone(self) -> None:
         for name, job in jobs().items():
             text = serialized(job)
             with self.subTest(job=name):
@@ -182,6 +188,16 @@ class CredentialBoundaryTest(unittest.TestCase):
                 else:
                     self.assertNotIn("secrets.", text)
                     self.assertNotIn("ssh-key", text)
+
+    def test_the_write_token_belongs_to_the_two_jobs_that_write_to_the_release(self) -> None:
+        # attach-cli is the second: it holds the token and never the key, so it can add
+        # files to a release and cannot push to main or move a tag past the rulesets.
+        for name, job in jobs().items():
+            text = serialized(job)
+            with self.subTest(job=name):
+                if name in {"release", "attach-cli"}:
+                    self.assertEqual({"contents": "write"}, job["permissions"])
+                else:
                     self.assertNotIn("github.token", text)
                     self.assertNotIn("GITHUB_TOKEN", text)
                     self.assertNotIn("GH_TOKEN", text)
@@ -191,7 +207,7 @@ class CredentialBoundaryTest(unittest.TestCase):
         self.assertEqual(1, RELEASE.read_text().count("secrets.RELEASE_DEPLOY_KEY"))
 
     def test_credential_free_jobs_never_persist_credentials(self) -> None:
-        for name in ("resolve", "verify-frontend", "verify-tree"):
+        for name in ("resolve", "verify-frontend", "verify-tree", "build-cli", "attach-cli"):
             checkouts = uses(name, "actions/checkout")
             self.assertEqual(1, len(checkouts), name)
             self.assertIs(False, checkouts[0]["with"]["persist-credentials"], name)
@@ -205,10 +221,13 @@ class CredentialBoundaryTest(unittest.TestCase):
         self.assertEqual(checkout, steps("release")[0], "nothing may run before the checkout")
 
     def test_only_the_publishing_job_can_push(self) -> None:
-        for name in ("resolve", "verify-frontend", "verify-tree"):
+        for name in ("resolve", "verify-frontend", "verify-tree", "build-cli"):
             for command in commands(name):
                 with self.subTest(job=name):
                     self.assertNotRegex(command, r"git\s+(-\S+\s+)*push|gh\s+(release|api)")
+        for command in commands("attach-cli"):
+            with self.subTest(job="attach-cli"):
+                self.assertNotRegex(command, r"git\s+(-\S+\s+)*push")
 
     def test_no_untrusted_context_is_interpolated_into_a_shell_command(self) -> None:
         # Tag names, branch names and needs outputs reach commands through env: and
@@ -526,6 +545,113 @@ class KeyJobWiringTest(unittest.TestCase):
         self.assertIn('--tag "$TAG" --final "$FINAL"', move)
 
 
+CLI_TARGETS = {
+    "darwin_arm64": "macos-15",
+    "darwin_amd64": "macos-15-intel",
+    "linux_arm64": "ubuntu-22.04-arm",
+    "linux_amd64": "ubuntu-22.04",
+}
+
+
+class BuildCliJobTest(unittest.TestCase):
+    """The standalone binary: built where no credential is, attached where only the token is."""
+
+    def test_it_builds_one_archive_per_target_on_a_host_of_that_target(self) -> None:
+        matrix = jobs()["build-cli"]["strategy"]["matrix"]["include"]
+        self.assertEqual(CLI_TARGETS, {row["target"]: row["runner"] for row in matrix})
+        self.assertEqual("${{ matrix.runner }}", jobs()["build-cli"]["runs-on"])
+
+    def test_it_embeds_the_pinned_interpreter_and_nothing_it_picked_up_by_accident(self) -> None:
+        (python,) = uses("build-cli", "actions/setup-python")
+        self.assertEqual("3.12", python["with"]["python-version"])
+        install = next(c for c in commands("build-cli") if "pip install" in c)
+        self.assertIn("--only-binary=:all:", install)
+        self.assertIn("--requirement requirements-cli.txt", install)
+        build = next(s for s in steps("build-cli") if "package-cli.sh" in s.get("run", ""))
+        self.assertEqual("${{ steps.python.outputs.python-path }}", build["env"]["PYTHON"])
+
+    def test_the_toolchain_is_pinned_exactly(self) -> None:
+        lines = [
+            line.split(";")[0].strip()
+            for line in (ROOT / "requirements-cli.txt").read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        self.assertTrue(lines)
+        for line in lines:
+            with self.subTest(requirement=line):
+                self.assertRegex(line, r"^[A-Za-z0-9._-]+==[0-9][0-9A-Za-z.]*$")
+        self.assertTrue(any(line.startswith("pyinstaller==") for line in lines))
+
+    def test_it_runs_the_packed_archive_before_it_hands_it_on(self) -> None:
+        listed = steps("build-cli")
+        build = next(i for i, s in enumerate(listed) if "package-cli.sh" in s.get("run", ""))
+        smoke = next(i for i, s in enumerate(listed) if "smoke-cli.sh" in s.get("run", ""))
+        (upload,) = [
+            i
+            for i, s in enumerate(listed)
+            if s.get("uses", "").startswith("actions/upload-artifact@")
+        ]
+        self.assertLess(build, smoke)
+        self.assertLess(smoke, upload)
+        self.assertEqual("compass-cli-${{ matrix.target }}", listed[upload]["with"]["name"])
+        self.assertEqual("error", listed[upload]["with"]["if-no-files-found"])
+
+    def test_it_builds_exactly_the_commit_both_verifiers_saw(self) -> None:
+        (checkout,) = uses("build-cli", "actions/checkout")
+        self.assertEqual("${{ needs.resolve.outputs.target }}", checkout["with"]["ref"])
+        self.assertTrue(any("assert-head" in c for c in commands("build-cli")))
+
+    def test_it_runs_no_node_tooling(self) -> None:
+        for step in steps("build-cli"):
+            for tool in FRONTEND_TOOLS:
+                self.assertNotIn(tool, step.get("uses", ""))
+        for command in commands("build-cli"):
+            self.assertIsNone(NODE_COMMAND.search(command))
+
+    def test_the_key_job_neither_builds_nor_receives_an_archive(self) -> None:
+        text = serialized(jobs()["release"])
+        for fragment in ("package-cli", "publish-cli", "requirements-cli", "download-artifact"):
+            self.assertNotIn(fragment, text)
+
+    def test_attaching_takes_the_archives_as_data_and_never_runs_one(self) -> None:
+        (download,) = uses("attach-cli", "actions/download-artifact")
+        self.assertEqual("compass-cli-*", download["with"]["pattern"])
+        self.assertIs(True, download["with"]["merge-multiple"])
+        attach = [c for c in commands("attach-cli") if "publish-cli.sh" in c]
+        self.assertEqual(1, len(attach))
+        self.assertIn('scripts/publish-cli.sh "$TAG" "$RUNNER_TEMP/cli"', attach[0])
+        text = "\n".join(code(c) for c in commands("attach-cli"))
+        for hazard in ("tar ", "package-cli", "smoke-cli", "pip ", "compass/compass"):
+            self.assertNotIn(hazard, text)
+        self.assertEqual([], uses("attach-cli", "actions/setup-python"))
+
+    def test_the_attaching_job_has_no_key_and_binds_the_token_at_its_one_step(self) -> None:
+        self.assertNotIn("RELEASE_DEPLOY_KEY", serialized(jobs()["attach-cli"]))
+        step = next(s for s in steps("attach-cli") if "publish-cli.sh" in s.get("run", ""))
+        self.assertEqual({"GH_TOKEN": "${{ github.token }}"}, step["env"])
+
+    def test_the_pull_request_workflow_builds_the_same_targets_read_only(self) -> None:
+        workflow = load(ROOT / ".github/workflows/cli-package.yml")
+        self.assertEqual({"contents": "read"}, workflow["permissions"])
+        job = workflow["jobs"]["package"]
+        self.assertEqual(
+            CLI_TARGETS,
+            {row["target"]: row["runner"] for row in job["strategy"]["matrix"]["include"]},
+        )
+        text = serialized(workflow)
+        for fragment in ("secrets.", "github.token", "GH_TOKEN", "ssh-key", "pull_request_target"):
+            self.assertNotIn(fragment, text)
+        for step in job["steps"]:
+            if "uses" in step:
+                self.assertRegex(step["uses"].split("@", 1)[1], SHA)
+        (checkout,) = [s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout@")]
+        self.assertIs(False, checkout["with"]["persist-credentials"])
+        python = next(
+            s for s in job["steps"] if s.get("uses", "").startswith("actions/setup-python@")
+        )
+        self.assertEqual("3.12", python["with"]["python-version"])
+
+
 class GateParityTest(unittest.TestCase):
     """What the credential-free jobs run, pinned beyond the `uses:` lines."""
 
@@ -536,7 +662,8 @@ class GateParityTest(unittest.TestCase):
             ["v[0-9]+.[0-9]+.[0-9]+", "[0-9]+.[0-9]+.[0-9]+"], triggers["push"]["tags"]
         )
         for name, job in jobs().items():
-            self.assertEqual("ubuntu-24.04", job["runs-on"], name)
+            if name != "build-cli":  # one host per release target; BuildCliJobTest pins them
+                self.assertEqual("ubuntu-24.04", job["runs-on"], name)
 
     def test_the_frontend_verifier_runs_the_gates_commands_in_order(self) -> None:
         run = commands("verify-frontend")

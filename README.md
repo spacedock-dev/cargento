@@ -36,7 +36,8 @@ This repo contains one plugin, `compass`, the agent cartography dashboard skill.
 
 ### Prerequisites
 
-- Python 3.11+. The server is stdlib-only, so there is nothing to install alongside it.
+- Python 3.11+. The server is stdlib-only, so there is nothing to install alongside it. A
+  [standalone binary](#standalone-binary) needs no Python at all.
 - To install it as a plugin: Codex, Claude Code, Antigravity/AGY, or Gemini CLI.
 
 You do not need all four. The dashboard maps every harness it finds on the machine regardless of
@@ -48,6 +49,23 @@ python3 compass/skills/compass/server.py --port 4553 --daemon
 
 `--daemon` detaches so the dashboard keeps running after this shell exits. Stop it with `--stop`;
 drop `--daemon` to run it in the foreground instead.
+
+### Standalone binary
+
+Every [release](https://github.com/spacedock-dev/compass/releases) attaches a build of the
+dashboard that carries its own Python, so there is nothing else to install. Pick the archive for your
+machine, `compass_<version>_<os>_<arch>.tar.gz` with `os` `darwin` or `linux` and `arch` `arm64` or
+`amd64`, check it against `checksums.txt`, and run it:
+
+```bash
+grep compass_<version>_<os>_<arch>.tar.gz checksums.txt | shasum -a 256 -c
+tar -xzf compass_<version>_<os>_<arch>.tar.gz
+./compass/compass --port 4553 --daemon
+```
+
+It takes the same options as `server.py`. There is no Windows binary yet, and macOS may ask you to clear a
+quarantine flag on a copy downloaded through a browser; [COMPATIBILITY.md](COMPATIBILITY.md#standalone-binary)
+has the details and the limits.
 
 See [Upgrading from Cargento](MANUAL.md#upgrading-from-cargento) for the temporary data fallbacks and settings to update.
 

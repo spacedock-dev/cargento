@@ -20,7 +20,9 @@ python3 compass/skills/compass/server.py --forget [--port PORT]
 Paths above are relative to the repository root. For a plugin installation, use the
 `server.py` beside the installed `SKILL.md`; [find that copy](HOW_TO_USE.md#find-the-copy-your-commands-will-run)
 and use the same launcher and port for start, status and stop. On Windows, use your Python 3.11+
-command, such as `py -3`, in place of `python3`.
+command, such as `py -3`, in place of `python3`. The [standalone binary](README.md#standalone-binary)
+takes the same options: run `compass/compass` from the unpacked archive in place of the whole
+`python3 …/server.py` command.
 
 ## Description
 
