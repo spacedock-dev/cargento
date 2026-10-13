@@ -67,14 +67,14 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, NamedTuple
 
-import legacy_paths
+import store_paths
 
 # 2 adds the `harness` field. Version 1 lines stay readable: they were all Claude
 # captures, because Claude was the only harness this script served, so a line
 # without a harness is read as one.
 FORMAT_VERSION = 2
 LEGACY_HARNESS = "claude"
-DEFAULT_DIR = Path(legacy_paths.store_home()) / "captures"
+DEFAULT_DIR = Path(store_paths.store_home()) / "captures"
 MAX_PAYLOAD_BYTES = 1_000_000
 # Tool names are recorded because cardinality per turn is meaningless without
 # knowing whether ten PreToolUse events were ten different tools or one in a

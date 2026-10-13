@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 import abstention_ledger as ledger
-import legacy_paths
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -136,14 +135,11 @@ class Plan:
         self.validate_runtime()
 
     def validate_runtime(self) -> None:
-        home = legacy_paths.environment_value(self.environment, "COMPASS_HOME") or ""
+        home = self.environment.get("COMPASS_HOME") or ""
         if not home or not Path(home).is_absolute() or not Path(home).is_dir():
             raise RefusalError("explicit owned COMPASS_HOME required")
         account = ledger.canonical_home()
-        if account is None or Path(home).resolve() in (
-            Path(account, ".compass").resolve(),
-            Path(account, ".cargento").resolve(),  # legacy-cargento: remove at 1.0.0
-        ):
+        if account is None or Path(home).resolve() == Path(account, ".compass").resolve():
             raise RefusalError("account/default COMPASS_HOME cannot protect the owned port")
         if (
             type(self.board_port) is not int

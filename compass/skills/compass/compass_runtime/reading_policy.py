@@ -11,17 +11,14 @@ import contextlib
 import math
 import os
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
 
 from . import io as runtime_io
 from . import supervise
 
-# legacy-cargento: remove at 1.0.0
-from .config import legacy_read_path
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from pathlib import Path
 
     from .config import RuntimeConfig
 
@@ -111,11 +108,7 @@ class Status(TypedDict):
 
 
 def store_path(config: RuntimeConfig) -> Path:
-    path = config.state_dir / "compass-reading-permission.sqlite3"
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return Path(legacy_read_path(str(path)))
-    return path
+    return config.state_dir / "compass-reading-permission.sqlite3"
 
 
 def _answer(

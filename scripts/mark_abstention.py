@@ -97,7 +97,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 import abstention_ledger
-import legacy_paths
+import store_paths
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
@@ -127,11 +127,11 @@ def _reading() -> Any:
     return reading
 
 
-HOME = legacy_paths.store_home()
+HOME = store_paths.store_home()
 # Read once, with HOME: a report from the default home was once posted as the
 # marks for a packet that lived elsewhere, so every mode that reads a packet
 # says when this was the case.
-DEFAULT_HOME = not legacy_paths.environment_value(os.environ, "COMPASS_HOME")
+DEFAULT_HOME = not os.environ.get("COMPASS_HOME")
 CASES_PATH = os.path.join(HOME, "abstention-cases.json")
 MARKS_PATH = os.path.join(HOME, "abstention-marks.json")
 

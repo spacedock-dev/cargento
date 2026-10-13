@@ -1,11 +1,8 @@
 # What reader state survives a board refresh
 
-During the Compass rename, the twelve browser storage families below read their
-`cargento` prefix only when the corresponding `compass` key is absent. Writes use
-the new key and keep the old key. Clearing a legacy setting leaves an empty new
-value to prevent its return on reload. `storage/backend.ts` owns these reads and
-`storage/keys.ts` owns the prefix mapping; `storage/upgrade.test.ts` proves the
-fallback, new-key precedence and preservation. This compatibility ends at 1.0.0.
+The twelve browser storage families below use only their `compass` keys. Until 1.0.0 they also read
+the old `cargento` prefix when the `compass` key was absent; that fallback is gone, and
+`storage/keys.ts` owns the key names.
 
 The React page keeps its DOM nodes across a refresh instead of replacing them, so most of what a
 reader puts into the page stays where they put it. What does not stay by itself is state held by a

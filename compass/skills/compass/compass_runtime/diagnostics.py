@@ -113,11 +113,7 @@ def diagnose(application: Application) -> dict[str, Any]:
         runtime_config.COMPASS_HOME_ENV,
         "XDG_DATA_HOME",
     )
-    legacy_fallbacks: dict[str, Any] = {}
-    # legacy-cargento: remove at 1.0.0
-    legacy_fallbacks = _legacy_fallbacks(config.state_home)
     return {
-        "legacy_fallbacks": legacy_fallbacks,
         "tripwires": {
             "enabled": config.tripwires_enabled,
             "path": tripwires.store_path(config) if config.tripwires_enabled else None,
@@ -159,67 +155,6 @@ def diagnose(application: Application) -> dict[str, Any]:
     }
 
 
-# legacy-cargento: remove at 1.0.0
-def _legacy_fallbacks(home: str) -> dict[str, Any]:
-    names = [
-        name.replace("COMPASS_", "CARGENTO_", 1)
-        for name in ("COMPASS_HOME", "COMPASS_REACH_URL", "COMPASS_QUIET_HOURS")
-        if name not in os.environ and name.replace("COMPASS_", "CARGENTO_", 1) in os.environ
-    ]
-    files = []
-    try:
-        for name in sorted(os.listdir(home)):
-            filenames = {
-                "cargento-annotations.json",
-                "cargento-history.json",
-                "cargento-ends.json",
-                "cargento-copied-corrections.json",
-                "cargento-deliveries.json",
-                "cargento-departures.json",
-                "cargento-dismissals.json",
-                "cargento-tripwires.json",
-                "cargento-reading-permission.sqlite3",
-            }
-            port = name.removeprefix("cargento-").removesuffix(".json")
-            per_port = (
-                name.startswith("cargento-")
-                and name.endswith(".json")
-                and port.isdigit()
-                and 1 <= int(port) <= 65535
-            )
-            if name not in filenames and not per_port:
-                continue
-            current = os.path.join(home, name.replace("cargento", "compass", 1))
-            selected = runtime_config.legacy_read_path(current)
-            if selected != current and name.endswith((".json", ".sqlite3", "_session_id")):
-                files.append(selected)
-    except OSError:
-        pass
-    return {
-        "store": os.path.basename(home.rstrip("/\\")) == ".cargento",
-        "variables": names,
-        "files": files,
-    }
-
-
-# legacy-cargento: remove at 1.0.0
-def _legacy_notice(report: dict[str, Any]) -> list[str]:
-    legacy = report.get("legacy_fallbacks", {})
-    uses = ["legacy store " + report["compass_home"]] if legacy.get("store") else []
-    uses += legacy.get("variables", [])
-    for path in legacy.get("files", []):
-        detail = "legacy state file " + path + " used in place"
-        if path.endswith("reading-permission.sqlite3"):
-            detail += (
-                "; shared consent and spend authority, "
-                "revoking in either build takes effect in both"
-            )
-        else:
-            detail += "; forgetting observed records removes legacy copies too"
-        uses.append(detail)
-    return ["  upgrading  Using " + use + "; fallback removed at 1.0.0." for use in uses]
-
-
 def render_diagnosis(report: dict[str, Any]) -> str:
     """ASCII-only rendering — this output gets pasted into bug reports from
     consoles whose encoding we do not control."""
@@ -232,8 +167,6 @@ def render_diagnosis(report: dict[str, Any]) -> str:
         f"  compass   {report.get('compass_home') or report['home']}",
         f"  sqlite3    {sqlite_info['version'] or 'UNAVAILABLE: ' + str(sqlite_info['error'])}",
     ]
-    # legacy-cargento: remove at 1.0.0
-    lines.extend(_legacy_notice(report))
     stage = report["tripwires"]
     lines.append(
         f"  tripwires  {stage['path'] or 'disabled'}"

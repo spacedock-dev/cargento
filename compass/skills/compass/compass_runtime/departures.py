@@ -62,12 +62,6 @@ import os
 import threading
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
-from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_shadows,
-    state_file_paths,  # legacy-cargento: remove at 1.0.0
-)
-
 from . import io as runtime_io
 from . import records
 
@@ -192,11 +186,7 @@ class Check(TypedDict):
 
 def store_path(config: RuntimeConfig) -> str:
     """Beside the state file, and not per port, for `deliveries.store_path`'s reason."""
-    path = os.path.join(config.state_home, "compass-departures.json")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, "compass-departures.json")
 
 
 def _entry(value: Any) -> Check | None:
@@ -296,8 +286,6 @@ def _save_at(
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
         os.replace(tmp, target)
-        if not payload["entries"]:
-            remove_state_shadows(target)
     except (OSError, ValueError, TypeError, RecursionError):
         runtime_io.diag(
             f"Compass: could not write the departure record {target}; "
@@ -530,31 +518,6 @@ def _withdrawn(row: Check) -> Check:
     }
 
 
-def _withdraw_other_spelling(
-    config: RuntimeConfig, harness: str, sid: str, diagnostic_sink: Callable[[str], None]
-) -> bool:
-    """Blank this session's words in the other file name too, keeping the rows that count its spend.
-
-    Both names can exist while an older build runs beside this one. A withdrawal that blanked only
-    the selected file left the clause, the model's paragraph and the evidence readable in the
-    other, and removing the selected file made them load again.
-    legacy-cargento: remove at 1.0.0
-    """
-    selected = store_path(config)
-    wanted = True
-    for path in state_file_paths(os.path.join(config.state_home, "compass-departures.json")):
-        if path == selected or not os.path.lexists(path):
-            continue
-        stored = list(_load_at(config, path))
-        kept = [
-            _withdrawn(row) if row["harness"] == harness and row["sid"] == sid else row
-            for row in stored
-        ]
-        if kept != stored:
-            wanted = _save_at(config, kept, path, diagnostic_sink) and wanted
-    return wanted
-
-
 def withdraw(
     config: RuntimeConfig,
     harness: str,
@@ -591,5 +554,4 @@ def withdraw(
         wanted = True
         if kept != stored:
             wanted = save(config, kept, diagnostic_sink=diagnostic_sink)
-        # legacy-cargento: remove at 1.0.0
-        return _withdraw_other_spelling(config, harness, sid, diagnostic_sink) and wanted
+        return wanted

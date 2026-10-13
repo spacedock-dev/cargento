@@ -143,46 +143,6 @@ terminal. Leave both unset for normal dashboard use. See the
 | `--interaction-origin-session HARNESS:SID` | Select one exact, already-collected session identity for registered read-only terminal output. No session is selected by default. Must be paired with the registration-file option. |
 | `--interaction-origin-registration-file PATH` | Write the one-use session-side tmux registration capability to this file. No path is selected by default. Must be paired with the origin-session option; session-side registration is still required. |
 
-## Upgrading from Cargento
-
-Until 1.0.0, Compass uses your Cargento home in place when it is the only home. If
-`COMPASS_HOME` is set, it wins. When it is unset, `CARGENTO_HOME` is honored.
-Without an override, an existing `~/.compass` wins; `~/.cargento` is used only
-when `~/.compass` is absent. With neither directory present, the default is `~/.compass`.
-This selects one store for the process. Existing legacy state files are read and
-written in place. A new file uses its Compass filename; logs use Compass filenames.
-The selected legacy home is read and written until you move it to `~/.compass`
-by hand. A ledger charge leaves the next default dashboard launch on that same home.
-
-Each renamed state file falls back to its `cargento-` filename, including saved
-intent, outcome lines, history, readings, dismissals, tripwires, copied corrections,
-per-port state and the reading-permission database. The variables `CARGENTO_HOME`,
-`CARGENTO_REACH_URL`, `CARGENTO_QUIET_HOURS` and the Pi/OpenCode hook variable
-`CARGENTO_PORT` are read only when their `COMPASS_` counterparts are unset, with
-the same validation. Fixed spend ledgers and their receipts use the account's
-selected default home, ignoring `COMPASS_HOME` and `CARGENTO_HOME`. Earlier charges
-and new charges stay in the same file, preserving the spend cap. Redaction configuration
-uses that default home; study stores follow the selected store home. All twelve browser storage families read
-the old `cargento` key when the `compass` key is absent and write the new key.
-
-When the new state filename is absent, the legacy state file is used in place,
-including the permission database. Older and newer builds then share one consent
-and reservation authority: revoking permission in either takes effect in both,
-and earlier and new charges count toward the same cap. When both filenames exist,
-the Compass file wins. Forgetting observed records removes the legacy copy too; clearing saved
-intent removes its words from the selected file and any legacy copy. Turning off
-readings revokes consent while retaining the timestamps that protect the spend cap.
-Browser settings write the Compass key; clearing one may write an empty value under
-that key to keep the old value cleared. Fixed ledgers and receipts keep their
-filenames and are written in place, including under `~/.cargento`.
-Run `server.py --diagnose` to see each legacy home, variable or state filename in use.
-A blank `COMPASS_HOME` selects the default home without consulting `CARGENTO_HOME`.
-
-Update installed hook, MCP and status-line settings that name the old plugin path
-or `/cargento:cargento` command by hand, using the [setup procedures](HOW_TO_USE.md).
-These fallbacks are removed at 1.0.0; move any data you still need to the Compass
-names before upgrading to that release.
-
 ## Environment
 
 Use absolute paths for directory overrides. A nonblank harness override is authoritative: Compass

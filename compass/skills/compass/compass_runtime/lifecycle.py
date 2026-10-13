@@ -65,11 +65,7 @@ def compass_home(config: RuntimeConfig) -> str:
 
 
 def state_path(config: RuntimeConfig, port: int) -> str:
-    path = os.path.join(compass_home(config), f"compass-{port}.json")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return runtime_config.legacy_read_path(path)
-    return path
+    return os.path.join(compass_home(config), f"compass-{port}.json")
 
 
 def log_path(config: RuntimeConfig, port: int) -> str:
@@ -157,7 +153,7 @@ def read_state(config: RuntimeConfig, port: int) -> dict[str, Any] | None:
 
 def remove_state(config: RuntimeConfig, port: int) -> None:
     with contextlib.suppress(OSError):
-        runtime_config.remove_state_files(state_path(config, port))
+        runtime_config.remove_state_file(state_path(config, port))
 
 
 def probe_port(port: int, timeout: float = 1.0) -> tuple[str, dict[str, Any] | None]:
@@ -298,13 +294,6 @@ def pid_exists(pid: int) -> bool:
     return True
 
 
-def _state_prefix(name: str) -> str:
-    # legacy-cargento: remove at 1.0.0
-    if name.startswith("cargento-"):
-        return "cargento-"
-    return "compass-"
-
-
 def dashboard_alive(config: RuntimeConfig, pid: int) -> bool:
     """Whether `pid` is a running dashboard on this state directory.
 
@@ -322,7 +311,7 @@ def dashboard_alive(config: RuntimeConfig, pid: int) -> bool:
     except OSError:
         return False
     for name in names:
-        prefix = _state_prefix(name)
+        prefix = "compass-"
         port = name.removeprefix(prefix).removesuffix(".json")
         if name.startswith(prefix) and name.endswith(".json") and port.isdigit():
             state = read_state(config, int(port))
@@ -346,7 +335,7 @@ def sweep_stale_states(config: RuntimeConfig) -> list[int]:
     except OSError:
         return []
     for name in entries:
-        prefix = _state_prefix(name)
+        prefix = "compass-"
         if not (name.startswith(prefix) and name.endswith(suffix)):
             continue
         port_str = name[len(prefix) : -len(suffix)]

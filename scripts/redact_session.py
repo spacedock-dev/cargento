@@ -25,12 +25,12 @@ import re
 import sys
 from typing import TYPE_CHECKING, Any
 
-import legacy_paths
+import store_paths
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping
 
-CONFIG = os.path.join(legacy_paths.default_home(), "redaction.json")
+CONFIG = os.path.join(store_paths.default_home(), "redaction.json")
 
 SECRET = re.compile(
     r"(AKIA|ASIA)[A-Z0-9]{16}"

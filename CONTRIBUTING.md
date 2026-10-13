@@ -628,10 +628,6 @@ pushing the tag a second time does nothing because it already exists. Release ta
 tag ruleset blocks deleting or moving them), and PRs can never change version fields (the
 `version-guard` check).
 
-Before cutting 1.0.0, remove every `legacy-cargento` fallback and the "Upgrading from
-Cargento" section of the manual. The tripwire blocks the release if any fallback
-marker remains, using the higher of the manifest version and the release tag.
-
 To rehearse the sequence without GitHub, run `python3 scripts/release_transition.py --repo <throwaway
 clone> rehearse --tag v0.2.0 --dry-run` in a clone whose remote is a local bare repository; it
 refuses any remote that is not a local path. The `compass-release` skill describes it, and the

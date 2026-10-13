@@ -248,47 +248,19 @@ def log(message: str) -> None:
 
 
 def default_home() -> str:
-    current = os.path.join(os.path.expanduser("~"), ".compass")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(current) and os.path.isdir(
-        os.path.join(os.path.expanduser("~"), ".cargento")
-    ):
-        return os.path.join(os.path.expanduser("~"), ".cargento")
-    return current
+    return os.path.join(os.path.expanduser("~"), ".compass")
 
 
 def state_home() -> str:
     env = os.environ
     override = env.get("COMPASS_HOME")
-    # legacy-cargento: remove at 1.0.0
-    if "COMPASS_HOME" not in env:
-        override = env.get("CARGENTO_HOME")
     return override if override and override.strip() else default_home()
-
-
-def legacy_read_path(path: str) -> str:
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        old = os.path.join(
-            os.path.dirname(path), os.path.basename(path).replace("compass", "cargento", 1)
-        )
-        if os.path.lexists(old):
-            return old
-    return path
 
 
 def _published_ports() -> list[int]:
     """Ports from the state files, most recently started first."""
     found: list[tuple[float, int]] = []
     paths = glob.glob(os.path.join(state_home(), "compass-*.json"))
-    # legacy-cargento: remove at 1.0.0
-    paths += [
-        old
-        for old in glob.glob(os.path.join(state_home(), "cargento-*.json"))
-        if not os.path.lexists(
-            os.path.join(state_home(), os.path.basename(old).replace("cargento", "compass", 1))
-        )
-    ]
     for path in paths:
         try:
             with open(path, "rb") as handle:

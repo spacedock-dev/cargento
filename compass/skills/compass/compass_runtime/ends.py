@@ -47,9 +47,7 @@ import threading
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
 from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_files,
-    remove_state_shadows,
+    remove_state_file,
 )
 
 from . import io as runtime_io
@@ -82,11 +80,7 @@ class End(TypedDict):
 
 def store_path(config: RuntimeConfig) -> str:
     """Beside the state file, and not per port, for `deliveries.store_path`'s reason."""
-    path = os.path.join(config.state_home, STORE_FILENAME)
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, STORE_FILENAME)
 
 
 def _entry(value: Any) -> End | None:
@@ -168,8 +162,6 @@ def save(
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
         os.replace(tmp, target)
-        if not payload["entries"]:
-            remove_state_shadows(target)
     except (OSError, ValueError, TypeError, RecursionError):
         runtime_io.diag(
             f"Compass: could not write the session-end record {target}; "
@@ -227,4 +219,4 @@ def restored(entries: Iterable[End]) -> dict[tuple[str, str], float]:
 
 def forget(config: RuntimeConfig) -> bool:
     """Delete the store. True when a file was removed."""
-    return remove_state_files(store_path(config))
+    return remove_state_file(store_path(config))

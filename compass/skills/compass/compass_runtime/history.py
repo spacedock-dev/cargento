@@ -39,9 +39,7 @@ from typing import TYPE_CHECKING, Any, Final, NotRequired, TypedDict, cast
 from compass_runtime import io as runtime_io
 from compass_runtime import records
 from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_files,
-    remove_state_shadows,
+    remove_state_file,
 )
 
 if TYPE_CHECKING:
@@ -250,11 +248,7 @@ def store_path(config: RuntimeConfig) -> str:
     history of what was observed is the machine's, not the instance's, so it must
     survive both a restart and a different --port.
     """
-    path = os.path.join(config.state_home, STORE_FILENAME)
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, STORE_FILENAME)
 
 
 def observation(row: Mapping[str, Any]) -> Observation | None:
@@ -604,8 +598,6 @@ def save(
     held = tuple(entries)
     try:
         runtime_io.atomic_write_owner_only(target, _payload(held))
-        if not held:
-            remove_state_shadows(target)
     except (OSError, ValueError):
         _report(
             f"Compass: could not write the history store {target}; "
@@ -737,7 +729,7 @@ def forget(config: RuntimeConfig) -> bool:
     is the user's: someone turning the feature off and then asking for the file to
     go must not be told there was nothing to delete.
     """
-    return remove_state_files(store_path(config))
+    return remove_state_file(store_path(config))
 
 
 def _report(message: str, sink: Callable[[str], object]) -> None:

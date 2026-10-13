@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1722351,
+    "bytes": 1721839,
     "file": "react.html",
-    "sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c"
+    "sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810"
   },
   "format": 1,
   "frontend": "react",
@@ -1167,7 +1167,7 @@
       },
       {
         "file": "frontend/src/storage/backend.ts",
-        "sha256": "8a8ee411ca9b11d4e0c3224797114c8adc305830facbfaed720421794bb7e137"
+        "sha256": "485f03afa56bfa97d3f8b44a6b0e962ca6fb6253cf59793095ee3a6db36fe3dd"
       },
       {
         "file": "frontend/src/storage/consent.ts",
@@ -1195,7 +1195,7 @@
       },
       {
         "file": "frontend/src/storage/keys.ts",
-        "sha256": "02632dfa0688b9a28f5207a6feb80ab999761d57310aee69a0bf1365f18d82c0"
+        "sha256": "09d86de13cdf75d4add31c24279f2c46ebd2526a5b0c5fd724941efdce6edb34"
       },
       {
         "file": "frontend/src/storage/lease.ts",

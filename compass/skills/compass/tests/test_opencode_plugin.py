@@ -101,9 +101,6 @@ class OpenCodePluginTest(support.RuntimeTestCase):
     def run_plugin(
         self,
         steps: list[dict[str, Any]],
-        *,
-        legacy: bool = False,
-        legacy_port: str | None = None,
         **options: Any,
     ) -> dict[str, Any]:
         self.assertTrue(PLUGIN.is_file(), "the per-project OpenCode adapter is not shipped")
@@ -120,42 +117,13 @@ class OpenCodePluginTest(support.RuntimeTestCase):
             text=True,
             timeout=10,
             check=False,
-            env=(
-                {k: v for k, v in os.environ.items() if k not in ("COMPASS_HOME", "COMPASS_PORT")}
-                | {
-                    "CARGENTO_HOME": str(self.home),
-                    "CARGENTO_PORT": legacy_port if legacy_port is not None else str(self.port),
-                }
-            )
-            if legacy
-            else {**os.environ, "COMPASS_HOME": str(self.home), "COMPASS_PORT": str(self.port)},
+            env={**os.environ, "COMPASS_HOME": str(self.home), "COMPASS_PORT": str(self.port)},
         )
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("", result.stderr)
         observed: dict[str, Any] = json.loads(result.stdout)
         observed["elapsed"] = time.monotonic() - started
         return observed
-
-    def test_a_reader_who_upgraded_keeps_opencode_events_and_the_old_capability_file(self) -> None:
-        old = self.state.with_name(self.state.name.replace("compass", "cargento", 1))
-        self.state.rename(old)
-        before = old.read_bytes()
-        self.run_plugin([{"event": native("permission.asked")}], legacy=True)
-        self.assertEqual(1, len(self.records))
-        self.assertEqual(TOKEN, self.records[0]["token"])
-        self.assertEqual(before, old.read_bytes())
-
-    def test_a_reader_who_has_new_opencode_state_uses_its_capability_first(self) -> None:
-        old = self.state.with_name(self.state.name.replace("compass", "cargento", 1))
-        old.write_text(json.dumps({"capabilities": {"opencode": "old-token"}}))
-        before = old.read_bytes()
-        self.run_plugin([{"event": native("permission.asked")}])
-        self.assertEqual(TOKEN, self.records[0]["token"])
-        self.assertEqual(before, old.read_bytes())
-
-    def test_a_reader_using_an_invalid_legacy_opencode_port_gets_no_wider_access(self) -> None:
-        self.run_plugin([{"event": native("permission.asked")}], legacy=True, legacy_port="invalid")
-        self.assertEqual([], self.records)
 
     def test_a_parent_permission_wait_clears_only_after_its_last_answer(self) -> None:
         result = self.run_plugin(

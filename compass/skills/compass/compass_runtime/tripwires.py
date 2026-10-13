@@ -12,11 +12,6 @@ import tempfile
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_shadows,
-)
-
 from . import deliveries
 
 if TYPE_CHECKING:
@@ -37,11 +32,7 @@ AMBIGUOUS = (
 
 
 def store_path(config: RuntimeConfig) -> str:
-    path = os.path.join(config.state_home, "compass-tripwires.json")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, "compass-tripwires.json")
 
 
 def _stamp(value: Any) -> bool:
@@ -151,8 +142,6 @@ def save(config: RuntimeConfig, rules: dict[str, dict[str, Any]]) -> bool:
             os.fsync(handle.fileno())
         target = store_path(config)
         os.replace(temporary, target)
-        if not rules:
-            remove_state_shadows(target)
     except (OSError, ValueError, TypeError, RecursionError):
         return False
     finally:

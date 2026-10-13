@@ -17,14 +17,9 @@ study first. The recorded answers the React page is held to are described in the
 
 ## Held to recorded answers
 
-The rename also preserves saved browser choices until 1.0.0: a missing Compass
-key reads the matching Cargento key through the shared storage adapter. Writes
-use only Compass keys; clearing an old setting leaves an empty new value so it
-stays cleared on reload. `frontend/src/storage/upgrade.test.ts` adds that narrow
-contract for all twelve families without changing recorded answers or the existing
-storage browser proofs.
-The retained study scripts remain frozen and unserved. Extending their reads requires
-requalification, so the fallback applies to the served React storage adapter.
+The rename kept saved browser choices readable until 1.0.0: a missing Compass key read the matching
+Cargento key through the shared storage adapter. 1.0.0 removed that fallback with the adapter code
+and its test, so a saved choice made under a `cargento.` key is not carried over.
 
 
 The owner renamed the application to Compass on 2026-10-12. The named

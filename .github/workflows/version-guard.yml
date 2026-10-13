@@ -89,16 +89,12 @@ jobs:
           # the checked-out head file. Skips silently when the file is absent
           # on either side or the field is absent at the merge-base.
           check_field() {
-            local file="$1" jqpath="$2" label="$3" legacy_base="$4"
-            local base_v head_v base_file="$file"
-            # legacy-cargento: remove at 1.0.0
-            if ! git cat-file -e "$MERGE_BASE:$base_file" 2>/dev/null; then
-              base_file="$legacy_base"
-            fi
-            if ! git cat-file -e "$MERGE_BASE:$base_file" 2>/dev/null || [ ! -f "$file" ]; then
+            local file="$1" jqpath="$2" label="$3"
+            local base_v head_v
+            if ! git cat-file -e "$MERGE_BASE:$file" 2>/dev/null || [ ! -f "$file" ]; then
               return 0
             fi
-            base_v=$(git show "$MERGE_BASE:$base_file" | jq -r "$jqpath // empty")
+            base_v=$(git show "$MERGE_BASE:$file" | jq -r "$jqpath // empty")
             head_v=$(jq -r "$jqpath // empty" "$file")
             base_v=${base_v//$'\n'/ }
             head_v=${head_v//$'\n'/ }
@@ -108,9 +104,9 @@ jobs:
             fi
           }
 
-          check_field "compass/.claude-plugin/plugin.json" '.version' "plugin manifest version" "cargento/.claude-plugin/plugin.json"
-          check_field "compass/.codex-plugin/plugin.json" '.version' "codex manifest version" "cargento/.codex-plugin/plugin.json"
-          check_field "compass-gemini/gemini-extension.json" '.version' "Gemini CLI extension version" "cargento-gemini/gemini-extension.json"
+          check_field "compass/.claude-plugin/plugin.json" '.version' "plugin manifest version"
+          check_field "compass/.codex-plugin/plugin.json" '.version' "codex manifest version"
+          check_field "compass-gemini/gemini-extension.json" '.version' "Gemini CLI extension version"
 
           if [ "$FAIL" = "1" ]; then
             echo

@@ -21,8 +21,6 @@ import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any, Final
 
-from compass_runtime.config import environment_value
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
@@ -70,7 +68,7 @@ def resolve_reach_url(config: RuntimeConfig) -> str | None:
         return None
     candidate = config.reach_url
     if not candidate:
-        candidate = environment_value(os.environ, REACH_URL_ENV)
+        candidate = os.environ.get(REACH_URL_ENV)
     if not candidate:
         reach_file = os.path.join(config.state_home, REACH_URL_FILENAME)
         if os.path.isfile(reach_file):
