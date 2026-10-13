@@ -63,7 +63,7 @@ tar -xzf compass_<version>_<os>_<arch>.tar.gz
 ./compass/compass --port 4553 --daemon
 ```
 
-It takes the same options as `server.py`. Windows has no binary, and macOS may ask you to clear a
+It takes the same options as `server.py`. There is no Windows binary yet, and macOS may ask you to clear a
 quarantine flag on a copy downloaded through a browser; [COMPATIBILITY.md](COMPATIBILITY.md#standalone-binary)
 has the details and the limits.
 
