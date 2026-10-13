@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any, Final
 from compass_runtime import claude_data, deliveries, dismissals, records
 from compass_runtime import io as runtime_io
 from compass_runtime import state as runtime_state
-from compass_runtime.config import environment_value
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -109,7 +108,7 @@ def resolve_quiet_hours(config: RuntimeConfig) -> tuple[int, int, int, int] | No
         return None
     candidate = config.quiet_hours
     if not candidate:
-        candidate = environment_value(os.environ, QUIET_HOURS_ENV)
+        candidate = os.environ.get(QUIET_HOURS_ENV)
     if not candidate:
         quiet_file = os.path.join(config.state_home, QUIET_HOURS_FILENAME)
         if os.path.isfile(quiet_file):

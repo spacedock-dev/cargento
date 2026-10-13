@@ -67,8 +67,6 @@ It takes the same options as `server.py`. There is no Windows binary yet, and ma
 quarantine flag on a copy downloaded through a browser; [COMPATIBILITY.md](COMPATIBILITY.md#standalone-binary)
 has the details and the limits.
 
-See [Upgrading from Cargento](MANUAL.md#upgrading-from-cargento) for the temporary data fallbacks and settings to update.
-
 See the [command manual](MANUAL.md) for every launcher option, defaults, environment variables
 and examples, including controls for model use, history and notifications.
 

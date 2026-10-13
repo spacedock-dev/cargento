@@ -42,11 +42,6 @@ from typing import TYPE_CHECKING, Any, Final, NamedTuple, NotRequired, TypedDict
 
 from compass_runtime import io as runtime_io
 from compass_runtime import reading, records
-from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_shadows,
-    state_file_paths,  # legacy-cargento: remove at 1.0.0
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping, Sequence
@@ -511,11 +506,7 @@ def store_path(config: RuntimeConfig) -> str:
     restart and a different --port. Same placement and same reason as
     `dismissals.store_path`.
     """
-    path = os.path.join(config.state_home, "compass-annotations.json")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, "compass-annotations.json")
 
 
 # How long a write waits for another dashboard's write before answering
@@ -1322,7 +1313,6 @@ def _write(
             handle.flush()
             os.fsync(handle.fileno())
         _replace_over(tmp, target)
-        remove_state_shadows(target, empty=not payload["entries"])
         # The directory sync may fail where the file sync did not (Windows
         # cannot open a directory; some filesystems refuse to fsync one), and
         # by then the bytes are durable and the rename has happened -- only the
@@ -2556,53 +2546,6 @@ def clear(
         return _commit(config, state, store, key, kept, diagnostic_sink=diagnostic_sink)
 
 
-def _sweep_other_spelling(config: RuntimeConfig) -> bool:
-    """Drop the discard records the other file name holds, keeping any entry with words.
-
-    True when it dropped one. Both names can exist while an older build runs beside this one, and
-    the selected file was the only one `forget` swept: with nothing to sweep there, a discard
-    record in the other file was left, and it loaded again once the selected file was removed.
-    legacy-cargento: remove at 1.0.0
-    """
-    selected = store_path(config)
-    swept = False
-    for path in state_file_paths(os.path.join(config.state_home, "compass-annotations.json")):
-        if path == selected or not os.path.lexists(path) or os.path.islink(path):
-            continue
-        try:
-            with open(path, "rb") as handle:
-                data = json.loads(handle.read() or b"null")
-        except (OSError, ValueError, RecursionError):
-            continue
-        entries = data.get("entries") if isinstance(data, dict) else None
-        if not isinstance(entries, list):
-            continue
-        kept = [
-            entry
-            for entry in entries
-            if not (
-                isinstance(entry, dict) and entry.get("discarded") and not entry.get("revisions")
-            )
-        ]
-        if len(kept) == len(entries):
-            continue
-        try:
-            if kept:
-                tmp = f"{path}.{os.getpid()}.tmp"
-                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump({**data, "entries": kept}, handle)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                _replace_over(tmp, path)
-            else:
-                os.unlink(path)
-        except OSError:
-            continue
-        swept = True
-    return swept
-
-
 def forget(config: RuntimeConfig) -> str:
     """Drop every discard record, keeping every entry that still holds words.
 
@@ -2632,8 +2575,6 @@ def forget(config: RuntimeConfig) -> str:
         # on a machine that never saved anything. A save racing this adds
         # words, and this writes nothing, so nothing is lost.
         return FORGET_NOTHING
-    # legacy-cargento: remove at 1.0.0
-    other_swept = _sweep_other_spelling(config)
     silent: Callable[[str], None] = lambda _line: None  # noqa: E731
     # Under the dashboards' lock with no state of its own: `--forget` refuses a
     # running dashboard on its port, and a second dashboard on another port
@@ -2646,7 +2587,7 @@ def forget(config: RuntimeConfig) -> str:
         entries = store.entries
         kept = tuple(entry for entry in entries if not is_discarded(entry))
         if len(kept) == len(entries):
-            return FORGET_SWEPT if other_swept else FORGET_NOTHING
+            return FORGET_NOTHING
         if not store.writable:
             return FORGET_UNWRITABLE
         if _write(config, kept, diagnostic_sink=silent, raw=store.kept_raw):

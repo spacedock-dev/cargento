@@ -46,7 +46,7 @@ import time
 import uuid
 from typing import IO, TYPE_CHECKING, Any
 
-import legacy_paths
+import store_paths
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -84,7 +84,7 @@ def canonical_path(*parts: str) -> str | None:
 
 def canonical_store_path(*parts: str) -> str | None:
     home = canonical_home()
-    return None if home is None else os.path.join(legacy_paths.default_home(home), *parts)
+    return None if home is None else os.path.join(store_paths.default_home(home), *parts)
 
 
 def home_moved() -> bool:

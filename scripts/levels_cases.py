@@ -49,7 +49,7 @@ import tempfile
 import time
 from typing import TYPE_CHECKING, Any
 
-import legacy_paths
+import store_paths
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -71,7 +71,7 @@ def _runtime() -> tuple[Any, Any, Any]:
     return config, project_context, levels
 
 
-HOME = legacy_paths.store_home()
+HOME = store_paths.store_home()
 SUBDIR = "drift-levels"
 DIGEST_PATH = os.path.join(_ROOT, "docs", "drift-levels", "marks-digest.json")
 RESULTS_PATH = os.path.join(_ROOT, "docs", "drift-levels", "results.json")

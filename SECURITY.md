@@ -1,7 +1,5 @@
 # Security policy
 
-The temporary Cargento name fallback carries no extra privilege: legacy values and files pass the same validation, permission checks and spend caps as Compass names. When the new filename is absent, legacy state files and the permission database are read and written in place. Older and newer builds share that consent and reservation authority, so revoking permission in either takes effect in both. Forgetting observed records removes the legacy copy too; turning off readings keeps the spend timestamps. When both filenames exist, the Compass file wins. When `~/.cargento` is the only default home, it is used in place until the owner moves it to `~/.compass`; fixed account ledgers ignore store overrides and keep counting in that same file. All these fallbacks are removed at 1.0.0.
-
 ## Scope
 
 Compass ships three kinds of component that touch the network. The dashboard server

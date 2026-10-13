@@ -25,9 +25,7 @@ import threading
 from typing import TYPE_CHECKING, Any, NamedTuple, TypedDict
 
 from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_files,
-    remove_state_shadows,
+    remove_state_file,
 )
 
 from . import io as runtime_io
@@ -128,11 +126,7 @@ def digest(text: str) -> str:
 
 def store_path(config: RuntimeConfig) -> str:
     """Beside the annotation store, and not per port, for `annotations.store_path`'s reason."""
-    path = os.path.join(config.state_home, "compass-copied-corrections.json")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, "compass-copied-corrections.json")
 
 
 def _lock_path(config: RuntimeConfig) -> str:
@@ -366,8 +360,6 @@ def _write(
     try:
         target = store_path(config)
         runtime_io.atomic_write_owner_only(target, json.dumps(payload))
-        if not payload["entries"]:
-            remove_state_shadows(target)
     except (OSError, ValueError):
         runtime_io.diag(
             f"Compass: could not write the copied-correction store {store_path(config)}",
@@ -380,7 +372,7 @@ def _write(
 def forget(config: RuntimeConfig) -> bool:
     """Delete the store, reporting whether there was one. Independent of the flag, for
     `history.forget`'s reason."""
-    return remove_state_files(store_path(config))
+    return remove_state_file(store_path(config))
 
 
 def _scan(

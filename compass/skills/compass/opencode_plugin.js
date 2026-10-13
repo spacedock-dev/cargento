@@ -1,8 +1,6 @@
 // Passive, per-project OpenCode permission reporting. The host owns every answer.
 // Current capture proves parent IDs only; forwarding never promotes child rows.
 import {constants} from "node:fs";
-// legacy-cargento: remove at 1.0.0
-import {lstatSync, statSync} from "node:fs";
 import {open} from "node:fs/promises";
 import {homedir} from "node:os";
 import {join} from "node:path";
@@ -14,32 +12,18 @@ const TIMEOUT_MS = 250;
 const validSession = value => typeof value === "string" && /^ses_[A-Za-z0-9]{26}$/.test(value);
 const validRequest = value => typeof value === "string" && value.length > 0 && value.length <= 256;
 
-// legacy-cargento: remove at 1.0.0
-const present = path => lstatSync(path, {throwIfNoEntry: false}) !== undefined;
-
 function default_home() {
-  const current = join(homedir(), ".compass");
-  // legacy-cargento: remove at 1.0.0
-  if (!present(current) && statSync(join(homedir(), ".cargento"), {throwIfNoEntry: false})?.isDirectory()) {
-    return join(homedir(), ".cargento");
-  }
-  return current;
+  return join(homedir(), ".compass");
 }
 
 function state_home() {
-  let override = process.env.COMPASS_HOME;
-  // legacy-cargento: remove at 1.0.0
-  if (override === undefined) override = process.env.CARGENTO_HOME;
+  const override = process.env.COMPASS_HOME;
   return override?.trim() ? override : default_home();
 }
 
 async function capability(port) {
   const home = state_home();
-  let stateFile = join(home, `compass-${port}.json`);
-  // legacy-cargento: remove at 1.0.0
-  if (!present(stateFile) && present(join(home, `cargento-${port}.json`))) {
-    stateFile = join(home, `cargento-${port}.json`);
-  }
+  const stateFile = join(home, `compass-${port}.json`);
   let file;
   try {
     // A FIFO at this local path must not leave a read queued forever in the host.
@@ -93,8 +77,6 @@ async function forward(port, event) {
 
 export const CompassPlugin = async () => {
   let configured = process.env.COMPASS_PORT;
-  // legacy-cargento: remove at 1.0.0
-  if (configured === undefined) configured = process.env.CARGENTO_PORT;
   configured ??= "4553";
   const port = /^\d{1,5}$/.test(configured) ? Number(configured) : 0;
   const sessions = new Map();

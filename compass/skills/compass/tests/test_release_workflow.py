@@ -8,10 +8,8 @@ or a package script shares a job with the key.
 
 from __future__ import annotations
 
-import json
 import os
 import re
-import shutil
 import stat
 import subprocess
 import sys
@@ -34,76 +32,6 @@ NODE_COMMAND = re.compile(
 
 def load(path: Path) -> dict[str, Any]:
     return cast("dict[str, Any]", yaml.safe_load(path.read_text(encoding="utf-8")))
-
-
-class RenameVersionGuardTest(unittest.TestCase):
-    def test_a_release_owner_cannot_lose_the_version_guard_when_a_manifest_is_renamed(self) -> None:
-        workflow = load(ROOT / ".github/workflows/version-guard.yml")
-        script = workflow["jobs"]["version-guard"]["steps"][-1]["run"]
-        for new, old in (
-            ("compass/.claude-plugin/plugin.json", "cargento/.claude-plugin/plugin.json"),
-            ("compass/.codex-plugin/plugin.json", "cargento/.codex-plugin/plugin.json"),
-            ("compass-gemini/gemini-extension.json", "cargento-gemini/gemini-extension.json"),
-        ):
-            self.assertIn(f'check_field "{new}"', script)
-            self.assertIn(f'"{old}"', script)
-        self.assertIn('local file="$1" jqpath="$2" label="$3" legacy_base="$4"', script)
-        self.assertIn('base_file="$legacy_base"', script)
-        self.assertIn('git show "$MERGE_BASE:$base_file"', script)
-
-    @unittest.skipUnless(shutil.which("git") and shutil.which("jq"), "git and jq required")
-    def test_a_release_owner_sees_a_renamed_manifest_bump_refused_by_the_real_shell_logic(
-        self,
-    ) -> None:
-        workflow = load(ROOT / ".github/workflows/version-guard.yml")
-        script = workflow["jobs"]["version-guard"]["steps"][-1]["run"]
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-
-            def git(*args: str) -> str:
-                return subprocess.run(
-                    [shutil.which("git") or "git", *args],
-                    cwd=root,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                ).stdout.strip()
-
-            git("init", "-b", "main")
-            git("config", "user.name", "Fixture")
-            git("config", "user.email", "fixture@example.test")
-            old = root / "cargento/.claude-plugin/plugin.json"
-            old.parent.mkdir(parents=True)
-            old.write_text(json.dumps({"version": "0.9.0"}))
-            git("add", ".")
-            git("commit", "-m", "base")
-            git("update-ref", "refs/remotes/origin/main", "HEAD")
-            new = root / "compass/.claude-plugin/plugin.json"
-            new.parent.mkdir(parents=True)
-            old.rename(new)
-            git("add", "-A")
-            git("commit", "-m", "rename")
-            env = {**os.environ, "GITHUB_BASE_REF": "main", "HEAD_SHA": git("rev-parse", "HEAD")}
-            unchanged = subprocess.run(
-                [shutil.which("bash") or "bash", "-c", script],
-                cwd=root,
-                env=env,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(0, unchanged.returncode, unchanged.stderr)
-            new.write_text(json.dumps({"version": "0.9.1"}))
-            bumped = subprocess.run(
-                [shutil.which("bash") or "bash", "-c", script],
-                cwd=root,
-                env=env,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(1, bumped.returncode)
-            self.assertIn("changed (0.9.0 -> 0.9.1)", bumped.stdout)
 
 
 def jobs() -> dict[str, Any]:

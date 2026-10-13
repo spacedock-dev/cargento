@@ -2,8 +2,6 @@
 // A close reports neither approval nor an answer. No native content is forwarded.
 import {randomUUID} from "node:crypto";
 import {constants} from "node:fs";
-// legacy-cargento: remove at 1.0.0
-import {lstatSync, statSync} from "node:fs";
 import {open} from "node:fs/promises";
 import {request} from "node:http";
 import {homedir} from "node:os";
@@ -19,32 +17,18 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEADLINE_MS = 500;
 const MAX_PENDING = 32;
 
-// legacy-cargento: remove at 1.0.0
-const present = path => lstatSync(path, {throwIfNoEntry: false}) !== undefined;
-
 function default_home() {
-  const current = join(homedir(), ".compass");
-  // legacy-cargento: remove at 1.0.0
-  if (!present(current) && statSync(join(homedir(), ".cargento"), {throwIfNoEntry: false})?.isDirectory()) {
-    return join(homedir(), ".cargento");
-  }
-  return current;
+  return join(homedir(), ".compass");
 }
 
 function state_home() {
-  let override = process.env.COMPASS_HOME;
-  // legacy-cargento: remove at 1.0.0
-  if (override === undefined) override = process.env.CARGENTO_HOME;
+  const override = process.env.COMPASS_HOME;
   return override?.trim() ? override : default_home();
 }
 
 async function capability(port) {
   const root = state_home();
-  let stateFile = join(root, `compass-${port}.json`);
-  // legacy-cargento: remove at 1.0.0
-  if (!present(stateFile) && present(join(root, `cargento-${port}.json`))) {
-    stateFile = join(root, `cargento-${port}.json`);
-  }
+  const stateFile = join(root, `compass-${port}.json`);
   let file;
   try {
     // Nonblocking open plus a regular-file check rejects a FIFO masquerading as
@@ -90,8 +74,6 @@ function post(port, token, event) {
 
 export default function compass(pi) {
   let rawPort = process.env.COMPASS_PORT;
-  // legacy-cargento: remove at 1.0.0
-  if (rawPort === undefined) rawPort = process.env.CARGENTO_PORT;
   rawPort ??= "4553";
   if(!/^\d{1,5}$/.test(rawPort)) return;
   const port = Number(rawPort);

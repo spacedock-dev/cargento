@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import ntpath
 import os
@@ -35,70 +34,18 @@ STORE_ENV_VARS = (
 COMPASS_HOME_ENV = "COMPASS_HOME"
 
 
-def environment_value(environ: Mapping[str, str], name: str) -> str | None:
-    value = environ.get(name)
-    # legacy-cargento: remove at 1.0.0
-    if name not in environ:
-        value = environ.get(name.replace("COMPASS_", "CARGENTO_", 1))
-    return value
-
-
 def default_home(home: str, *, windows: bool = False) -> str:
     join = ntpath.join if windows else posixpath.join
-    current = join(home, ".compass")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(current) and os.path.isdir(join(home, ".cargento")):
-        return join(home, ".cargento")
-    return current
+    return join(home, ".compass")
 
 
-def legacy_read_path(path: str) -> str:
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        old = os.path.join(
-            os.path.dirname(path), os.path.basename(path).replace("compass", "cargento", 1)
-        )
-        if os.path.lexists(old):
-            return old
-    return path
-
-
-def state_file_paths(path: str) -> tuple[str, ...]:
-    paths: tuple[str, ...] = (path,)
-    # legacy-cargento: remove at 1.0.0
-    if "compass" in os.path.basename(path):
-        paths += (
-            os.path.join(
-                os.path.dirname(path), os.path.basename(path).replace("compass", "cargento", 1)
-            ),
-        )
-    return paths
-
-
-def remove_state_files(path: str) -> bool:
-    """Remove each spelling, refusing success if any retained copy cannot be removed."""
-    removed = False
-    failed = False
-    for candidate in state_file_paths(path):
-        try:
-            os.unlink(candidate)
-            removed = True
-        except FileNotFoundError:
-            pass
-        except OSError:
-            failed = True
-    return removed and not failed
-
-
-def remove_state_shadows(path: str, *, empty: bool = True) -> None:
-    """An emptied current store must not leave records under another spelling."""
-    paths = state_file_paths(path)[1:]
-    # legacy-cargento: remove at 1.0.0
-    if empty and os.path.basename(path).startswith("cargento-"):
-        paths += (path,)
-    for candidate in paths:
-        with contextlib.suppress(FileNotFoundError):
-            os.unlink(candidate)
+def remove_state_file(path: str) -> bool:
+    """Remove one state file, True only when it was there and is gone."""
+    try:
+        os.unlink(path)
+    except OSError:
+        return False
+    return True
 
 
 CLAUDE_READING_DEFAULT_MODEL: Final = "claude-sonnet-5-5"
@@ -753,7 +700,7 @@ def build_runtime_config(
     resolved = {key: tuple(candidates) for key, candidates in roots.items()}
     for key, selected in (store_root_overrides or {}).items():
         resolved[key] = (selected,)
-    state_override = environment_value(environ, COMPASS_HOME_ENV)
+    state_override = environ.get(COMPASS_HOME_ENV)
     state_home = (
         state_override
         if state_override and state_override.strip()

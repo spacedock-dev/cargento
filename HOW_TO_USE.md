@@ -22,9 +22,6 @@ This page owns none of the following, and links to it instead:
 
 ## Find the copy your commands will run
 
-If you already use Cargento, read [Upgrading from Cargento](MANUAL.md#upgrading-from-cargento)
-before updating installed hook, MCP or status-line paths.
-
 Every command below starts with a path to `server.py`, and there are usually two on the machine: the
 one your harness installed and the one in a checkout. They are different builds and they answer
 differently.

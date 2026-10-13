@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-13",
-  "candidate_base_commit": "935b9f50835480fa3dc23f97ce7af23a2a79eb17",
+  "candidate_base_commit": "fd79298737c54e56f0b291b5ecc9d9d3009e7875",
   "purpose": "The assembled production React page measured the way the pre-React baseline was measured, against the budgets that receipt fixes.",
   "cohort_sizing": "Controlled synthetic 5/50/250 cohorts. The median label is the middle scenario, not a measured real-user median.",
   "methodology": {
@@ -31,10 +31,10 @@
       "cores": 10,
       "chrome": {
         "protocolVersion": "1.3",
-        "product": "Chrome/156.0.8078.12",
-        "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-        "jsVersion": "15.6.75.8"
+        "product": "Chrome/153.0.8010.12",
+        "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+        "jsVersion": "15.3.76.4"
       }
     },
     "baseline": {
@@ -53,22 +53,22 @@
     },
     "load_average_at_start": [
       [
-        4.0009765625,
-        6.140625,
-        4.6044921875
+        4.39501953125,
+        3.8154296875,
+        3.58935546875
       ],
       [
-        3.68017578125,
-        6.03857421875,
-        4.5771484375
+        5.44775390625,
+        4.0869140625,
+        3.6904296875
       ],
       [
-        3.58154296875,
-        5.93798828125,
-        4.55859375
+        5.09130859375,
+        4.03564453125,
+        3.67431640625
       ]
     ],
-    "comparability": "Same platform and architecture. Chrome moved from Chrome/156.0.8078.4 to Chrome/156.0.8078.12 (same major) and Node from v26.8.2 to v26.11.1; the baseline's own receipt says its timings are not compared across machines or browsers. The control block is historical and cannot be re-measured after retirement."
+    "comparability": "Same platform and architecture. Chrome moved from Chrome/156.0.8078.4 to Chrome/153.0.8010.12 (same major) and Node from v26.8.2 to v26.11.1; the baseline's own receipt says its timings are not compared across machines or browsers. The control block is historical and cannot be re-measured after retirement."
   },
   "source_bindings": {
     "driver": {
@@ -96,10 +96,10 @@
     "bytes": 81097
   },
   "page": {
-    "sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-    "bytes": 1722351,
+    "sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+    "bytes": 1721839,
     "legacy_page_bytes": 1453021,
-    "change_vs_legacy_pct": 18.54,
+    "change_vs_legacy_pct": 18.5,
     "max_bytes": 2000000,
     "optional_terminal_bytes": {
       "javascript": 488663,
@@ -133,25 +133,25 @@
         "poll_median_ms": 46.5
       },
       "new_document_samples": [
-        140.40000000596046,
-        145.09999999403954,
-        142.59999999403954
+        13218.300000011921,
+        150.09999999403954,
+        164.89999997615814
       ],
-      "new_document_median_ms": 142.59999999403954,
-      "new_document_worst_ms": 145.09999999403954,
+      "new_document_median_ms": 164.89999997615814,
+      "new_document_worst_ms": 13218.300000011921,
       "poll_samples_ms": [
-        45.20000001788139,
-        43.79999998211861,
-        43.29999998211861,
-        44.70000001788139,
+        47.900000005960464,
+        179.5,
         43.400000005960464,
-        42.20000001788139,
-        44.599999994039536,
-        44.5,
-        42.89999997615814
+        43.10000002384186,
+        46.099999994039536,
+        44,
+        45.19999998807907,
+        42.70000001788139,
+        43.400000005960464
       ],
-      "poll_median_ms": 43.79999998211861,
-      "poll_worst_ms": 45.20000001788139,
+      "poll_median_ms": 44,
+      "poll_worst_ms": 179.5,
       "comparison_budget_ms": {
         "new_document": 199.10000014305115,
         "poll_to_render": 119.75
@@ -161,11 +161,11 @@
         2,
         2,
         2,
-        1,
         2,
         2,
         2,
-        1
+        2,
+        2
       ],
       "removed_nodes_per_update": [
         0,
@@ -207,25 +207,25 @@
         "poll_median_ms": 47.60000014305115
       },
       "new_document_samples": [
-        94.09999999403954,
-        93.69999998807907,
-        92.69999998807907
+        75.5,
+        80,
+        79
       ],
-      "new_document_median_ms": 93.69999998807907,
-      "new_document_worst_ms": 94.09999999403954,
+      "new_document_median_ms": 79,
+      "new_document_worst_ms": 80,
       "poll_samples_ms": [
-        45.599999994039536,
-        44.39999997615814,
-        42.80000001192093,
-        45.69999998807907,
-        43.400000005960464,
-        58.70000001788139,
-        47.5,
-        44.80000001192093,
-        41.29999998211861
+        45.400000005960464,
+        59,
+        45,
+        45.900000005960464,
+        45.099999994039536,
+        44.69999998807907,
+        46.400000005960464,
+        43.30000001192093,
+        42.400000005960464
       ],
-      "poll_median_ms": 44.80000001192093,
-      "poll_worst_ms": 58.70000001788139,
+      "poll_median_ms": 45.099999994039536,
+      "poll_worst_ms": 59,
       "comparison_budget_ms": {
         "new_document": 159.5,
         "poll_to_render": 121.40000021457672
@@ -281,25 +281,25 @@
         "poll_median_ms": 64.29999995231628
       },
       "new_document_samples": [
-        126.30000001192093,
-        124.5,
-        125.59999999403954
+        110.40000000596046,
+        112.60000002384186,
+        110.5
       ],
-      "new_document_median_ms": 125.59999999403954,
-      "new_document_worst_ms": 126.30000001192093,
+      "new_document_median_ms": 110.5,
+      "new_document_worst_ms": 112.60000002384186,
       "poll_samples_ms": [
-        61.70000001788139,
-        59.29999998211861,
+        59.5,
+        59.599999994039536,
         58.599999994039536,
-        63.099999994039536,
-        60,
-        63,
+        61.60000002384186,
+        59,
+        58.5,
         61.30000001192093,
-        58.400000005960464,
-        61.400000005960464
+        61.099999994039536,
+        60.5
       ],
-      "poll_median_ms": 61.30000001192093,
-      "poll_worst_ms": 63.099999994039536,
+      "poll_median_ms": 59.599999994039536,
+      "poll_worst_ms": 61.60000002384186,
       "comparison_budget_ms": {
         "new_document": 192.80000007152557,
         "poll_to_render": 146.44999992847443
@@ -352,20 +352,20 @@
     {
       "budget": "first_render_median",
       "cohort": "small",
-      "measured": 142.59999999403954,
+      "measured": 164.89999997615814,
       "limit": 199.10000014305115,
       "pass": true,
       "statistic": "median of 3 new-document loads",
-      "samples_over": 0
+      "samples_over": 1
     },
     {
       "budget": "poll_to_paint_median",
       "cohort": "small",
-      "measured": 43.79999998211861,
+      "measured": 44,
       "limit": 119.75,
       "pass": true,
       "statistic": "median of 9 background polls",
-      "samples_over": 0
+      "samples_over": 1
     },
     {
       "budget": "long_tasks_derived",
@@ -378,7 +378,7 @@
     {
       "budget": "first_render_median",
       "cohort": "median",
-      "measured": 93.69999998807907,
+      "measured": 79,
       "limit": 159.5,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -387,7 +387,7 @@
     {
       "budget": "poll_to_paint_median",
       "cohort": "median",
-      "measured": 44.80000001192093,
+      "measured": 45.099999994039536,
       "limit": 121.40000021457672,
       "pass": true,
       "statistic": "median of 9 background polls",
@@ -404,7 +404,7 @@
     {
       "budget": "first_render_median",
       "cohort": "large",
-      "measured": 125.59999999403954,
+      "measured": 110.5,
       "limit": 192.80000007152557,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -413,7 +413,7 @@
     {
       "budget": "poll_to_paint_median",
       "cohort": "large",
-      "measured": 61.30000001192093,
+      "measured": 59.599999994039536,
       "limit": 146.44999992847443,
       "pass": true,
       "statistic": "median of 9 background polls",
@@ -636,7 +636,7 @@
     {
       "budget": "core_html_bytes",
       "cohort": null,
-      "measured": 1722351,
+      "measured": 1721839,
       "limit": 2000000,
       "pass": true
     }
@@ -889,12 +889,12 @@
           "jsEventListeners": {
             "status": "measured",
             "values": [
-              2775,
-              3115,
-              3441,
-              3767,
-              4093,
-              4419
+              3783,
+              4123,
+              4449,
+              4775,
+              5101,
+              5427
             ],
             "growth_per_round": [
               340,
@@ -979,19 +979,19 @@
           "nodes": {
             "status": "measured",
             "values": [
-              9790,
-              10297,
-              10804,
-              11311,
-              11818,
-              12325
+              9791,
+              10299,
+              10807,
+              11315,
+              11823,
+              12331
             ],
             "growth_per_round": [
-              507,
-              507,
-              507,
-              507,
-              507
+              508,
+              508,
+              508,
+              508,
+              508
             ]
           },
           "documents": {
@@ -1017,12 +1017,12 @@
           "jsEventListeners": {
             "status": "measured",
             "values": [
-              2775,
-              3115,
-              3441,
-              3767,
-              4093,
-              4419
+              3783,
+              4123,
+              4449,
+              4775,
+              5101,
+              5427
             ],
             "growth_per_round": [
               340,
@@ -1107,19 +1107,19 @@
           "nodes": {
             "status": "measured",
             "values": [
-              9790,
-              10297,
-              10804,
-              11311,
-              11818,
-              12325
+              9791,
+              10299,
+              10807,
+              11315,
+              11823,
+              12331
             ],
             "growth_per_round": [
-              507,
-              507,
-              507,
-              507,
-              507
+              508,
+              508,
+              508,
+              508,
+              508
             ]
           },
           "documents": {
@@ -1145,12 +1145,12 @@
           "jsEventListeners": {
             "status": "measured",
             "values": [
-              2760,
-              3100,
-              3426,
-              3752,
-              4078,
-              4404
+              3783,
+              4123,
+              4449,
+              4775,
+              5101,
+              5427
             ],
             "growth_per_round": [
               340,
@@ -1235,19 +1235,19 @@
           "nodes": {
             "status": "measured",
             "values": [
-              9789,
-              10296,
-              10803,
-              11310,
-              11817,
-              12324
+              9791,
+              10299,
+              10807,
+              11315,
+              11823,
+              12331
             ],
             "growth_per_round": [
-              507,
-              507,
-              507,
-              507,
-              507
+              508,
+              508,
+              508,
+              508,
+              508
             ]
           },
           "documents": {
@@ -1457,16 +1457,16 @@
         "arch": "arm64",
         "cores": 10,
         "loadAverageAtStart": [
-          4.0009765625,
-          6.140625,
-          4.6044921875
+          4.39501953125,
+          3.8154296875,
+          3.58935546875
         ],
         "chrome": {
           "protocolVersion": "1.3",
-          "product": "Chrome/156.0.8078.12",
-          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "jsVersion": "15.6.75.8"
+          "product": "Chrome/153.0.8010.12",
+          "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+          "jsVersion": "15.3.76.4"
         }
       },
       "options": {
@@ -1498,59 +1498,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 2",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 140.40000000596046,
+          "firstRenderMs": 13218.300000011921,
           "firstGetToPaint": {
             "sequence": 2,
-            "startedMs": 98.09999999403954,
-            "responseMs": 123,
+            "startedMs": 13155.09999999404,
+            "responseMs": 13188.59999999404,
             "payloadBytes": 29634,
             "sessionCount": 5,
             "status": 200,
-            "paintedMs": 140.40000000596046,
-            "getToPaintMs": 42.30000001192093
+            "paintedMs": 13218.300000011921,
+            "getToPaintMs": 63.20000001788139
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 3,
-              "startedMs": 144.5,
-              "responseMs": 149.2000000178814,
+              "startedMs": 13222.09999999404,
+              "responseMs": 13226.800000011921,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 189.7000000178814,
-              "getToPaintMs": 45.20000001788139,
+              "paintedMs": 13270,
+              "getToPaintMs": 47.900000005960464,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 4,
-              "startedMs": 228.30000001192093,
-              "responseMs": 233.2000000178814,
+              "startedMs": 13303.300000011921,
+              "responseMs": 13308,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 272.09999999403954,
-              "getToPaintMs": 43.79999998211861,
+              "paintedMs": 13482.800000011921,
+              "getToPaintMs": 179.5,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 5,
-              "startedMs": 312.7000000178814,
-              "responseMs": 318.40000000596046,
+              "startedMs": 13523.40000000596,
+              "responseMs": 13529.09999999404,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 356,
-              "getToPaintMs": 43.29999998211861,
+              "paintedMs": 13566.800000011921,
+              "getToPaintMs": 43.400000005960464,
               "removedNodes": 0,
               "fetchesForSequence": 2
             }
@@ -1561,8 +1561,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 6,
-                "startedMs": 399.2000000178814,
-                "responseMs": 403.7000000178814,
+                "startedMs": 13609.300000011921,
+                "responseMs": 13613.90000000596,
                 "payloadBytes": 4213,
                 "sessionCount": 0,
                 "status": 200
@@ -1578,8 +1578,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 7,
-                "startedMs": 443.5,
-                "responseMs": 447.80000001192093,
+                "startedMs": 13653.800000011921,
+                "responseMs": 13658.699999988079,
                 "payloadBytes": 4253,
                 "sessionCount": 0,
                 "status": 200
@@ -1630,59 +1630,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 8",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 94.09999999403954,
+          "firstRenderMs": 75.5,
           "firstGetToPaint": {
             "sequence": 8,
-            "startedMs": 44.5,
-            "responseMs": 63.20000001788139,
+            "startedMs": 34.5,
+            "responseMs": 52.400000005960464,
             "payloadBytes": 238513,
             "sessionCount": 50,
             "status": 200,
-            "paintedMs": 94.09999999403954,
-            "getToPaintMs": 49.599999994039536
+            "paintedMs": 75.5,
+            "getToPaintMs": 41
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 9,
-              "startedMs": 97.7000000178814,
-              "responseMs": 108.5,
+              "startedMs": 80.09999999403954,
+              "responseMs": 92.80000001192093,
               "payloadBytes": 238513,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 143.30000001192093,
-              "getToPaintMs": 45.599999994039536,
+              "paintedMs": 125.5,
+              "getToPaintMs": 45.400000005960464,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 10,
-              "startedMs": 182.7000000178814,
-              "responseMs": 194.7000000178814,
+              "startedMs": 167.5,
+              "responseMs": 180.30000001192093,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 227.09999999403954,
-              "getToPaintMs": 44.39999997615814,
+              "paintedMs": 226.5,
+              "getToPaintMs": 59,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 11,
-              "startedMs": 267.5,
-              "responseMs": 280.59999999403954,
+              "startedMs": 264.5,
+              "responseMs": 277.30000001192093,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 310.30000001192093,
-              "getToPaintMs": 42.80000001192093,
+              "paintedMs": 309.5,
+              "getToPaintMs": 45,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -1693,8 +1693,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 12,
-                "startedMs": 350.59999999403954,
-                "responseMs": 358.2000000178814,
+                "startedMs": 351.30000001192093,
+                "responseMs": 359,
                 "payloadBytes": 4216,
                 "sessionCount": 0,
                 "status": 200
@@ -1710,8 +1710,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 13,
-                "startedMs": 397.80000001192093,
-                "responseMs": 405.2000000178814,
+                "startedMs": 397.30000001192093,
+                "responseMs": 403.40000000596046,
                 "payloadBytes": 4256,
                 "sessionCount": 0,
                 "status": 200
@@ -1725,7 +1725,7 @@
           ],
           "footprint": {
             "documents": 6,
-            "nodes": 2241,
+            "nodes": 2242,
             "jsEventListeners": 1670,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
@@ -1762,58 +1762,58 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 14",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 126.30000001192093,
+          "firstRenderMs": 110.40000000596046,
           "firstGetToPaint": {
             "sequence": 14,
-            "startedMs": 47.400000005960464,
-            "responseMs": 90.40000000596046,
+            "startedMs": 34,
+            "responseMs": 76.90000000596046,
             "payloadBytes": 1166963,
             "sessionCount": 250,
             "status": 200,
-            "paintedMs": 126.30000001192093,
-            "getToPaintMs": 78.90000000596046
+            "paintedMs": 110.40000000596046,
+            "getToPaintMs": 76.40000000596046
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 15,
-              "startedMs": 130.5,
-              "responseMs": 166.5,
+              "startedMs": 118.09999999403954,
+              "responseMs": 152.40000000596046,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 192.2000000178814,
-              "getToPaintMs": 61.70000001788139,
+              "paintedMs": 177.59999999403954,
+              "getToPaintMs": 59.5,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 16,
-              "startedMs": 233.30000001192093,
-              "responseMs": 269.80000001192093,
+              "startedMs": 217.90000000596046,
+              "responseMs": 254.09999999403954,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 292.59999999403954,
-              "getToPaintMs": 59.29999998211861,
+              "paintedMs": 277.5,
+              "getToPaintMs": 59.599999994039536,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 17,
-              "startedMs": 334,
-              "responseMs": 366.7000000178814,
+              "startedMs": 318.7000000178814,
+              "responseMs": 355.09999999403954,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 392.59999999403954,
+              "paintedMs": 377.30000001192093,
               "getToPaintMs": 58.599999994039536,
               "removedNodes": 0,
               "fetchesForSequence": 1
@@ -1825,8 +1825,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 18,
-                "startedMs": 434.7000000178814,
-                "responseMs": 444,
+                "startedMs": 419.7000000178814,
+                "responseMs": 430.90000000596046,
                 "payloadBytes": 4215,
                 "sessionCount": 0,
                 "status": 200
@@ -1842,8 +1842,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 19,
-                "startedMs": 480.30000001192093,
-                "responseMs": 485.5,
+                "startedMs": 465.30000001192093,
+                "responseMs": 470.40000000596046,
                 "payloadBytes": 4255,
                 "sessionCount": 0,
                 "status": 200
@@ -1858,7 +1858,7 @@
           "footprint": {
             "documents": 3,
             "nodes": 9175,
-            "jsEventListeners": 1591,
+            "jsEventListeners": 2599,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
             "activeMainWindowIntervals": 2,
@@ -1950,8 +1950,8 @@
         {
           "step": 0,
           "documents": 3,
-          "nodes": 9790,
-          "jsEventListeners": 2775,
+          "nodes": 9791,
+          "jsEventListeners": 3783,
           "removedNodeObservations": 5406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -1975,8 +1975,8 @@
         {
           "step": 1,
           "documents": 3,
-          "nodes": 10297,
-          "jsEventListeners": 3115,
+          "nodes": 10299,
+          "jsEventListeners": 4123,
           "removedNodeObservations": 5784,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2000,8 +2000,8 @@
         {
           "step": 2,
           "documents": 3,
-          "nodes": 10804,
-          "jsEventListeners": 3441,
+          "nodes": 10807,
+          "jsEventListeners": 4449,
           "removedNodeObservations": 6095,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2025,8 +2025,8 @@
         {
           "step": 3,
           "documents": 3,
-          "nodes": 11311,
-          "jsEventListeners": 3767,
+          "nodes": 11315,
+          "jsEventListeners": 4775,
           "removedNodeObservations": 6406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2050,8 +2050,8 @@
         {
           "step": 4,
           "documents": 3,
-          "nodes": 11818,
-          "jsEventListeners": 4093,
+          "nodes": 11823,
+          "jsEventListeners": 5101,
           "removedNodeObservations": 6717,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2075,8 +2075,8 @@
         {
           "step": 5,
           "documents": 3,
-          "nodes": 12325,
-          "jsEventListeners": 4419,
+          "nodes": 12331,
+          "jsEventListeners": 5427,
           "removedNodeObservations": 7028,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2276,10 +2276,10 @@
           "project": "baseline-project"
         },
         "marker": "Baseline 1",
-        "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-        "page_bytes": 1722351,
-        "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-        "assembled_page_bytes": 1722351
+        "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+        "page_bytes": 1721839,
+        "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+        "assembled_page_bytes": 1721839
       }
     },
     {
@@ -2291,16 +2291,16 @@
         "arch": "arm64",
         "cores": 10,
         "loadAverageAtStart": [
-          3.68017578125,
-          6.03857421875,
-          4.5771484375
+          5.44775390625,
+          4.0869140625,
+          3.6904296875
         ],
         "chrome": {
           "protocolVersion": "1.3",
-          "product": "Chrome/156.0.8078.12",
-          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "jsVersion": "15.6.75.8"
+          "product": "Chrome/153.0.8010.12",
+          "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+          "jsVersion": "15.3.76.4"
         }
       },
       "options": {
@@ -2332,33 +2332,33 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 2",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 145.09999999403954,
+          "firstRenderMs": 150.09999999403954,
           "firstGetToPaint": {
             "sequence": 2,
-            "startedMs": 99.90000000596046,
-            "responseMs": 124.19999998807907,
+            "startedMs": 106,
+            "responseMs": 131.40000000596046,
             "payloadBytes": 29634,
             "sessionCount": 5,
             "status": 200,
-            "paintedMs": 145.09999999403954,
-            "getToPaintMs": 45.19999998807907
+            "paintedMs": 150.09999999403954,
+            "getToPaintMs": 44.099999994039536
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 3,
-              "startedMs": 149.19999998807907,
-              "responseMs": 154,
+              "startedMs": 153.7999999821186,
+              "responseMs": 158.09999999403954,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 193.90000000596046,
-              "getToPaintMs": 44.70000001788139,
+              "paintedMs": 196.90000000596046,
+              "getToPaintMs": 43.10000002384186,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
@@ -2366,25 +2366,25 @@
               "trigger": "fallbackPollCallback",
               "sequence": 4,
               "startedMs": 234.69999998807907,
-              "responseMs": 243.2999999821186,
+              "responseMs": 239.90000000596046,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 278.09999999403954,
-              "getToPaintMs": 43.400000005960464,
+              "paintedMs": 280.7999999821186,
+              "getToPaintMs": 46.099999994039536,
               "removedNodes": 0,
-              "fetchesForSequence": 1
+              "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 5,
-              "startedMs": 319.19999998807907,
-              "responseMs": 324.59999999403954,
+              "startedMs": 318.40000000596046,
+              "responseMs": 323.5,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 361.40000000596046,
-              "getToPaintMs": 42.20000001788139,
+              "paintedMs": 362.40000000596046,
+              "getToPaintMs": 44,
               "removedNodes": 0,
               "fetchesForSequence": 2
             }
@@ -2395,8 +2395,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 6,
-                "startedMs": 400.09999999403954,
-                "responseMs": 404.2999999821186,
+                "startedMs": 403.2999999821186,
+                "responseMs": 407.09999999403954,
                 "payloadBytes": 4213,
                 "sessionCount": 0,
                 "status": 200
@@ -2412,8 +2412,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 7,
-                "startedMs": 450.69999998807907,
-                "responseMs": 454.5,
+                "startedMs": 450.2999999821186,
+                "responseMs": 453.69999998807907,
                 "payloadBytes": 4253,
                 "sessionCount": 0,
                 "status": 200
@@ -2428,7 +2428,7 @@
           "footprint": {
             "documents": 4,
             "nodes": 333,
-            "jsEventListeners": 651,
+            "jsEventListeners": 653,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
             "activeMainWindowIntervals": 2,
@@ -2464,59 +2464,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 8",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 93.69999998807907,
+          "firstRenderMs": 80,
           "firstGetToPaint": {
             "sequence": 8,
-            "startedMs": 44.39999997615814,
-            "responseMs": 61.29999998211861,
+            "startedMs": 30.69999998807907,
+            "responseMs": 49,
             "payloadBytes": 238513,
             "sessionCount": 50,
             "status": 200,
-            "paintedMs": 93.69999998807907,
+            "paintedMs": 80,
             "getToPaintMs": 49.30000001192093
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 9,
-              "startedMs": 98.59999999403954,
-              "responseMs": 109.59999999403954,
+              "startedMs": 83.39999997615814,
+              "responseMs": 94.2999999821186,
               "payloadBytes": 238513,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 144.2999999821186,
-              "getToPaintMs": 45.69999998807907,
+              "paintedMs": 129.2999999821186,
+              "getToPaintMs": 45.900000005960464,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 10,
-              "startedMs": 183.09999999403954,
-              "responseMs": 195.89999997615814,
+              "startedMs": 167.2999999821186,
+              "responseMs": 177.7999999821186,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 226.5,
-              "getToPaintMs": 43.400000005960464,
+              "paintedMs": 212.39999997615814,
+              "getToPaintMs": 45.099999994039536,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 11,
-              "startedMs": 268.39999997615814,
-              "responseMs": 281.2999999821186,
+              "startedMs": 251.5,
+              "responseMs": 261.69999998807907,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 327.09999999403954,
-              "getToPaintMs": 58.70000001788139,
+              "paintedMs": 296.19999998807907,
+              "getToPaintMs": 44.69999998807907,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -2527,8 +2527,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 12,
-                "startedMs": 369.19999998807907,
-                "responseMs": 375.89999997615814,
+                "startedMs": 334.19999998807907,
+                "responseMs": 340.5,
                 "payloadBytes": 4216,
                 "sessionCount": 0,
                 "status": 200
@@ -2544,8 +2544,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 13,
-                "startedMs": 414.7999999821186,
-                "responseMs": 420.2999999821186,
+                "startedMs": 383,
+                "responseMs": 388.19999998807907,
                 "payloadBytes": 4256,
                 "sessionCount": 0,
                 "status": 200
@@ -2559,8 +2559,8 @@
           ],
           "footprint": {
             "documents": 6,
-            "nodes": 2241,
-            "jsEventListeners": 1668,
+            "nodes": 2242,
+            "jsEventListeners": 1670,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
             "activeMainWindowIntervals": 2,
@@ -2596,59 +2596,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 14",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 124.5,
+          "firstRenderMs": 112.60000002384186,
           "firstGetToPaint": {
             "sequence": 14,
-            "startedMs": 44.20000001788139,
-            "responseMs": 85.80000001192093,
+            "startedMs": 31.100000023841858,
+            "responseMs": 73.30000001192093,
             "payloadBytes": 1166963,
             "sessionCount": 250,
             "status": 200,
-            "paintedMs": 124.5,
-            "getToPaintMs": 80.2999999821186
+            "paintedMs": 112.60000002384186,
+            "getToPaintMs": 81.5
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 15,
-              "startedMs": 127.80000001192093,
-              "responseMs": 165.90000000596046,
+              "startedMs": 117,
+              "responseMs": 151.40000000596046,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 190.90000000596046,
-              "getToPaintMs": 63.099999994039536,
+              "paintedMs": 178.60000002384186,
+              "getToPaintMs": 61.60000002384186,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 16,
-              "startedMs": 230.60000002384186,
-              "responseMs": 267.2000000178814,
+              "startedMs": 218.7000000178814,
+              "responseMs": 254.30000001192093,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 290.60000002384186,
-              "getToPaintMs": 60,
+              "paintedMs": 277.7000000178814,
+              "getToPaintMs": 59,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 17,
-              "startedMs": 328.10000002384186,
-              "responseMs": 362.7000000178814,
+              "startedMs": 320,
+              "responseMs": 355.10000002384186,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 391.10000002384186,
-              "getToPaintMs": 63,
+              "paintedMs": 378.5,
+              "getToPaintMs": 58.5,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -2659,8 +2659,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 18,
-                "startedMs": 433.10000002384186,
-                "responseMs": 442.10000002384186,
+                "startedMs": 418.60000002384186,
+                "responseMs": 428.80000001192093,
                 "payloadBytes": 4215,
                 "sessionCount": 0,
                 "status": 200
@@ -2676,8 +2676,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 19,
-                "startedMs": 478.2000000178814,
-                "responseMs": 483.30000001192093,
+                "startedMs": 464.90000000596046,
+                "responseMs": 471.5,
                 "payloadBytes": 4255,
                 "sessionCount": 0,
                 "status": 200
@@ -2692,7 +2692,7 @@
           "footprint": {
             "documents": 3,
             "nodes": 9175,
-            "jsEventListeners": 1591,
+            "jsEventListeners": 2599,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
             "activeMainWindowIntervals": 2,
@@ -2784,8 +2784,8 @@
         {
           "step": 0,
           "documents": 3,
-          "nodes": 9790,
-          "jsEventListeners": 2775,
+          "nodes": 9791,
+          "jsEventListeners": 3783,
           "removedNodeObservations": 5406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2809,8 +2809,8 @@
         {
           "step": 1,
           "documents": 3,
-          "nodes": 10297,
-          "jsEventListeners": 3115,
+          "nodes": 10299,
+          "jsEventListeners": 4123,
           "removedNodeObservations": 5784,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2834,8 +2834,8 @@
         {
           "step": 2,
           "documents": 3,
-          "nodes": 10804,
-          "jsEventListeners": 3441,
+          "nodes": 10807,
+          "jsEventListeners": 4449,
           "removedNodeObservations": 6095,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2859,8 +2859,8 @@
         {
           "step": 3,
           "documents": 3,
-          "nodes": 11311,
-          "jsEventListeners": 3767,
+          "nodes": 11315,
+          "jsEventListeners": 4775,
           "removedNodeObservations": 6406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2884,8 +2884,8 @@
         {
           "step": 4,
           "documents": 3,
-          "nodes": 11818,
-          "jsEventListeners": 4093,
+          "nodes": 11823,
+          "jsEventListeners": 5101,
           "removedNodeObservations": 6717,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -2909,8 +2909,8 @@
         {
           "step": 5,
           "documents": 3,
-          "nodes": 12325,
-          "jsEventListeners": 4419,
+          "nodes": 12331,
+          "jsEventListeners": 5427,
           "removedNodeObservations": 7028,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
@@ -3110,10 +3110,10 @@
           "project": "baseline-project"
         },
         "marker": "Baseline 1",
-        "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-        "page_bytes": 1722351,
-        "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-        "assembled_page_bytes": 1722351
+        "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+        "page_bytes": 1721839,
+        "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+        "assembled_page_bytes": 1721839
       }
     },
     {
@@ -3125,16 +3125,16 @@
         "arch": "arm64",
         "cores": 10,
         "loadAverageAtStart": [
-          3.58154296875,
-          5.93798828125,
-          4.55859375
+          5.09130859375,
+          4.03564453125,
+          3.67431640625
         ],
         "chrome": {
           "protocolVersion": "1.3",
-          "product": "Chrome/156.0.8078.12",
-          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "jsVersion": "15.6.75.8"
+          "product": "Chrome/153.0.8010.12",
+          "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+          "jsVersion": "15.3.76.4"
         }
       },
       "options": {
@@ -3166,61 +3166,61 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 2",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 142.59999999403954,
+          "firstRenderMs": 164.89999997615814,
           "firstGetToPaint": {
             "sequence": 2,
-            "startedMs": 96.7999999821186,
-            "responseMs": 120.39999997615814,
+            "startedMs": 107.39999997615814,
+            "responseMs": 135.59999999403954,
             "payloadBytes": 29634,
             "sessionCount": 5,
             "status": 200,
-            "paintedMs": 142.59999999403954,
-            "getToPaintMs": 45.80000001192093
+            "paintedMs": 164.89999997615814,
+            "getToPaintMs": 57.5
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 3,
-              "startedMs": 148,
-              "responseMs": 152.69999998807907,
+              "startedMs": 169,
+              "responseMs": 173.59999999403954,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 192.59999999403954,
-              "getToPaintMs": 44.599999994039536,
+              "paintedMs": 214.19999998807907,
+              "getToPaintMs": 45.19999998807907,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 4,
-              "startedMs": 231.09999999403954,
-              "responseMs": 236.19999998807907,
+              "startedMs": 254.89999997615814,
+              "responseMs": 259.89999997615814,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 275.59999999403954,
-              "getToPaintMs": 44.5,
+              "paintedMs": 297.59999999403954,
+              "getToPaintMs": 42.70000001788139,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 5,
-              "startedMs": 316,
-              "responseMs": 323.2999999821186,
+              "startedMs": 337.59999999403954,
+              "responseMs": 342.5,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 358.89999997615814,
-              "getToPaintMs": 42.89999997615814,
+              "paintedMs": 381,
+              "getToPaintMs": 43.400000005960464,
               "removedNodes": 0,
-              "fetchesForSequence": 1
+              "fetchesForSequence": 2
             }
           ],
           "states": [
@@ -3229,8 +3229,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 6,
-                "startedMs": 401.69999998807907,
-                "responseMs": 406.7999999821186,
+                "startedMs": 423.89999997615814,
+                "responseMs": 428.5,
                 "payloadBytes": 4213,
                 "sessionCount": 0,
                 "status": 200
@@ -3246,8 +3246,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 7,
-                "startedMs": 446.69999998807907,
-                "responseMs": 451.09999999403954,
+                "startedMs": 469.89999997615814,
+                "responseMs": 474.89999997615814,
                 "payloadBytes": 4253,
                 "sessionCount": 0,
                 "status": 200
@@ -3262,7 +3262,7 @@
           "footprint": {
             "documents": 4,
             "nodes": 333,
-            "jsEventListeners": 651,
+            "jsEventListeners": 653,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
             "activeMainWindowIntervals": 2,
@@ -3298,59 +3298,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 8",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 92.69999998807907,
+          "firstRenderMs": 79,
           "firstGetToPaint": {
             "sequence": 8,
-            "startedMs": 47.5,
-            "responseMs": 66.19999998807907,
+            "startedMs": 31.099999994039536,
+            "responseMs": 52.5,
             "payloadBytes": 238513,
             "sessionCount": 50,
             "status": 200,
-            "paintedMs": 92.69999998807907,
-            "getToPaintMs": 45.19999998807907
+            "paintedMs": 79,
+            "getToPaintMs": 47.900000005960464
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 9,
-              "startedMs": 95.89999997615814,
-              "responseMs": 106.69999998807907,
+              "startedMs": 82.19999998807907,
+              "responseMs": 94.19999998807907,
               "payloadBytes": 238513,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 143.39999997615814,
-              "getToPaintMs": 47.5,
+              "paintedMs": 128.59999999403954,
+              "getToPaintMs": 46.400000005960464,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 10,
-              "startedMs": 182.7999999821186,
-              "responseMs": 195.2999999821186,
+              "startedMs": 168.59999999403954,
+              "responseMs": 180.09999999403954,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 227.59999999403954,
-              "getToPaintMs": 44.80000001192093,
+              "paintedMs": 211.90000000596046,
+              "getToPaintMs": 43.30000001192093,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 11,
-              "startedMs": 267,
-              "responseMs": 279.89999997615814,
+              "startedMs": 253.09999999403954,
+              "responseMs": 264.59999999403954,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 308.2999999821186,
-              "getToPaintMs": 41.29999998211861,
+              "paintedMs": 295.5,
+              "getToPaintMs": 42.400000005960464,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -3361,8 +3361,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 12,
-                "startedMs": 349.89999997615814,
-                "responseMs": 356.39999997615814,
+                "startedMs": 337.59999999403954,
+                "responseMs": 344.59999999403954,
                 "payloadBytes": 4216,
                 "sessionCount": 0,
                 "status": 200
@@ -3378,8 +3378,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 13,
-                "startedMs": 398.19999998807907,
-                "responseMs": 403.59999999403954,
+                "startedMs": 382.90000000596046,
+                "responseMs": 388.40000000596046,
                 "payloadBytes": 4256,
                 "sessionCount": 0,
                 "status": 200
@@ -3393,8 +3393,8 @@
           ],
           "footprint": {
             "documents": 6,
-            "nodes": 2241,
-            "jsEventListeners": 1668,
+            "nodes": 2242,
+            "jsEventListeners": 1670,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
             "activeMainWindowIntervals": 2,
@@ -3430,32 +3430,32 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 14",
-            "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "page_bytes": 1722351,
-            "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-            "assembled_page_bytes": 1722351
+            "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "page_bytes": 1721839,
+            "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+            "assembled_page_bytes": 1721839
           },
-          "firstRenderMs": 125.59999999403954,
+          "firstRenderMs": 110.5,
           "firstGetToPaint": {
             "sequence": 14,
-            "startedMs": 43.80000001192093,
-            "responseMs": 86.59999999403954,
+            "startedMs": 33.30000001192093,
+            "responseMs": 75.40000000596046,
             "payloadBytes": 1166963,
             "sessionCount": 250,
             "status": 200,
-            "paintedMs": 125.59999999403954,
-            "getToPaintMs": 81.7999999821186
+            "paintedMs": 110.5,
+            "getToPaintMs": 77.19999998807907
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 15,
-              "startedMs": 131.19999998807907,
-              "responseMs": 166.80000001192093,
+              "startedMs": 116.5,
+              "responseMs": 152.40000000596046,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 192.5,
+              "paintedMs": 177.80000001192093,
               "getToPaintMs": 61.30000001192093,
               "removedNodes": 0,
               "fetchesForSequence": 1
@@ -3463,26 +3463,26 @@
             {
               "trigger": "fallbackPollCallback",
               "sequence": 16,
-              "startedMs": 233.59999999403954,
-              "responseMs": 268.30000001192093,
+              "startedMs": 217.2000000178814,
+              "responseMs": 254.40000000596046,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 292,
-              "getToPaintMs": 58.400000005960464,
+              "paintedMs": 278.30000001192093,
+              "getToPaintMs": 61.099999994039536,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 17,
-              "startedMs": 331.09999999403954,
-              "responseMs": 364,
+              "startedMs": 317.30000001192093,
+              "responseMs": 353.10000002384186,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 392.5,
-              "getToPaintMs": 61.400000005960464,
+              "paintedMs": 377.80000001192093,
+              "getToPaintMs": 60.5,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -3493,8 +3493,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 18,
-                "startedMs": 434.69999998807907,
-                "responseMs": 444.5,
+                "startedMs": 420,
+                "responseMs": 431.30000001192093,
                 "payloadBytes": 4215,
                 "sessionCount": 0,
                 "status": 200
@@ -3510,8 +3510,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 19,
-                "startedMs": 479.5,
-                "responseMs": 484.69999998807907,
+                "startedMs": 464.7000000178814,
+                "responseMs": 469.80000001192093,
                 "payloadBytes": 4255,
                 "sessionCount": 0,
                 "status": 200
@@ -3526,7 +3526,7 @@
           "footprint": {
             "documents": 3,
             "nodes": 9175,
-            "jsEventListeners": 1591,
+            "jsEventListeners": 2599,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
             "activeMainWindowIntervals": 2,
@@ -3618,9 +3618,9 @@
         {
           "step": 0,
           "documents": 3,
-          "nodes": 9789,
-          "jsEventListeners": 2760,
-          "removedNodeObservations": 5405,
+          "nodes": 9791,
+          "jsEventListeners": 3783,
+          "removedNodeObservations": 5406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3643,9 +3643,9 @@
         {
           "step": 1,
           "documents": 3,
-          "nodes": 10296,
-          "jsEventListeners": 3100,
-          "removedNodeObservations": 5783,
+          "nodes": 10299,
+          "jsEventListeners": 4123,
+          "removedNodeObservations": 5784,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3668,9 +3668,9 @@
         {
           "step": 2,
           "documents": 3,
-          "nodes": 10803,
-          "jsEventListeners": 3426,
-          "removedNodeObservations": 6094,
+          "nodes": 10807,
+          "jsEventListeners": 4449,
+          "removedNodeObservations": 6095,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3693,9 +3693,9 @@
         {
           "step": 3,
           "documents": 3,
-          "nodes": 11310,
-          "jsEventListeners": 3752,
-          "removedNodeObservations": 6405,
+          "nodes": 11315,
+          "jsEventListeners": 4775,
+          "removedNodeObservations": 6406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3718,9 +3718,9 @@
         {
           "step": 4,
           "documents": 3,
-          "nodes": 11817,
-          "jsEventListeners": 4078,
-          "removedNodeObservations": 6716,
+          "nodes": 11823,
+          "jsEventListeners": 5101,
+          "removedNodeObservations": 6717,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3743,9 +3743,9 @@
         {
           "step": 5,
           "documents": 3,
-          "nodes": 12324,
-          "jsEventListeners": 4404,
-          "removedNodeObservations": 7027,
+          "nodes": 12331,
+          "jsEventListeners": 5427,
+          "removedNodeObservations": 7028,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3772,7 +3772,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7027,
+          "removedNodeObservations": 7028,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3797,7 +3797,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7338,
+          "removedNodeObservations": 7339,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3822,7 +3822,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7649,
+          "removedNodeObservations": 7650,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3847,7 +3847,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7960,
+          "removedNodeObservations": 7961,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3872,7 +3872,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 8271,
+          "removedNodeObservations": 8272,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3897,7 +3897,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 8582,
+          "removedNodeObservations": 8583,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3944,10 +3944,10 @@
           "project": "baseline-project"
         },
         "marker": "Baseline 1",
-        "page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-        "page_bytes": 1722351,
-        "assembled_page_sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c",
-        "assembled_page_bytes": 1722351
+        "page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+        "page_bytes": 1721839,
+        "assembled_page_sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810",
+        "assembled_page_bytes": 1721839
       }
     }
   ],

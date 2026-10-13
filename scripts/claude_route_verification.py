@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import abstention_ledger as ledger
 import analyze_campaign as campaigns
-import legacy_paths
+import store_paths
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -37,13 +37,13 @@ STATE_PATH = Path(
     or "/unavailable"
 )
 PRIVATE_DIR = (
-    Path(legacy_paths.default_home(str(OWNER_HOME)))
+    Path(store_paths.default_home(str(OWNER_HOME)))
     / "claude-route-conditional-priority-verification"
 )
 # Independent of both mutable account/receipt history and the startup context.
 # A prepared-profile rollback cannot erase this one-time activation evidence.
 ACTIVATION_PATH = (
-    Path(legacy_paths.default_home(str(OWNER_HOME))) / "claude-route-live00.ACTIVATED.json"
+    Path(store_paths.default_home(str(OWNER_HOME))) / "claude-route-live00.ACTIVATED.json"
 )
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TRANSPORT_KEYS = {"provider", "destination", "model", "effort", "binary_sha256", "argv_digest"}
@@ -319,7 +319,7 @@ class RouteVerification:
 
     def _validate(self) -> dict[str, Any]:
         _canonical(OWNER_HOME)
-        account_home = Path(legacy_paths.default_home(str(OWNER_HOME)))
+        account_home = Path(store_paths.default_home(str(OWNER_HOME)))
         _require(
             self.path.parent == account_home
             and account_home / "claude-route-live00.ACTIVATED.json" == ACTIVATION_PATH,

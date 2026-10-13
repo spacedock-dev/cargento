@@ -66,11 +66,6 @@ import os
 import threading
 from typing import TYPE_CHECKING, Any, Final, TypedDict
 
-from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_shadows,
-)
-
 from . import io as runtime_io
 from . import records
 
@@ -294,11 +289,7 @@ def store_path(config: RuntimeConfig) -> str:
     became of a raise is the reader's, not the instance's, so it survives both a
     restart and a different --port, for `dismissals.store_path`'s reason.
     """
-    path = os.path.join(config.state_home, "compass-deliveries.json")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, "compass-deliveries.json")
 
 
 def _entry(value: Any) -> Delivery | None:
@@ -403,8 +394,6 @@ def save(
         with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
         os.replace(tmp, target)
-        if not payload["entries"]:
-            remove_state_shadows(target)
     except (OSError, ValueError, TypeError, RecursionError):
         runtime_io.diag(
             f"Compass: could not write the delivery record {target}; "

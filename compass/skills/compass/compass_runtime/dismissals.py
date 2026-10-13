@@ -21,10 +21,6 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from compass_runtime import io as runtime_io
 from compass_runtime import records
-from compass_runtime.config import (
-    legacy_read_path,  # legacy-cargento: remove at 1.0.0
-    remove_state_shadows,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -67,11 +63,7 @@ def store_path(config: RuntimeConfig) -> str:
     dismissal is the reader's, not the instance's, so it must survive both a
     restart and a different --port.
     """
-    path = os.path.join(config.state_home, "compass-dismissals.json")
-    # legacy-cargento: remove at 1.0.0
-    if not os.path.lexists(path):
-        return legacy_read_path(path)
-    return path
+    return os.path.join(config.state_home, "compass-dismissals.json")
 
 
 def is_matchable(harness: str, sid: str) -> bool:
@@ -180,8 +172,6 @@ def save(
     target = store_path(config)
     try:
         runtime_io.atomic_write_owner_only(target, json.dumps(payload))
-        if not payload["entries"]:
-            remove_state_shadows(target)
     except (OSError, ValueError):
         runtime_io.diag(
             f"Compass: could not write the dismissal store {target}; "

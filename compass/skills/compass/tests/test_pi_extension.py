@@ -19,7 +19,7 @@ SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
 
 @unittest.skipUnless(shutil.which("node"), "node not available")
 class PiExtensionTest(unittest.TestCase):
-    def run_adapter(self, action: str, *, upgrade: str = "") -> dict[str, Any]:
+    def run_adapter(self, action: str) -> dict[str, Any]:
         with tempfile.TemporaryDirectory() as directory:
             code = (
                 """
@@ -37,8 +37,7 @@ process.env.COMPASS_PORT=String(server.address().port);
 const state=process.env.COMPASS_HOME+'/compass-'+process.env.COMPASS_PORT+'.json';
 await writeFile(state,JSON.stringify({capabilities:{pi:'a'.repeat(64)}}));
 """
-                + upgrade
-                + """
+                """
 const adapter=await import(pathToFileURL(process.argv[1]));
 adapter.default({on:(name,fn)=>callbacks[name]=fn});
 const ctx={sessionManager:{getSessionId:()=> 'abcdef12-3456-7890-abcd-ef1234567890'}};
@@ -69,43 +68,6 @@ server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));
             )
             self.assertEqual(0, result.returncode, result.stderr)
             return json.loads(result.stdout)  # type: ignore[no-any-return]
-
-    def test_a_reader_who_upgraded_keeps_pi_events_without_changing_old_state(self) -> None:
-        result = self.run_adapter(
-            "emit('ui_prompt_start');",
-            upgrade="""
-const oldState=state.replace('/compass-', '/cargento-');
-await writeFile(oldState,JSON.stringify({capabilities:{pi:'a'.repeat(64)}}));
-await unlink(state);
-process.env.CARGENTO_HOME=process.env.COMPASS_HOME; delete process.env.COMPASS_HOME;
-process.env.CARGENTO_PORT=process.env.COMPASS_PORT; delete process.env.COMPASS_PORT;
-""",
-        )
-        self.assertEqual(1, len(result["messages"]))
-        self.assertEqual("a" * 64, result["messages"][0]["token"])
-
-    def test_a_reader_using_an_invalid_legacy_pi_port_gets_the_same_validation(self) -> None:
-        result = self.run_adapter(
-            "", upgrade="process.env.CARGENTO_PORT='invalid'; delete process.env.COMPASS_PORT;"
-        )
-        self.assertEqual([], result["subscriptions"])
-        self.assertEqual([], result["messages"])
-
-    def test_a_reader_using_new_pi_settings_does_not_inherit_an_invalid_old_port(self) -> None:
-        result = self.run_adapter(
-            "emit('ui_prompt_start');", upgrade="process.env.CARGENTO_PORT='invalid';"
-        )
-        self.assertEqual(1, len(result["messages"]))
-
-    def test_a_reader_using_an_invalid_new_pi_port_cannot_enable_events_through_the_old_name(
-        self,
-    ) -> None:
-        result = self.run_adapter(
-            "",
-            upgrade="process.env.CARGENTO_PORT=process.env.COMPASS_PORT; process.env.COMPASS_PORT='invalid';",
-        )
-        self.assertEqual([], result["subscriptions"])
-        self.assertEqual([], result["messages"])
 
     def test_measured_pair_for_all_five_kinds_omits_native_contents(self) -> None:
         result = self.run_adapter("""

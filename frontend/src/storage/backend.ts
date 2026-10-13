@@ -1,6 +1,3 @@
-// legacy-cargento: remove at 1.0.0
-import { legacyStorageKey } from './keys';
-
 /** The slice of `Storage` every family uses; a test double need implement nothing more. */
 export interface StorageBackend {
   getItem(key: string): string | null;
@@ -35,28 +32,7 @@ export function storageAccess(provider: BackendProvider): StorageAccess {
       try {
         const backend = provider();
         if (!backend) return { ok: false };
-        const reader: StorageBackend = {
-          getItem: (key) => {
-            const value = backend.getItem(key);
-            if (value !== null) return value;
-            // legacy-cargento: remove at 1.0.0
-            if (key.startsWith('compass')) {
-              const old = legacyStorageKey(key);
-              if (old !== null) return backend.getItem(old);
-            }
-            return null;
-          },
-          setItem: (key, value) => backend.setItem(key, value),
-          removeItem: (key) => {
-            backend.removeItem(key);
-            // legacy-cargento: remove at 1.0.0
-            if (key.startsWith('compass')) {
-              const old = legacyStorageKey(key);
-              if (old !== null && backend.getItem(old) !== null) backend.setItem(key, '');
-            }
-          },
-        };
-        return { ok: true, value: run(reader) };
+        return { ok: true, value: run(backend) };
       } catch {
         return { ok: false };
       }

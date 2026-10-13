@@ -45,8 +45,6 @@ If a prerequisite for the release itself is missing, stop before the tag push an
 
 Answer all of these before looking at any diff. Any "no" stops the run.
 
-- Before cutting 1.0.0, remove every `legacy-cargento` fallback and the "Upgrading from Cargento" section.
-
 ```bash
 git checkout main && git fetch --prune origin && git pull --ff-only origin main
 git status --porcelain                  # must be empty

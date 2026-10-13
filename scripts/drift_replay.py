@@ -49,7 +49,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-import legacy_paths
+import store_paths
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if os.path.join(_ROOT, "scripts") not in sys.path:
@@ -68,7 +68,7 @@ except ImportError:  # Windows: no advisory lock, so the cap holds for one run a
 
 HAS_LOCK = fcntl is not None
 
-HOME = legacy_paths.store_home()
+HOME = store_paths.store_home()
 SUBDIR = "drift-replay"
 FIXTURES = os.path.join(_ROOT, "tests", "raw_sessions")
 ANNOTATIONS = os.path.join(_ROOT, "tests", "annotated_sessions")
