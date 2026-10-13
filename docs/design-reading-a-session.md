@@ -436,7 +436,9 @@ budget, and then the agent's, newest first, inside a quarter of it. An agent mes
 lowest priority in the byte bound, below a written path: measured on review, a hundred newer
 messages otherwise dropped the older write that showed what the session did. The project event cap
 reserves the agent's messages after the session's own checks and the reader's messages, so a
-talkative session cannot evict either.
+talkative session cannot evict either. The 2026-10-13 amendment "a press keeps the closing agent
+message of each earlier turn" reserves an eighth of the budget, and some of the cap, for the agent
+messages that closed earlier turns, ahead of the newest; nothing else in the order moves.
 
 Only a reading the reader pressed for reads them. The unasked lane, which nobody watches, sends
 nothing the agent said, and the scorers keep the same default.
@@ -4076,8 +4078,8 @@ agent message, so the tail was its only source.
 
 A press now reads the focused Claude Code session's person and agent messages backward from the end
 of the file (`project_context.press_message_events`) until it has read sixteen timestamped records in
-a row older than the window, or holds more than 100 messages, which is more than the project cap can
-keep. One older record does not stop it, because a resumed transcript can rewrite earlier records
+a row older than the window. (It first stopped as well once it held more than 100 messages, which is
+more than the project cap can keep; the amendment below that follows removed that stop.) One older record does not stop it, because a resumed transcript can rewrite earlier records
 after newer ones. It runs under the press bounds the adopted-source lookup already uses (the newest
 64 MiB under one two-second clock) and refuses a file that moved. It does not read a message whose
 text is longer than 256 Ki characters: redaction is not linear in the worst case, the clock is only
@@ -4091,8 +4093,8 @@ collection and cannot cover a long session.
 
 Coverage keeps its five keys and the page's wording. For a press that read back the two message keys
 describe what was kept, not what was scanned. `tail_truncated` is true when the read stopped before the
-window start (bytes, clock, count or a moved file), when an unread region lies inside the window, or when
-the project cap dropped any in-window message of the session. `tail_start` is where the record is whole
+window start (bytes, clock or a moved file), when an unread region lies inside the window, or when
+the read or the project cap dropped any in-window message of the session. `tail_start` is where the record is whole
 from: the oldest in-window time before the first unread region, or, after the cap, the oldest message
 kept that is newer than the newest one lost. It is not the oldest message kept, because the cap keeps
 the session's own reader messages ahead of the agent's, so that one is usually the Goal's own prompt at
@@ -4103,11 +4105,6 @@ covered, which reports a fact about the read as though it were one about the rec
 with no start to name says so in the cutoff, as the page already did. A reading stored before
 this keeps the old meaning, the oldest time in a 400,000-byte tail and a size above it, and nothing
 distinguishes old from new.
-
-Not changed: the 16 KiB prompt and the selection order. Agent messages rank last, newest first, so a
-window of more than about 40 to 60 agent messages still loses its oldest to the budget, and the
-cutoff's "Read N of M" says so. Reserving the window's first-turn messages would change the selection
-rules the shape contract binds, and is left for its own change.
 
 The page holds the board's own record, which is tail-bound, so it cannot resolve a citation to an
 entry only the press read, and it demotes an unresolved citation to "can't tell, uncited". A row now
@@ -4126,6 +4123,62 @@ tell: what was read does not settle this". An uncited blank keeps the recorded-a
 The scope names unread git, gh and connected-tool replies and the person's screen. The Codex
 limit explicitly says the agent's replies were not read. No detector verdict changes merely
 because coverage is partial.
+
+#### Amended 2026-10-13: a press keeps the closing agent message of each earlier turn
+
+Reading back to the window start was not enough for a long window. Two limits still stood between
+the first turns' messages and the model, and the first was not the prompt budget. Measured on the
+session that prompted this (a 6.4 MB transcript, still growing): the press scan stopped once it held
+more than 100 messages, 92 agent and 9 of the reader's, before the window start, and the project cap
+then kept 79 agent messages, the oldest at 08:26, though the window opened at 07:59. All 79 fit the
+16 KiB prompt, which came to 16,372 bytes, so the first turns were lost to retention and the budget
+had not yet cost anything. A window with more agent messages than the budget holds loses them to
+both, newest kept first.
+
+The evidence an early Goal rests on is what the agent said it had done, and that is the last message
+of a turn. A turn's first messages usually announce what the agent is about to do and carry no claim. So a
+press now keeps, besides its newest 100 messages, the closing agent message of the oldest twelve
+earlier turns (`PRESS_ANCHORS`): the last agent message before a reader's message going forward in
+time, kept together with that reader's message, because the prompt recognises a turn's close by the
+reader's message after it and the history store may not hold that one. It goes on reading to the
+window start for them, under the same press bounds, and keeps only that handful in memory. The
+project cap reserves the anchors after the session's own checks and the reader's messages and before
+the rest of the agent's, oldest first, so they cost a reader's message or a check nothing. The
+newest turn's closing is among the newest messages and is not reserved apart: reserving it would let
+a reader-heavy session lose its newest reply to the oldest anchors. The same measurement after the change, on the transcript as it had grown to 7.2 MB: the press read
+the whole window in 0.11 seconds, the oldest agent message in the ledger was 08:00:28, and the prompt
+was 16,367 bytes. Reading to the window start has a cost the stop at the cap avoided. Redaction
+dominates it, so a synthetic 20,000-message window (9 MB) spent the whole two-second clock, stopped
+on time and reported the window as not reached; the coverage says so rather than claiming the first
+turns.
+
+The prompt reserves an eighth of its budget for these closings (`ANCHOR_SHARE_DIVISOR`, about ten
+rows at 130 to 190 bytes), oldest first, before the newest agent messages take the rest. It is a
+share of bytes, not a count: a flat count of 40 would take about 60% of the agent capacity and still
+lose about 22 messages from the middle. It displaces, because a full prompt has no unused space, and
+what it displaces is the middle: the messages between the oldest closings and the newest. A reader's
+message, a check, a write and the newest agent messages keep their rank, and a prompt everything
+fits in is selected exactly as before. A closing the share cannot hold falls back to the ordinary
+newest-first order. Which messages closed a turn is derived from the ledger's own order, so no new
+field is published and `for_page` is unchanged.
+
+Coverage keeps its five keys. A read that did not keep every in-window message is truncated, and its
+start is where the record is whole from: after the newest message the read or the cap lost. The kept
+closings older than that are extra evidence, not a contiguous record, and never move it. When the read
+stopped on bytes or the clock, or skipped an unread region, the start is no earlier than where the
+contiguous read began. The cutoff
+adds one clause to the message-tail sentence, naming how many agent messages that closed an earlier turn
+were kept, so the split reads in plain counts.
+
+Decided against: a Show more condition on what enters the prompt, since the prompt is built before
+the page exists and cannot depend on what the reader has loaded without making a stored reading
+irreproducible; since a finished press reads older record pages for itself, it is also unneeded. Not
+done: the first agent message after each reader's message, which was proposed first and carries no
+claim. Not covered: a window of one turn has a single closing, its newest message, so it behaves as
+before; and a reading opened by a reload or a second tab does not run the page's read, so a citation
+to a closing the page does not hold still shows as uncited until Show more loads it. No numbered rule
+of the shape contract changes: it names no selection order, and the 2026-10-03 sentence that ranks
+the agent's messages last is amended above.
 
 ### What the Steer back and Update intent build decided, 2026-09-28
 
