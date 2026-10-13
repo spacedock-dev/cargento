@@ -27,9 +27,10 @@ export const ASSISTANT_ONLY =
   'Nothing cited here demonstrates that the requested output exists; each entry describes or asks for the work rather than showing it.';
 export const UNCITED = 'Nothing resolvable was cited, so there is no entry to read this against.';
 
-/* A reading cites what its press read, which can reach past the entries the board holds. The page never
-   loads a page by itself, so the row says so and the reader's Show more, under the list, is what may resolve
-   it. "May": the entry could also be newer than the last poll, or not a message the record pages return. */
+/* A reading cites what its press read, which can reach past the entries the board holds. A finished press
+   reads older pages for it (`resolve`), within a page cap; where that stops short, the row says so and the
+   reader's Show more, under the list, is what may resolve it. "May": the entry could also be newer than the
+   last poll, or not a message the record pages return. */
 export function unloadedCites(count: number): string {
   return count === 1
     ? 'This reading cites an entry that is not listed. Show more, under the list, may load it.'

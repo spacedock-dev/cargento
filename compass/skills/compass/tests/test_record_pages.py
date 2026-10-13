@@ -162,12 +162,12 @@ class RecordPagesTest(unittest.TestCase):
             sorted(page["entries"], key=lambda row: row["fact_id"]),
         )
 
-    def test_a_reader_can_continue_after_the_real_sixteen_mib_budget(self) -> None:
+    def test_a_reader_can_continue_after_the_real_sixty_four_mib_budget(self) -> None:
         self.write([self.record(1)])
         with self.path.open("ab") as handle:
-            handle.write(b'{"type":"image","data":"' + b"x" * (17 * 1024 * 1024) + b'"}\n')
+            handle.write(b'{"type":"image","data":"' + b"x" * (65 * 1024 * 1024) + b'"}\n')
         page = self.page()
-        self.assertEqual(16 * 1024 * 1024, page["scanned_bytes"])
+        self.assertEqual(64 * 1024 * 1024, page["scanned_bytes"])
         self.assertFalse(page["reached_start"])
         self.assertEqual("bytes", page["bound"])
         self.assertIsNotNone(page["next"])
@@ -305,7 +305,7 @@ class RecordPagesTest(unittest.TestCase):
 
     def test_a_reader_can_continue_after_the_clock_budget(self) -> None:
         self.write([self.record(n) for n in range(8)])
-        with mock.patch("compass_runtime.record_pages.time.monotonic", side_effect=[0.0, 3.0]):
+        with mock.patch("compass_runtime.record_pages.time.monotonic", side_effect=[0.0, 6.0]):
             page = self.page()
         self.assertFalse(page["reached_start"])
         self.assertEqual("time", page["bound"])

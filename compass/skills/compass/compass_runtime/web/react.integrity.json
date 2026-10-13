@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1720443,
+    "bytes": 1722351,
     "file": "react.html",
-    "sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a"
+    "sha256": "5b046f7008a110be0eae0b83dbaea994b520c024ffd116dc6d124f4766b2375c"
   },
   "format": 1,
   "frontend": "react",
@@ -543,7 +543,7 @@
       },
       {
         "file": "frontend/src/drift/DriftProvider.tsx",
-        "sha256": "0abdc0876013440191bbb9142fea246394b78e07924dab47c7fadd46ccca87f9"
+        "sha256": "d371b716d3a7696babbd7663360f44ae90ae2c7a8cbf5a28e444091e22578ba9"
       },
       {
         "file": "frontend/src/drift/Evidence.tsx",
@@ -578,6 +578,10 @@
         "sha256": "e5055bf9782bf34a6921642759cd192d62484253d616de70077336b5796bd6b4"
       },
       {
+        "file": "frontend/src/drift/citations.ts",
+        "sha256": "00d2fdc7ec17cb768d270f8091d62fccc1ee74f146853b17da7e8f4a63db5b56"
+      },
+      {
         "file": "frontend/src/drift/context.ts",
         "sha256": "8c44807bb3bcde3f8430f7a569f9c7abc656990d853420796579cc15be73e44f"
       },
@@ -607,7 +611,7 @@
       },
       {
         "file": "frontend/src/drift/jobs.ts",
-        "sha256": "e941fe320f86e8bb5427c10f3d541db0ed74f5e223695e16542d132c2c00e3ca"
+        "sha256": "f653eb103d48dc6d8ab27dba7448f0f1a784441501fa86c84534b732539c3824"
       },
       {
         "file": "frontend/src/drift/level.ts",
@@ -631,7 +635,7 @@
       },
       {
         "file": "frontend/src/drift/sentences.ts",
-        "sha256": "5414fac57f3cff43619d559986425a8eb94ee3331ec0d525d3dc4f155a6a0420"
+        "sha256": "5842f70ab537f5c569650b3060f028fded2fbf581423c46b5425b7c39b28b99c"
       },
       {
         "file": "frontend/src/drift/shape.ts",
@@ -795,7 +799,7 @@
       },
       {
         "file": "frontend/src/intent/work.ts",
-        "sha256": "00735a8e5b331db581719af5f769145599645af07f38817da2d8a84af6ea6e4d"
+        "sha256": "d75c42dde62e5672b4fa52afe1604ec807d07d05b1c2c8f376dbdafa453ac0bc"
       },
       {
         "file": "frontend/src/lib/utils.ts",
@@ -1359,7 +1363,7 @@
       },
       {
         "file": "frontend/src/transport/record.ts",
-        "sha256": "43370efac1dce67ac240febb65b8d5517236dffd5f6934243ce1d1470358c6f4"
+        "sha256": "709ab96eee08c054bf818f21dcc237ebb13fe18c89f8c762ad47a807e3627432"
       },
       {
         "file": "frontend/src/transport/refresh.ts",
@@ -1371,7 +1375,7 @@
       },
       {
         "file": "frontend/src/transport/runtime.ts",
-        "sha256": "bea45ee6f015f04fe7937fd88657963460d4d5f353371bea87326e49fedac1c8"
+        "sha256": "4870735092dad4e8254718624f4f57fe6ca25b5647d0f39bd0278b0ad2953382"
       },
       {
         "file": "frontend/src/transport/testing.ts",

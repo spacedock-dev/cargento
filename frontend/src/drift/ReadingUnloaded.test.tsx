@@ -1,10 +1,11 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { check, fact, json, mountDrift, press, textOf } from './testing';
+import { check, driftBoard, fact, json, mountDrift, press, textOf } from './testing';
 
 /* A press reads a session's messages back to its window start, which can be further than the board's own
-   record reaches. The page never loads a page by itself, so a reading citing an entry it does not hold has
-   to say so, and say where the reader's own request resolves it. */
+   record reaches. A stored reading the reader merely opens loads no page, so one citing an entry the page
+   does not hold says so and says where the reader's own request resolves it. The press the reader just saw
+   finish reads the older pages itself. */
 
 const path = '/api/session-record';
 const ASSESSMENT = {
@@ -136,5 +137,77 @@ describe('the adopted-source note', () => {
       'The adopted source was found. Analyze reads at most the first 1,000 characters of any prompt.',
     );
     expect(text).not.toContain('Analyze read up to');
+  });
+});
+
+/* The one read the page makes for the reader: the press they started has stored a reading that cites entries
+   the board does not hold. Nothing else loads a page. */
+describe('a finished press that cites an entry the page does not list', () => {
+  const JOB = { id: 'j1', phase: 'read', steps: [{ phase: 'read', text: 'Reading it' }] };
+  const running = { reading_jobs: { 'claude:s1': JOB } };
+  const older = (request: { url: string }) =>
+    json(
+      request.url.includes('before=')
+        ? recordBody({
+            entries: [fact('early', 150, { type: 'agent_message', by: 'agent' })],
+            next: null,
+            reached_start: true,
+          })
+        : recordBody(),
+    );
+  const stored = { ...session, annotation_assessment: ASSESSMENT };
+  const unstored = { annotation_window_start: 100 };
+
+  it('reads older pages for the reader, until the citation resolves, and then says nothing is missing', async () => {
+    const page = mountDrift({
+      session: unstored,
+      payload: running,
+      facts: FACTS,
+      routes: { [path]: older },
+    });
+    await page.settle();
+    await page.settle();
+    expect(page.gets(path)).toBe(1);
+    await page.poll({ ...driftBoard({ session: stored }), generated: 1200 });
+    await page.settle();
+    await page.settle();
+    expect(page.gets(path)).toBe(2);
+    expect(unloaded()).toBeNull();
+    expect(textOf('[data-next-result-goal]')).not.toContain('Nothing resolvable was cited');
+  });
+
+  it('reads nothing more when a poll alone brings the stored reading, since no press of this page ended', async () => {
+    const page = mountDrift({
+      session: unstored,
+      facts: FACTS,
+      routes: { [path]: older },
+    });
+    await page.settle();
+    await page.settle();
+    await page.poll({ ...driftBoard({ session: stored }), generated: 1200 });
+    await page.settle();
+    await page.settle();
+    expect(page.gets(path)).toBe(1);
+    expect(unloaded()).not.toBeNull();
+  });
+
+  it('reads nothing more when the press ended withheld, because it stored no reading', async () => {
+    const page = mountDrift({
+      session: stored,
+      payload: running,
+      facts: FACTS,
+      routes: { [path]: older },
+    });
+    await page.settle();
+    await page.settle();
+    await page.poll({
+      ...driftBoard({
+        session: { ...stored, annotation_reading_withheld: 'The analysis was cancelled.' },
+      }),
+      generated: 1200,
+    });
+    await page.settle();
+    await page.settle();
+    expect(page.gets(path)).toBe(1);
   });
 });

@@ -248,8 +248,8 @@ export function recordPastWindow(record: RecordEntry | undefined, opened: number
 
 /* Whether a reader's Show more can still bring in older entries, said only once a page has loaded: before
    that the entry a reading cites may simply be on the first page, and the sentence would come and go. A
-   reading cites what its press read, which can reach past the 400 KB the board holds; the page never loads
-   those by itself (the reader's own request is what loads a page), so this says when asking would help. */
+   reading cites what its press read, which can reach past the 400 KB the board holds; a finished press reads
+   older pages for it, and this says when asking for more would still help. */
 export function olderEntriesRemain(
   record: RecordEntry | undefined,
   opened: number | null,

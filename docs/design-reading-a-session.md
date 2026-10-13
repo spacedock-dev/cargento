@@ -4113,10 +4113,13 @@ The page holds the board's own record, which is tail-bound, so it cannot resolve
 entry only the press read, and it demotes an unresolved citation to "can't tell, uncited". A row now
 counts the cited ids it holds no entry for and, once a record page has loaded and older entries remain,
 says that Show more may load them. "May", because the entry could also be newer than the last poll or
-not a message the record pages return. The page still loads nothing by itself
-([reader state](design-reader-state.md#the-inventory)); making it load them is a ruling on that line,
-not a fix to this one. Rejected: the focused context reaching back to the stored window, because the
-page polls that context and it would repeat the tail enlargement for one session on every poll.
+not a message the record pages return. The owner ruled on 2026-10-13 that the finishing of a press this
+page watched asks the page to read older record pages for that session until each cited entry
+resolves, the record reaches its start or its window, or 20 pages have been read, and nothing else
+loads a page ([reader state](design-reader-state.md#the-inventory) owns the exception and its stops).
+The sentence stays for where that stops short. Rejected: the focused context reaching back to the
+stored window, because the page polls that context and it would repeat the tail enlargement for one
+session on every poll.
 
 This also amends DEC-24 item 6: an otherwise blank unverifiable row citing entries says "Can't
 tell: what was read does not settle this". An uncited blank keeps the recorded-absence sentence.

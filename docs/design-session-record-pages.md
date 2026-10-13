@@ -44,8 +44,10 @@ unsupported or unavailable responses as empty records.
 
 ## Byte cursors and allowances
 
-Configuration owns `RECORD_PAGE_MAX_BYTES` (16 MiB) and
-`RECORD_PAGE_MAX_SECONDS` (2 seconds). Reads use 64 KiB chunks and stop after
+Configuration owns `RECORD_PAGE_MAX_BYTES` (64 MiB) and
+`RECORD_PAGE_MAX_SECONDS` (5 seconds). Both were 16 MiB and 2 seconds until 2026-10-13, when the
+owner raised them to match the press's own 64 MiB read: a page that has to cross a screenshot-heavy
+stretch to reach what a reading cites then needs fewer requests. Reads use 64 KiB chunks and stop after
 finding the requested count, without scanning the rest of the file. The time
 allowance is checked before each chunk and each decoded line. A blocking local
 filesystem operation or a single decode must return before that check can run
@@ -63,13 +65,18 @@ not appear among older pages. A same-inode rewrite followed by growth cannot be
 distinguished from an append by these stamps; the harness's append-only contract
 is required. A source changed during the request is checked again before reply.
 
-Chunk-boundary fragments are joined before decoding. Invalid partial final lines
+Chunk-boundary fragments are joined before decoding. A chunk with no line boundary in it is held and
+joined once with the others when a boundary or the start arrives; joining each one as it was read
+re-copied the growing partial line every time, so a single 20 MiB line cost 1.8 seconds and a 65 MiB
+line spent the whole 5-second clock at 33 MiB, which would have left Show more retrying the same line
+without ever discarding it. Invalid partial final lines
 are ignored, as they are by the existing context builders. At a byte-bound stop,
 the unconsumed boundary line is reread with the next request's fresh allowance.
 A single line larger than a whole allowance is skipped through its delimiter,
 across as many requests as necessary, so a large image cannot trap Show more.
 This also limits an oversized message record: a message encoded in a line larger
-than 16 MiB cannot be recovered by these pages. This is a bounded source reader,
+than 64 MiB cannot be recovered by these pages (a press, which keeps its own 16 MiB line limit, skips
+a message line over 16 MiB). This is a bounded source reader,
 not a guarantee that arbitrary-size JSON records can be decoded. Pagination
 follows file order and sorts each returned page by time; it does not sort an
 unread portion of a transcript whose timestamps disagree with file order.
@@ -126,6 +133,18 @@ or change what Analyze drift reads. Project context's history merge, workflow
 joins and semantic projections still consume that bounded store; the paged list
 does not depend on it.
 
+## Reading for a finished press
+
+A reading cites what its press read, and a press reads further back than the board's tail-bound
+record holds. When an analysis this page watched ends by storing a reading, the page reads older pages
+for the session with the same route and cursors until every cited entry is one it holds, the record
+reaches its start, or the record holds an entry from before the intent's window opened. It stops on a
+page that fails or moves nothing, after 20 pages (1,000 entries), and when the reader leaves, which
+aborts the page in flight. A second press while it runs shares the run. Nothing else, no poll and no
+reload, asks for it. [Reader state](design-reader-state.md#the-inventory) owns the rule and its stops.
+The server is unchanged: each page is an ordinary request with the ordinary allowances and retains
+nothing.
+
 ## Measurements
 
 Measured locally on 2026-10-12, with a generated 61,021,280-byte JSONL fixture:
@@ -143,6 +162,11 @@ page reader directly and exclude fixture creation and identity collection.
 | Sixth | 50 | 12,218,209 | 0.065146 | Count |
 | Seventh | 50 | 15,937 | 0.002119 | Count |
 | Oldest | 31 | 6,087 | 0.001270 | Start |
+
+The table above was taken at the earlier 16 MiB and 2-second allowances. On 2026-10-13, at 64 MiB and
+5 seconds, a page over 100 synthetic 1,016,000-character image lines read its 64 MiB in 0.12 seconds and
+stopped on bytes, and a single synthetic 65 MiB line reached the same stop in 0.02 seconds, where it had
+spent 5.0 seconds on time before the join was made linear. A single 20 MiB line read in 0.04 seconds.
 
 All eight pages together yielded all 300 identities, each once. The 2-second
 allowance leaves headroom over the measured deep page while bounding work on a
