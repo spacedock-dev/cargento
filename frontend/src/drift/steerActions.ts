@@ -1,4 +1,4 @@
-import { compatSessKey } from '../api/identity';
+import { compatSessKey, contextKey } from '../api/identity';
 import type { SessionIdentity } from '../api/types';
 import { annotationOf } from '../intent/annotation';
 import { answered, liveRow } from '../intent/context';
@@ -19,7 +19,7 @@ import { CORRECTION_FAILED, CORRECTION_NOTHING, CORRECTION_PAINT_PAUSED } from '
 import type { DriftCtx } from './state';
 
 /* Steer back: one request to compose the correction on the press that opens it, and one to record a copy of
-   it. Neither writes into the session: the reader pastes the text where they choose, and Cargento recognises
+   it. Neither writes into the session: the reader pastes the text where they choose, and Compass recognises
    it coming back as its own words. The legacy page's `nextCockpitSteerBack` and its neighbours are the
    oracle. */
 
@@ -42,7 +42,12 @@ function sourceFor(ctx: DriftCtx, session: Row) {
       ? payloadSessions(data).rows.filter((row) => String(row.project ?? '') === label)
       : [],
   });
-  return workSource(snapshot.contexts, projectKey, session);
+  return workSource(
+    snapshot.contexts,
+    projectKey,
+    session,
+    snapshot.records.get(contextKey(projectKey, session as never)),
+  );
 }
 
 /* What the correction's text is right now: the reader's own where they edited or copied it, the frozen text of
@@ -166,7 +171,7 @@ export async function recomposeCorrection(ctx: DriftCtx, identity: SessionIdenti
   return composeCorrection(ctx, identity, correctionStamp(session ? annotationOf(session) : null));
 }
 
-/* Copy writes the box's exact text and only then records it, so a paste of it coming back reads as Cargento's
+/* Copy writes the box's exact text and only then records it, so a paste of it coming back reads as Compass's
    words. The text is frozen at the press, so what is recorded is what was shown. Never a text composed from a
    record that no longer holds unless the reader made it theirs, and never provisional composition text. */
 export async function copyCorrection(ctx: DriftCtx, identity: SessionIdentity): Promise<void> {

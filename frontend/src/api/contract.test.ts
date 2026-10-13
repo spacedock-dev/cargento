@@ -132,12 +132,12 @@ describe('every recorded GET answers as recorded', () => {
   const reads = fixtures.filter(
     (fixture) =>
       fixture.request.method === 'GET' &&
-      /^\/api\/(data|annotations|project-context)$/.test(fixture.request.path),
+      /^\/api\/(data|annotations|project-context|session-record)$/.test(fixture.request.path),
   );
 
-  it('covers data, annotations and project-context', () => {
+  it('covers data, annotations, project-context and session-record', () => {
     expect(new Set(reads.map((fixture) => fixture.request.path))).toEqual(
-      new Set(['/api/data', '/api/annotations', '/api/project-context']),
+      new Set(['/api/data', '/api/annotations', '/api/project-context', '/api/session-record']),
     );
   });
 
@@ -153,13 +153,20 @@ describe('every recorded GET answers as recorded', () => {
             })
           : fixture.request.path === '/api/annotations'
             ? await client.getAnnotations({})
-            : await client.getProjectContext({
-                project: params.get('project') ?? '',
-                ...(params.get('session') ? { session: params.get('session') as string } : {}),
-                prompts: params.get('prompts') === '1',
-                refresh: params.get('refresh') === '1',
-                observerModel: params.get('observer_model') === '1',
-              });
+            : fixture.request.path === '/api/session-record'
+              ? await client.getSessionRecord({
+                  project: params.get('project') ?? '',
+                  session: params.get('session') ?? '',
+                  ...(params.has('limit') ? { limit: Number(params.get('limit')) } : {}),
+                  ...(params.has('before') ? { before: params.get('before') as string } : {}),
+                })
+              : await client.getProjectContext({
+                  project: params.get('project') ?? '',
+                  ...(params.get('session') ? { session: params.get('session') as string } : {}),
+                  prompts: params.get('prompts') === '1',
+                  refresh: params.get('refresh') === '1',
+                  observerModel: params.get('observer_model') === '1',
+                });
       expect(sent).toHaveLength(1);
       const [path = '', search = ''] = (sent[0]?.url ?? '').split('?');
       expect(path).toBe(fixture.request.path);
@@ -170,7 +177,7 @@ describe('every recorded GET answers as recorded', () => {
       if (result.kind === 'ok') {
         expect(result.revision).toBe(
           fixture.request.path === '/api/data'
-            ? (fixture.response.headers['X-Cargento-Revision'] ?? '')
+            ? (fixture.response.headers['X-Compass-Revision'] ?? '')
             : '',
         );
       }
@@ -196,7 +203,14 @@ describe('every recorded POST is sent once, as recorded, and answered as recorde
   for (const fixture of writes) {
     it(`${fixture.name}`, async () => {
       const { sent, client } = replayOf(fixture);
-      const method = POST_METHODS[fixture.request.path] as PostMethod;
+      const method = (
+        fixture.request.path === '/api/direction' &&
+        typeof fixture.request.body === 'object' &&
+        fixture.request.body !== null &&
+        'fact_ids' in fixture.request.body
+          ? 'postDirections'
+          : POST_METHODS[fixture.request.path]
+      ) as PostMethod;
       const call = client[method] as (body: unknown) => Promise<ApiResult<unknown>>;
       const result = await call(fixture.request.body ?? {});
       expect(sent).toHaveLength(1);
@@ -228,14 +242,14 @@ describe('focus fixtures map to the closed outcomes', () => {
       };
       expect(await client.focus({ identity, capability: 'present' })).toBe(outcome);
       expect(sent).toHaveLength(1);
-      expect(sent[0]?.init?.headers).toMatchObject({ 'X-Cargento-Capability': 'present' });
+      expect(sent[0]?.init?.headers).toMatchObject({ 'X-Compass-Capability': 'present' });
     });
   }
 
   it('sends nothing without a capability, which the server would refuse with 403', async () => {
     const fixture = byName('focus-missing-capability');
     expect(fixture.response.status).toBe(403);
-    expect(fixture.request.headers).not.toHaveProperty('X-Cargento-Capability');
+    expect(fixture.request.headers).not.toHaveProperty('X-Compass-Capability');
     const { sent, client } = replayOf(fixture);
     expect(
       await client.focus({
@@ -252,7 +266,7 @@ function boardFrom(name: string) {
   const store = createBoardStore({ now: () => 1 });
   store.acceptData(
     fixture.response.body as PayloadData,
-    fixture.response.headers['X-Cargento-Revision'] ?? '',
+    fixture.response.headers['X-Compass-Revision'] ?? '',
   );
   return store;
 }
@@ -312,18 +326,18 @@ describe('selectors over recorded boards', () => {
     const store = createBoardStore({ now: () => 1 });
     store.acceptData(
       healthy.response.body as PayloadData,
-      healthy.response.headers['X-Cargento-Revision'] ?? '',
+      healthy.response.headers['X-Compass-Revision'] ?? '',
     );
     expect(selectBuildState(store.getSnapshot())).toBe('same');
     store.acceptData(
       restarted.response.body as PayloadData,
-      restarted.response.headers['X-Cargento-Revision'] ?? '',
+      restarted.response.headers['X-Compass-Revision'] ?? '',
     );
     expect(selectBuildState(store.getSnapshot())).toBe('reload-required');
     expect(
       revisionNewer(
-        restarted.response.headers['X-Cargento-Revision'],
-        healthy.response.headers['X-Cargento-Revision'],
+        restarted.response.headers['X-Compass-Revision'],
+        healthy.response.headers['X-Compass-Revision'],
       ),
     ).toBe(true);
   });

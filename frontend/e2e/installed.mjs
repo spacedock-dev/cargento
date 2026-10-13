@@ -9,12 +9,12 @@ import { chromium } from '@playwright/test';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const pythonName =
-  process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  process.env.COMPASS_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 const python = execFileSync(pythonName, ['-c', 'import sys; print(sys.executable)'], {
   encoding: 'utf8',
   timeout: 5000,
 }).trim();
-const scratch = await mkdtemp(join(tmpdir(), 'cargento-installed-browser-'));
+const scratch = await mkdtemp(join(tmpdir(), 'compass-installed-browser-'));
 let browser;
 const receipts = [];
 
@@ -36,7 +36,7 @@ async function backend(plugin, terminal, use) {
       PATH: join(scratch, 'no-executables'),
       HOME: scratch,
       USERPROFILE: scratch,
-      CARGENTO_HOME: join(scratch, 'state'),
+      COMPASS_HOME: join(scratch, 'state'),
       PYTHONPATH: '',
       PYTHONNOUSERSITE: '1',
     },
@@ -133,8 +133,8 @@ async function contextFor(port) {
 }
 
 try {
-  const plugin = join(scratch, 'cargento');
-  await cp(join(root, 'cargento'), plugin, { recursive: true });
+  const plugin = join(scratch, 'compass');
+  await cp(join(root, 'compass'), plugin, { recursive: true });
   await mkdir(join(scratch, 'no-executables'));
   browser = await chromium.launch();
   await backend(plugin, false, async (ready) => {
@@ -154,19 +154,19 @@ try {
         scripts: globalThis.document.scripts.length,
         roots: globalThis.document.querySelectorAll('#root').length,
         fonts: globalThis.document.fonts.size,
-        focus: globalThis.document.querySelectorAll('meta[name="cargento-focus"]').length,
+        focus: globalThis.document.querySelectorAll('meta[name="compass-focus"]').length,
       }));
       assert.equal(structure.scripts, 1);
       assert.equal(structure.roots, 1);
       assert.equal(structure.fonts, 15);
       assert.equal(structure.focus, 1);
       assert.equal(
-        await probe.page.locator('head meta[name="cargento-focus"]').getAttribute('content'),
+        await probe.page.locator('head meta[name="compass-focus"]').getAttribute('content'),
         'abcdef',
       );
       const metadata = JSON.parse(
         await readFile(
-          join(plugin, 'skills/cargento/cargento_runtime/web/react.integrity.json'),
+          join(plugin, 'skills/compass/compass_runtime/web/react.integrity.json'),
           'utf8',
         ),
       );

@@ -235,7 +235,7 @@ export function CommandReportsView({
   );
 }
 
-/* What became of the notifications Cargento raised about this session. Every sentence is composed by the
+/* What became of the notifications Compass raised about this session. Every sentence is composed by the
    server and printed verbatim: the wording is the product. */
 export function DeliveryView({ delivery }: { readonly delivery: Delivery }) {
   return (

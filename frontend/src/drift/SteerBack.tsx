@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useFocusKey } from '../controls';
 import { openPendingDirection } from '../intent/api';
-import { ActionButton } from '../intent/ActionButton';
+import { DirectionActionButton } from '../intent/DirectionActionButton';
 import { useDrift } from './context';
 import { correctionLength, type HeldCorrection } from './correction';
 import { attachEditor } from './editor';
@@ -21,7 +21,7 @@ import { entryNumbers } from '../intent/work';
 
 /* Steer back: the button that opens the correction, and the box that holds it. The box is Copy only: the
    words are the reader's to edit and to paste where they choose, and nothing here is ever sent to the
-   session ([DEC-16](../../../docs/design-reading-a-session.md#dec-16-cargento-does-not-write-into-a-session)). */
+   session ([DEC-16](../../../docs/design-reading-a-session.md#dec-16-compass-does-not-write-into-a-session)). */
 
 export function SteerButton({ primary }: { readonly primary: boolean }) {
   const { ctx, model } = useDrift();
@@ -55,7 +55,8 @@ export function UpdateIntentButton({ factId }: { readonly factId: string }) {
   const { ctx, model } = useDrift();
   const { identity } = model;
   return (
-    <ActionButton
+    <DirectionActionButton
+      feedbackKey={`update-intent:${model.key}`}
       weight="secondary"
       label="Update intent instead"
       busyLabel="Opening…"

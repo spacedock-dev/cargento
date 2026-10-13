@@ -6,11 +6,13 @@ import { createHeld } from '../intent/held';
 import { createAnnouncer } from '../shell/announcer';
 import { createFakeClock } from '../transport/testing';
 import { genSession } from '../intent/generate.test.helper';
-import { workSource } from '../intent/work';
+import { baselineAt, workSource, type WorkSource } from '../intent/work';
 import type { ContextEntry } from '../store/board';
 import { genEntries, mulberry32, pick, type Rng } from './generate.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import { workList } from './workList';
+import { recordedActivityActor } from '../../test/recorded-activity';
+import { projectRecordedLoadedActivity } from '../../test/recorded-loaded-activity';
 
 /* The numbered activity list, run next to the legacy page's over generated records: which entries it draws,
    at which numbers, with which flags, and every sentence about what it left out. Compared as the words a
@@ -58,6 +60,7 @@ const squash = (value: string): string => value.replace(/\s+/g, '');
 const text = (html: string): string => {
   const node = document.createElement('div');
   node.innerHTML = html;
+  recordedActivityActor(node);
   // The row's hidden source line is read out, so it is part of the words.
   return squash(node.textContent ?? '');
 };
@@ -173,7 +176,7 @@ describe('the numbered list reads as the legacy page reads it', () => {
       ]);
       const projectKey = legacy.call<string>('nextCockpitStableKey', group);
       const source = workSource(contexts, projectKey, session as never);
-      const legacySource = legacy.call('nextCockpitWorkSource', group, session);
+      const legacySource = legacy.call<WorkSource>('nextCockpitWorkSource', group, session);
       const entries = source.all || source.entries;
       const cited = new Set(
         entries.filter(() => rnd() < 0.2).map((entry) => String(entry.id || '')),
@@ -197,7 +200,16 @@ describe('the numbered list reads as the legacy page reads it', () => {
         generated: 1000,
       });
       if (mine.rows.length) drew += 1;
-      const a = text(html);
+      const a = text(
+        projectRecordedLoadedActivity(
+          html,
+          legacySource,
+          session,
+          payload,
+          cited,
+          baselineAt(annotation, session, draft),
+        ),
+      );
       const b = assemble(mine, false);
       if (a !== b) {
         let at = 0;

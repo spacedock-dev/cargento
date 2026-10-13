@@ -14,9 +14,9 @@
  * and that the layout holds at 320 and 375 CSS px.
  *
  * Models, usage, focus and notifications are off; nothing here reads a harness store, a clipboard or a
- * real terminal. Run with `pnpm test:terminal:browser`; `CARGENTO_E2E_STEPS=<regex>` runs only the steps
- * whose name matches, `CARGENTO_SCREENSHOTS=1` writes captures to docs/screenshots/, and
- * `CARGENTO_MUTATION=<name>` applies one deliberate break (see MUTATIONS), which must make the run FAIL.
+ * real terminal. Run with `pnpm test:terminal:browser`; `COMPASS_E2E_STEPS=<regex>` runs only the steps
+ * whose name matches, `COMPASS_SCREENSHOTS=1` writes captures to docs/screenshots/, and
+ * `COMPASS_MUTATION=<name>` applies one deliberate break (see MUTATIONS), which must make the run FAIL.
  *
  * What the previous interface said is read through `support/golden.mjs` from
  * `frontend/test/golden/e2e/terminal-parity.json`, a recording that cannot be remade because that interface is
@@ -50,8 +50,8 @@ import { PRODUCTION as SHIPPED } from './support/world.mjs';
 const patience = (ms) => (process.env.CI ? ms * 3 : ms);
 
 const SHOTS = join(REPOSITORY, 'docs/screenshots');
-const shots = process.env.CARGENTO_SCREENSHOTS === '1';
-const only = process.env.CARGENTO_E2E_STEPS ? new RegExp(process.env.CARGENTO_E2E_STEPS) : null;
+const shots = process.env.COMPASS_SCREENSHOTS === '1';
+const only = process.env.COMPASS_E2E_STEPS ? new RegExp(process.env.COMPASS_E2E_STEPS) : null;
 
 /* One break each, applied to the scratch copy only. A missing needle fails the run loudly rather than
    silently testing nothing. */

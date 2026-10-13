@@ -74,6 +74,7 @@ export interface ObserverModelOffer {
 }
 
 export interface ProjectContext {
+  readonly semantic?: { readonly facts?: readonly SemanticFact[] };
   readonly observer_model?: ObserverModelOffer;
   readonly observers?: readonly {
     readonly harness: string;
@@ -87,6 +88,25 @@ export interface ProjectContext {
     readonly at?: number;
     readonly cut?: boolean;
   }[];
+}
+
+export interface SemanticFact {
+  readonly fact_id: string;
+  readonly at: number;
+  readonly type: string;
+  readonly source_session: SessionIdentity;
+  readonly [field: string]: unknown;
+}
+
+export interface SessionRecord {
+  readonly session: SessionIdentity;
+  readonly entries: readonly SemanticFact[];
+  readonly state: 'ok' | 'stale' | 'unsupported' | 'unavailable';
+  readonly next: string | null;
+  readonly reached_start: boolean;
+  readonly bound: 'bytes' | 'time' | null;
+  readonly scanned_bytes: number;
+  readonly kinds: readonly ('user_message' | 'agent_message')[];
 }
 
 export interface AnnotationsBody {
@@ -122,6 +142,11 @@ export interface DirectionReceipt {
   readonly text?: string;
   readonly clipped?: boolean;
   readonly why?: string;
+  readonly reason?: 'not_found' | 'out_of_reach' | 'unavailable';
+}
+
+export interface DirectionBatchReceipt {
+  readonly results?: readonly DirectionReceipt[];
 }
 
 export interface CorrectionReceipt {

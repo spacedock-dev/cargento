@@ -13,7 +13,7 @@ function documentWithFocus(content: string | null): Pick<Document, 'querySelecto
   const meta = document.implementation.createHTMLDocument('x');
   if (content !== null) {
     const element = meta.createElement('meta');
-    element.setAttribute('name', 'cargento-focus');
+    element.setAttribute('name', 'compass-focus');
     element.setAttribute('content', content);
     meta.head.append(element);
   }
@@ -36,7 +36,7 @@ describe('page bootstrap', () => {
   });
 
   it('reads the focus capability from the page marker and trims it', () => {
-    expect(FOCUS_META_SELECTOR).toBe('meta[name="cargento-focus"]');
+    expect(FOCUS_META_SELECTOR).toBe('meta[name="compass-focus"]');
     expect(readBootstrap('', documentWithFocus('  tok  ')).focusCapability).toBe('tok');
   });
 

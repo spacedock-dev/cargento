@@ -29,13 +29,6 @@ import { readingAuthor, readingCopied } from './shape';
    fact ids the current reading's surviving departures rest on. The legacy cockpit's `nextCockpitWorkEvidence`
    is the oracle (`workList.differential.test.ts`). */
 
-/* The agent's messages, bounded apart: half the other rows' bound, a readability choice, stated under the rows
-   the same way. */
-export const AGENT_ROWS = 10;
-/* How many entries the block draws: a readability bound rather than a measurement, which is why the count it
-   hid is stated under the rows. Nothing upstream caps the semantic facts. */
-export const WORK_ROWS = 20;
-
 /* A fact's type as a word on the activity list. Closed, and a Map so a type named like an Object property
    cannot resolve to one: a type with no word here reads "Entry" rather than its raw token. */
 const ENTRY_KIND = new Map([
@@ -47,7 +40,7 @@ const ENTRY_KIND = new Map([
   ['decision', 'Decision'],
   ['assignment', 'Assignment'],
   ['stage_transition', 'Stage'],
-  ['agent_message', 'Agent said'],
+  ['agent_message', 'said'],
 ]);
 
 /* A check's or a written path's own line under its summary: who, what, and what the tool reported. The result
@@ -61,17 +54,84 @@ const CHECK_RESULTS: Readonly<Record<string, string>> = {
   'failed marker': 'failed, per a failure line in its output',
 };
 
-export function toolReportLine(entry: WorkEntry): string {
-  if (entry.subject !== 'check') return 'Agent · file written';
+/* A check's or a file's own line in parts: who, what it was, and the notes about its result. The row draws the
+   notes at the right edge, as a reader's flag is, and `toolReportLine` is the same words in one line. */
+export type CheckResult = 'unrecorded' | 'passed' | 'failed';
+export interface ActivityMark {
+  readonly icon: CheckResult | 'stale' | 'earlier-failed';
+  readonly short: string;
+  readonly words: string;
+}
+export interface CheckMarks {
+  readonly result: CheckResult;
+  readonly stale: boolean;
+  readonly earlierFailed: boolean;
+  readonly marks: readonly ActivityMark[];
+}
+export const RESULT_MARKS: Readonly<Record<CheckResult, ActivityMark>> = {
+  unrecorded: { icon: 'unrecorded', short: 'No result', words: 'Ran, result not recorded' },
+  passed: { icon: 'passed', short: 'Passed', words: 'Passed, as the tool reported' },
+  failed: { icon: 'failed', short: 'Failed', words: 'Failed, as the tool reported' },
+};
+export const STALE_MARK: ActivityMark = {
+  icon: 'stale',
+  short: '',
+  words: 'Before the last change',
+};
+export const EARLIER_FAILED_MARK: ActivityMark = {
+  icon: 'earlier-failed',
+  short: '',
+  words: 'An earlier run failed',
+};
+export const LAST_TURN_MARK = { short: 'Last turn', words: 'from the last turn' };
+export const MARK_LEGEND = [
+  RESULT_MARKS.unrecorded,
+  RESULT_MARKS.passed,
+  RESULT_MARKS.failed,
+  STALE_MARK,
+  EARLIER_FAILED_MARK,
+];
+
+export function toolReportParts(entry: WorkEntry): {
+  readonly actor: string;
+  readonly type: string;
+  readonly notes: readonly string[];
+  readonly check: CheckMarks | null;
+} {
+  if (entry.subject !== 'check')
+    return { actor: 'Agent', type: 'file written', notes: [], check: null };
   const key = `${entry.result} ${entry.resultSource}`;
-  const parts = [
-    'Agent',
-    'check',
-    Object.hasOwn(CHECK_RESULTS, key) ? (CHECK_RESULTS[key] as string) : 'ran, result not recorded',
-  ];
-  if (entry.earlierFailed) parts.push('an earlier run failed');
-  if (entry.beforeLastChange) parts.push('before the last change');
-  return parts.join(' · ');
+  const recorded = Object.hasOwn(CHECK_RESULTS, key);
+  const result: CheckResult =
+    recorded && key.startsWith('failed')
+      ? 'failed'
+      : recorded && key.startsWith('passed')
+        ? 'passed'
+        : 'unrecorded';
+  const phrase = recorded ? (CHECK_RESULTS[key] as string) : 'ran, result not recorded';
+  const notes = [phrase];
+  if (entry.earlierFailed) notes.push('an earlier run failed');
+  if (entry.beforeLastChange) notes.push('before the last change');
+  return {
+    actor: 'Agent',
+    type: 'check',
+    notes,
+    check: {
+      result,
+      stale: Boolean(entry.beforeLastChange),
+      earlierFailed: Boolean(entry.earlierFailed),
+      marks: [
+        { ...RESULT_MARKS[result], words: phrase[0]?.toUpperCase() + phrase.slice(1) },
+        ...(entry.earlierFailed ? [EARLIER_FAILED_MARK] : []),
+        ...(entry.beforeLastChange ? [STALE_MARK] : []),
+      ],
+    },
+  };
+}
+
+export function toolReportLine(entry: WorkEntry): string {
+  const { actor, type, notes } = toolReportParts(entry);
+  return [actor, type, ...notes].join(' · ');
 }
 
 function humanLabel(value: string): string {
@@ -148,18 +208,10 @@ export function lastTurn(
 
 export function entryActor(entry: WorkEntry): string {
   const author = readingAuthor(entry);
-  /* You pasted it, and Cargento wrote it: the meta says which. */
+  /* You pasted it, and Compass wrote it: the meta says which. */
   if (author === 'person' || readingCopied(entry)) return 'You';
-  /* Cargento's own paraphrase is never credited to the agent. */
-  return author === 'derived' ? 'Cargento’s summary' : 'Agent';
-}
-
-const entryCount = (n: number): string => `${String(n)} ${n === 1 ? 'entry' : 'entries'}`;
-
-/* "A, B and C", for the bound sentence's clauses. */
-function joinClauses(parts: readonly string[]): string {
-  const last = parts[parts.length - 1];
-  return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${last ?? ''}`;
+  /* Compass's own paraphrase is never credited to the agent. */
+  return author === 'derived' ? 'Compass’s summary' : 'Agent';
 }
 
 /* The clause for entries that are counted and not listed, naming the ones a departure cites, which are listed
@@ -200,7 +252,7 @@ export function workMix(entries: readonly WorkEntry[]): string {
   if (directions)
     parts.push(`${String(directions)} ${directions === 1 ? 'direction' : 'directions'} you gave`);
   if (said) parts.push(`${String(said)} ${said === 1 ? 'message' : 'messages'} the agent wrote`);
-  if (copied) parts.push(`${String(copied)} copied from Cargento`);
+  if (copied) parts.push(`${String(copied)} copied from Compass`);
   if (derived) parts.push(`${String(derived)} model-derived`);
   if (summaries) {
     parts.push(
@@ -221,11 +273,11 @@ export function evidenceOwn(payload: Row, harness: string, sent = true): string 
     const route = sent ? readingRoute(payload, { harness }) : null;
     const output = route?.['provider'] ? String(route['tool_output'] || '') : '';
     return (
-      `${label} records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Cargento inspects no file, test or deliverable.` +
+      `${label} records the checks a session ran and the files it wrote, and they are listed here. A result is what the tool reported; Compass inspects no file, test or deliverable.` +
       (output ? ` ${output}` : '')
     );
   }
-  /* "Cargento reads those on Pi alone" stood here, and stopped being true when Claude Code's checks were read
+  /* "Compass reads those on Pi alone" stood here, and stopped being true when Claude Code's checks were read
      too. The panel's own harness limit is the level's, so this line says only what the record above is. */
   return `${label} publishes no demonstrated work results, so nothing above is an inspected file, test or deliverable.`;
 }
@@ -234,12 +286,86 @@ export interface WorkRow {
   readonly entry: WorkEntry;
   readonly n: number | null;
   /** A check's or a file's own line, or the actor and the type's word. */
-  readonly head: { readonly report: string } | { readonly actor: string; readonly type: string };
+  readonly head:
+    | {
+        readonly report: string;
+        readonly actor: string;
+        readonly type: string;
+        readonly notes: readonly string[];
+        readonly check: CheckMarks | null;
+      }
+    | { readonly actor: string; readonly type: string };
   readonly flags: readonly ('later' | 'cited')[];
   readonly source: string;
   readonly at: string;
   readonly turn: boolean;
   readonly add: boolean;
+}
+
+export interface CheckRunModel {
+  readonly kind: 'run';
+  readonly rows: readonly WorkRow[];
+  readonly counts: Readonly<Record<CheckResult, number>>;
+  readonly first: WorkRow;
+  readonly last: WorkRow;
+  readonly label: string;
+  readonly range: string;
+  readonly at: string;
+}
+export type FoldedItem = { readonly kind: 'row'; readonly row: WorkRow } | CheckRunModel;
+
+/* Cited and failed evidence stays reachable without a disclosure. Runs are formed in drawn order,
+   never time-sorted a second time. docs/design-reader-state.md#the-inventory owns their oldest-id key. */
+export function foldRuns(
+  rows: readonly WorkRow[],
+  revealed: ReadonlySet<string> = new Set(),
+): FoldedItem[] {
+  const items: FoldedItem[] = [];
+  let pending: WorkRow[] = [];
+  const flush = () => {
+    const first = pending[0];
+    const last = pending.at(-1);
+    if (pending.length < 3 || !first || !last) {
+      items.push(...pending.map((row): FoldedItem => ({ kind: 'row', row })));
+    } else {
+      const counts = { passed: 0, failed: 0, unrecorded: 0 };
+      for (const row of pending) {
+        if ('check' in row.head && row.head.check) counts[row.head.check.result] += 1;
+      }
+      items.push({
+        kind: 'run',
+        rows: pending,
+        counts,
+        first,
+        last,
+        label: `${String(pending.length)} checks`,
+        range:
+          first.n === null || last.n === null
+            ? 'Entries not numbered in this view'
+            : `#${String(last.n)} to #${String(first.n)}`,
+        at: first.at === last.at ? first.at : `${first.at.replace(/ ago$/, '')} to ${last.at}`,
+      });
+    }
+    pending = [];
+  };
+  for (const row of rows) {
+    const check = 'check' in row.head ? row.head.check : null;
+    if (
+      row.entry.type === 'tool_report' &&
+      check &&
+      check.result !== 'failed' &&
+      !check.earlierFailed &&
+      !row.flags.includes('cited') &&
+      !revealed.has(row.entry.id)
+    ) {
+      pending.push(row);
+    } else {
+      flush();
+      items.push({ kind: 'row', row });
+    }
+  }
+  flush();
+  return items;
 }
 
 export interface WorkList {
@@ -279,26 +405,11 @@ export function workList(input: WorkListInput): WorkList {
      is drawn with its time, as a cited earlier entry is, and is not counted among the earlier entries left
      unlisted. A settled one takes the bound. */
   const open = new Set(conflictCandidates(ann, all, session, input.draft));
-  /* The readability bound: the newest non-tool rows, every listed check and file, and every entry a departure
-     cites, each at its own number so the gaps show. A cited entry is always drawn, so it is reachable without
-     an expand control. */
   const numbered = all.filter((entry) => numbers.has(entry));
-  /* The agent's messages take a bound of their own beside the other rows', so a talkative session never
-     pushes the reader's messages off the list. */
-  const agentSaid = (entry: WorkEntry): boolean => entry.type === 'agent_message';
-  const recent = new Set(
-    numbered.filter((entry) => entry.type !== 'tool_report' && !agentSaid(entry)).slice(-WORK_ROWS),
-  );
-  const recentSaid = new Set(numbered.filter(agentSaid).slice(-AGENT_ROWS));
-  const isCited = (entry: WorkEntry): boolean => cited.has(String(entry?.id || ''));
+  const isCited = (entry: WorkEntry): boolean => cited.has(entry.id);
   const isRevealed = (entry: WorkEntry): boolean => Boolean(input.revealed?.has(entry.id));
-  const isRecent = (entry: WorkEntry): boolean => recent.has(entry) || recentSaid.has(entry);
   const entries = all.filter(
-    (entry) =>
-      isCited(entry) ||
-      isRevealed(entry) ||
-      open.has(entry) ||
-      (numbers.has(entry) && (entry.type === 'tool_report' || isRecent(entry))),
+    (entry) => numbers.has(entry) || isCited(entry) || isRevealed(entry) || open.has(entry),
   );
   const turnOf = lastTurn(session, all);
   const rows = entries.map((entry): WorkRow => {
@@ -310,11 +421,11 @@ export function workList(input: WorkListInput): WorkList {
       n: n ?? null,
       head:
         entry.type === 'tool_report'
-          ? { report: toolReportLine(entry) }
+          ? { report: toolReportLine(entry), ...toolReportParts(entry) }
           : {
               actor: entryActor(entry),
               type: copied
-                ? 'Copied from Cargento'
+                ? 'Copied from Compass'
                 : entry.type === 'user_message'
                   ? 'Prompt'
                   : (ENTRY_KIND.get(String(entry.type || '')) ?? 'Entry'),
@@ -384,35 +495,8 @@ export function workList(input: WorkListInput): WorkList {
       ),
     );
   }
-  /* Every figure from the rows drawn and the numbers given, never authored. */
-  const listed = entries.filter((entry) => numbers.has(entry));
-  const bound =
-    listed.length < numbers.size
-      ? `Listing ${String(listed.length)} of ${entryCount(numbers.size)}: ${joinClauses([
-          `the ${String(recent.size)} most recent`,
-          ...(recentSaid.size
-            ? [`the ${String(recentSaid.size)} most recent messages the agent wrote`]
-            : []),
-          /* In the window: a check or file from before it is counted with the earlier entries, so "every" is
-             true only of this set. */
-          ...(listed.some((entry) => entry.type === 'tool_report')
-            ? ['every check and file in the window']
-            : []),
-          ...(listed.some(
-            (entry) => isCited(entry) && entry.type !== 'tool_report' && !isRecent(entry),
-          )
-            ? ['every entry the analysis cites']
-            : []),
-          ...(listed.some(
-            (entry) => input.revealed?.has(entry.id) && !isCited(entry) && !isRecent(entry),
-          )
-            ? ['the selected finding’s entries']
-            : []),
-          ...(listed.some((entry) => open.has(entry) && !isCited(entry) && !isRecent(entry))
-            ? ['every later direction still to settle']
-            : []),
-        ])}. ${String(numbers.size - listed.length)} ${numbers.size - listed.length === 1 ? 'is' : 'are'} counted and not listed.`
-      : '';
+  // Every timed entry in the loaded window is drawn; there is no hidden readability slice.
+  const bound = '';
   /* Nothing numbered while the record holds entries is a fact about the window, not an empty record: "No entry
      names this session" beside a count of the entries it holds was false. */
   const unnumbered =

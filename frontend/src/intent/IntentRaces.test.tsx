@@ -196,7 +196,7 @@ describe('Keep names the revision it drew, however the record moves', () => {
     expect(settleBody).toMatchObject({ expected_revision: 1 });
   });
 
-  it('draws a sole direction whole when the server cut it, even if the cut text equals its summary', async () => {
+  it('lets a reader see a clipped direction and refuses to settle it on another press', async () => {
     const page = mountSession({
       store: { goal: 'Saved', revision: 1 },
       session: SAVED_AT,
@@ -211,7 +211,13 @@ describe('Keep names the revision it drew, however the record moves', () => {
     await settle(page);
     expect(page.allPosts().map((post) => post.path)).toEqual(['/api/direction']);
     expect(text('.next-cockpit-direction-whole')).toContain(
-      'Only the start of this direction is shown; it is longer than Cargento opens.',
+      'Only the start of this direction is shown; it is longer than Compass opens.',
+    );
+    await press(control('direction-keep'));
+    await settle(page);
+    expect(page.allPosts().filter((post) => post.path === '/api/annotate')).toHaveLength(0);
+    expect(text('.next-cockpit-direction-question')).toContain(
+      'Nothing was settled and no analysis was started: Compass could not open the whole text of every direction Keep would settle, so it cannot show you what you would keep. Press again to retry.',
     );
   });
 

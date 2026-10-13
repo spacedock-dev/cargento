@@ -23,6 +23,16 @@ const WORK_ROWS_PROBE = 20;
 const CASES = 60;
 const SEEDS = CASES;
 
+function projectRecordedLoadedSource(source: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(source['all']) || source['state'] !== 'read') return source;
+  const all = source['all'] as { type: string }[];
+  return {
+    ...source,
+    entries: all,
+    shown: all.filter((entry) => entry.type !== 'tool_report').length,
+  };
+}
+
 function genFact(
   rnd: Rng,
   index: number,
@@ -135,7 +145,7 @@ describe('the observed record and the later directions read as the legacy page r
       note(`state:${mine.state}`);
       if (mine.state === 'read' && (mine.total ?? 0) > WORK_ROWS_PROBE) note('windowed');
       const found = [
-        firstDifference(canonical(theirs), canonical(mine)),
+        firstDifference(canonical(projectRecordedLoadedSource(theirs)), canonical(mine)),
         firstDifference(
           canonical(legacy.call('nextCockpitWorkAbsence', theirs)),
           canonical(workAbsence(mine)),

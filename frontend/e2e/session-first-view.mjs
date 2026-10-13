@@ -225,7 +225,7 @@ try {
     await page.getByRole('button', { name: 'More', exact: true }).click();
     await page.getByText(/Delegated work: 1 recorded launch/).waitFor({ state: 'visible' });
     await page
-      .getByText(/Cargento cannot see all work this session started/)
+      .getByText(/Compass cannot see all work this session started/)
       .waitFor({ state: 'visible' });
     await page.getByRole('button', { name: /Saved.*reads from/ }).click();
     await page

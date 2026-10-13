@@ -1,7 +1,7 @@
 # Live session mirror critique ledger
 
 Target: `codex:01a035ee-2a7b-76f0-873f-eaddc97860c3` inside project
-`spacedock-research/cargento`. Each exercise used the live `/api/data` row and the shipped
+`spacedock-research/compass`. Each exercise used the live `/api/data` row and the shipped
 page JavaScript. No controllable browser was available, so these rounds claim executable DOM
 rendering and source inspection, not screenshots or visual polish.
 

@@ -1,12 +1,12 @@
 # Session identity: project labels and display ids
 
-How Cargento answers "which session am I looking at, and where is it running?" Both halves
+How Compass answers "which session am I looking at, and where is it running?" Both halves
 were reported together in DRC-3962 and DRC-3963, because together they made distinct
 sessions render as one. D-5 adds a third question to the same file, "and whose quota is it
 spending?", which only one harness cannot answer with its own name.
 
-The code is `cargento_runtime/sessions.py` (identity, shape, freshness, display ids) and
-`cargento_runtime/aggregate.py` (dedup, ordering, the per-harness failure boundary). Collectors
+The code is `compass_runtime/sessions.py` (identity, shape, freshness, display ids) and
+`compass_runtime/aggregate.py` (dedup, ordering, the per-harness failure boundary). Collectors
 produce rows; neither of those two files knows which harness a row came from, which is what keeps
 identity one rule rather than ten. See
 [`design-runtime-architecture.md`](design-runtime-architecture.md).
@@ -33,7 +33,7 @@ host's own path module, and returns `(home)` for the home directory itself. Coll
 their own fallback when it returns empty.
 
 Two segments rather than one because sibling worktrees are routinely all named the same
-thing. `recce/cargento` and `agy-subagents/cargento` are different work; `cargento` twice is
+thing. `recce/compass` and `agy-subagents/compass` are different work; `compass` twice is
 a dashboard that lies. This matters more after the normalization, not less: making labels
 agree across harnesses also makes them agree across directories that merely share a
 basename.
@@ -72,13 +72,13 @@ are one directory, and a store may record any of them.
 - **Splitting on both separators by hand.** Tempting, because a Windows path read on POSIX
   keeps its backslashes. `docs/design-cross-platform.md` already rejected the generic version
   of this helper and the same reasoning applies here: `\` is a legal POSIX filename
-  character, so the split turns one directory named `my\proj` into two. Cargento only reads
+  character, so the split turns one directory named `my\proj` into two. Compass only reads
   stores written on the machine it runs on, so `ntpath` on Windows and `posixpath` elsewhere
   are the correct semantics, and `windows` is injectable so one runner covers both.
 - **Comparing against home with string equality.** Passes on POSIX and silently mislabels on
   Windows, where the same directory has several legal spellings.
 - **Accepting a relative or unresolved cwd.** `..` and `relative/path` produced labels like
-  `cargento/..`. Returning empty and letting the collector fall back to the harness name is
+  `compass/..`. Returning empty and letting the collector fall back to the harness name is
   the honest answer.
 
 ## D-2: read Claude's working directory from the transcript, not the directory name
@@ -226,8 +226,8 @@ design-usage-quota.md](design-usage-quota.md#q-11-every-row-names-the-model-it-r
 
 **The payload carries the vendor's own id, unmapped.** `openai-codex`, not `codex`. Naming is
 presentation, and the page already owns the harness table, so `PROVIDER_HARNESS` lives beside it in
-`spark.js`. A provider Cargento has no row for keeps its own name, and an unrecognised id passes
-through unchanged: Pi supports twenty-odd providers and most are direct API keys with no Cargento
+`spark.js`. A provider Compass has no row for keeps its own name, and an unrecognised id passes
+through unchanged: Pi supports twenty-odd providers and most are direct API keys with no Compass
 presence, so mapping one to a harness would claim a session that does not exist.
 
 **It is derived from the branch path on every read, never cached.** This is the one that looks like
@@ -257,7 +257,7 @@ provider is never paired with a different entry's model.
   provider. That file is current global state, so attributing it to an older session would report
   today's default as that session's history. A session with no provider makes no claim.
 - **Reading `~/.pi/agent/auth.json`** to tell a subscription from an API key. It is a credential
-  store, and widening Cargento's credential reads for a display nicety is the wrong trade. The
+  store, and widening Compass's credential reads for a display nicety is the wrong trade. The
   provider id carries enough: `openai-codex` and `github-copilot` are inherently subscription
   routes.
 - **Publishing Pi's cost.** Pi records a dollar `cost` per turn, and on a subscription-routed call

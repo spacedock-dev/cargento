@@ -26,7 +26,7 @@ export async function visitIntentDisplayStates(browser, root, record) {
       });
       try {
         await opened.context.addInitScript(() =>
-          localStorage.setItem('cargento.next.live-estimate:claude:intent-2', '1'),
+          localStorage.setItem('compass.next.live-estimate:claude:intent-2', '1'),
         );
         const script = freshScript();
         await installScript(opened.context, script);
@@ -107,9 +107,9 @@ export async function visitIntentDisplayStates(browser, root, record) {
             );
           }
           await opened.page.evaluate(() => document.fonts.ready);
-          if (process.env.CARGENTO_SCREENSHOTS)
+          if (process.env.COMPASS_SCREENSHOTS)
             await opened.page.screenshot({
-              path: join(process.env.CARGENTO_SCREENSHOTS, `chrome-${state}-${width}.png`),
+              path: join(process.env.COMPASS_SCREENSHOTS, `chrome-${state}-${width}.png`),
               fullPage: true,
             });
           await record(opened.page, `Intent ${state} at ${width}`);

@@ -155,15 +155,15 @@ describe('the breadcrumb', () => {
 
 describe('the document title is one per view and does not move while the board refreshes', () => {
   it.each([
-    ['#n=sessions', 'Cargento — Sessions'],
-    ['#n=attention', 'Cargento — Attention'],
-    ['#n=projects', 'Cargento — Projects'],
-    ['#n=intent', 'Cargento — Intent log'],
-    ['#n=project:alpha%2Fapp', 'alpha/app — Cargento'],
-    ['#n=session:alpha%2Fapp:claude:shared-sid', 'Alpha shared claude — alpha/app — Cargento'],
-    ['#n=session:beta%2Fapi:claude:colon%3Asid', 'Title not published — beta/api — Cargento'],
+    ['#n=sessions', 'Compass — Sessions'],
+    ['#n=attention', 'Compass — Attention'],
+    ['#n=projects', 'Compass — Projects'],
+    ['#n=intent', 'Compass — Intent log'],
+    ['#n=project:alpha%2Fapp', 'alpha/app — Compass'],
+    ['#n=session:alpha%2Fapp:claude:shared-sid', 'Alpha shared claude — alpha/app — Compass'],
+    ['#n=session:beta%2Fapi:claude:colon%3Asid', 'Title not published — beta/api — Compass'],
     // An empty project leaves two dashes side by side, which `document.title` collapses to one space, as the legacy page's does.
-    ['#n=session::codex:bare-project-sid', 'No project label — — Cargento'],
+    ['#n=session::codex:bare-project-sid', 'No project label — — Compass'],
   ])('%s is titled %s', async (hash, title) => {
     const page = mountShell({ hash, data: BOARD });
     await page.settle();
@@ -173,7 +173,7 @@ describe('the document title is one per view and does not move while the board r
   it('names a session the board does not hold by its own id, never an invented title', async () => {
     const page = mountShell({ hash: '#n=session:alpha%2Fapp:claude:missing', data: BOARD });
     await page.settle();
-    expect(document.title).toBe('missing — alpha/app — Cargento');
+    expect(document.title).toBe('missing — alpha/app — Compass');
   });
 
   it('keeps the title through a refresh and changes it with the route', async () => {
@@ -186,9 +186,9 @@ describe('the document title is one per view and does not move while the board r
       });
       seen.add(document.title);
     }
-    expect([...seen]).toEqual(['Cargento — Sessions']);
+    expect([...seen]).toEqual(['Compass — Sessions']);
     await page.go('#n=attention');
-    expect(document.title).toBe('Cargento — Attention');
+    expect(document.title).toBe('Compass — Attention');
   });
 });
 

@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "record-unsupported",
+  "notes": "An unsupported harness is not an empty record and establishes no start.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/session-record",
+    "query": "project=alpha-app&session=pi:s1"
+  },
+  "response": {
+    "body": {
+      "bound": null,
+      "entries": [],
+      "kinds": [
+        "user_message",
+        "agent_message"
+      ],
+      "next": null,
+      "reached_start": false,
+      "scanned_bytes": 0,
+      "session": {
+        "harness": "pi",
+        "sid": "s1"
+      },
+      "state": "unsupported"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "180",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

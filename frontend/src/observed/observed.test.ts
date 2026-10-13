@@ -271,7 +271,7 @@ describe('delegated work states what it cannot see', () => {
     expect(delegatedWork({ delegated_launches: null }, NOW)).toEqual({
       draw: false,
       risky: false,
-      text: 'Delegated work: not measured; Cargento cannot see work this session started.',
+      text: 'Delegated work: not measured; Compass cannot see work this session started.',
     });
     expect(delegatedWork({ delegated_launches: 2, delegated_unpaired: -1 }, NOW).text).toContain(
       'not measured',
@@ -283,7 +283,7 @@ describe('delegated work states what it cannot see', () => {
     const quiet = delegatedWork({ ...row, delegated_quiet_since: NOW - 1800 }, NOW);
     expect(quiet).toMatchObject({ draw: true, risky: true });
     expect(quiet.text).toContain('Nothing recorded for 30 minutes.');
-    expect(quiet.text).toContain('Cargento cannot see all work this session started.');
+    expect(quiet.text).toContain('Compass cannot see all work this session started.');
     expect(delegatedWork({ ...row, delegated_quiet_since: NOW - 1799 }, NOW).risky).toBe(false);
     expect(
       delegatedWork({ ...row, delegated_unpaired: 0, delegated_quiet_since: NOW - 9000 }, NOW)

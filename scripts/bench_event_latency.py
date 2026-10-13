@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = ROOT / "cargento" / "skills" / "cargento"
+SKILL_DIR = ROOT / "compass" / "skills" / "compass"
 
 SESSION = "abcdef12-3456-7890-abcd-ef1234567890"
 
@@ -60,7 +60,7 @@ def _coordinator() -> tuple[Any, Any]:
     """
     if str(SKILL_DIR) not in sys.path:
         sys.path.insert(0, str(SKILL_DIR))
-    from cargento_runtime import cli, observation  # noqa: PLC0415
+    from compass_runtime import cli, observation  # noqa: PLC0415
 
     runtime_args = argparse.Namespace(
         port=4553, window_hours=24.0, no_spacedock=False, no_usage=True

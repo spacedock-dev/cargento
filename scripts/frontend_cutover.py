@@ -32,8 +32,6 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from validate_plugins import heading_slugs  # noqa: E402 - the validator owns the anchor grammar
@@ -42,31 +40,8 @@ BASELINE = "docs/frontend-baseline.json"
 FLUIDITY = "docs/frontend-fluidity.json"
 RECEIPT = "docs/frontend-cutover-receipt.json"
 INVENTORY = "scripts/frontend-migration.json"
-REACT_DOCUMENT = "cargento/skills/cargento/cargento_runtime/web/react.integrity.json"
-WORKFLOW = ".github/workflows/quality-gate.yml"
+REACT_DOCUMENT = "compass/skills/compass/compass_runtime/web/react.integrity.json"
 PRODUCTION_RUNNER = "frontend/e2e/production-proofs.mjs"
-PRODUCTION_COMMAND = "pnpm test:production:browser"
-PRODUCTION_SHARDS = "frontend/e2e/production-shards.json"
-# The parity proofs the production-bundle job must run between its shards; nothing else stands in.
-PARITY_SCRIPTS = frozenset(
-    f"test:{name}:browser"
-    for name in (
-        "storage",
-        "shell",
-        "controls",
-        "sessions",
-        "intent",
-        "drift",
-        "project",
-        "console",
-        "attention",
-        "capacity",
-        "terminal",
-    )
-)
-# Not a parity proof: the computed-style contract that replaced the legacy stylesheet guards also
-# runs on the shipped bundle.
-EXTRA_PRODUCTION_PROOFS = frozenset({"test:css:browser", "test:journey:browser"})
 # The sources a measurement is taken with. A receipt records two digests of each: what the runs were
 # taken with (`source_bindings`, embedded in every run and never rewritten) and what the tree holds
 # when the receipt was last composed (`current_sources`, checked against the files).
@@ -955,69 +930,21 @@ def _class_result(
     return problems, gaps
 
 
-def _shard_problems(root: Path) -> list[str]:
-    try:
-        shards = read_json(root / PRODUCTION_SHARDS)
-    except (OSError, ValueError):
-        return [f"{PRODUCTION_SHARDS} is missing or unreadable"]
-    if not isinstance(shards, dict) or not shards:
-        return [f"{PRODUCTION_SHARDS} must map each shard to its proofs"]
-    listed = [name for names in shards.values() if isinstance(names, list) for name in names]
-    problems = [f"{PRODUCTION_SHARDS} lists a proof in two shards"] * (
-        len(listed) != len(set(listed))
-    )
-    problems += [
-        f"{PRODUCTION_SHARDS} runs no {name}, so it is not proven on the shipped bundle"
-        for name in sorted(PARITY_SCRIPTS - set(listed))
-    ]
-    return problems + [
-        f"{PRODUCTION_SHARDS} names {name}, which is not a parity proof"
-        for name in sorted(set(listed) - PARITY_SCRIPTS - EXTRA_PRODUCTION_PROOFS)
-    ]
+def _bundle_problems(block: dict[str, Any], commands: str) -> list[str]:
+    """The production-bundle proof is still a named, existing proof; the gate no longer runs it.
 
-
-def _runs_command(step: Any, command: str) -> bool:
-    """Whether a workflow step's `run:` value has a line that starts with the command.
-
-    A substring anywhere in the file is not a step: it can sit in a comment, an `echo` or another
-    job. Only a `run` line that begins with the command, then ends or takes arguments, runs it.
+    The parity proofs against the shipped bundle left the pull request gate (owner, 2026-10-12): the
+    UI is verified by Storybook, and these proofs stay in the repository to run on demand.
     """
-    run = step.get("run") if isinstance(step, dict) else None
-    lines = (line.strip() for line in run.splitlines()) if isinstance(run, str) else ()
-    return any(line == command or line.startswith(command + " ") for line in lines)
-
-
-def _bundle_problems(root: Path, block: dict[str, Any], commands: str) -> list[str]:
-    """The production-bundle proof: its runner is a named proof, a script runs it, CI runs that."""
     named = [item for item in block.get("proofs", []) if isinstance(item, dict)]
     problems = []
     if not any(item.get("browser") == PRODUCTION_RUNNER for item in named):
         problems.append(f"production_artifact must name {PRODUCTION_RUNNER} among its proofs")
-    bundle = block.get("production_bundle")
-    if not isinstance(bundle, dict):
-        problems.append("production_artifact names no production_bundle (command and CI job)")
-        return problems
-    if bundle.get("command") != PRODUCTION_COMMAND:
-        problems.append(f"production_bundle command must be {PRODUCTION_COMMAND}")
     if PRODUCTION_RUNNER.removeprefix("frontend/") not in commands:
         problems.append(f"no package.json script runs {PRODUCTION_RUNNER}")
-    job = bundle.get("ci_job")
-    try:
-        workflow = yaml.safe_load((root / WORKFLOW).read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
-        return [*problems, f"{WORKFLOW} is missing or is not YAML"]
-    named_jobs = [
-        item
-        for item in (workflow.get("jobs") or {}).values()
-        if isinstance(item, dict) and item.get("name") == job
-    ]
-    if not isinstance(job, str) or len(named_jobs) != 1:
-        problems.append(f"{WORKFLOW} has no job named {job!r}, or has several")
-    elif not any(
-        _runs_command(step, PRODUCTION_COMMAND) for step in named_jobs[0].get("steps", [])
-    ):
-        problems.append(f"job {job!r} has no step whose run value runs {PRODUCTION_COMMAND}")
-    return [*problems, *_shard_problems(root)]
+    if not str(block.get("retired", "")).strip():
+        problems.append("production_artifact says why the gate no longer runs its proofs (retired)")
+    return problems
 
 
 def _artifact_result(root: Path, block: Any, commands: str) -> tuple[list[str], list[str]]:
@@ -1032,7 +959,7 @@ def _artifact_result(root: Path, block: Any, commands: str) -> tuple[list[str], 
         for number, proof in enumerate(proofs, 1)
         for problem in proof_problems(root, proof, f"production_artifact proof {number}", commands)
     ]
-    problems += _bundle_problems(root, block, commands)
+    problems += _bundle_problems(block, commands)
     gap = block.get("gap")
     if gap is not None and (not isinstance(gap, str) or not gap.strip()):
         problems.append("production_artifact gap must say what is not covered")
@@ -1106,7 +1033,7 @@ def _run_remeasure(root: Path, args: argparse.Namespace) -> int:
             check=True,
             timeout=120,
         )
-        with tempfile.TemporaryDirectory(prefix="cargento-fluidity-refresh-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="compass-fluidity-refresh-") as temporary:
             runs = [Path(temporary) / f"run-{index}.json" for index in range(3)]
             for path in runs:
                 command = [

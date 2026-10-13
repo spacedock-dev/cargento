@@ -3,7 +3,7 @@ import type { SessionIdentity } from '../storage';
 import { useShell, type Shell } from '../shell/context';
 
 /* The live monitor switch is off by default and remembered per session in this browser only, as `1` under
-   `cargento.next.live-estimate:<harness>:<sid>` while it is on and no key while it is off. Nothing about it
+   `compass.next.live-estimate:<harness>:<sid>` while it is on and no key while it is off. Nothing about it
    is ever sent: the server publishes the focused session's estimate whichever way it is set, and the switch
    decides only whether the level, its nudge and the header pill are drawn. Where storage throws, the
    in-memory choice holds it for the tab. The storage itself is the shell's one `LegacyStorage`; this is the

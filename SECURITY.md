@@ -1,9 +1,11 @@
 # Security policy
 
+The temporary Cargento name fallback carries no extra privilege: legacy values and files pass the same validation, permission checks and spend caps as Compass names. When the new filename is absent, legacy state files and the permission database are read and written in place. Older and newer builds share that consent and reservation authority, so revoking permission in either takes effect in both. Forgetting observed records removes the legacy copy too; turning off readings keeps the spend timestamps. When both filenames exist, the Compass file wins. When `~/.cargento` is the only default home, it is used in place until the owner moves it to `~/.compass`; fixed account ledgers ignore store overrides and keep counting in that same file. All these fallbacks are removed at 1.0.0.
+
 ## Scope
 
-Cargento ships three kinds of component that touch the network. The dashboard server
-(`cargento/skills/cargento/server.py`, whose code is the `cargento_runtime` package beside it)
+Compass ships three kinds of component that touch the network. The dashboard server
+(`compass/skills/compass/server.py`, whose code is the `compass_runtime` package beside it)
 reads local coding-agent session stores (transcripts, task
 files, SQLite databases) and serves them over HTTP. When the usage feature is on, the server also
 makes the quota poll described in Usage quota reads (the quota fetcher); it carries no session
@@ -57,8 +59,8 @@ The posture rests on two invariants:
    readings implement the second pathway behind their own enablement and consent. Nudges stay off
    until an endpoint is configured. `--no-harness-usage` refuses model calls, and `--no-reach`
    disables nudges.
-   Nothing else Cargento does reaches the network. One further pathway is written down and reaches
-   no network on Cargento's own account: the hand-off request in Hand-off requests below writes one
+   Nothing else Compass does reaches the network. One further pathway is written down and reaches
+   no network on Compass's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
    own connection, which is why it is named here rather than counted above.
 2. Read-only against harness stores. They are opened read-only and never written. Thirteen endpoints
@@ -77,19 +79,19 @@ The posture rests on two invariants:
    `POST /api/annotate` writes the goal you typed or explicitly adopted and the expected outcome lines you typed against a session, including a line you added from a later direction you gave and the settlement of those directions, and
    `POST /api/reading` writes a model's reading of that session back into the same annotation
    entry. A press that produces nothing still writes, because the reason and the spend count are
-   recorded too. These three routes write Cargento's own state under `~/.cargento` and never a harness
+   recorded too. These three routes write Compass's own state under `~/.compass` and never a harness
    store, so the read-only rule above stands unchanged. What the first holds and how to clear it is
    in Dismissals; the other two share one file,
-   `cargento-annotations.json`, bounded by a session count and a revision count rather than by age,
+   `compass-annotations.json`, bounded by a session count and a revision count rather than by age,
    and by a 16 MiB read limit that every write trims to, dropping the least recently written
    entries and never the one being written. A store file that exists and cannot be read whole is
    never written over: every save answers `untrusted` until it can be, because a write would keep
    only what this build could read, and the board says the file could not be read rather than
    showing every session as one nobody typed against. A session whose own entry this build cannot
    read is kept as it was, and a save, adoption or discard of it answers `unreadable`. Every write
-   holds an OS lock on `cargento-annotations.json.lock` beside the file across its read, its check
+   holds an OS lock on the selected annotation filename plus `.lock` beside the file across its read, its check
    and its rename (`flock` on POSIX, `msvcrt.locking` on Windows), so two dashboards sharing one
-   Cargento home cannot write an older copy over a newer save or reuse a revision number: a write
+   Compass home cannot write an older copy over a newer save or reuse a revision number: a write
    that named a revision the other dashboard has moved past is refused as stale, and a plain goal
    save appends after it. A write that waits ten seconds for the lock writes nothing and answers
    `unwritable`, and so does one whose lock file exists or can be made but cannot be opened or locked
@@ -135,12 +137,12 @@ The posture rests on two invariants:
    which hold no text at all. And there is no
    fourteen-day expiry: a reading is evicted when its annotation is, oldest-save-first at the
    session count above. The fourth disk writer, `POST /api/tripwire`, saves, rearms or removes
-   workflow stage conditions in Cargento's own store; [Saved workflow stage conditions](#saved-workflow-stage-conditions)
+   workflow stage conditions in Compass's own store; [Saved workflow stage conditions](#saved-workflow-stage-conditions)
    owns its bounds. The fifth, `POST /api/reading/cancel`, marks the running analysis cancelled,
    rewrites its recovery marker under the state directory, and kills its CLI's process group; the
    cancelled outcome it causes is written by the analysis's own job, into the same annotation entry
    `POST /api/reading` writes. The sixth, `POST /api/correction/copied`, records the digest of a
-   correction you copied, never its text, in `cargento-copied-corrections.json`; [Analyze drift,
+   correction you copied, never its text, in `compass-copied-corrections.json`; [Analyze drift,
    Cancel and copied corrections](#analyze-drift-cancel-and-copied-corrections) owns its bounds.
    One forwarder writes too: `statusline_hook.py`'s deduplication memo under
    the same directory, which holds a normalized state name and a timestamp and nothing about the
@@ -195,7 +197,7 @@ The posture rests on two invariants:
 
    One `GET` writes as well, which is why it is named here rather than left to the count above.
    `GET /api/observe` is a trigger rather than a poll: it derives one session's goal, stage and open
-   block and records the answer as a sidecar under `~/.cargento/observer/`, again Cargento's own
+   block and records the answer as a sidecar under `~/.compass/observer/`, again Compass's own
    state and never a harness store. Its two components are the harness key and the session id, and
    both must match `[A-Za-z0-9._-]{1,128}` before either reaches a path. `records.safe_text`
    bounds a string and strips control characters, and passes a separator straight through, so the
@@ -206,13 +208,13 @@ The posture rests on two invariants:
    reads is covered by Project reads below: the transcript, and the same two kinds of frontmatter a
    stage strip reads, under the same guards and the same `--no-spacedock` switch.
    The git probe runs inside a repository the user chose rather than a harness store. Git writes
-   nothing there on the probe's behalf, and Cargento runs no program of its own; a filter driver the
+   nothing there on the probe's behalf, and Compass runs no program of its own; a filter driver the
    operator has configured globally, git-lfs being the common one, can still be invoked by a
    committed attribute and may then write where it likes, which the git-reads section below states
    in full. The focus command writes nothing
    anywhere, reads nothing back, and touches no harness store; `POST /api/focus` is the one POST
    route that mutates nothing at all. The server also keeps its own history
-   of what it observed under `~/.cargento`, written as it observes rather than in answer to a
+   of what it observed under `~/.compass`, written as it observes rather than in answer to a
    request, and never a harness store, so the read-only rule stands unchanged.
 
 Anything that weakens either invariant is a security bug: a bind reaching an address the operator did
@@ -223,14 +225,14 @@ described in Repository git reads (the end-of-session probe), running a program 
 terminal other than the focus command described in Reaching a session's terminal (the focus
 command), or the hook client reaching a non-loopback destination. Those two exceptions are a
 whitelist of two scoped clauses and not a general permission to execute: written generally the
-sentence would make documented security bugs of three paths Cargento already ships, the native
+sentence would make documented security bugs of three paths Compass already ships, the native
 notifier's `osascript`, `--daemon`'s respawn of the server, and the quota fetcher's Keychain read.
 
 ## Project reads (Spacedock stage strips)
 
 One feature reads paths that are not under a store root. When a session declares itself a Spacedock
 first officer, or in Pi and Codex has a supported boot result in its transcript,
-Cargento reads YAML frontmatter, and only frontmatter, from two kinds of file, so it can show where
+Compass reads YAML frontmatter, and only frontmatter, from two kinds of file, so it can show where
 each entity sits on its workflow's stage spine:
 
 1. one workflow `README.md`, for the ordered stage list and which stages are initial or terminal;
@@ -241,7 +243,7 @@ entity-state directory itself, through one non-recursive `scandir`. Nothing is e
 
 Neither path is guessed. The first officer's own `spacedock status --boot` output, already recorded
 in its transcript, names the workflow directory and the entity-state directory as absolute paths.
-Cargento uses those values and nothing else. Before any file is opened, all of the following must
+Compass uses those values and nothing else. Before any file is opened, all of the following must
 hold, and a path failing any one is skipped silently:
 
 - the directory value is absolute, contains no NUL, and encodes for this filesystem. A lone
@@ -286,7 +288,7 @@ store paths.
 
 ## Saved workflow stage conditions
 
-`cargento-tripwires.json` under Cargento's state directory holds at most 64 stage conditions. A versioned
+`compass-tripwires.json` under Compass's state directory holds at most 64 stage conditions. A versioned
 SHA-256 digest of the canonical definition and state directory pair identifies a workflow; new
 condition fields expose no paths or copied file bodies. The bounded store uses atomic replacement
 and owner-only temporary files. Corruption refuses mutation and evaluation rather than discarding
@@ -303,7 +305,7 @@ writes. `--no-spacedock` leaves saved intent readable but suspended. See the
 
 ## Repository git reads (the end-of-session probe)
 
-One feature runs a program inside a directory the user chose. Cargento already records each
+One feature runs a program inside a directory the user chose. Compass already records each
 session's working directory; when a session ends, the server runs one bounded git command there, so
 the board can show that a session stopped with work still in the tree.
 
@@ -344,7 +346,7 @@ dirty reading belonging to another one, and a directory that is not a repository
 too, so the check that the path is a directory does not help.
 
 The mechanism is subprocess execution rather than a file open. That is what separates this feature from
-every other read Cargento performs, and the three safety flags are load-bearing. The first two were measured
+every other read Compass performs, and the three safety flags are load-bearing. The first two were measured
 2026-08-28 at git 2.55.0 across four fresh repositories, one probe each, from an identical racy-clean
 state; the third was measured 2026-09-07 at git 2.55.0 with git-lfs 3.8.0:
 
@@ -352,7 +354,7 @@ state; the third was measured 2026-09-07 at git 2.55.0 with git-lfs 3.8.0:
   stat, not a per-invocation habit, and a repository a live session is editing is the normal case
   for it rather than a corner case.
 - Without `-c core.fsmonitor=`, a `core.fsmonitor` script configured in the repository is executed
-  under Cargento's identity. A repository can carry that setting in from wherever it was cloned.
+  under Compass's identity. A repository can carry that setting in from wherever it was cloned.
 - Without `-c core.hooksPath=/dev/null`, a filter driver installs its own hooks inside the
   repository. Hashing a tracked path whose committed attributes name a driver invokes it, and
   git-lfs then asks git where hooks belong and writes there: four files at mode 0755, named
@@ -510,11 +512,11 @@ reaching a response, a probe on any edge but session end, a probe while the feat
 executable taken from anywhere but the resolved absolute path, a reading published about any
 repository but the one git discovers from the directory it names, subject to the metadata and
 working-tree selection described above, or any write inside the user's repository
-that Cargento's own argv could have prevented.
+that Compass's own argv could have prevented.
 
 Two of those clauses are narrower than they read, and both narrowings are the residuals above rather
 than relaxations. A filter driver the inspected repository configured for itself may write where it
-likes, and no argv Cargento can pass stops it; what the argv must prevent, and now does, is git
+likes, and no argv Compass can pass stops it; what the argv must prevent, and now does, is git
 writing on the probe's behalf. And the reading clause says repository rather than directory on
 purpose: git's discovery normally selects the containing repository, which is the correct answer
 for a session in a subdirectory and the wrong one for a session under a `$HOME` that is a repository.
@@ -524,7 +526,7 @@ not promise that those contents lie beneath the session directory or the discove
 
 ## Reaching a session's terminal (the focus command)
 
-One feature asks the operating system to put a window in front of the operator. Cargento already
+One feature asks the operating system to put a window in front of the operator. Compass already
 knows where each session runs; when the reader clicks through to a session that is waiting on them,
 the server runs one bounded command that raises that session's terminal, so the hunt across tabs
 ends in one move.
@@ -651,11 +653,11 @@ precedent and not a permission one, and the difference decides what may be claim
 focus case would be the **first** Automation-checked call in this codebase, not the second, and
 nothing about the notifier working says a raise will.
 
-The record is derived from a session Cargento observed, and reaches the runtime through an
+The record is derived from a session Compass observed, and reaches the runtime through an
 authenticated event rather than through the focus request. That is the honest statement, and it is
 narrower than the first draft's "never taken from a request body": on the only measured path the
 identity arrives in a hook POST to `/api/events/<harness>`, which is a request body, from a process
-Cargento does not control. What bounds it is the capability on that route, which holds a forger to
+Compass does not control. What bounds it is the capability on that route, which holds a forger to
 the same operating-system user. The focus request itself names a session and never a target.
 
 ### The lookup is done at raise time, and an ambiguous answer is not a raise
@@ -719,7 +721,7 @@ watching the other follow. The sentence is corrected rather than softened, becau
 rests on the mechanism being described accurately.
 
 The raise reads nothing back: its standard output is discarded unread, so no pane content, no window
-title and no pathname enters Cargento.
+title and no pathname enters Compass.
 
 **The two lookups that precede it do read, and saying so is the point.** The shared-session rule and
 the ambiguity rule cannot be enforced without asking tmux which session a pane belongs to and which
@@ -784,7 +786,7 @@ document navigation cannot take this path and a local process without the token 
 **The capability is minted for this feature and delivered to the page, and saying so is the point.**
 The first draft said the route carries "the per-run capability `POST /api/events/<harness>` uses",
 and that was unsatisfiable by the caller the same sentence names: nothing under
-`cargento_runtime/web/` knows about tokens, the page makes two `fetch` calls and one `EventSource`
+`compass_runtime/web/` knows about tokens, the page makes two `fetch` calls and one `EventSource`
 with no header among them, and the per-run tokens live only in the state file at mode `0600`. It was
 also the wrong token. The per-harness capabilities are derived per harness, so the token that would
 focus a Claude session is byte-identical to the one `POST /api/events/claude` accepts, which is the
@@ -798,7 +800,7 @@ asset would break that check and make them non-deterministic. Injecting after th
 verified bytes untouched.
 
 Both halves of that matter and neither is decoration. A GET would repeat a gap this repository has
-already been bitten by: an attacker page that gets the browser to open a Cargento URL in a tab reads
+already been bitten by: an attacker page that gets the browser to open a Compass URL in a tab reads
 nothing back, and the "a cross-origin document cannot be read" reasoning does not cover the side
 effect. On the quota fetch that side effect was a credential read. Here it would be a window
 appearing on the operator's desk.
@@ -851,10 +853,10 @@ control does not render.
 
 A row's attribution is unverified, as the ask lane's already is. A forged registration cannot make a
 window appear, because the target comes from a collector rather than from a request, but a reader
-who clicks is trusting a row Cargento measured rather than one a session proved.
+who clicks is trusting a row Compass measured rather than one a session proved.
 
-Raising a window is the first thing Cargento does that it cannot undo and that is visible outside
-Cargento. A raise that lands on the wrong window puts a keyboard in front of a session the operator
+Raising a window is the first thing Compass does that it cannot undo and that is visible outside
+Compass. A raise that lands on the wrong window puts a keyboard in front of a session the operator
 did not mean to reach. The identification capture measured how that happens: for a session with no
 controlling terminal at all, both obvious readings report a terminal, and it belongs to somebody else. So a
 lookup that cannot identify a terminal must decline rather than fall back, and "the first ancestor
@@ -896,14 +898,14 @@ The endpoints, named exactly:
    CLI's config records. The credential is the session token in the macOS Keychain under the service
    name `cursor-access-token`. Read this next part before trusting the name: Cursor stores the
    identical value under `cursor-refresh-token`, so unlike Claude's quota-scoped token this one can
-   also mint new sessions. Cargento sends it as a bearer token and never exchanges it, and the
+   also mint new sessions. Compass sends it as a bearer token and never exchanges it, and the
    never-refreshed rule below is what keeps that true. macOS only, because that is the only platform
    where the token's location has been verified; elsewhere Cursor is absent from the band rather than
    read from a guessed path.
-3. Codex: no endpoint. Codex writes rate-limit snapshots into its own session files, and Cargento
+3. Codex: no endpoint. Codex writes rate-limit snapshots into its own session files, and Compass
    reads them from disk like every other store.
 4. Copilot: no endpoint. Copilot records its own per-request AI Unit consumption in a local session
-   store, and Cargento reads that from disk. Its remaining entitlement is not published locally and
+   store, and Compass reads that from disk. Its remaining entitlement is not published locally and
    is not fetched.
 
 No other vendor is polled. A new vendor's endpoint must be named here before it ships. These
@@ -925,7 +927,7 @@ Consent and the off switch: the feature is disclosed before it acts, and it does
 disclosure is answered. The first time the dashboard opens with the feature available, a banner explains the token read and
 the request above, and carries the switch that turns the feature off. The setting can be changed
 later from that same switch, which sits in the capacity strip below the session groups on Session operations, and
-`--no-usage` disables the feature for a run regardless of the stored setting. With the feature off, Cargento's network surface is exactly the
+`--no-usage` disables the feature for a run regardless of the stored setting. With the feature off, Compass's network surface is exactly the
 three loopback-bound kinds of component described above, and nothing is fetched.
 
 **Answered, not assumed, and that is a change of 2026-09-04.** The mechanism is the `usage=1`
@@ -967,11 +969,11 @@ retention for a run is what `--no-usage` is for.
 
 ## Light harness usage (asking a harness a bounded question)
 
-Cargento was built to sit outside harness usage: it watched, and it spent nothing. DEC-14 changed
+Compass was built to sit outside harness usage: it watched, and it spent nothing. DEC-14 changed
 that on 2026-09-04, because several of the answers the dashboard most wants to give cannot be
 derived from a transcript by rule (whether a quiet session died or finished, what happened while
 the operator was away, what a session's actual goal is rather than its opening instruction), and
-each of those shipped withholding its answer instead. Cargento may now ask a harness a bounded
+each of those shipped withholding its answer instead. Compass may now ask a harness a bounded
 question and consume a little of the operator's own capacity doing it.
 
 The observer model is the first implementation of this pathway, deriving a session's goal line, and
@@ -1000,7 +1002,7 @@ The bounds, all of which hold together:
   and the per-session in-flight gate bound that exposure. This prototype follows the cockpit's
   consent ruling; it does not implement the earlier proposed per-run event capability for this
   route.
-- The operator's own harness, never a Cargento credential. Cargento invokes the harness the
+- The operator's own harness, never a Compass credential. Compass invokes the harness the
   operator has already installed and signed in, non-interactively. It holds no API key, reads no
   new secret, and adds no endpoint to the list in Usage quota reads. Nothing about token handling
   changes, because there is no new token. A future feature that wanted to call a vendor API
@@ -1031,7 +1033,7 @@ invocation carrying unredacted text, a credential read that this section does no
 beyond the documented CLI boundary, or an unbounded or untimed call.
 
 What is accepted rather than solved: the invoked harness is another program with its own logging and
-its own retention, and what it does with a prompt is outside Cargento's control. That is the same
+its own retention, and what it does with a prompt is outside Compass's control. That is the same
 trust the operator already extends to that harness by running it, but it is a real transfer and it is
 stated here rather than implied.
 
@@ -1041,8 +1043,8 @@ stated here rather than implied.
 the startup flag for reader-requested readings. The first "Analyze drift" presents the
 reading disclosure and "Allow and analyze" (formerly named "Check for drift" and "Allow and check").
 The disclosure renders before "Allow and analyze", so the press that gives consent
-follows the text naming the receiver. The answer lives under `CARGENTO_HOME` (by default
-`~/.cargento`) in `cargento-reading-permission.sqlite3`, shared by tabs and respawned daemons.
+follows the text naming the receiver. The answer lives under `COMPASS_HOME` (by default
+`~/.compass`) in `compass-reading-permission.sqlite3`, shared by tabs and respawned daemons.
 "Turn off readings" and `--forget` revoke it. Goal summaries keep `--observer-model` and their
 separate browser consent. The explicit model off switch overrides both permissions.
 
@@ -1143,7 +1145,8 @@ half, in place of the goal box's 240 characters; the goal stored and shown stays
 ([the amendment](docs/design-reading-a-session.md#amended-2026-10-04-owner-an-adopted-goal-is-read-whole)).
 The owner, approving the Analyze drift plan, amended the source lookup on 2026-10-04. A reader's
 press can find that adopted source outside the recent transcript tail: a forward scan reads at
-most the first 32 MiB and retains at most 4,096 user-message facts. Only the adopted source can
+most the newest 64 MiB plus the opening 32 MiB under one two-second clock, and retains
+at most 4,096 user-message facts. Only the adopted source can
 replace the Goal; the other facts do not enter the reading's evidence ledger. The runtime caches
 the redacted, 1,000-character fields in memory for at most eight transcripts on its default arm,
 keyed by path, harness, session, size and modification time. A reader's press uses the uncached
@@ -1156,6 +1159,20 @@ a file changed since collection. A missing or unverifiable source keeps its list
 no fact id, stores no words and does not run for an unasked reading. The history and listing bounds
 still hold; this is not a whole-transcript evidence ledger. Other harnesses keep their existing
 in-tail words.
+A Claude Code press also reads the focused session's person and agent messages back to the reading's
+window start instead of from the 400,000-byte tail (2026-10-13, `project_context.press_message_events`,
+[the amendment](docs/design-reading-a-session.md#amended-2026-10-13-a-press-reads-the-message-record-back-to-the-window-start)).
+The read is backward and memory-only, under the same allowance as the adopted-source lookup: the newest
+64 MiB under one two-second clock, a stamp check that refuses a file changed since the press began, and
+a stop after sixteen timestamped records in a row older than the window. It keeps the newest 100
+messages, the project event cap, and the closing agent message of up to twelve earlier turns with the
+reader's message after each, a bounded handful held in memory (2026-10-13, [the amendment](docs/design-reading-a-session.md#amended-2026-10-13-a-press-keeps-the-closing-agent-message-of-each-earlier-turn)).
+A message whose text is over 256 Ki characters is not read and counts as an unread region. The prompt
+reserves an eighth of its 16 KiB (`reading.ANCHOR_SHARE_DIVISOR`) for those closings ahead of the newest
+agent messages, and no entry of another kind is displaced. It adds no content class. The messages it finds are the person and agent messages
+a reading already sends, redacted and capped the same way, `for_page` still strips both words fields,
+and nothing is stored or retained after the press. Ordinary collection and every other harness keep the
+tail, and `CONTENT_VERSION` is unchanged.
 The field holding the whole message (`reader_words`) is held in memory for the reading and is
 neither stored nor published: the history stores' field allowlists do not name it, and
 `/api/project-context` drops it (`project_context.for_page`), so the page still shows the first
@@ -1167,7 +1184,7 @@ reading's `detail` is the model's own sentence under a cited departure or unfini
 and it is stored with the reading and published
 on the page, as it was before; the model can now paraphrase or quote a later sentence of a message
 there, which it could not when it saw only the first. The one copy of the field on disk is an
-abstention packet's frozen facts, which stay local under `~/.cargento` with the rest of that
+abstention packet's frozen facts, which stay local under `~/.compass` with the rest of that
 packet's prompt text (below).
 
 Amended 2026-10-04 by the owner, approving the Analyze drift plan: "Not reached at this stop"
@@ -1308,7 +1325,7 @@ the answer only for the current tab, using the same fallback as quota consent.
 
 Transcript message content is redacted before extraction can clip credential shapes. The complete
 generated prompt, including workflow stage, then goes through `records.redact_secrets` again
-before UTF-8 clipping to **16,384 bytes (16 KiB)**. This caps the prompt Cargento hands to Codex,
+before UTF-8 clipping to **16,384 bytes (16 KiB)**. This caps the prompt Compass hands to Codex,
 not the CLI's added protocol or system instructions. Redaction recognizes credential shapes;
 it does not remove arbitrary private prose. One call per session may be in flight, including
 concurrent HTTP refreshes, and a reading takes the same one-in-flight gate per session; both slots
@@ -1390,7 +1407,7 @@ The argv, every flag checked against `claude --help` on 2.1.280, run without a s
 
 - `--print`, with the prompt on stdin and never as an argument.
 - `--safe-mode`: no CLAUDE.md, skills, plugins, hooks, MCP servers, custom commands or agents. This
-  also keeps Cargento's own hooks from posting the call to the board as a session.
+  also keeps Compass's own hooks from posting the call to the board as a session.
 - `--restricted`: no code-running built-in tools and no WebFetch, and user, project and local
   settings files are ignored.
 - Both leave admin-managed (policy) settings in force, as `claude --help` says, so a managed hook or
@@ -1473,7 +1490,7 @@ by the OS (`score_abstention.py --probe-argv`, below):
   that shows the whole disclosure, as the server's parts, before "Allow and analyze". Amended
   2026-10-02 (owner): the disclosure is a short list, one item a line, and keeps each fact this
   section and [Observer model calls](#observer-model-calls) require: what is sent, where it goes as
-  configured (the company off this machine, the endpoint named in its place, or that Cargento
+  configured (the company off this machine, the endpoint named in its place, or that Compass
   cannot name it), the CLI and sign-in it goes through and whose capacity it spends, these
   account details on a Claude Code route, tool output only after it is allowed, and the caveat
   ([the amendment](docs/design-reading-a-session.md#amended-2026-10-02-owner-the-disclosure-is-a-short-list)).
@@ -1574,7 +1591,7 @@ read as a field, and no Edit or Write result body is read. At most 12 entries ar
 rest are counted. The published entry carries the check segment, the result, where the result
 came from and, as `result_at`, when it arrived, and never the output itself. The output tail is read again at the press
 (`project_context.claude_check_press`), keyed by the call, and carried into that one prompt only:
-Cargento never writes it onto the fact, a row, the page or history. A departure's explanation is
+Compass never writes it onto the fact, a row, the page or history. A departure's explanation is
 model prose, and the model may quote a line of the tail in it; that explanation is stored with the
 reading and shown on the page with credential-shape redaction only, so a shapeless source line or
 assertion diff can appear there. The class lives in the observed record only, as
@@ -1667,13 +1684,13 @@ tool output was named does not cover it. What is built:
 - The disclosure's `To:` item says what `destination` says, on every harness and not only for tool
   output: the vendor off this machine, the cloud, or the base URL's host in its place (a host is
   never said to be off this machine, since it may be a local gateway), and where nothing can be
-  named, that Cargento cannot name where the CLI's settings send it. It never names the vendor
+  named, that Compass cannot name where the CLI's settings send it. It never names the vendor
   then, so an Allow is never given for a receiver the words do not reach (verifier C1,
   2026-10-02), and the Allow is bound to what it named, so it never carries over to a receiver
   named later (owner, 2026-10-02). On Windows this is every route.
 
-It is quoted into the prompt as untrusted data, never into an instruction Cargento writes: each
-check is one numbered row whose result words are Cargento's own, and its output tail is one
+It is quoted into the prompt as untrusted data, never into an instruction Compass writes: each
+check is one numbered row whose result words are Compass's own, and its output tail is one
 JSON-quoted field on that row with line breaks and the menu heading neutralised. A reply that obeys
 an instruction in that output is held to the same shape rules as any other. The unasked lane never
 receives it until DEC-18's rubric thresholds exist. The live drift estimate (DEC-26) reads
@@ -1729,12 +1746,16 @@ hide a flag removed first, while the joiners that spell words and emoji are kept
 shape like every published string, with line breaks and control characters as spaces, bounded at 2,000 characters with a flag saying whether
 it was clipped (a message the record reader already cut at that bound counts as clipped), and a flag saying whether the store would take it as a line (at most 240
 characters). It returns nothing for a message that is not a person's message in that session's
-own record, one not later than the words it would join, or one older than the tail of the
-transcript Cargento already reads: all of those, an unknown session and an unknown fact alike,
-answer one 200 body with one sentence, so the route says nothing about which sessions exist.
+own record, one not later than the words it would join, or one beyond the bounded source search.
+Every refusal is an HTTP 200 body. `not_found` covers an unverified source or a
+request not later than the intent, including unknown sessions; `out_of_reach` says
+the search ended before reaching the record's start. The budget token describes search coverage, not whether the requested direction
+exists. Session identities remain the same loopback data already published by
+`/api/data`; unknown sessions have no separate HTTP status. The [long-session lookup](docs/design-reading-a-session.md#long-session-direction-and-prompt-reads)
+owns its 64 MiB and two-second limits and the bounded ambiguity guarantee.
 Prose shapes outside those named forms come back as typed: a password written into a sentence,
 `token: value`, a JSON field and a `?token=` query are not masked, and only a value with a
-credential's own shape is redacted there. The text is read again from the transcript Cargento already tails, found by `observer.resolve_transcript`
+credential's own shape is redacted there. The text is read again from the bounded native transcript source, found by `observer.resolve_transcript`
 from the session's harness and id, and never from a path a client names. It is served to the same
 callers as `/api/data`: loopback only, same-origin, and refused to a document navigation and to a
 same-site or cross-site fetch, as `POST /api/reading` is, and it answers 503 under
@@ -1743,7 +1764,7 @@ machine, and the text never enters session history: no published field carries i
 history prompt-text allowlist is unchanged. A local process running as you gains nothing it could
 not read from the transcript file itself. Another account on the machine can reach this route as
 it can reach `/api/data` (Known and accepted), and for that account it is wider: the whole text of
-any later direction in any session's transcript tail, each fact id listed by
+any verified later direction within a session's bounded source search, each fact id listed by
 `GET /api/project-context`, where that route gives only the first sentence. A loop over those ids
 reads every one of them, so the ids bound nothing. A Claude Code slash command is the one message
 the record names by more than its first sentence: the record and this route both give the command
@@ -1783,7 +1804,7 @@ the stop's or the unconfirmed kill's own sentence when that was the refused outc
 shutdown ends is recorded as a spent `interrupted` attempt, unless its kill could not be confirmed,
 which keeps the "may still be running" sentence. The stop's line is the reservation: the
 charge commits under the lock the shutdown takes, so a shutdown before the commit charges nothing
-and records the unspent "Cargento was stopping" sentence. A marker the next dashboard start finds,
+and records the unspent "Compass was stopping" sentence. A marker the next dashboard start finds,
 whose pid no state file of a running dashboard on this state directory names (its own pid counts
 as an earlier run), is recorded from the job ledger: spent when the budget store holds a
 charge for that job's id or cannot answer, and unspent ("stopping", or "cancelled-unsent" when the
@@ -1817,7 +1838,7 @@ a SHA-256 of the text after one normalisation, applied to both sides, which is w
 2.1.283 was measured doing to a paste: CRLF and CR become LF, a tab becomes four spaces, and
 whitespace is trimmed at both ends. The store holds the digest, the moment of the copy and where the
 session's transcript ended at that moment (its inode and size), and, once a message is recognised,
-that message's fact id and time. It never holds the text. It is `cargento-copied-corrections.json`
+that message's fact id and time. It never holds the text. It is `compass-copied-corrections.json`
 beside the annotation store, owner-only through a temp file and a rename, under an OS lock on the
 `.lock` file beside it. It is bounded at eight digests per session still waiting for their message
 and 32 recognised messages per session, the oldest of each dropped. Dropping the oldest waiting
@@ -1827,15 +1848,16 @@ own words again. `--forget` deletes the file, and `--no-annotations` turns it of
 waiting answers without storing anything, so registering one twice earns no second match. Only
 Claude Code sessions are read for a match. A user message written after the point the transcript
 had reached when the text was copied, whose digest computed from its raw text before any redaction
-or clipping matches exactly, is Cargento-assisted, whatever either clock says. The transcript is
-read from that point to its end, at most its newest 32 MiB, the bound the semantic history store
+or clipping matches exactly, is Compass-assisted, whatever either clock says. The transcript is
+read from that point to its end, at most its newest 64 MiB plus its opening 32 MiB, matching the Intent source reads,
+under the same unchanged digest and first-paste rules; the semantic history store
 reads a source to, so a paste the bounded tail never held is still recognised. Each digest binds the
 first such message, and nothing before it, and a recognised message stays recognised after the
 tail moves past it. An assisted message is `derived` rather than person-authored evidence, is never
 adopted as the goal, does not open the evidence window of typed words, cannot be opened by
 `POST /api/direction`, is not an unsettled later direction, and is never shown as the stated goal,
 the assignment or an exact direction. Reader edits inside a copied correction are exempt from the
-later-direction floor: an edit made in Cargento's box before copying is inside the digest, while an
+later-direction floor: an edit made in Compass's box before copying is inside the digest, while an
 edit after pasting, a backspace that wipes the paste included, makes a different message that is
 the reader's own. The route is guarded as `POST /api/direction` is: loopback only, same-origin,
 refused to a document navigation and to a same-site or cross-site fetch, and 503 under
@@ -1847,7 +1869,7 @@ And a store that cannot be written answers 503 only when a write was attempted, 
 for a real Claude Code session. The Copy button in Steer back's box calls this route with the box's
 exact text, after the clipboard took it and never before. The
 residual is a local process: any process that can reach the loopback route can record a digest.
-Each digest it records can mark one later message whose text matches exactly as Cargento-assisted,
+Each digest it records can mark one later message whose text matches exactly as Compass-assisted,
 once, up to the per-session bound. A marked message is not person-authored evidence and not an
 unsettled later direction, so a process that records the exact text of a short direction in
 advance can keep that direction from raising the later-direction question and from blocking "None
@@ -1874,7 +1896,7 @@ longer one drops its consistent lines and then answers a refusal sentence. It st
 its own: it reads, and the collection it runs to read the session may rewrite the semantic history
 store, as `POST /api/direction`'s does. It is guarded as `POST /api/direction` is, reads Claude Code sessions only, and answers one body for an
 unknown session, another harness, and a session with nothing to steer from alike. The reader edits
-the text in the page and copies it; Cargento never sends it into the session.
+the text in the page and copies it; Compass never sends it into the session.
 
 The Not accurate token. A reader may mark a reading not accurate, through the
 `not_accurate` arm of `POST /api/annotate`, which takes a bool and the reading's `read_at` and
@@ -1901,6 +1923,10 @@ bind the measurement to fact collection stays in memory and is not part of that 
 legacy coverage stays unknown. The metadata is never sent to a model, copied into session history
 or used to alter a verdict. It permits no additional transcript text to be stored or published
 ([the ruling](docs/design-reading-a-session.md#amended-2026-10-04-owner-disclose-measured-reading-coverage)).
+For a Claude Code press that read back (2026-10-13), the two message measurements describe what the
+project cap kept rather than the 400,000-byte tail: the boolean is true when the read stopped before the
+window start, left an unread region inside it, or the read or the cap dropped an in-window message of the session, and
+the time is where the record is whole from. The keys, types and exposure are unchanged.
 
 ### The abstention check
 
@@ -1923,7 +1949,7 @@ outside the gate and neither in CI, and the ruling of 2026-09-10 on what they ma
 here so it is not rediscovered.
 
 The cases stay local and uncommitted. `scripts/mark_abstention.py --build` writes
-`abstention-cases.json`, and that file stays on this machine, under `~/.cargento`: it names the
+`abstention-cases.json`, and that file stays on this machine, under `~/.compass`: it names the
 session ids the cases were drawn from, and for a Claude session it carries the opening user turn,
 which is prompt text. Historical replay packets also carry the frozen session row and semantic
 facts, a user message's fact with its whole words up to 1,000 characters as a reading reads them;
@@ -1932,7 +1958,7 @@ the results are committed.
 `abstention-marks.json` holds one sixteen-character hash of `(harness, sid)` per case and two tokens,
 `judge` or `abstain`. Replay marks also hold a hash binding them to the frozen packet.
 `abstention-results.json`, the scorer's local half, may
-carry the producer's withheld reason and its cutoff sentence and also stays under `~/.cargento`; the
+carry the producer's withheld reason and its cutoff sentence and also stays under `~/.compass`; the
 committable summary the scorer writes to `docs/abstention/` carries case ids, marks, outcomes,
 counts, coverage, the sha256 of the marks file as scored and a timestamp. Replay summaries also
 hold a hash of the cases and rubric, so changing either invalidates the report. No session id, no
@@ -2001,8 +2027,8 @@ ARM64 prerequisites are now satisfied, and the same-owner limit remains explicit
 
 Local preparation owns its cwd, output file and descriptor before yielding. An interruption before
 charge removes them and is re-raised. Every call is charged after successful local preparation and
-before it runs to one JSON ledger at a fixed path under `~/.cargento`, under an exclusive lock,
-with the digests of the marks and the cases it was made under. It never follows `CARGENTO_HOME` or `HOME`: the home is the account's
+before it runs to one JSON ledger at a fixed path under `~/.compass`, under an exclusive lock,
+with the digests of the marks and the cases it was made under. It never follows `COMPASS_HOME` or `HOME`: the home is the account's
 own, and scoring refuses while `HOME` names another. Without an observable account home,
 canonical roots stay unavailable and scoring refuses before runtime configuration, packet reads
 or executable verification. The committed result records a hash chain
@@ -2068,7 +2094,7 @@ result is `docs/abstention/claude-results.json`; an authorized continuation has 
 [the abstention documentation](docs/abstention/README.md#the-spend-ledger) specifies. Neither opens
 the gate by being written. A case the producer refuses before the model, an empty ledger or a
 session the board no longer lists, spends nothing. The yardstick is handed to the producer as an
-argument; the run writes nothing to `cargento-annotations.json` and increments no reading count.
+argument; the run writes nothing to `compass-annotations.json` and increments no reading count.
 Historical replay reads the frozen row, facts and clock instead of the live board. Reviewer
 excerpts and later context are not model inputs. Its file format and checks are owned by the
 [abstention documentation](docs/abstention/README.md#historical-replay-case-format-4).
@@ -2076,7 +2102,7 @@ excerpts and later context are not model inputs. Its file format and checks are 
 Synthesised cases are admissible in the rubric expectation file, cross-verified by a different
 agent than generated them, and their text is agent-written rather than recorded. It goes through
 `records.safe_text` before the producer sees it: redaction before the clip, in that order, the same
-as anything derived from a transcript. The rubric file also stays under `~/.cargento`; the summary
+as anything derived from a transcript. The rubric file also stays under `~/.compass`; the summary
 records for each of its cases the kind, the origin, whether it was admitted and why not, and the
 two scored columns, never the case body. Each of those is a closed token or empty: the file is
 hand-written, so an entry naming anything else -- a kind, an origin or a harness outside the sets,
@@ -2084,12 +2110,12 @@ or a key that is not a case id -- is refused rather than copied into the summary
 
 The drift levels check is a second check under the same rules, and `docs/drift-levels/`
 is its committed half. `scripts/levels_cases.py --build` freezes cases from recorded Claude Code
-transcripts into `~/.cargento/drift-levels/cases.json`. Each case holds the session id, the
+transcripts into `~/.compass/drift-levels/cases.json`. Each case holds the session id, the
 transcript path, the working directory, the check lines and written paths layer 1 publishes, and the
-intent the owner set for the case. The build refuses a `CARGENTO_HOME` inside the repository. The
+intent the owner set for the case. The build refuses a `COMPASS_HOME` inside the repository. The
 owner's marks stay beside the cases, and only their sha256 is committed, in `marks-digest.json`,
 before any reading is attached or any result is written. Readings attached afterwards, which carry
-model detail, stay in `~/.cargento/drift-levels/readings.json`. `results.json` carries case ids, closed kind and reason
+model detail, stay in `~/.compass/drift-levels/readings.json`. `results.json` carries case ids, closed kind and reason
 tokens, marks, levels, outcomes, the digests and a timestamp. It carries no session id, path,
 command, intent text, fact id or model prose, and a test asserts that none of the local fields
 appears in it. Scoring calls no model and writes to neither the annotation store nor the reading
@@ -2098,14 +2124,14 @@ says to. It sends one case's frozen facts and intent to Codex, the way a press s
 session's record, but with no check output and no user messages, since the cases froze neither.
 A press sends the messages you typed; this sends none. It charges the reading home's reading ledger
 and never writes the annotation store. What comes back stays in
-`~/.cargento/drift-levels/replayed-readings.json`. Its record, `replay.json`, holds case ids, closed
+`~/.compass/drift-levels/replayed-readings.json`. Its record, `replay.json`, holds case ids, closed
 tokens, times, and the ledger job id built from a case id and a time. The [drift levels documentation](docs/drift-levels/README.md) owns its format.
 
 The drift replay check is a third check under the same rules, and `docs/drift-replay/` is its
 committed half. `scripts/drift_replay.py` reads the pushback fixtures under `tests/raw_sessions/`
 (redacted by `scripts/redact_session.py`, gitignored) or, with `--source original`, the logs under
 `~/.claude/projects`. Its cases, its owner's blind marks, its outputs, its spend ledger and the salt
-behind its case ids stay under `~/.cargento/drift-replay/`, and the build refuses a `CARGENTO_HOME`
+behind its case ids stay under `~/.compass/drift-replay/`, and the build refuses a `COMPASS_HOME`
 inside the repository. Its claim items and claim marks, each with the marker's one-line reason,
 stay there too. Only count and digest summaries are committed: the digests hold digests and counts, the results
 closed tokens, counts, and case and claim ids salted with a local secret, so a committed id cannot
@@ -2115,8 +2141,8 @@ the qualification uses: the person's messages, the agent's messages once the pro
 each check's line, result, times and redacted output tail, and the intent. The owner authorized that
 send and its spend on 2026-10-03, bounded at 240 calls, raised to 440 on 2026-10-04, and then to
 870 on 2026-10-04 for the Analyze drift follow-up, on the same ledger
-`~/.cargento/drift-replay/spend.json`. That path is under the operator's home whatever
-`CARGENTO_HOME` says, so moving the home does not reset the count. Each call is charged before it is
+`~/.compass/drift-replay/spend.json`. That path is under the operator's home whatever
+`COMPASS_HOME` says, so moving the home does not reset the count. Each call is charged before it is
 made, under an exclusive lock on macOS and Linux (Windows has none, so the cap there holds for one
 run at a time), and never by a case the producer withholds or by a dry run; a ledger
 that will not parse refuses every call, and the charged calls the run's own record holds are a floor
@@ -2135,7 +2161,7 @@ The authorized follow-up has at most 239 additional Analyze attempts across all 
 and 28 qualification charges stay intact, along with their failed results and grants.
 
 `scripts/analyze_campaign.py` reads a reviewed repository manifest and a fixed account ledger,
-`~/.cargento/analyze-closure-spend.json`. Actual final prompt, model, runtime and output-cap
+`~/.compass/analyze-closure-spend.json`. Actual final prompt, model, runtime and output-cap
 digests bind each reservation; experimental replay also binds its study code and condition.
 Reservations precede transport, and failures remain charged. Immutable reservation,
 classification and acceptance receipts detect missing or rewritten state. A reviewed zero-charge
@@ -2368,7 +2394,7 @@ foreground request may launch the model. Construction and mocks establish no bro
 
 The route account and context use a separate fixed conditional-priority namespace. Its
 exclusive activation marker remains outside that namespace, at
-`~/.cargento/claude-route-live00.ACTIVATED.json`, so deleting an account or restoring a prepared
+`~/.compass/claude-route-live00.ACTIVATED.json`, so deleting an account or restoring a prepared
 profile cannot mint a second allocation. Every reservation stays charged, and settled
 failures are immutable. A late source change cannot hide an already charged native warning
 or prevent its durable closed settlement. Missing state, orphaned calls, unknown statuses
@@ -2517,35 +2543,35 @@ messages are, and the opt-in unasked lane, when switched on, may send them witho
 as it sends a Claude Code, Codex or Pi session's user messages. The file is kept apart from `observer.resolve_transcript` on purpose:
 every caller of that one reads work or tool output (the observer, the gate and Spacedock boot
 scans, the working-directory read, workflow discovery), and none of them is handed this path, so
-"Cargento can't read work from this harness" stays true. A direction the harness truncated is
+"Compass can't read work from this harness" stays true. A direction the harness truncated is
 refused by "Add it to my intent" rather than saved as the whole of what was typed. The shapes behind
 this are in
 [docs/captures/antigravity/transcript-shapes-1.2.11-macos.jsonl](docs/captures/antigravity/transcript-shapes-1.2.11-macos.jsonl).
 
 ## Off-machine nudges (reaching the operator away from the desk)
 
-Every signal Cargento sends today needs somebody in front of the machine: the macOS popup, the
+Every signal Compass sends today needs somebody in front of the machine: the macOS popup, the
 browser notification in a tab that is open, the board itself. DEC-4 ruled on 2026-09-02 that
-Cargento may reach further, in one shape and no other. The operator supplies one endpoint, and
-Cargento posts a count to it.
+Compass may reach further, in one shape and no other. The operator supplies one endpoint, and
+Compass posts a count to it.
 
 This is the section to read before building that, and it grants nothing on its own. The reach endpoint
 provides this capability. The outbound surface is the quota poll, the explicitly enabled observer
 model, and the operator-configured reach endpoint.
 
 Why this needs its own section rather than an entry under Usage quota reads: that section's
-endpoint list is closed, and every entry on it is a vendor Cargento chose and verified. Here the
+endpoint list is closed, and every entry on it is a vendor Compass chose and verified. Here the
 endpoint is one the operator pastes in, so the list cannot be closed and there is no vendor to
 vouch for. What bounds the exposure is the payload rather than the destination, which is the
 opposite way round from the quota poll and is why the two are not one rule.
 
 The bounds, all of which hold together:
 
-- Off until a URL exists. There is no default endpoint and no provider Cargento picked. With no URL
+- Off until a URL exists. There is no default endpoint and no provider Compass picked. With no URL
   configured nothing is posted, which is the shipped state today. DEC-4 refused a first-class push
-  through a provider Cargento chooses, so an endpoint the operator already uses, ntfy, Pushover or
+  through a provider Compass chooses, so an endpoint the operator already uses, ntfy, Pushover or
   a Slack webhook being the common ones, is the whole mechanism.
-- One destination, and it is the operator's. Cargento posts to that URL and nowhere else, follows
+- One destination, and it is the operator's. Compass posts to that URL and nowhere else, follows
   no redirect, and ignores proxy environment variables. Those last two are the rules the four
   forwarders and the MCP server already hold to; the loopback check beside them is the one rule
   that cannot carry over, since the whole point here is a destination that is not this machine. So
@@ -2583,25 +2609,25 @@ counts named above, the URL reaching a log line, a `--diagnose` line or a loopba
 post rate above the configured interval.
 
 What is accepted rather than solved: the endpoint is a third party, and what it does with a count
-is outside Cargento's control. That is the same trust the operator extends to that provider by
+is outside Compass's control. That is the same trust the operator extends to that provider by
 using it, and it is a real transfer. A count is a small thing to leak and it is not nothing. How
 many sessions on this machine need a human, and when, says that the operator is working and roughly
 how hard, to anyone who can read the notification stream. That is stated here rather than implied.
 
 ## Process lifecycle: written paths, and `/api/shutdown`
 
-The server writes ten files, all under `~/.cargento` (relocatable with `CARGENTO_HOME`,
-authoritative when nonblank): `cargento-<port>.json`, recording the running instance (`pid`, `port`,
-`started`, `log`, `python`); `cargento-<port>.log`, where a detached (`--daemon`) instance's
-output goes; `cargento-dismissals.json`, the sessions the reader marked handled, described in
+The server writes ten files, all under `~/.compass` (relocatable with `COMPASS_HOME`,
+authoritative when nonblank): `compass-<port>.json`, recording the running instance (`pid`, `port`,
+`started`, `log`, `python`); `compass-<port>.log`, where a detached (`--daemon`) instance's
+output goes; `compass-dismissals.json`, the sessions the reader marked handled, described in
 Dismissals below; `observer/<harness>_<sid>.json`, the sidecar `GET /api/observe` records when a
-reader opens that panel for a session, named in invariant 2 above; `cargento-history.json`, the
+reader opens that panel for a session, named in invariant 2 above; `compass-history.json`, the
 history of what this server observed, described in Local history above;
-`cargento-annotations.json`, the typed or explicitly adopted goal, typed expected outcome lines and readings taken against
+`compass-annotations.json`, the typed or explicitly adopted goal, typed expected outcome lines and readings taken against
 them, named in invariant 2 above and turned off by `--no-annotations`;
-`cargento-deliveries.json`, what became of each notification this board raised, described in
-Delivery records below; `cargento-departures.json`, what an unasked reading raised, described in
-Unasked readings below and written only with that feature switched on; `cargento-ends.json`, the
+`compass-deliveries.json`, what became of each notification this board raised, described in
+Delivery records below; `compass-departures.json`, what an unasked reading raised, described in
+Unasked readings below and written only with that feature switched on; `compass-ends.json`, the
 session ends this board observed, described in Session ends below; and
 `semantic-work-history.json`, the operator-cockpit prototype's own store, described under the
 prototype below and not reached by `--forget`. One forwarder writes an
@@ -2610,7 +2636,7 @@ eleventh, in the same directory and named in invariant 2 above:
 normalized state name and a timestamp, so a status line that fires many times a turn posts once. The directory is created `0o700` because the log can carry local paths: uncaught
 tracebacks land there, not just Python-level prints. Nothing ever removes or rotates the log: a
 `--stop` (or a killed process) deletes the state file but leaves the log behind, since it is the
-record of a detached run, so `~/.cargento` accumulates one log file per port indefinitely.
+record of a detached run, so `~/.compass` accumulates one log file per port indefinitely.
 
 `POST /api/shutdown` stops the server and is gated by the same `_local_ok()` checks (`Host`,
 `Origin`, `Sec-Fetch-Site`) that already protect `/api/notify`. It adds no new exposure of
@@ -2665,7 +2691,7 @@ daily cap of 12. A spent count is stated on the board
 rather than passed over in silence: the reader is by construction not present, so a limit being
 spent and a session found to be on track must never render alike.
 
-`~/.cargento/cargento-departures.json` holds every check the lane ran, opened `0600` with the mode
+`~/.compass/compass-departures.json` holds every check the lane ran, opened `0600` with the mode
 in the `open` call and written through a temp file and `os.replace`. Every check and not only the
 ones that found something: a check that found nothing still spent a subprocess, and a store of
 findings alone bounds nothing, which is what the caps count. It is also the only way the board can
@@ -2706,7 +2732,7 @@ A session's end is the one fact a final reading rests on, and until 2026-09-12 t
 only in the memory of the process that saw the `SessionEnd` hook fire. Measured 2026-09-11: three
 sessions that read as ended came back after a restart as merely quiet, and no final reading could
 be taken on any of them again. So the coordinator now writes the end through to
-`~/.cargento/cargento-ends.json`, opened `0600` with the mode in the `open` call and written
+`~/.compass/compass-ends.json`, opened `0600` with the mode in the `open` call and written
 through a temp file and `os.replace`, and a collection reads it back onto a row the running
 coordinator never saw end.
 
@@ -2758,7 +2784,7 @@ is intra-process, as it is for the delivery record.
 
 ## Delivery records
 
-Raising a notification writes one file: `~/.cargento/cargento-deliveries.json`, opened `0600` with
+Raising a notification writes one file: `~/.compass/compass-deliveries.json`, opened `0600` with
 the mode in the `open` call and written through a temp file and `os.replace`, exactly as the
 dismissal store is.
 
@@ -2784,7 +2810,7 @@ every session on the machine through `/api/data`.
 ## Dismissals
 
 Marking a session handled writes one file:
-`~/.cargento/cargento-dismissals.json`, opened `0600` with the mode in the `open` call so it is never
+`~/.compass/compass-dismissals.json`, opened `0600` with the mode in the `open` call so it is never
 briefly world-readable, written through a temp file and `os.replace` so a reader mid-write sees the
 old file or the new one.
 
@@ -2818,7 +2844,7 @@ solved.
 ## Local history (the session history store)
 
 The board is rebuilt from the harness stores on every start, so a restart used to leave it with no
-memory of sessions that already ran. Cargento keeps its own history of what it observed, on this
+memory of sessions that already ran. Compass keeps its own history of what it observed, on this
 machine, so the board can open knowing what happened before it was last closed.
 
 One rule fixes the rest: the store holds nothing the live snapshot does not already serve. What is
@@ -2847,8 +2873,8 @@ the enumeration, and the carriers that reach the page raw are these nine: `title
 `subagents[].parent`. More reaches the page through `records.safe_text`, including the observer's
 derived goal and Codex's `title`, which is a prompt because Codex writes no generated title. And
 `GET /api/observe` already writes prompt-derived text to disk as a sidecar under
-`~/.cargento/observer/`, redacted on the way in and written owner-only. Prompt
-text on disk in Cargento's own state was therefore already a shipped pattern with a review behind
+`~/.compass/observer/`, redacted on the way in and written owner-only. Prompt
+text on disk in Compass's own state was therefore already a shipped pattern with a review behind
 it, and the history store was the one place holding a harder line than the surface it records.
 
 A field carrying prompt-derived text may be kept only when every one of these holds:
@@ -2911,13 +2937,18 @@ built only when the reader opens it. A listed later direction may also be explic
 "Use this as my goal". The server resolves its fact id in the same session's own source record,
 requires a person-authored message after the goal's direction floor, and verifies the displayed
 words, source time and saved revision again before adoption. Claude and Codex use a stable,
-bounded 32 MiB prefix so a listed history message can be reached after it leaves the live tail;
-missing, changing and ambiguous sources are refused. The draft asks whether to keep or clear
+bounded backward 64 MiB search so recent messages in long files and paged entries
+can be reached after they leave the live tail or semantic history. Missing,
+changing and ambiguous sources are refused. A duplicate outside the consumed
+byte or clock allowance is not checked. The draft asks whether to keep or clear
 standing outcome lines and saves only on Save intent. No list or whole source text is stored.
 Every offered goal choice masks named credential forms before raw line breaks are folded and
 before the goal cap is applied. This goal-only scan is uncached; Analyze keeps its own words.
-It returns at most 4,096 source facts but checks the rest of the bounded prefix for conflicting
-copies of those identities. Known source clipping remains an excerpt even after whitespace folds.
+The prompt lookup returns at most 4,096 source facts from the newest 64 MiB and
+opening 32 MiB, sharing a two-second clock. It checks conflicting copies of
+retained identities throughout those consumed ranges. The menu still publishes
+at most five choices and no whole records. `prompt_scan` adds only a state and
+byte or clock stop token, so a partial read is disclosed beside the choices. Known source clipping remains an excerpt even after whitespace folds.
 Adopted goals never authorize unasked checks, even when the same revision has a typed output.
 
 The history record also keeps `first_prompt_at`, `annotation_goal_source`,
@@ -2957,7 +2988,7 @@ allowlist the exception is gone and the condition runs both ways for an allowlis
 derived two-segment project label is kept by the kept-list above while the never-list still bans
 the paths it is derived from.
 
-The store lives under Cargento's own directory, next to the dismissals file, and is written the way
+The store lives under Compass's own directory, next to the dismissals file, and is written the way
 that file and the state file are. It is opened owner-only with the mode in the `open` call, so it is
 never briefly world-readable, and it is written through a temp file and a rename, so a reader
 mid-write sees the old file or the new one. The mode is advisory, exactly as it is for the state
@@ -2969,7 +3000,7 @@ back by raising the cap. The age window and the size cap bound the store togethe
 either does not stop the other applying.
 
 The store is on by default. A digest of what happened while the user was away exists only if the
-history was being kept before they left, and Cargento already writes local state on the user's
+history was being kept before they left, and Compass already writes local state on the user's
 behalf by default in the dismissals file, and writes the observer sidecar on demand when a reader
 opens that panel for a session. The trust cost of that default is retention, and the bounds above
 and the delete below are what answer it.
@@ -3013,7 +3044,7 @@ The command stays in the hook process; session detail and Attention show fixed l
 Coverage requires installed hooks. No matching reports received; missing hooks and unmatched
 commands can look the same. Unsupported harnesses and disabled runs say so on the page.
 
-### What Cargento reads of a tool call today, exactly
+### What Compass reads of a tool call today, exactly
 
 The rule here is an allowlist rather than a prohibition, for the reason DEC-13 gave the history
 store: a flat "never" the code already breaks is a contract narrower than the system, and a reader
@@ -3021,8 +3052,8 @@ who finds the counter-example stops believing the rest of the document. So the h
 of named reads. Of an observed session's tool calls, the runtime parses the input at exactly the
 places below and nowhere else, and each reduces what it read to a bounded summary at parse time
 rather than keeping anything raw. One further read exists and is governed elsewhere: the ask lane's
-own `ask_operator` tool parses the arguments of the call a session makes to Cargento, which is a
-tool Cargento owns rather than one it observed, and The ask lane states its bounds:
+own `ask_operator` tool parses the arguments of the call a session makes to Compass, which is a
+tool Compass owns rather than one it observed, and The ask lane states its bounds:
 
 - `claude_data.input_summary` reads two fields of two Claude tools. `ExitPlanMode` carries `plan`,
   and what is kept is its first usable line, which is the plan's own title in practice.
@@ -3046,7 +3077,7 @@ The operator-cockpit prototype also reads dispatch evidence:
   through `project_context._call_arguments`, which the Pi check reader shares, so the check
   results add no expression. That reader is two named reads. `project_context._pi_bash_check_runs`
   parses a `bash` command to find the runner, and keeps the runner and result under DEC-23's rules,
-  publishing a title Cargento writes ("2 validation checks failed"), never the command or its
+  publishing a title Compass writes ("2 validation checks failed"), never the command or its
   output. It reads the last 180 characters of the result text, redacted first, and the error flag,
   and nothing of that tail reaches a prompt. `project_context._pi_changes` reads the name of every
   Pi tool call and parses every `bash` command, check or not, against DEC-23's read-only list; what
@@ -3061,7 +3092,7 @@ The operator-cockpit prototype also reads dispatch evidence:
   result the error flag alone. [Tool output in a Claude Code
   reading](#tool-output-in-a-claude-code-reading) states its bounds and where the result may go.
 
-These are evidence reads, not command execution. In total, eight expressions in `cargento_runtime`
+These are evidence reads, not command execution. In total, eight expressions in `compass_runtime`
 reach an input payload. The counts and module names are checked by `test_documentation`.
 DEC-23's named read for the checks a Claude Code session ran is the eighth, and
 [its entry](#tool-output-in-a-claude-code-reading) states its bounds.
@@ -3162,19 +3193,19 @@ rule in [Tool output in a Claude Code reading](#tool-output-in-a-claude-code-rea
 
 ## The ask lane (`ask_operator`)
 
-Cargento ships one MCP tool. A session that wants a human decision calls `ask_operator`, and the
+Compass ships one MCP tool. A session that wants a human decision calls `ask_operator`, and the
 question appears in the dashboard for the reader to answer. This is the only path by which anything
-a reader does in Cargento reaches a running session, and it exists because the session asked. One
+a reader does in Compass reaches a running session, and it exists because the session asked. One
 other direction is written down and unbuilt: Hand-off requests (one verb into a session) below is
-Cargento starting the exchange rather than a reader, it carries one fixed verb and nothing a reader
+Compass starting the exchange rather than a reader, it carries one fixed verb and nothing a reader
 typed, and no shipped feature uses it.
 
-What it is, precisely. Cargento ships a stdio MCP server beside the dashboard. It is not one of the
+What it is, precisely. Compass ships a stdio MCP server beside the dashboard. It is not one of the
 four forwarders and shares none of their transport. A harness spawns it, it speaks JSON-RPC on stdin
 and stdout, and it holds the agent's tool call open while the question is outstanding. It registers
 the question with the dashboard over loopback and polls for the answer.
 
-The direction is the invariant for everything shipped. Cargento reaches into no session today, and
+The direction is the invariant for everything shipped. Compass reaches into no session today, and
 the one written-down exception is the hand-off request below, which DEC-2 allowed as a single verb
 into a session that consents and which nothing ships. It weakens no other sentence in this section.
 A session can only ever be
@@ -3207,12 +3238,12 @@ until its deadline. A click on a question whose asker has gone is accepted and d
 which is why the withdrawal matters to the reader rather than to the agent.
 
 The standing permission this needs, and what granting it means. At default settings every harness
-gates the first call to this tool in the user's own terminal, before the call reaches Cargento. The
+gates the first call to this tool in the user's own terminal, before the call reaches Compass. The
 feature is therefore useless until the user grants the tool once, which on Claude Code writes
-`permissions.allow: ["mcp__plugin_cargento_cargento__ask_operator"]` into that project's
+`permissions.allow: ["mcp__plugin_compass_compass__ask_operator"]` into that project's
 `.claude/settings.local.json`. Granting it means that project's sessions may pause themselves on a
-Cargento question without asking again. It is scoped to that directory, it is the user's to revoke by
-deleting the line, and Cargento never writes it.
+Compass question without asking again. It is scoped to that directory, it is the user's to revoke by
+deleting the line, and Compass never writes it.
 
 Answering is a real decision. Every other click in the dashboard changes what you see. This one
 changes what an agent does next, with your credentials, in your repository. The exposure that follows
@@ -3221,9 +3252,9 @@ boundary.
 
 ## Hand-off requests (one verb into a session)
 
-The ask lane runs one way. A session asks, a reader answers, and Cargento starts nothing. DEC-2
-ruled on 2026-09-02 that Cargento may also start the exchange, in one shape and no other: when a
-quota window is about to close on a session that is mid-task, Cargento may send that session one
+The ask lane runs one way. A session asks, a reader answers, and Compass starts nothing. DEC-2
+ruled on 2026-09-02 that Compass may also start the exchange, in one shape and no other: when a
+quota window is about to close on a session that is mid-task, Compass may send that session one
 request for a hand-off summary, so the operator gets the state of the work written down instead of
 writing it from memory before the cutoff. This is the boundary the hand-off request has
 to respect, and it is written before the code exists for the same reason the quota, git-probe,
@@ -3235,7 +3266,7 @@ ask lane's direction claim is amended for this section and for nothing else.
 ### One verb, and what makes it one
 
 What may be sent is a request for a hand-off summary. Not a prompt the reader composed, not a line
-off the board, not a retry of the operator's last instruction: one fixed request Cargento authored,
+off the board, not a retry of the operator's last instruction: one fixed request Compass authored,
 in plain text, whose content does not vary with what the reader typed or with what the session
 holds. That is what keeps this out of the general write path into terminals that DEC-2 refused as a
 standing answer, and it is the same property the ask lane relies on in the other direction, where an
@@ -3249,7 +3280,7 @@ on that stands unchanged.
 ### The session's own consent, and what is documented rather than measured
 
 The receiving side decides whether to accept, and the mechanism is the harness's rather than
-Cargento's. What follows is read off Claude Code's own documentation and has not been measured on a
+Compass's. What follows is read off Claude Code's own documentation and has not been measured on a
 machine here, which is stated plainly because this repository's standing lesson is that desk
 research got the field, the unit or the rendering wrong five times out of five. Four facts are
 documented, not measured:
@@ -3264,11 +3295,11 @@ documented, not measured:
 The build that lands E7 measures all four first, records the capture under `docs/captures/` the way
 every other harness vocabulary here was earned, and replaces this list with the measurement. Until
 then no sentence in this section rests on any of them being exactly right. What the section does
-assert is the rule Cargento sets for itself: a session that refuses inbound messages is not reached,
+assert is the rule Compass sets for itself: a session that refuses inbound messages is not reached,
 and a request that lapses unread is a request that was not delivered.
 
-Cargento sends no authentication line, on any platform. The socket protocol documents one, and the
-reason to leave it unused is not convenience. Verifying that a session is Cargento's own child is
+Compass sends no authentication line, on any platform. The socket protocol documents one, and the
+reason to leave it unused is not convenience. Verifying that a session is Compass's own child is
 one permission class. Presenting a credential that would reach any session on the machine is
 another, and sending the line asserts the second. So the verb reaches a session that already accepts
 inbound messages, and it reaches nothing else.
@@ -3296,10 +3327,10 @@ who finds the open without the entry has found the bug this paragraph predicts.
 ### How this relates to Light harness usage, and to the outbound count
 
 They are two pathways and not one, which is why invariant 1 names them apart. Light harness usage
-starts a fresh harness process and hands it text Cargento composed out of a session, so the
-operator's own words leave the machine on a request Cargento made. A hand-off request writes one
+starts a fresh harness process and hands it text Compass composed out of a session, so the
+operator's own words leave the machine on a request Compass made. A hand-off request writes one
 line to a socket on this machine, to a session the operator already started and is already paying
-for. Cargento makes no network request for it, and the fixed verb carries nothing derived from any
+for. Compass makes no network request for it, and the fixed verb carries nothing derived from any
 session.
 
 What leaves the machine afterwards is what that session sends next, on its own connection and its
@@ -3319,7 +3350,7 @@ of them holds a request open, blocks a shutdown, or leaves a session parked. Thi
 rule in the other direction and it is there for the same reason: neither end of this exchange may be
 able to wedge the other.
 
-Cargento does not retry. A verb that resent itself when a session did not answer would spend the
+Compass does not retry. A verb that resent itself when a session did not answer would spend the
 operator's remaining window on delivery attempts at the exact moment the window is the thing running
 out.
 
@@ -3345,7 +3376,7 @@ What is accepted rather than solved: as far as the harness's own documentation g
 directory is per-user, so other accounts are held out only as well as that documented shape holds,
 and E7's capture is what settles it rather than this paragraph. What is certain either way is that
 the directory does nothing about other processes of the same account. Anything running as the
-operator can send the same verb to the same session without going through Cargento at all. That stays inside the
+operator can send the same verb to the same session without going through Compass at all. That stays inside the
 trust boundary for the reason Known and accepted gives for the rest of this document, since such a
 process can read the operator's secret material directly, and it is the same limit the ask lane
 already accepts on loopback.
@@ -3355,6 +3386,7 @@ already accepts on loopback.
 The `proto/operator-cockpit` branch adds project context and an optional read-only terminal.
 `GET /api/project-context` reads bounded transcript and workflow evidence, stores semantic history
 under the configured state directory, and can invoke the installed Codex CLI for a derived goal.
+`GET /api/session-record` uses the same loopback and bounded project/session guards, returns the same redacted message titles as project-context, and exposes no fields or content classes the page could not already read.
 This is separate from quota fetching and from the session-history switch. The prototype retains
 its own semantic-history store; `--forget` deletes the session-history and session-end stores,
 removes the discard records in the annotation store, and reaches nothing else.
@@ -3477,7 +3509,7 @@ owns the ordering and the existing fact-identity consequence.
 
 The card, the browser notification body and the native popup are pixels, and a screenshot is what
 each of them risks. Two of the things carrying this text are files. The first is the observer
-sidecar under `~/.cargento/observer/`, one JSON file per session holding the derived goal, which is
+sidecar under `~/.compass/observer/`, one JSON file per session holding the derived goal, which is
 the operator's own words. Since goal provenance landed it holds two such lines rather than one: the published
 `goal` and the pre-model `deterministic_goal` the model arm would otherwise have overwritten. They
 are the same class of text and carry the same risk, so the count changes and nothing else does.
@@ -3486,7 +3518,7 @@ written owner-only through a temp file and a rename, so a reader mid-write sees 
 new one and neither is ever briefly world-readable. The mode is advisory and Windows ignores it, the
 same caveat the state file and the dismissal store carry.
 
-The second is the prototype's semantic-history store, `~/.cargento/semantic-work-history.json`. It
+The second is the prototype's semantic-history store, `~/.compass/semantic-work-history.json`. It
 holds the operator's own directive as well as the assistant's answer, it is redacted on the way in
 and again on every read, and it is written owner-only through a temp file and a rename like the
 sidecar above. The Operator-cockpit prototype section has its fields and its deletion behaviour,
@@ -3724,7 +3756,7 @@ as described can only be shown by a real run.
 
 Please do not open a public issue for security problems. Instead:
 
-- Use [GitHub private vulnerability reporting](https://github.com/spacedock-dev/cargento/security/advisories/new), or
+- Use [GitHub private vulnerability reporting](https://github.com/spacedock-dev/compass/security/advisories/new), or
 - Email dev@reccehq.com with a description and reproduction steps.
 
 You can expect an acknowledgment within a few days. Please allow time for a fix to land and release before public disclosure.

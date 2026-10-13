@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 import abstention_ledger as ledger
+import legacy_paths
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -97,7 +98,7 @@ class Plan:
             "board_port": self.board_port,
             "transcript_path": self.transcript_path,
             "reading_mode": "off",
-            "expected_cargento_model_calls": 0,
+            "expected_compass_model_calls": 0,
         }
 
     def campaign(self) -> str:
@@ -135,12 +136,15 @@ class Plan:
         self.validate_runtime()
 
     def validate_runtime(self) -> None:
-        home = self.environment.get("CARGENTO_HOME", "")
+        home = legacy_paths.environment_value(self.environment, "COMPASS_HOME") or ""
         if not home or not Path(home).is_absolute() or not Path(home).is_dir():
-            raise RefusalError("explicit owned CARGENTO_HOME required")
+            raise RefusalError("explicit owned COMPASS_HOME required")
         account = ledger.canonical_home()
-        if account is None or Path(home).resolve() == Path(account, ".cargento").resolve():
-            raise RefusalError("account/default CARGENTO_HOME cannot protect the owned port")
+        if account is None or Path(home).resolve() in (
+            Path(account, ".compass").resolve(),
+            Path(account, ".cargento").resolve(),  # legacy-cargento: remove at 1.0.0
+        ):
+            raise RefusalError("account/default COMPASS_HOME cannot protect the owned port")
         if (
             type(self.board_port) is not int
             or not 1024 <= self.board_port <= 65535
@@ -213,7 +217,7 @@ class NativeCapture:
 class Observation:
     evidence_kind: str
     loss: int
-    cargento_model_calls: int
+    compass_model_calls: int
     elapsed_seconds: float
     output_bytes: int
     receipt_sha256: str
@@ -720,8 +724,8 @@ def check_observation(cleaned: bool, observation: Observation) -> None:
         cleaned is not True
         or type(observation.loss) is not int
         or observation.loss != 0
-        or type(observation.cargento_model_calls) is not int
-        or observation.cargento_model_calls != 0
+        or type(observation.compass_model_calls) is not int
+        or observation.compass_model_calls != 0
         or isinstance(observation.elapsed_seconds, bool)
         or not math.isfinite(observation.elapsed_seconds)
         or not 0 <= observation.elapsed_seconds <= Limits().seconds
@@ -818,7 +822,7 @@ def manifest(revision: str) -> dict[str, Any]:
                 "run_id": str(uuid.uuid4()),
                 "kind": kind,
                 "status": "blocked",
-                "expected_cargento_model_calls": None if kind == "default" else 0,
+                "expected_compass_model_calls": None if kind == "default" else 0,
                 "expected_ordinary_turns": CAP if kind == "monitor" else 0,
                 "model_consent": "fresh-allow"
                 if kind == "default"

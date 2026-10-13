@@ -7,7 +7,7 @@ residual exposure live in [`SECURITY.md`](../SECURITY.md).
 
 ## The problem
 
-A harness transcript records what the operator typed, verbatim. Cargento reads those transcripts and
+A harness transcript records what the operator typed, verbatim. Compass reads those transcripts and
 publishes prompt text. As fields rather than as prose, since a prose alias is a name no test can
 check, the carriers that reach the page raw are these nine: `title`, `last_prompt`, `state_detail`,
 `project_key`, `project_name`, `tasks[].subject`, `tasks[].activeForm`, `subagents[].name` and
@@ -180,7 +180,7 @@ sites is a list, and a list is a thing the next feature forgets to join.
 ### The fourth path is a file, not a screen
 
 Three of the four things that carry prompt-derived text out of the runtime are pixels. The fourth is
-the observer sidecar under `~/.cargento/observer/`, one JSON file per session holding the goal, the
+the observer sidecar under `~/.compass/observer/`, one JSON file per session holding the goal, the
 stage and the open block, and the goal is the operator's own words. It goes through `safe_text` on
 the way in, so it carries the same marker the card does, and it is worth naming rather than leaving
 implied: a screenshot is momentary and a file is not. It is written owner-only through a temp file

@@ -7,6 +7,7 @@ import type {
   ApiResult,
   CorrectionReceipt,
   DirectionReceipt,
+  DirectionBatchReceipt,
   DismissReceipt,
   FocusOutcome,
   FocusReceipt,
@@ -18,13 +19,14 @@ import type {
   ReadingReceipt,
   ReadingRequest,
   SessionIdentity,
+  SessionRecord,
   TripwireReceipt,
   TripwireRequest,
 } from './types';
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-const REVISION_HEADER = 'X-Cargento-Revision';
+const REVISION_HEADER = 'X-Compass-Revision';
 
 /* Raced against the signal as well as handed it, so a fetch that ignores the
    signal still releases its caller at the bound. The listener is removed on
@@ -120,6 +122,14 @@ export interface ProjectContextQuery {
   readonly signal?: AbortSignal;
 }
 
+export interface SessionRecordQuery {
+  readonly project: string;
+  readonly session: string;
+  readonly limit?: number;
+  readonly before?: string;
+  readonly signal?: AbortSignal;
+}
+
 export function createApiClient(deps: { readonly fetch: FetchLike }) {
   const get = <T>(path: string, signal: AbortSignal | undefined, readRevision = false) =>
     settle<T>(() => fetchBounded(deps.fetch, path, undefined, signal), signal, readRevision);
@@ -147,7 +157,7 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
     );
 
   return {
-    /** The one route that reads `X-Cargento-Revision`. */
+    /** The one route that reads `X-Compass-Revision`. */
     getData: (options: {
       readonly showAll: boolean;
       readonly usage: boolean;
@@ -163,6 +173,13 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
       return get<ProjectContext>(path, query.signal);
     },
 
+    getSessionRecord(query: SessionRecordQuery) {
+      const params = new URLSearchParams({ project: query.project, session: query.session });
+      if (query.limit !== undefined) params.set('limit', String(query.limit));
+      if (query.before !== undefined) params.set('before', query.before);
+      return get<SessionRecord>(`/api/session-record?${params.toString()}`, query.signal);
+    },
+
     getAnnotations: (options: { readonly signal?: AbortSignal }) =>
       get<AnnotationsBody>('/api/annotations', options.signal),
 
@@ -176,6 +193,10 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
       post<AnnotateReceipt>('/api/annotate', body, signal),
     postDirection: (body: SessionIdentity & { readonly fact_id: string }, signal?: AbortSignal) =>
       post<DirectionReceipt>('/api/direction', body, signal),
+    postDirections: (
+      body: SessionIdentity & { readonly fact_ids: readonly string[] },
+      signal?: AbortSignal,
+    ) => post<DirectionBatchReceipt>('/api/direction', body, signal),
     postReading: (body: ReadingRequest, signal?: AbortSignal) =>
       post<ReadingReceipt>('/api/reading', body, signal),
     postReadingCancel: (
@@ -221,7 +242,7 @@ export function createApiClient(deps: { readonly fetch: FetchLike }) {
         '/api/focus',
         { harness: options.identity.harness, sid: options.identity.sid },
         options.signal,
-        { 'X-Cargento-Capability': capability },
+        { 'X-Compass-Capability': capability },
       );
       if (result.kind === 'http-error') {
         if (result.status === 429) return 'throttled';

@@ -1,5 +1,5 @@
 # ruff: noqa: INP001 - standalone probe under a hyphenated artifact directory
-"""Read-only project-cockpit substrate probe against a running Cargento.
+"""Read-only project-cockpit substrate probe against a running Compass.
 
 The report carries structural evidence only. Project labels, session ids,
 questions, options, goals, prompts, and transcript paths never leave memory.
@@ -19,11 +19,11 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-RUNTIME_ROOT = REPO_ROOT / "cargento" / "skills" / "cargento"
+RUNTIME_ROOT = REPO_ROOT / "compass" / "skills" / "compass"
 if str(RUNTIME_ROOT) not in sys.path:
     sys.path.insert(0, str(RUNTIME_ROOT))
 
-from cargento_runtime import cli, observer  # noqa: E402
+from compass_runtime import cli, observer  # noqa: E402
 
 
 def _fetch(port: int) -> dict[str, Any]:
@@ -36,9 +36,9 @@ def _fetch(port: int) -> dict[str, Any]:
         with opener.open(request, timeout=5) as response:
             value = json.loads(response.read(4 << 20))
     except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"cannot read Cargento on port {port}: {type(exc).__name__}") from exc
+        raise RuntimeError(f"cannot read Compass on port {port}: {type(exc).__name__}") from exc
     if not isinstance(value, dict):
-        raise TypeError("Cargento returned a non-object payload")
+        raise TypeError("Compass returned a non-object payload")
     return value
 
 
@@ -192,7 +192,7 @@ def _observer_evidence(
 
 
 def _browser_goal_evidence() -> dict[str, Any]:
-    web = RUNTIME_ROOT / "cargento_runtime" / "web"
+    web = RUNTIME_ROOT / "compass_runtime" / "web"
     scripts = "\n".join(path.read_text(encoding="utf-8") for path in sorted(web.glob("*.js")))
     declared = sorted(set(re.findall(r'const\s+[A-Z0-9_]*KEY\s*=\s*"([^"]+)"', scripts)))
     project_goal_keys = [value for value in declared if "goal" in value.lower()]

@@ -85,5 +85,5 @@ export function askBanner(payload: Row, fresh: readonly Row[]): Banner {
     : projects.length
       ? projects.join(' · ')
       : String(first['question']);
-  return { title, body, tag: one ? `cargento-ask:${String(first['id'])}` : 'cargento-ask' };
+  return { title, body, tag: one ? `compass-ask:${String(first['id'])}` : 'compass-ask' };
 }

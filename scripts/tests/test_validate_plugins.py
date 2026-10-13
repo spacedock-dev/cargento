@@ -21,7 +21,7 @@ import validate_plugins as validator
 
 class ValidatorTests(unittest.TestCase):
     def write_temp(self, body: str, name: str = "fixture.yaml") -> Path:
-        directory = Path(tempfile.mkdtemp(prefix="cargento-validator-"))
+        directory = Path(tempfile.mkdtemp(prefix="compass-validator-"))
         path = directory / name
         path.write_text(body)
         self.addCleanup(directory.rmdir)
@@ -30,8 +30,8 @@ class ValidatorTests(unittest.TestCase):
 
     def copy_plugin(self) -> Path:
         """A complete installed copy of the plugin, outside the checkout."""
-        destination = Path(tempfile.mkdtemp(prefix="cargento-installed-")) / "cargento"
-        shutil.copytree(validator.ROOT / "cargento", destination)
+        destination = Path(tempfile.mkdtemp(prefix="compass-installed-")) / "compass"
+        shutil.copytree(validator.ROOT / "compass", destination)
         self.addCleanup(shutil.rmtree, destination.parent, ignore_errors=True)
         return destination
 
@@ -48,13 +48,13 @@ class ValidatorTests(unittest.TestCase):
         # inventory is that an omission is reported rather than inferred, so
         # each case asserts the precise relative path comes back.
         categories = {
-            "launcher": "skills/cargento/server.py",
-            "hook forwarder": "skills/cargento/notify_hook.py",
-            "package initializer": "skills/cargento/cargento_runtime/__init__.py",
-            "runtime module": "skills/cargento/cargento_runtime/cli.py",
-            "collector": "skills/cargento/cargento_runtime/collectors/goose.py",
-            "JavaScript adapter": "skills/cargento/opencode_plugin.js",
-            "frontend asset": "skills/cargento/cargento_runtime/web/react.html",
+            "launcher": "skills/compass/server.py",
+            "hook forwarder": "skills/compass/notify_hook.py",
+            "package initializer": "skills/compass/compass_runtime/__init__.py",
+            "runtime module": "skills/compass/compass_runtime/cli.py",
+            "collector": "skills/compass/compass_runtime/collectors/goose.py",
+            "JavaScript adapter": "skills/compass/opencode_plugin.js",
+            "frontend asset": "skills/compass/compass_runtime/web/react.html",
         }
         for category, relative in categories.items():
             with self.subTest(category=category):
@@ -73,7 +73,7 @@ class ValidatorTests(unittest.TestCase):
         # exists() would call this present, and the failure would then surface
         # as an ImportError from an installed copy instead of here.
         plugin_root = self.copy_plugin()
-        target = plugin_root / "skills/cargento/cargento_runtime/config.py"
+        target = plugin_root / "skills/compass/compass_runtime/config.py"
         target.unlink()
         target.mkdir()
         validation = validator.Validation()
@@ -89,13 +89,13 @@ class ValidatorTests(unittest.TestCase):
         # The inventory is hand-written so it can notice an omission, which means
         # it can also fall behind. Compare it against what the checkout actually
         # ships: a new runtime module or asset must be added here deliberately.
-        skill = validator.ROOT / "cargento" / "skills" / "cargento"
+        skill = validator.ROOT / "compass" / "skills" / "compass"
         # Discovered rather than listed. The top-level scripts were named here by
         # hand, and adding `event_hook.py` beside them failed this test for the
         # right reason but in the wrong place: the inventory is the thing meant to
         # be deliberate, not this test's idea of what exists. `glob`, not `rglob`,
         # so `tests/` and `agents/` stay out.
-        plugin_root = validator.ROOT / "cargento"
+        plugin_root = validator.ROOT / "compass"
         shipped = {
             path.relative_to(plugin_root).as_posix()
             for path in (*skill.glob("*.py"), *skill.glob("*.js"))
@@ -110,13 +110,13 @@ class ValidatorTests(unittest.TestCase):
             for path in (plugin_root / "hooks").glob("*.json")
         }
         shipped |= {path.name for path in plugin_root.glob("hooks.json") if path.is_file()}
-        for path in (skill / "cargento_runtime").rglob("*"):
+        for path in (skill / "compass_runtime").rglob("*"):
             if not path.is_file() or "__pycache__" in path.parts:
                 continue
             if path.suffix in {".py", ".html", ".css", ".js", ".b64", ".txt", ".json"}:
-                shipped.add(path.relative_to(validator.ROOT / "cargento").as_posix())
+                shipped.add(path.relative_to(validator.ROOT / "compass").as_posix())
 
-        self.assertEqual(sorted(shipped), sorted(validator.CARGENTO_RUNTIME_FILES))
+        self.assertEqual(sorted(shipped), sorted(validator.COMPASS_RUNTIME_FILES))
 
     def test_frontmatter_rejects_malformed_flow_yaml(self) -> None:
         path = self.write_temp(
@@ -151,12 +151,12 @@ class ValidatorTests(unittest.TestCase):
         )
 
     def test_catalog_estimate_includes_namespace_and_locator(self) -> None:
-        path = validator.ROOT / "cargento/skills/cargento/SKILL.md"
-        line = validator.render_catalog_estimate_line("cargento", "cargento", "Map agents.", path)
+        path = validator.ROOT / "compass/skills/compass/SKILL.md"
+        line = validator.render_catalog_estimate_line("compass", "compass", "Map agents.", path)
 
         self.assertEqual(
             line,
-            "- cargento:cargento: Map agents. (file: cargento/skills/cargento/SKILL.md)",
+            "- compass:compass: Map agents. (file: compass/skills/compass/SKILL.md)",
         )
         self.assertEqual(validator.approx_token_count("12345"), 2)
 
@@ -171,7 +171,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertTrue(any("license must be a string" in error for error in validation.errors))
 
     def test_the_shipped_skill_declares_every_distributed_license(self) -> None:
-        path = validator.ROOT / "cargento" / "skills" / "cargento" / "SKILL.md"
+        path = validator.ROOT / "compass" / "skills" / "compass" / "SKILL.md"
         validation = validator.Validation()
 
         metadata = validator.parse_frontmatter(path, validation)
@@ -180,17 +180,17 @@ class ValidatorTests(unittest.TestCase):
         self.assertIsNotNone(metadata)
         assert metadata is not None
         self.assertEqual(
-            validator.SHIPPED_SKILL_LICENSES[("cargento", "cargento")],
+            validator.SHIPPED_SKILL_LICENSES[("compass", "compass")],
             metadata["license"],
         )
 
-    def test_cargento_rejects_an_incomplete_license_declaration(self) -> None:
+    def test_compass_rejects_an_incomplete_license_declaration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            plugin = Path(tmp) / "cargento"
-            skill = plugin / "skills" / "cargento"
+            plugin = Path(tmp) / "compass"
+            skill = plugin / "skills" / "compass"
             skill.mkdir(parents=True)
             (skill / "SKILL.md").write_text(
-                "---\nname: cargento\ndescription: Map local agents.\nlicense: Apache-2.0\n---\n",
+                "---\nname: compass\ndescription: Map local agents.\nlicense: Apache-2.0\n---\n",
                 encoding="utf-8",
             )
             validation = validator.Validation()
@@ -198,7 +198,7 @@ class ValidatorTests(unittest.TestCase):
             with mock.patch.object(
                 validator,
                 "render_catalog_estimate_line",
-                return_value="- cargento:cargento: Map local agents.",
+                return_value="- compass:compass: Map local agents.",
             ):
                 validator.validate_skills(plugin, validation)
 
@@ -232,7 +232,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertTrue(any("policy must be a mapping" in error for error in validation.errors))
 
     def test_antigravity_manifest_requires_runtime_marker_at_plugin_root(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             nested_manifest = plugin_root / ".gemini-plugin/plugin.json"
             nested_manifest.parent.mkdir(parents=True)
@@ -276,7 +276,7 @@ class ValidatorTests(unittest.TestCase):
                 self.assertTrue((gemini_root / relative).is_file())
 
     def test_antigravity_manifest_rejects_unknown_fields_and_name_mismatch(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             plugin_root.mkdir()
             (plugin_root / "plugin.json").write_text(
@@ -297,7 +297,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_gemini_extension_rejects_missing_version_and_bad_mcp_server(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             plugin_root.mkdir()
             (plugin_root / "gemini-extension.json").write_text(
@@ -314,18 +314,18 @@ class ValidatorTests(unittest.TestCase):
             self.assertTrue(any("needs a url or command" in error for error in validation.errors))
 
     def test_the_gemini_manifest_name_is_the_plugin_name_not_the_directory(self) -> None:
-        # The extension installs and lists as `cargento`, while its directory is
-        # `cargento-gemini` so its hooks file cannot collide with Claude's. Tying
+        # The extension installs and lists as `compass`, while its directory is
+        # `compass-gemini` so its hooks file cannot collide with Claude's. Tying
         # the name to the directory would force one of those two to be wrong.
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
-            extension_root = Path(directory) / "cargento-gemini"
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
+            extension_root = Path(directory) / "compass-gemini"
             extension_root.mkdir()
             (extension_root / "gemini-extension.json").write_text(
-                '{"name":"cargento","description":"Fixture","version":"1.0.0"}\n'
+                '{"name":"compass","description":"Fixture","version":"1.0.0"}\n'
             )
             validation = validator.Validation()
 
-            validator.validate_gemini_extension(extension_root, "cargento", validation)
+            validator.validate_gemini_extension(extension_root, "compass", validation)
 
             self.assertEqual(
                 [],
@@ -334,15 +334,15 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_the_droid_manifest_name_is_the_plugin_name_not_the_directory(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
-            extension_root = Path(directory) / "cargento-droid"
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
+            extension_root = Path(directory) / "compass-droid"
             (extension_root / ".factory-plugin").mkdir(parents=True)
             (extension_root / ".factory-plugin/plugin.json").write_text(
-                '{"name":"cargento","description":"Fixture"}\n'
+                '{"name":"compass","description":"Fixture"}\n'
             )
             validation = validator.Validation()
 
-            validator.validate_droid_extension(extension_root, "cargento", validation)
+            validator.validate_droid_extension(extension_root, "compass", validation)
 
             self.assertEqual(
                 [],
@@ -351,7 +351,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_mcp_endpoint_parity_rejects_drift_and_missing_antigravity_config(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             plugin_root.mkdir()
             (plugin_root / ".mcp.json").write_text(
@@ -376,7 +376,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_mcp_endpoint_parity_rejects_runtime_endpoints_without_base(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             plugin_root.mkdir()
             gemini_manifest = {"mcpServers": {"rogue": {"url": "http://localhost:9999/sse"}}}
@@ -401,7 +401,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_antigravity_mcp_config_rejects_missing_or_blank_server_url(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             plugin_root.mkdir()
             (plugin_root / "mcp_config.json").write_text(
@@ -434,7 +434,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_mcp_endpoint_parity_accepts_matching_endpoints(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             plugin_root.mkdir()
             (plugin_root / ".mcp.json").write_text(
@@ -456,33 +456,33 @@ class ValidatorTests(unittest.TestCase):
         # Antigravity, which stopped being true once the command named its
         # harness. The check that matters is the one parity never made: a hooks
         # file pointing at a missing script installs cleanly and reports nothing.
-        command = 'python3 "${CLAUDE_PLUGIN_ROOT}/skills/cargento/event_hook.py" claude'
+        command = 'python3 "${CLAUDE_PLUGIN_ROOT}/skills/compass/event_hook.py" claude'
         document = {
             "hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": command}]}]}
         }
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             (plugin_root / "hooks").mkdir(parents=True)
-            (plugin_root / "skills/cargento").mkdir(parents=True)
+            (plugin_root / "skills/compass").mkdir(parents=True)
             (plugin_root / "hooks/hooks.json").write_text(json.dumps(document))
 
             validation = validator.Validation()
             validator.validate_hooks_adapter(plugin_root, validation)
             self.assertTrue(
                 any(
-                    "references missing skills/cargento/event_hook.py" in e
+                    "references missing skills/compass/event_hook.py" in e
                     for e in validation.errors
                 ),
                 validation.errors,
             )
 
-            (plugin_root / "skills/cargento/event_hook.py").write_text("#\n")
+            (plugin_root / "skills/compass/event_hook.py").write_text("#\n")
             validation = validator.Validation()
             validator.validate_hooks_adapter(plugin_root, validation)
             self.assertEqual([], validation.errors)
 
     def test_a_bundled_hooks_file_registering_nothing_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             (plugin_root / "hooks").mkdir(parents=True)
             (plugin_root / "hooks/hooks.json").write_text('{"hooks": {}}')
@@ -498,7 +498,7 @@ class ValidatorTests(unittest.TestCase):
         # mirrored file would also make Antigravity post as Claude, where the id
         # gets truncated by Claude's normalizer and matches no row.
         def document(event: str, harness: str) -> str:
-            command = f'python3 "${{PLUGIN_ROOT}}/skills/cargento/event_hook.py" {harness}'
+            command = f'python3 "${{PLUGIN_ROOT}}/skills/compass/event_hook.py" {harness}'
             return json.dumps(
                 {
                     "hooks": {
@@ -507,11 +507,11 @@ class ValidatorTests(unittest.TestCase):
                 }
             )
 
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             (plugin_root / "hooks").mkdir(parents=True)
-            (plugin_root / "skills/cargento").mkdir(parents=True)
-            (plugin_root / "skills/cargento/event_hook.py").write_text("#\n")
+            (plugin_root / "skills/compass").mkdir(parents=True)
+            (plugin_root / "skills/compass/event_hook.py").write_text("#\n")
             (plugin_root / "hooks/hooks.json").write_text(document("UserPromptSubmit", "claude"))
             (plugin_root / "hooks.json").write_text(document("PostInvocation", "antigravity"))
 
@@ -549,15 +549,14 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(validation.errors, [])
 
     def test_claude_manifest_name_must_match_plugin_directory(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             root = Path(directory)
             (root / ".agents/plugins").mkdir(parents=True)
             (root / ".agents/plugins/marketplace.json").write_text(
-                '{"plugins":[{"name":"cargento",'
-                '"source":{"source":"local","path":"./cargento"}}]}\n'
+                '{"plugins":[{"name":"compass","source":{"source":"local","path":"./compass"}}]}\n'
             )
-            (root / "cargento/.claude-plugin").mkdir(parents=True)
-            (root / "cargento/.claude-plugin/plugin.json").write_text(
+            (root / "compass/.claude-plugin").mkdir(parents=True)
+            (root / "compass/.claude-plugin/plugin.json").write_text(
                 '{"name":"wrong-plugin-name","version":"0.1.0","description":"Desc"}\n'
             )
             manifest = {"version": "0.1.0", "description": "Desc"}
@@ -565,9 +564,9 @@ class ValidatorTests(unittest.TestCase):
 
             with mock.patch.object(validator, "ROOT", root):
                 validator.validate_marketplaces(
-                    {"cargento": dict(manifest)},
-                    {"cargento": dict(manifest)},
-                    {"cargento": {"description": "Desc"}},
+                    {"compass": dict(manifest)},
+                    {"compass": dict(manifest)},
+                    {"compass": {"description": "Desc"}},
                     validation,
                 )
 
@@ -583,16 +582,16 @@ class ValidatorTests(unittest.TestCase):
         # resolve() rewrites 8.3 short names on Windows and /var -> /private/var
         # on macOS, so a path inside ROOT can still fail relative_to(). The
         # fallback must not leak native separators into the error text.
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-label-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-label-") as directory:
             root = Path(directory)
-            nested = root / "cargento" / ".claude-plugin" / "plugin.json"
+            nested = root / "compass" / ".claude-plugin" / "plugin.json"
             nested.parent.mkdir(parents=True)
             nested.write_text("{}\n")
             validation = validator.Validation()
             with mock.patch.object(validator, "ROOT", root):
                 validation.error(nested, "boom")
             # Inside a resolved ROOT: label is relative.
-            self.assertEqual(["cargento/.claude-plugin/plugin.json: boom"], validation.errors)
+            self.assertEqual(["compass/.claude-plugin/plugin.json: boom"], validation.errors)
 
             # Outside ROOT: still forward slashes, never backslashes.
             outside = validator.Validation()
@@ -600,30 +599,29 @@ class ValidatorTests(unittest.TestCase):
                 outside.error(nested, "boom")
         self.assertEqual(1, len(outside.errors))
         self.assertNotIn("\\", outside.errors[0])
-        self.assertIn("cargento/.claude-plugin/plugin.json", outside.errors[0])
+        self.assertIn("compass/.claude-plugin/plugin.json", outside.errors[0])
 
     def test_manifest_version_drift_is_rejected(self) -> None:
-        """cargento has no marketplace of its own any more (it is listed in
+        """compass has no marketplace of its own any more (it is listed in
         spacedock-dev/marketplace), so parity is asserted straight across the
         three shipped manifests."""
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             root = Path(directory)
             (root / ".agents/plugins").mkdir(parents=True)
             (root / ".agents/plugins/marketplace.json").write_text(
-                '{"plugins":[{"name":"cargento",'
-                '"source":{"source":"local","path":"./cargento"}}]}\n'
+                '{"plugins":[{"name":"compass","source":{"source":"local","path":"./compass"}}]}\n'
             )
-            (root / "cargento/.claude-plugin").mkdir(parents=True)
-            (root / "cargento/.claude-plugin/plugin.json").write_text(
-                '{"name":"cargento","version":"0.1.0","description":"Desc"}\n'
+            (root / "compass/.claude-plugin").mkdir(parents=True)
+            (root / "compass/.claude-plugin/plugin.json").write_text(
+                '{"name":"compass","version":"0.1.0","description":"Desc"}\n'
             )
             validation = validator.Validation()
 
             with mock.patch.object(validator, "ROOT", root):
                 validator.validate_marketplaces(
-                    {"cargento": {"version": "9.9.9", "description": "Desc"}},
-                    {"cargento": {"version": "0.1.0", "description": "Desc"}},
-                    {"cargento": {"description": "Desc"}},
+                    {"compass": {"version": "9.9.9", "description": "Desc"}},
+                    {"compass": {"version": "0.1.0", "description": "Desc"}},
+                    {"compass": {"description": "Desc"}},
                     validation,
                 )
 
@@ -640,7 +638,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertTrue(any("Markdown link" in error for error in validation.errors))
 
     def test_validate_skills_reports_non_string_required_fields_without_crashing(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             skill_root = plugin_root / "skills/broken"
             (skill_root / "agents").mkdir(parents=True)
@@ -662,7 +660,7 @@ class ValidatorTests(unittest.TestCase):
             self.assertTrue(any("default_prompt" in error for error in validation.errors))
 
     def test_bundled_markdown_rejects_host_specific_skill_api(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-plugin-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-plugin-") as directory:
             plugin_root = Path(directory) / "fixture-plugin"
             skill_root = plugin_root / "skills/broken"
             (skill_root / "agents").mkdir(parents=True)
@@ -693,7 +691,7 @@ class ValidatorTests(unittest.TestCase):
             (root / name).write_text("Placeholder.\n", encoding="utf-8")
 
     def test_repo_docs_reject_dangling_relative_link(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-docs-") as directory:
             # Resolve as the real ROOT is: on macOS a temp path is under
             # /var, a symlink to /private/var, and link containment is
             # checked against a resolved target.
@@ -710,7 +708,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_repo_docs_reject_banned_loopback_spelling(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-docs-") as directory:
             # Resolve as the real ROOT is: on macOS a temp path is under
             # /var, a symlink to /private/var, and link containment is
             # checked against a resolved target.
@@ -729,7 +727,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def test_repo_docs_reject_a_missing_owned_document(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-docs-") as directory:
             # Resolve as the real ROOT is: on macOS a temp path is under
             # /var, a symlink to /private/var, and link containment is
             # checked against a resolved target.
@@ -746,7 +744,7 @@ class ValidatorTests(unittest.TestCase):
             )
 
     def slugs_for(self, body: str) -> set[str]:
-        holder = tempfile.TemporaryDirectory(prefix="cargento-validator-slug-")
+        holder = tempfile.TemporaryDirectory(prefix="compass-validator-slug-")
         self.addCleanup(holder.cleanup)
         path = Path(holder.name).resolve() / "doc.md"
         path.write_text(body, encoding="utf-8")
@@ -785,7 +783,7 @@ class ValidatorTests(unittest.TestCase):
                 self.assertEqual(set(), self.slugs_for(body))
 
     def test_markdown_links_accept_valid_commonmark(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-links-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-links-") as directory:
             root = Path(directory).resolve()
             (root / "real.md").write_text("# Heading\n", encoding="utf-8")
             for label, body in [
@@ -807,7 +805,7 @@ class ValidatorTests(unittest.TestCase):
 
     def test_markdown_links_still_reject_real_breakage(self) -> None:
         """The permissiveness above must not blunt the checks that matter."""
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-links-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-links-") as directory:
             root = Path(directory).resolve()
             (root / "real.md").write_text("# Heading\n", encoding="utf-8")
             for label, body, fragment in [
@@ -850,7 +848,7 @@ class ValidatorTests(unittest.TestCase):
         self.assertEqual(expected, set(validator.ROOT_DOCS))
 
     def test_repo_docs_reject_a_dangling_heading_anchor(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-docs-") as directory:
             root = Path(directory).resolve()
             self.build_repo_docs(root)
             (root / "AGENTS.md").write_text("## Pre-PR Checks\n", encoding="utf-8")
@@ -865,7 +863,7 @@ class ValidatorTests(unittest.TestCase):
             self.assertEqual(2, sum("anchor does not exist" in e for e in validation.errors))
 
     def test_repo_docs_accept_resolving_links_and_anchors(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-validator-docs-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-validator-docs-") as directory:
             # Resolve as the real ROOT is: on macOS a temp path is under
             # /var, a symlink to /private/var, and link containment is
             # checked against a resolved target.
@@ -1200,9 +1198,9 @@ class PublicDocumentationBoundaryTest(unittest.TestCase):
             "docs/evidence/intent-and-drift/PROMPT.md",
             "docs/evidence/intent-and-drift/PARTICIPANT_KICKOFF.md",
             "docs/evidence/unknown.md",
-            "cargento/skills/example/docs/plans/guide.md",
-            "cargento-gemini/README.MD",
-            "cargento-droid/docs/design-example.md",
+            "compass/skills/example/docs/plans/guide.md",
+            "compass-gemini/README.MD",
+            "compass-droid/docs/design-example.md",
         ]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1335,14 +1333,14 @@ if __name__ == "__main__":
 
 
 class BundledHooksSchemaTests(unittest.TestCase):
-    """The two hook schemas Cargento ships, which are not the same shape."""
+    """The two hook schemas Compass ships, which are not the same shape."""
 
     def _validate(self, document: object, *, ship_script: bool) -> list[str]:
-        with tempfile.TemporaryDirectory(prefix="cargento-hooks-schema-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-hooks-schema-") as directory:
             plugin_root = Path(directory) / "plug"
-            (plugin_root / "skills/cargento").mkdir(parents=True)
+            (plugin_root / "skills/compass").mkdir(parents=True)
             if ship_script:
-                (plugin_root / "skills/cargento/agy_hook.py").write_text("#\n")
+                (plugin_root / "skills/compass/agy_hook.py").write_text("#\n")
             (plugin_root / "hooks.json").write_text(json.dumps(document))
             validation = validator.Validation()
             validator.validate_hooks_adapter(plugin_root, validation)
@@ -1358,14 +1356,14 @@ class BundledHooksSchemaTests(unittest.TestCase):
         # meaningless. agy's runtime discards such a file. See
         # AntigravityHookNestingTests.
         document = {
-            "cargento": {
+            "compass": {
                 "PostToolUse": [
                     {
                         "matcher": "",
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
+                                "command": 'python3 "${PLUGIN_ROOT}/skills/compass/agy_hook.py"',
                             }
                         ],
                     }
@@ -1383,11 +1381,11 @@ class BundledHooksSchemaTests(unittest.TestCase):
         # that understood only the grouped form would check nothing in the flat
         # half, so a missing script there would ship unnoticed.
         document = {
-            "cargento": {
+            "compass": {
                 "PostInvocation": [
                     {
                         "type": "command",
-                        "command": 'python3 "${PLUGIN_ROOT}/skills/cargento/agy_hook.py"',
+                        "command": 'python3 "${PLUGIN_ROOT}/skills/compass/agy_hook.py"',
                     }
                 ]
             }
@@ -1442,7 +1440,7 @@ class HookVocabularyTests(unittest.TestCase):
             tmp = Path(raw)
             self.assertEqual(
                 [],
-                self._errors("cargento-gemini/hooks/hooks.json", self._gemini_document(), tmp),
+                self._errors("compass-gemini/hooks/hooks.json", self._gemini_document(), tmp),
             )
 
     def test_a_foreign_event_name_is_rejected(self) -> None:
@@ -1450,7 +1448,7 @@ class HookVocabularyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             errors = self._errors(
-                "cargento-gemini/hooks/hooks.json",
+                "compass-gemini/hooks/hooks.json",
                 self._gemini_document(event="UserPromptSubmit"),
                 tmp,
             )
@@ -1466,7 +1464,7 @@ class HookVocabularyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             errors = self._errors(
-                "cargento-gemini/hooks/hooks.json",
+                "compass-gemini/hooks/hooks.json",
                 self._gemini_document(harness="claude"),
                 tmp,
             )
@@ -1500,14 +1498,14 @@ class HookVocabularyTests(unittest.TestCase):
             tmp = Path(raw)
             self.assertEqual(
                 [],
-                self._errors("cargento-droid/hooks/hooks.json", self._droid_document(), tmp),
+                self._errors("compass-droid/hooks/hooks.json", self._droid_document(), tmp),
             )
 
     def test_a_foreign_droid_event_name_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             errors = self._errors(
-                "cargento-droid/hooks/hooks.json",
+                "compass-droid/hooks/hooks.json",
                 self._droid_document(event="UserPromptSubmit"),
                 tmp,
             )
@@ -1520,7 +1518,7 @@ class HookVocabularyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             errors = self._errors(
-                "cargento-droid/hooks/hooks.json",
+                "compass-droid/hooks/hooks.json",
                 self._droid_document(harness="claude"),
                 tmp,
             )
@@ -1608,7 +1606,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         self.assertEqual([], errors)
 
     def test_an_empty_canonical_skill_tree_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             (root / ".claude/skills").mkdir(parents=True)
 
@@ -1617,7 +1615,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         self.assertTrue(any("no canonical repository skills" in error for error in errors), errors)
 
     def test_a_missing_codex_alias_is_reported(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             self._write_skill(root, "fixture")
 
@@ -1626,7 +1624,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         self.assertTrue(any("missing Codex alias" in error for error in errors), errors)
 
     def test_repository_skill_description_length_is_bounded(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             skill = self._write_skill(root, "fixture")
             (skill / "SKILL.md").write_text(
@@ -1640,7 +1638,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         self.assertTrue(any("maximum is 300" in error for error in errors), errors)
 
     def test_repository_skill_description_rejects_angle_brackets(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             skill = self._write_skill(root, "fixture")
             (skill / "SKILL.md").write_text(
@@ -1654,7 +1652,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         self.assertTrue(any("angle-bracket" in error for error in errors), errors)
 
     def test_a_copy_is_rejected_in_place_of_a_symlink(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             canonical = self._write_skill(root, "fixture")
             alias = root / ".agents/skills/fixture"
@@ -1666,7 +1664,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         self.assertTrue(any("must be a symlink" in error for error in errors), errors)
 
     def test_a_codex_alias_must_point_to_its_matching_claude_skill(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             self._write_skill(root, "fixture")
             self._write_skill(root, "other")
@@ -1680,7 +1678,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         )
 
     def test_repository_skills_require_openai_metadata(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             skill = self._write_skill(root, "fixture")
             (skill / "agents/openai.yaml").unlink()
@@ -1693,7 +1691,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         )
 
     def test_repository_skills_validate_openai_metadata_content(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             skill = self._write_skill(root, "fixture")
             (skill / "agents/openai.yaml").write_text(
@@ -1711,7 +1709,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
         self.assertTrue(any("must mention $fixture" in error for error in errors), errors)
 
     def test_an_alias_without_a_canonical_skill_is_reported(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="cargento-repo-skills-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-repo-skills-") as directory:
             root = Path(directory)
             self._link_skill(root, "orphan")
 
@@ -1723,7 +1721,7 @@ class RepositoryDevelopmentSkillTests(unittest.TestCase):
 class AntigravityHookNestingTests(unittest.TestCase):
     """Antigravity's hooks file wraps its events in a name, and a flat one is dead.
 
-    The guard exists because this shipped. Cargento's root `hooks.json` put event
+    The guard exists because this shipped. Compass's root `hooks.json` put event
     names at the top level for the whole life of the Antigravity adapter, and three
     separate things that should have caught it did not: `agy plugin validate`
     reported `hooks: 5 processed` because it counts top-level keys without
@@ -1733,7 +1731,7 @@ class AntigravityHookNestingTests(unittest.TestCase):
     """
 
     def _errors(self, document: dict[str, Any], tmp: Path) -> list[str]:
-        path = tmp / "cargento/hooks.json"
+        path = tmp / "compass/hooks.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(document), encoding="utf-8")
         validation = validator.Validation()
@@ -1742,28 +1740,28 @@ class AntigravityHookNestingTests(unittest.TestCase):
         return [str(message) for message in validation.errors]
 
     def test_event_names_at_the_top_level_are_rejected(self) -> None:
-        handler = {"type": "command", "command": 'python3 "./skills/cargento/agy_hook.py" x'}
-        with tempfile.TemporaryDirectory(prefix="cargento-agy-nesting-") as directory:
+        handler = {"type": "command", "command": 'python3 "./skills/compass/agy_hook.py" x'}
+        with tempfile.TemporaryDirectory(prefix="compass-agy-nesting-") as directory:
             errors = self._errors({"PostInvocation": [handler]}, Path(directory))
         self.assertTrue(
             any("at the top level" in e and "PostInvocation" in e for e in errors), errors
         )
 
     def test_a_name_wrapped_file_is_accepted(self) -> None:
-        handler = {"type": "command", "command": 'python3 "./skills/cargento/agy_hook.py" x'}
-        with tempfile.TemporaryDirectory(prefix="cargento-agy-nesting-") as directory:
-            errors = self._errors({"cargento": {"PostInvocation": [handler]}}, Path(directory))
+        handler = {"type": "command", "command": 'python3 "./skills/compass/agy_hook.py" x'}
+        with tempfile.TemporaryDirectory(prefix="compass-agy-nesting-") as directory:
+            errors = self._errors({"compass": {"PostInvocation": [handler]}}, Path(directory))
         self.assertEqual(errors, [])
 
     def test_a_file_with_no_named_hook_is_rejected(self) -> None:
         # An empty object parses and would silently load nothing.
-        with tempfile.TemporaryDirectory(prefix="cargento-agy-nesting-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-agy-nesting-") as directory:
             errors = self._errors({}, Path(directory))
         self.assertTrue(any("registers no named hook" in e for e in errors), errors)
 
     def test_the_shipped_file_is_name_wrapped(self) -> None:
         """The regression this class exists for, asserted against the real file."""
-        document = json.loads((validator.ROOT / "cargento/hooks.json").read_text())
+        document = json.loads((validator.ROOT / "compass/hooks.json").read_text())
         self.assertTrue(document, "the shipped Antigravity hooks file is empty")
         for key, value in document.items():
             self.assertIsInstance(
@@ -1823,7 +1821,7 @@ class PromiseParityTests(unittest.TestCase):
 
     def run_case(self, map_body: str | None = None, board: object = None) -> list[str]:
         """Both files under a throwaway ROOT; `None` leaves that side absent."""
-        with tempfile.TemporaryDirectory(prefix="cargento-promise-parity-") as directory:
+        with tempfile.TemporaryDirectory(prefix="compass-promise-parity-") as directory:
             root = Path(directory)
             (root / "docs/visibility-2x2").mkdir(parents=True)
             if map_body is not None:
@@ -1949,13 +1947,13 @@ class PromiseParityTests(unittest.TestCase):
 @unittest.skipUnless(shutil.which("node"), "node is required for JavaScript adapter evidence")
 class JavaScriptAdapterContractTest(unittest.TestCase):
     def test_a_missing_javascript_adapter_is_an_installed_runtime_failure(self) -> None:
-        self.assertIn("skills/cargento/opencode_plugin.js", validator.CARGENTO_RUNTIME_FILES)
+        self.assertIn("skills/compass/opencode_plugin.js", validator.COMPASS_RUNTIME_FILES)
 
     def test_the_native_callback_proves_its_route_and_gate_pair(self) -> None:
         self.assertTrue(
             hasattr(validator, "exercise_js_adapter"), "JS callback derivation is absent"
         )
-        path = validator.ROOT / "cargento/skills/cargento/opencode_plugin.js"
+        path = validator.ROOT / "compass/skills/compass/opencode_plugin.js"
         observed = validator.exercise_js_adapter(path)
         self.assertEqual(["event"], observed["hooks"])
         self.assertEqual(
@@ -1965,7 +1963,7 @@ class JavaScriptAdapterContractTest(unittest.TestCase):
         self.assertEqual({"/api/events/opencode"}, {r["path"] for r in observed["deliveries"]})
 
     def test_mutated_native_name_route_and_gate_mapping_are_rejected(self) -> None:
-        directory = validator.ROOT / "cargento/skills/cargento"
+        directory = validator.ROOT / "compass/skills/compass"
         cases = (
             ("opencode_plugin.js", "permission.asked", "permission.ask"),
             ("opencode_plugin.js", "/api/events/opencode", "/api/events/pi"),

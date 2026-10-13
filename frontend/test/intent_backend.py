@@ -30,10 +30,10 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "cargento/skills/cargento"))
+sys.path.insert(0, str(HERE.parents[1] / "compass/skills/compass"))
 
-from cargento_runtime import annotations as annotation_store  # noqa: E402
-from cargento_runtime import cli  # noqa: E402
+from compass_runtime import annotations as annotation_store  # noqa: E402
+from compass_runtime import cli  # noqa: E402
 
 STARTED = time.time()
 

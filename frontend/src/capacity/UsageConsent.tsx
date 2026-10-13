@@ -49,7 +49,7 @@ export function UsageDisclosure() {
       aria-label="Quota fetch disclosure"
     >
       <p>
-        <strong>Read your quota from the vendor?</strong> Cargento can show your Claude Code and
+        <strong>Read your quota from the vendor?</strong> Compass can show your Claude Code and
         Cursor windows. Doing it means reading the credential that harness already stored on this
         machine and sending it to that vendor, at most once every five minutes, to ask for your
         usage numbers and nothing else. The credential is never written, logged, or served, and no

@@ -1,13 +1,13 @@
-# Cargento
+# Compass
 
-[![Validate](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml/badge.svg)](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml)
-[![Quality Gate](https://github.com/spacedock-dev/cargento/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/spacedock-dev/cargento/actions/workflows/quality-gate.yml)
+[![Validate](https://github.com/spacedock-dev/compass/actions/workflows/validate.yml/badge.svg)](https://github.com/spacedock-dev/compass/actions/workflows/validate.yml)
+[![Quality Gate](https://github.com/spacedock-dev/compass/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/spacedock-dev/compass/actions/workflows/quality-gate.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 Agnostic agent cartography and visualization.
 
-Run as many coding agents as you like. Cargento tells you which ones need you, which ones are fine,
+Run as many coding agents as you like. Compass tells you which ones need you, which ones are fine,
 and when it is safe to walk away. One local screen, every harness you use, and nothing leaves your
 machine that you cannot switch off.
 
@@ -18,17 +18,17 @@ reading's limits and why an expected outcome line is needed for a drift level.
 It answers five questions, in the order a working day hits them. Which of my agents are running.
 What is each one doing, and when should I come back. Is anything waiting on me. Will I hit the quota
 wall before the work finishes. Did anything die quietly.
-[What Cargento promises](docs/promise-map.md) states each answer, names the shipped capability
+[What Compass promises](docs/promise-map.md) states each answer, names the shipped capability
 behind it, and says where it stops.
 
-Under that, Cargento maps live coding-agent activity on your machine into a single local dashboard.
+Under that, Compass maps live coding-agent activity on your machine into a single local dashboard.
 It shows sessions, subagents, task progress, turn ETAs, quota windows, and token output rate across
 ten harnesses: Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode,
 Cursor CLI, Goose, and Factory Droid. Gemini CLI stopped serving consumer accounts in June 2026 and
 Antigravity CLI succeeds it there, but enterprise and API-key use continues, so that row reads
 either historical or live sessions depending on the account.
 
-This repo contains one plugin, `cargento`, the agent cartography dashboard skill.
+This repo contains one plugin, `compass`, the agent cartography dashboard skill.
 
 ---
 
@@ -43,26 +43,28 @@ You do not need all four. The dashboard maps every harness it finds on the machi
 which one launched it, and it runs standalone with no client installed at all:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4553 --daemon
+python3 compass/skills/compass/server.py --port 4553 --daemon
 ```
 
 `--daemon` detaches so the dashboard keeps running after this shell exits. Stop it with `--stop`;
 drop `--daemon` to run it in the foreground instead.
+
+See [Upgrading from Cargento](MANUAL.md#upgrading-from-cargento) for the temporary data fallbacks and settings to update.
 
 See the [command manual](MANUAL.md) for every launcher option, defaults, environment variables
 and examples, including controls for model use, history and notifications.
 
 ### Claude Code installation
 
-Cargento is listed in the shared Spacedock marketplace, so if you already have that marketplace you
+Compass is listed in the shared Spacedock marketplace, so if you already have that marketplace you
 only need the second line.
 
 ```bash
 # Add the Spacedock marketplace (one-time setup, shared with the other Spacedock plugins)
 claude plugin marketplace add spacedock-dev/marketplace
 
-# Install the cargento plugin
-claude plugin install cargento@spacedock
+# Install the compass plugin
+claude plugin install compass@spacedock
 ```
 
 Restart Claude Code after installation.
@@ -71,7 +73,7 @@ Restart Claude Code after installation.
 
 ```bash
 # From a local checkout, install the native AGY plugin
-agy plugin install "$PWD/cargento"
+agy plugin install "$PWD/compass"
 ```
 
 Restart AGY after installation.
@@ -80,39 +82,39 @@ Restart AGY after installation.
 
 ```bash
 # From a local checkout, install the native Gemini CLI extension
-gemini extensions install "$PWD/cargento-gemini"
+gemini extensions install "$PWD/compass-gemini"
 ```
 
 Restart Gemini CLI after installation.
 
-Gemini installs from its own directory rather than from `cargento/`. Both Claude Code and Gemini CLI
+Gemini installs from its own directory rather than from `compass/`. Both Claude Code and Gemini CLI
 load extension hooks from `<root>/hooks/hooks.json` and neither lets that path be moved, so one shared
-root would hand each harness the other's event names. `cargento-gemini/` carries the Gemini manifest,
+root would hand each harness the other's event names. `compass-gemini/` carries the Gemini manifest,
 Gemini's hooks, and the two hook scripts they run.
 
 ### Droid installation
 
 ```bash
 # From a local checkout, install the native Droid plugin
-droid plugin install "$PWD/cargento-droid"
+droid plugin install "$PWD/compass-droid"
 ```
 
 Restart Droid after installation.
 
-Droid installs from its own directory rather than from `cargento/`. Both Claude Code and Droid
+Droid installs from its own directory rather than from `compass/`. Both Claude Code and Droid
 load plugin hooks from `<root>/hooks/hooks.json` and Droid also reads `.claude-plugin/plugin.json`,
 so installing the Claude root into Droid would run hooks with Claude's harness argument and send
-events to `/api/events/claude`. `cargento-droid/` carries the Droid manifest (`.factory-plugin/plugin.json`),
+events to `/api/events/claude`. `compass-droid/` carries the Droid manifest (`.factory-plugin/plugin.json`),
 Droid's hooks mapping measured lifecycle events, and the two hook scripts they run. If you previously
-installed `cargento/` into Droid, remove it with `droid plugin uninstall cargento` before installing
-from `cargento-droid`.
+installed `compass/` into Droid, remove it with `droid plugin uninstall compass` before installing
+from `compass-droid`.
 
 ### Codex installation
 
 ```bash
 # Add the marketplace from a local checkout, then install the plugin
 codex plugin marketplace add .
-codex plugin add cargento@cargento-marketplace
+codex plugin add compass@compass-marketplace
 ```
 
 Restart Codex after installation.
@@ -127,16 +129,16 @@ line. See [HOW_TO_USE.md](HOW_TO_USE.md) for one procedure per task.
 
 | Skill | What it does | Standalone invocation |
 |-------|--------------|------------------------|
-| `cargento` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across ten coding-agent harnesses, with input-wait notifications (native on macOS, browser notifications elsewhere) | `/cargento:cargento` |
+| `compass` | Live agent-cartography dashboard: maps sessions, subagents, task progress, ETAs, and token rate across ten coding-agent harnesses, with input-wait notifications (native on macOS, browser notifications elsewhere) | `/compass:compass` |
 
-In Codex, invoke it as `$cargento`. In any harness you can also just ask: "open cargento" or "monitor my agents".
+In Codex, invoke it as `$compass`. In any harness you can also just ask: "open compass" or "monitor my agents".
 
 ## 3. How it works
 
-The skill starts a stdlib-only Python server: `cargento/skills/cargento/server.py` is a small
-launcher, and the dashboard itself lives in the importable `cargento_runtime` package beside it. The
+The skill starts a stdlib-only Python server: `compass/skills/compass/server.py` is a small
+launcher, and the dashboard itself lives in the importable `compass_runtime` package beside it. The
 server reads local harness session stores read-only, meaning transcripts, task files, and SQLite
-databases, and assembles the HTML, CSS and JavaScript under `cargento_runtime/web/` into a
+databases, and assembles the HTML, CSS and JavaScript under `compass_runtime/web/` into a
 self-refreshing dashboard at `http://127.0.0.1:4553/`. The server binds to 127.0.0.1 unless you ask
 for another address with `--host`, which has no authentication behind it. Session content stays on
 the machine by default. The quota poll requires disclosure consent, carries a vendor token and no
@@ -178,7 +180,7 @@ A session opens under the tab you opened it from, and `Escape` returns there; a 
 under Sessions. Every other view's `Escape` returns to Sessions. The route lives in the URL fragment
 so a reload or a pasted link comes back to the same view.
 
-See [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) for data sources, session states, options, and troubleshooting.
+See [compass/skills/compass/SKILL.md](compass/skills/compass/SKILL.md) for data sources, session states, options, and troubleshooting.
 
 ## 4. Validation
 
@@ -197,6 +199,6 @@ privately, as described in [SECURITY.md](SECURITY.md).
 
 ## 6. License
 
-Cargento's code and documentation are licensed under the [Apache License 2.0](LICENSE). See
+Compass's code and documentation are licensed under the [Apache License 2.0](LICENSE). See
 [NOTICE](NOTICE) for attribution. The bundled Space Grotesk and IBM Plex Mono font subsets retain their
-SIL Open Font License notices in `cargento/skills/cargento/cargento_runtime/web/fonts/`.
+SIL Open Font License notices in `compass/skills/compass/compass_runtime/web/fonts/`.

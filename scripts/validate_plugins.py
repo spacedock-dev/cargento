@@ -38,8 +38,8 @@ const server = createServer((req, res) => {
 await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
 try {
   const port = server.address().port;
-  process.env.CARGENTO_PORT = String(port);
-  writeFileSync(join(process.env.CARGENTO_HOME, `cargento-${port}.json`),
+  process.env.COMPASS_PORT = String(port);
+  writeFileSync(join(process.env.COMPASS_HOME, `compass-${port}.json`),
     JSON.stringify({capabilities: {opencode: "oracle-token", pi: "oracle-token"}}));
   const module = await import(pathToFileURL(process.argv[2]));
   const hooks = {};
@@ -51,7 +51,7 @@ try {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   } else {
-    Object.assign(hooks, await module.CargentoPlugin({}));
+    Object.assign(hooks, await module.CompassPlugin({}));
     for (const type of ["permission.asked", "permission.replied", "session.status"]) {
       await hooks.event({event: {type, properties: {
         sessionID: "ses_" + "a".repeat(26), id: "request-one",
@@ -101,7 +101,7 @@ def _probe_js_adapter(name: str, source: bytes) -> dict[str, Any]:
             timeout=10,
             env={
                 **os.environ,
-                "CARGENTO_HOME": tmp,
+                "COMPASS_HOME": tmp,
                 **({} if sys.platform == "win32" else {"PATH": str(Path(node).parent)}),
             },
             check=False,
@@ -138,7 +138,7 @@ def check_js_adapters(adapter_dir: Path) -> list[str]:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_NAMES = ("cargento",)
+PLUGIN_NAMES = ("compass",)
 
 # Gemini CLI gets its own extension root rather than sharing the plugin root.
 # Both harnesses load extension hooks from `<root>/hooks/hooks.json` and neither
@@ -150,7 +150,7 @@ PLUGIN_NAMES = ("cargento",)
 # names that do overlap and reported both as failed hooks, because Gemini does not
 # expand `${CLAUDE_PLUGIN_ROOT}` -- at a synchronous cost of 258 ms and 259 ms per
 # session for nothing.
-GEMINI_EXTENSION_ROOT = "cargento-gemini"
+GEMINI_EXTENSION_ROOT = "compass-gemini"
 
 # The Gemini extension is self-contained because `gemini extensions install`
 # copies the directory and a git-URL install clones it, so a command reaching
@@ -164,7 +164,7 @@ GEMINI_EXTENSION_FILES = (
     "hooks/notify_hook.py",
 )
 
-DROID_EXTENSION_ROOT = "cargento-droid"
+DROID_EXTENSION_ROOT = "compass-droid"
 DROID_EXTENSION_FILES = (
     ".factory-plugin/plugin.json",
     "hooks/hooks.json",
@@ -174,10 +174,10 @@ DROID_EXTENSION_FILES = (
 
 # Which shipped file is a byte-identical copy of which source of truth.
 DUPLICATED_SCRIPTS = (
-    (f"{GEMINI_EXTENSION_ROOT}/hooks/event_hook.py", "cargento/skills/cargento/event_hook.py"),
-    (f"{GEMINI_EXTENSION_ROOT}/hooks/notify_hook.py", "cargento/skills/cargento/notify_hook.py"),
-    (f"{DROID_EXTENSION_ROOT}/hooks/event_hook.py", "cargento/skills/cargento/event_hook.py"),
-    (f"{DROID_EXTENSION_ROOT}/hooks/notify_hook.py", "cargento/skills/cargento/notify_hook.py"),
+    (f"{GEMINI_EXTENSION_ROOT}/hooks/event_hook.py", "compass/skills/compass/event_hook.py"),
+    (f"{GEMINI_EXTENSION_ROOT}/hooks/notify_hook.py", "compass/skills/compass/notify_hook.py"),
+    (f"{DROID_EXTENSION_ROOT}/hooks/event_hook.py", "compass/skills/compass/event_hook.py"),
+    (f"{DROID_EXTENSION_ROOT}/hooks/notify_hook.py", "compass/skills/compass/notify_hook.py"),
 )
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PORTABILITY_MARKERS = {
@@ -192,7 +192,7 @@ SHARED_FRONTMATTER_FIELDS = {"name", "description", "license"}
 # The skill now carries font software whose OFL terms must survive distribution;
 # pinning the expression prevents its metadata from reverting to Apache-only.
 SHIPPED_SKILL_LICENSES = {
-    ("cargento", "cargento"): "Apache-2.0 AND OFL-1.1",
+    ("compass", "compass"): "Apache-2.0 AND OFL-1.1",
 }
 MAX_CATALOG_TOKEN_ESTIMATE = 4_000
 # Prose documentation outside the plugin tree. validate_skills() covers bundled
@@ -401,7 +401,7 @@ UniqueKeyLoader.add_constructor(
 
 
 # Every file the shipped dashboard needs at runtime, relative to the plugin root.
-# The launcher imports cargento_runtime.cli, which reaches all of these, so any
+# The launcher imports compass_runtime.cli, which reaches all of these, so any
 # one of them missing from an installed copy is a dashboard that cannot start.
 # A packaging step that copies "the skill" without walking subpackages, or an
 # archive that drops a frontend asset, both fail here with the exact path.
@@ -409,131 +409,132 @@ UniqueKeyLoader.add_constructor(
 # Kept as an explicit tuple rather than derived from the checkout on purpose: a
 # glob would describe whatever happens to be present and could never notice an
 # omission.
-CARGENTO_RUNTIME_FILES = (
+COMPASS_RUNTIME_FILES = (
     # Codex loads this through the `hooks` key in its manifest, so an install
     # missing it silently reports no Codex events at all rather than failing.
     "hooks/hooks.json",
     "hooks/codex-hooks.json",
     "hooks.json",
-    "skills/cargento/server.py",
-    "skills/cargento/notify_hook.py",
-    "skills/cargento/event_hook.py",
-    "skills/cargento/statusline_hook.py",
-    "skills/cargento/agy_hook.py",
-    "skills/cargento/opencode_plugin.js",
-    "skills/cargento/pi_extension.js",
+    "skills/compass/server.py",
+    "skills/compass/notify_hook.py",
+    "skills/compass/event_hook.py",
+    "skills/compass/statusline_hook.py",
+    "skills/compass/agy_hook.py",
+    "skills/compass/opencode_plugin.js",
+    "skills/compass/pi_extension.js",
     # The stdio MCP server. A top-level `.py` beside the other edge scripts on
-    # purpose: the inventory test globs `skills/cargento/*.py` non-recursively, so a
+    # purpose: the inventory test globs `skills/compass/*.py` non-recursively, so a
     # subdirectory would be invisible here and ship as a broken install.
-    "skills/cargento/mcp_server.py",
-    "skills/cargento/cargento_runtime/__init__.py",
-    "skills/cargento/cargento_runtime/cli.py",
-    "skills/cargento/cargento_runtime/config.py",
-    "skills/cargento/cargento_runtime/frontend_dev.py",
-    "skills/cargento/cargento_runtime/state.py",
-    "skills/cargento/cargento_runtime/stream.py",
-    "skills/cargento/cargento_runtime/asks.py",
-    "skills/cargento/cargento_runtime/io.py",
-    "skills/cargento/cargento_runtime/probe.py",
-    "skills/cargento/cargento_runtime/records.py",
-    "skills/cargento/cargento_runtime/transcripts.py",
-    "skills/cargento/cargento_runtime/turns.py",
-    "skills/cargento/cargento_runtime/unasked.py",
-    "skills/cargento/cargento_runtime/supervise.py",
-    "skills/cargento/cargento_runtime/reading_jobs.py",
-    "skills/cargento/cargento_runtime/sessions.py",
-    "skills/cargento/cargento_runtime/snapshot.py",
-    "skills/cargento/cargento_runtime/events.py",
-    "skills/cargento/cargento_runtime/irreversible.py",
-    "skills/cargento/cargento_runtime/focus.py",
-    "skills/cargento/cargento_runtime/git_status.py",
-    "skills/cargento/cargento_runtime/history.py",
-    "skills/cargento/cargento_runtime/claude_data.py",
-    "skills/cargento/cargento_runtime/deliveries.py",
-    "skills/cargento/cargento_runtime/departures.py",
-    "skills/cargento/cargento_runtime/ends.py",
-    "skills/cargento/cargento_runtime/dismissals.py",
-    "skills/cargento/cargento_runtime/copied_corrections.py",
-    "skills/cargento/cargento_runtime/correction.py",
-    "skills/cargento/cargento_runtime/notifications.py",
-    "skills/cargento/cargento_runtime/spacedock.py",
-    "skills/cargento/cargento_runtime/tripwires.py",
-    "skills/cargento/cargento_runtime/quota.py",
-    "skills/cargento/cargento_runtime/aggregate.py",
-    "skills/cargento/cargento_runtime/annotations.py",
-    "skills/cargento/cargento_runtime/observation.py",
-    "skills/cargento/cargento_runtime/diagnostics.py",
-    "skills/cargento/cargento_runtime/lifecycle.py",
-    "skills/cargento/cargento_runtime/http_api.py",
-    "skills/cargento/cargento_runtime/observer.py",
-    "skills/cargento/cargento_runtime/reading.py",
-    "skills/cargento/cargento_runtime/reading_policy.py",
-    "skills/cargento/cargento_runtime/reading_route.py",
-    "skills/cargento/cargento_runtime/levels.py",
-    "skills/cargento/cargento_runtime/live_estimate.py",
-    "skills/cargento/cargento_runtime/reach.py",
-    "skills/cargento/cargento_runtime/semantic_history.py",
-    "skills/cargento/cargento_runtime/interaction_prototype.py",
-    "skills/cargento/cargento_runtime/project_context.py",
-    "skills/cargento/cargento_runtime/collectors/__init__.py",
-    "skills/cargento/cargento_runtime/collectors/claude.py",
-    "skills/cargento/cargento_runtime/collectors/codex.py",
-    "skills/cargento/cargento_runtime/collectors/pi.py",
-    "skills/cargento/cargento_runtime/collectors/gemini.py",
-    "skills/cargento/cargento_runtime/collectors/antigravity.py",
-    "skills/cargento/cargento_runtime/collectors/copilot.py",
-    "skills/cargento/cargento_runtime/collectors/opencode.py",
-    "skills/cargento/cargento_runtime/collectors/cursor.py",
-    "skills/cargento/cargento_runtime/collectors/goose.py",
-    "skills/cargento/cargento_runtime/collectors/droid.py",
-    "skills/cargento/cargento_runtime/web/__init__.py",
-    "skills/cargento/cargento_runtime/web/react.html",
-    "skills/cargento/cargento_runtime/web/react.integrity.json",
-    "skills/cargento/cargento_runtime/web/react-licenses.txt",
-    "skills/cargento/cargento_runtime/web/styles.css",
-    "skills/cargento/cargento_runtime/web/next-boot.js",
-    "skills/cargento/cargento_runtime/web/next-observed.js",
-    "skills/cargento/cargento_runtime/web/next-attention.js",
-    "skills/cargento/cargento_runtime/web/next-notify.js",
-    "skills/cargento/cargento_runtime/web/next-cockpit-compat.js",
-    "skills/cargento/cargento_runtime/web/project.js",
-    "skills/cargento/cargento_runtime/web/next-capacity.js",
-    "skills/cargento/cargento_runtime/web/next-chrome.js",
-    "skills/cargento/cargento_runtime/web/next-sessions.js",
-    "skills/cargento/cargento_runtime/web/next-projects.js",
-    "skills/cargento/cargento_runtime/web/next-project.js",
-    "skills/cargento/cargento_runtime/web/next-activity.js",
-    "skills/cargento/cargento_runtime/web/next-session.js",
-    "skills/cargento/cargento_runtime/web/next-workstream.js",
-    "skills/cargento/cargento_runtime/web/next-delegation.js",
-    "skills/cargento/cargento_runtime/web/next-controls.js",
-    "skills/cargento/cargento_runtime/web/next-cockpit.js",
-    "skills/cargento/cargento_runtime/web/next-render.js",
-    "skills/cargento/cargento_runtime/web/next-intent.js",
-    "skills/cargento/cargento_runtime/web/next-live.js",
-    "skills/cargento/cargento_runtime/web/vendor/xterm.js",
-    "skills/cargento/cargento_runtime/web/vendor/xterm.css",
-    "skills/cargento/cargento_runtime/web/vendor/xterm-LICENSE.txt",
-    "skills/cargento/cargento_runtime/web/vendor/SOURCES.txt",
-    "skills/cargento/cargento_runtime/web/fonts/space-grotesk-v22-vietnamese.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/space-grotesk-v22-latin-ext.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/space-grotesk-v22-latin.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-regular-vietnamese.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-regular-latin-ext.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-regular-latin.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-medium-vietnamese.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-medium-latin-ext.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-medium-latin.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-semibold-vietnamese.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-semibold-latin-ext.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-semibold-latin.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-italic-vietnamese.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-italic-latin-ext.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/ibm-plex-mono-v20-italic-latin.woff2.b64",
-    "skills/cargento/cargento_runtime/web/fonts/SpaceGrotesk-OFL.txt",
-    "skills/cargento/cargento_runtime/web/fonts/IBMPlexMono-OFL.txt",
-    "skills/cargento/cargento_runtime/web/fonts/SOURCES.txt",
-    "skills/cargento/cargento_runtime/web/page.py",
+    "skills/compass/mcp_server.py",
+    "skills/compass/compass_runtime/__init__.py",
+    "skills/compass/compass_runtime/cli.py",
+    "skills/compass/compass_runtime/config.py",
+    "skills/compass/compass_runtime/frontend_dev.py",
+    "skills/compass/compass_runtime/state.py",
+    "skills/compass/compass_runtime/stream.py",
+    "skills/compass/compass_runtime/asks.py",
+    "skills/compass/compass_runtime/io.py",
+    "skills/compass/compass_runtime/probe.py",
+    "skills/compass/compass_runtime/records.py",
+    "skills/compass/compass_runtime/transcripts.py",
+    "skills/compass/compass_runtime/turns.py",
+    "skills/compass/compass_runtime/unasked.py",
+    "skills/compass/compass_runtime/supervise.py",
+    "skills/compass/compass_runtime/reading_jobs.py",
+    "skills/compass/compass_runtime/sessions.py",
+    "skills/compass/compass_runtime/snapshot.py",
+    "skills/compass/compass_runtime/events.py",
+    "skills/compass/compass_runtime/irreversible.py",
+    "skills/compass/compass_runtime/focus.py",
+    "skills/compass/compass_runtime/git_status.py",
+    "skills/compass/compass_runtime/history.py",
+    "skills/compass/compass_runtime/claude_data.py",
+    "skills/compass/compass_runtime/deliveries.py",
+    "skills/compass/compass_runtime/departures.py",
+    "skills/compass/compass_runtime/ends.py",
+    "skills/compass/compass_runtime/dismissals.py",
+    "skills/compass/compass_runtime/copied_corrections.py",
+    "skills/compass/compass_runtime/correction.py",
+    "skills/compass/compass_runtime/notifications.py",
+    "skills/compass/compass_runtime/spacedock.py",
+    "skills/compass/compass_runtime/tripwires.py",
+    "skills/compass/compass_runtime/quota.py",
+    "skills/compass/compass_runtime/aggregate.py",
+    "skills/compass/compass_runtime/annotations.py",
+    "skills/compass/compass_runtime/observation.py",
+    "skills/compass/compass_runtime/diagnostics.py",
+    "skills/compass/compass_runtime/lifecycle.py",
+    "skills/compass/compass_runtime/http_api.py",
+    "skills/compass/compass_runtime/observer.py",
+    "skills/compass/compass_runtime/reading.py",
+    "skills/compass/compass_runtime/reading_policy.py",
+    "skills/compass/compass_runtime/reading_route.py",
+    "skills/compass/compass_runtime/levels.py",
+    "skills/compass/compass_runtime/live_estimate.py",
+    "skills/compass/compass_runtime/reach.py",
+    "skills/compass/compass_runtime/semantic_history.py",
+    "skills/compass/compass_runtime/record_pages.py",
+    "skills/compass/compass_runtime/interaction_prototype.py",
+    "skills/compass/compass_runtime/project_context.py",
+    "skills/compass/compass_runtime/collectors/__init__.py",
+    "skills/compass/compass_runtime/collectors/claude.py",
+    "skills/compass/compass_runtime/collectors/codex.py",
+    "skills/compass/compass_runtime/collectors/pi.py",
+    "skills/compass/compass_runtime/collectors/gemini.py",
+    "skills/compass/compass_runtime/collectors/antigravity.py",
+    "skills/compass/compass_runtime/collectors/copilot.py",
+    "skills/compass/compass_runtime/collectors/opencode.py",
+    "skills/compass/compass_runtime/collectors/cursor.py",
+    "skills/compass/compass_runtime/collectors/goose.py",
+    "skills/compass/compass_runtime/collectors/droid.py",
+    "skills/compass/compass_runtime/web/__init__.py",
+    "skills/compass/compass_runtime/web/react.html",
+    "skills/compass/compass_runtime/web/react.integrity.json",
+    "skills/compass/compass_runtime/web/react-licenses.txt",
+    "skills/compass/compass_runtime/web/styles.css",
+    "skills/compass/compass_runtime/web/next-boot.js",
+    "skills/compass/compass_runtime/web/next-observed.js",
+    "skills/compass/compass_runtime/web/next-attention.js",
+    "skills/compass/compass_runtime/web/next-notify.js",
+    "skills/compass/compass_runtime/web/next-cockpit-compat.js",
+    "skills/compass/compass_runtime/web/project.js",
+    "skills/compass/compass_runtime/web/next-capacity.js",
+    "skills/compass/compass_runtime/web/next-chrome.js",
+    "skills/compass/compass_runtime/web/next-sessions.js",
+    "skills/compass/compass_runtime/web/next-projects.js",
+    "skills/compass/compass_runtime/web/next-project.js",
+    "skills/compass/compass_runtime/web/next-activity.js",
+    "skills/compass/compass_runtime/web/next-session.js",
+    "skills/compass/compass_runtime/web/next-workstream.js",
+    "skills/compass/compass_runtime/web/next-delegation.js",
+    "skills/compass/compass_runtime/web/next-controls.js",
+    "skills/compass/compass_runtime/web/next-cockpit.js",
+    "skills/compass/compass_runtime/web/next-render.js",
+    "skills/compass/compass_runtime/web/next-intent.js",
+    "skills/compass/compass_runtime/web/next-live.js",
+    "skills/compass/compass_runtime/web/vendor/xterm.js",
+    "skills/compass/compass_runtime/web/vendor/xterm.css",
+    "skills/compass/compass_runtime/web/vendor/xterm-LICENSE.txt",
+    "skills/compass/compass_runtime/web/vendor/SOURCES.txt",
+    "skills/compass/compass_runtime/web/fonts/space-grotesk-v22-vietnamese.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/space-grotesk-v22-latin-ext.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/space-grotesk-v22-latin.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-regular-vietnamese.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-regular-latin-ext.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-regular-latin.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-medium-vietnamese.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-medium-latin-ext.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-medium-latin.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-semibold-vietnamese.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-semibold-latin-ext.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-semibold-latin.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-italic-vietnamese.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-italic-latin-ext.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/ibm-plex-mono-v20-italic-latin.woff2.b64",
+    "skills/compass/compass_runtime/web/fonts/SpaceGrotesk-OFL.txt",
+    "skills/compass/compass_runtime/web/fonts/IBMPlexMono-OFL.txt",
+    "skills/compass/compass_runtime/web/fonts/SOURCES.txt",
+    "skills/compass/compass_runtime/web/page.py",
 )
 
 
@@ -939,8 +940,8 @@ def validate_gemini_extension(
     """The Gemini extension manifest, which lives in its own root.
 
     `expected_name` rather than the directory name: the extension installs and is
-    listed as `cargento`, the same name as the plugin, while its directory is
-    `cargento-gemini` so that its `hooks/hooks.json` cannot collide with Claude's.
+    listed as `compass`, the same name as the plugin, while its directory is
+    `compass-gemini` so that its `hooks/hooks.json` cannot collide with Claude's.
     """
     path = extension_root / "gemini-extension.json"
     manifest = load_json(path, validation)
@@ -965,7 +966,7 @@ def validate_droid_extension(
 ) -> dict[str, Any] | None:
     """The Droid plugin manifest, which lives in its own root.
 
-    Lives in `cargento-droid` so its hooks file cannot collide with Claude's.
+    Lives in `compass-droid` so its hooks file cannot collide with Claude's.
     """
     path = extension_root / ".factory-plugin" / "plugin.json"
     manifest = load_json(path, validation)
@@ -1079,7 +1080,7 @@ BUNDLED_HOOKS_FILES = (
 # The Gemini row is why this exists. Before the root split, Claude's file sat where
 # Gemini looks and eight of its ten names were rejected on every Gemini session.
 HOOK_FILE_VOCABULARY = {
-    "cargento/hooks/hooks.json": (
+    "compass/hooks/hooks.json": (
         "claude",
         frozenset(
             {
@@ -1099,7 +1100,7 @@ HOOK_FILE_VOCABULARY = {
             }
         ),
     ),
-    "cargento/hooks/codex-hooks.json": (
+    "compass/hooks/codex-hooks.json": (
         "codex",
         frozenset(
             {
@@ -1124,7 +1125,7 @@ HOOK_FILE_VOCABULARY = {
             }
         ),
     ),
-    "cargento/hooks.json": (
+    "compass/hooks.json": (
         "antigravity",
         frozenset({"PreInvocation", "PostInvocation", "PreToolUse", "PostToolUse"}),
     ),
@@ -1214,7 +1215,7 @@ def validate_antigravity_hook_nesting(validation: Validation) -> None:
     is only visible as a warning in `~/.gemini/antigravity-cli/log/`, which nobody
     reads, followed by `loaded 0 named hooks from 0 hooks.json file(s)`.
 
-    Cargento shipped the flat shape and its Antigravity hooks therefore never ran.
+    Compass shipped the flat shape and its Antigravity hooks therefore never ran.
     Nothing caught it for the whole life of that adapter: `agy plugin validate`
     said `hooks: 5 processed` because it counts top-level keys, this repository's
     own validator read those keys as event names, and the design note recorded
@@ -1237,7 +1238,7 @@ def validate_antigravity_hook_nesting(validation: Validation) -> None:
                 path,
                 f"puts event name(s) {', '.join(flat)} at the top level; Antigravity "
                 "requires each top-level key to be a hook NAME with the events nested "
-                'inside it, as in {"cargento": {"PostToolUse": [...]}}. A flat file '
+                'inside it, as in {"compass": {"PostToolUse": [...]}}. A flat file '
                 "parses, passes `agy plugin validate`, and is discarded at run time",
             )
         if not any(isinstance(value, dict) for value in document.values()):
@@ -1403,7 +1404,7 @@ def validate_runtime_files(plugin_root: Path, validation: Validation) -> None:
     packaging bug that reads as "present" to exists() and then fails at import,
     which is much harder to diagnose from an installed copy than from here.
     """
-    for relative in CARGENTO_RUNTIME_FILES:
+    for relative in COMPASS_RUNTIME_FILES:
         target = plugin_root / relative
         if target.is_file():
             continue
@@ -1511,10 +1512,10 @@ def validate_marketplaces(
             if names != set(PLUGIN_NAMES):
                 validation.error(codex_path, f"plugin names must be {sorted(PLUGIN_NAMES)}")
 
-    # cargento is listed in spacedock-dev/marketplace, not in a marketplace of
+    # compass is listed in spacedock-dev/marketplace, not in a marketplace of
     # its own, so there is no repository-level Claude marketplace to check.
     # Version and description parity is asserted directly across the manifests
-    # the plugin ships with; cargento/.claude-plugin/plugin.json is the source
+    # the plugin ships with; compass/.claude-plugin/plugin.json is the source
     # of truth that bump_version.py writes from.
     for name in PLUGIN_NAMES:
         claude_manifest_path = ROOT / name / ".claude-plugin/plugin.json"
@@ -1765,8 +1766,8 @@ def validate_readme(skill_names: dict[str, set[str]], validation: Validation) ->
         for name in names:
             if f"/{plugin}:{name}" not in body:
                 validation.error(path, f"skill inventory is missing /{plugin}:{name}")
-    if "codex plugin add cargento@cargento-marketplace" not in body:
-        validation.error(path, "Codex installation must install cargento")
+    if "codex plugin add compass@compass-marketplace" not in body:
+        validation.error(path, "Codex installation must install compass")
 
 
 def check_installed_runtime(plugin_root: Path) -> int:
@@ -1781,7 +1782,7 @@ def check_installed_runtime(plugin_root: Path) -> int:
         print(f"::error::{error}")
     if validation.errors:
         return 1
-    print(f"Runtime inventory complete: {len(CARGENTO_RUNTIME_FILES)} files under {plugin_root}.")
+    print(f"Runtime inventory complete: {len(COMPASS_RUNTIME_FILES)} files under {plugin_root}.")
     return 0
 
 
@@ -1827,7 +1828,7 @@ def main() -> int:
 
     validate_hook_vocabulary(validation)
     if shutil.which("node"):
-        for problem in check_js_adapters(ROOT / "cargento/skills/cargento"):
+        for problem in check_js_adapters(ROOT / "compass/skills/compass"):
             validation.error("JavaScript adapters", problem)
     else:
         print("warning: node not found — JavaScript adapter checks skipped; required by lint job")

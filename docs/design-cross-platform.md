@@ -1,6 +1,6 @@
 # Design: cross-platform store discovery, diagnostics, and notifications
 
-The durable rationale behind how Cargento finds harness stores, reports what it found, and decides
+The durable rationale behind how Compass finds harness stores, reports what it found, and decides
 who delivers a notification. It records the decisions and the alternatives that were tried and
 rejected. The rejected ones are the expensive part, because without them they get re-attempted.
 
@@ -8,9 +8,9 @@ Behavioral detail lives in [`COMPATIBILITY.md`](../COMPATIBILITY.md) (the per-OS
 skill body (the user-facing contract). This file explains *why*, not *what*. Remaining unshipped
 work is in [`plans/native-notifications.md`](plans/native-notifications.md).
 
-Store resolution and every tunable limit are frozen in `cargento_runtime/config.py`; bounded reads,
-safe globbing and read-only SQLite are `cargento_runtime/io.py`; the report is
-`cargento_runtime/diagnostics.py`. How those pieces fit together, and why configuration is frozen
+Store resolution and every tunable limit are frozen in `compass_runtime/config.py`; bounded reads,
+safe globbing and read-only SQLite are `compass_runtime/io.py`; the report is
+`compass_runtime/diagnostics.py`. How those pieces fit together, and why configuration is frozen
 while state is separate, is owned by
 [`design-runtime-architecture.md`](design-runtime-architecture.md).
 
@@ -31,7 +31,7 @@ user's sessions.
 ## D-1: Scan every viable root, never pick one
 
 Each harness has an ordered *candidate set* of store roots (`resolve_store_roots` in
-`cargento_runtime/config.py`), and every candidate that exists is scanned on every collection pass.
+`compass_runtime/config.py`), and every candidate that exists is scanned on every collection pass.
 Results are de-duplicated by `(harness, session id)`, keeping the freshest copy.
 
 Rejected: selecting the first matching candidate at import. It regresses real users three ways. A

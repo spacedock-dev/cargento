@@ -486,7 +486,7 @@ class _Home(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.home = Path(temp.name)
-        folder = self.home / ".cargento" / "abstention-claude-2026-09-27"
+        folder = self.home / ".compass" / "abstention-claude-2026-09-27"
         folder.mkdir(parents=True)
         self.cases = folder / "abstention-cases.json"
         self.marks = folder / "abstention-marks.json"
@@ -511,7 +511,7 @@ class _Home(unittest.TestCase):
 class ThePacketReadIsNamedFirstTest(_Home):
     """The owner posted a 23 case report from the default home as his marks for a 13 case packet."""
 
-    WANT = "Packet: ~/.cargento/abstention-claude-2026-09-27/abstention-cases.json (2 cases)"
+    WANT = "Packet: ~/.compass/abstention-claude-2026-09-27/abstention-cases.json (2 cases)"
 
     def body(self) -> dict[str, Any]:
         return {"v": 3, "cases": [_built("a" * 16), _built("b" * 16, sid="s2")]}
@@ -520,22 +520,22 @@ class ThePacketReadIsNamedFirstTest(_Home):
         code, printed, _ask = self.run_mode(self.body(), mark_abstention.report)
         self.assertEqual(0, code)
         self.assertEqual(self.WANT, printed[0])
-        self.assertNotIn("CARGENTO_HOME", "\n".join(printed))
+        self.assertNotIn("COMPASS_HOME", "\n".join(printed))
 
     def test_marking_names_the_packet_on_its_first_line(self) -> None:
         _code, printed, _ask = self.run_mode(self.body(), mark_abstention.mark)
         self.assertEqual(self.WANT, printed[0])
 
-    def test_the_default_home_is_called_out_when_cargento_home_is_unset(self) -> None:
+    def test_the_default_home_is_called_out_when_compass_home_is_unset(self) -> None:
         for mode in (mark_abstention.report, mark_abstention.mark):
             with self.subTest(mode=mode.__name__):
                 _code, printed, _ask = self.run_mode(self.body(), mode, default_home=True)
                 self.assertEqual(self.WANT, printed[0])
-                self.assertIn("CARGENTO_HOME is not set", printed[1])
+                self.assertIn("COMPASS_HOME is not set", printed[1])
                 self.assertIn("default home", printed[1])
 
     def test_the_default_home_follows_the_environment_at_import(self) -> None:
-        self.assertEqual(not os.environ.get("CARGENTO_HOME"), mark_abstention.DEFAULT_HOME)
+        self.assertEqual(not os.environ.get("COMPASS_HOME"), mark_abstention.DEFAULT_HOME)
 
 
 class AMismatchedPacketIsRefusedBeforeItIsShownTest(_Home):
@@ -548,7 +548,7 @@ class AMismatchedPacketIsRefusedBeforeItIsShownTest(_Home):
                 said = "\n".join(printed)
                 self.assertEqual(1, code, said)
                 self.assertEqual(0, ask.call_count)
-                self.assertTrue(printed[0].startswith("Packet: ~/.cargento/"), printed[0])
+                self.assertTrue(printed[0].startswith("Packet: ~/.compass/"), printed[0])
                 self.assertIn("frozen by a different version of these scripts", said)
                 self.assertIn("git pull", said)
                 self.assertNotIn("=" * 72, said)

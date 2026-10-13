@@ -3,7 +3,7 @@
 Owner for the question "I have dealt with this one, why is it still on the board?". The module map
 belongs to [design-runtime-architecture.md](design-runtime-architecture.md); this document owns four
 decisions that three later features will inherit, because this is the first user-authored state
-Cargento keeps and the cheapest place to settle its shape.
+Compass keeps and the cheapest place to settle its shape.
 
 Before it, nothing a reader did survived a run. `lifecycle.write_state` records the instance (pid,
 port, log) and is rewritten every time one binds and deleted when it stops. The browser remembers a
@@ -95,9 +95,9 @@ store's own records and nothing derived from a session. `SnapshotKey` is unchang
 
 ## The file
 
-`~/.cargento/cargento-dismissals.json`, `{"v": 1, "entries": [{harness, sid, at, seen_activity}]}`.
+`~/.compass/compass-dismissals.json`, `{"v": 1, "entries": [{harness, sid, at, seen_activity}]}`.
 
-Not per port, unlike `cargento-<port>.json`: a mark is the reader's and has to outlive both a restart
+Not per port, unlike `compass-<port>.json`: a mark is the reader's and has to outlive both a restart
 and a different `--port`. `remove_state` must never touch it.
 
 **Bounded by count, at 256, oldest `at` evicted first.** A count and not a time-to-live, for the D-2
@@ -118,7 +118,7 @@ An unwritable store is reported rather than hidden. `dismiss` returns whether th
 endpoint answers `persisted: false`, and the page says the mark holds for this run only. The mark
 still takes effect: the write failed, the reader's intent did not.
 
-More than one Cargento can bind on one machine, and they share the one file. Each re-reads it at
+More than one Compass can bind on one machine, and they share the one file. Each re-reads it at
 the top of every collection, so a mark made in one dashboard is picked up by the other within a
 poll. A write reads the file under a lock, merges, and replaces it atomically, so a
 mark can never be corrupted by a concurrent one. But two marks landing in the same instant resolve

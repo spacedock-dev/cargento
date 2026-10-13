@@ -19,7 +19,7 @@ import redact_session as rs
 CONFIG = {
     "v": 1,
     "home_user_prefix": "pat",
-    "repository_under_home": "repos/acme/cargento",
+    "repository_under_home": "repos/acme/compass",
     "self_tag": "NAME_1",
     "names": [
         {"pattern": "Pat Example|\\bPat\\b|patex", "tag": "NAME_1"},
@@ -123,8 +123,8 @@ class WhatAReplayNeedsKept(unittest.TestCase):
         self.assertRegex(got, r"^/\[EXTERNAL_PATH_1\]/python3 -m unittest x$")
 
     def test_this_repository_keeps_its_path_shape(self) -> None:
-        got = _redactor().text("cd /Users/pat/repos/acme/cargento && ruff check .")
-        self.assertEqual(got, "cd /Users/[NAME_1]/repos/[ORG_NAME_1]/cargento && ruff check .")
+        got = _redactor().text("cd /Users/pat/repos/acme/compass && ruff check .")
+        self.assertEqual(got, "cd /Users/[NAME_1]/repos/[ORG_NAME_1]/compass && ruff check .")
 
     def test_json_held_in_a_string_is_left_untouched_when_nothing_in_it_changes(self) -> None:
         pretty = json.dumps({"ok": True, "n": [1, 2]}, indent=2)

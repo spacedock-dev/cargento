@@ -235,7 +235,7 @@ describe('a finding jump', () => {
     expect(document.querySelector('[data-next-finding-entry]')).toBeNull();
   });
 
-  it('reveals a consistent finding’s older message without giving it a departure tag', async () => {
+  it('a reader reaches a consistent finding’s already listed older message without a departure tag', async () => {
     HTMLElement.prototype.scrollIntoView = vi.fn();
     window.matchMedia = vi.fn().mockReturnValue({ matches: true });
     const page = mountDrift({
@@ -262,7 +262,10 @@ describe('a finding jump', () => {
     });
     await page.settle();
     await page.settle();
-    expect(document.querySelector('[data-next-entry-id="old"]')).toBeNull();
+    expect(document.querySelector('[data-next-entry-id="old"]')).not.toBeNull();
+    expect(
+      document.querySelector('[data-next-entry-id="old"] [data-next-finding-entry]'),
+    ).toBeNull();
     await press(byAction('finding-jump'));
     const row = document.querySelector('[data-next-entry-id="old"]');
     expect(row?.textContent).toContain('Cited for “Ship the queue” · #1');

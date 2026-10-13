@@ -6,7 +6,7 @@ abstention check's, and [SECURITY.md](../../SECURITY.md#the-abstention-check) ho
 both. The levels themselves, and why each source has its own floor, are in
 [DEC-26](../design-reading-a-session.md#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn).
 
-DRC-4692 builds the two functions in `cargento_runtime/levels.py` and measures them here before any
+DRC-4692 builds the two functions in `compass_runtime/levels.py` and measures them here before any
 reader sees a level. The live estimate reads a Claude Code session's recorded checks and written
 paths beside the saved intent. The analysis level reads a stored reading's per-line results. Neither
 calls a model, so scoring spends nothing and can be re-run. The readings the analysis level needs
@@ -16,7 +16,7 @@ come from `--read`, the one mode that calls a model (see
 ## What lives here
 
 - `marks-digest.json`, written by `scripts/levels_cases.py` each time the owner saves marks. It holds
-  the sha256 of `~/.cargento/drift-levels/marks.json` as written, and how many cases there are and
+  the sha256 of `~/.compass/drift-levels/marks.json` as written, and how many cases there are and
   how many are marked. It is committed before any reading is attached and before any result. The
   scorer reads it from `HEAD` with `git show`, never from the working copy, and refuses when the two
   differ, so the commit is the evidence that the marks came first.
@@ -34,18 +34,18 @@ appears in the summary.
 
 ## What does not live here
 
-The spec the owner writes, the frozen cases (`~/.cargento/drift-levels/cases.json`), the marks,
+The spec the owner writes, the frozen cases (`~/.compass/drift-levels/cases.json`), the marks,
 the replayed readings (`replayed-readings.json`, with `replay.json` recording what each case got)
 and the attached readings (`readings.json`) stay on the machine that made them. The cases hold the
 transcript path, the session id, the working directory, the recorded check lines and written paths
 layer 1 publishes, and the intent the owner set for the case. `levels_cases.py --build` refuses a
-`CARGENTO_HOME` inside the repository.
+`COMPASS_HOME` inside the repository.
 
 ## The order: marks, digest, readings, score
 
 A mark written after seeing an output is agreement, not a mark, so the tool enforces this order.
 
-1. Write a spec at `~/.cargento/drift-levels/spec.json` and build the cases. The spec has no
+1. Write a spec at `~/.compass/drift-levels/spec.json` and build the cases. The spec has no
    readings, and an entry that carries one is refused.
 
    ```json
@@ -80,7 +80,7 @@ A mark written after seeing an output is agreement, not a mark, so the tool enfo
 
    Marking is closed for a case set once it has been scored, however the files that showed the
    result were removed. It is refused when `results.json` exists, when the local marker
-   `~/.cargento/drift-levels/scored-<case set digest>.json` exists, or when git history on any ref
+   `~/.compass/drift-levels/scored-<case set digest>.json` exists, or when git history on any ref
    already holds a result or a marks digest for this case set. `marks-digest.json` and
    `results.json` carry the case set's digest so that history can be matched, and the marks digest is
    committed once per case set.
@@ -107,13 +107,13 @@ A mark written after seeing an output is agreement, not a mark, so the tool enfo
    refused by the store reads `refused:<why>`, and the verdict is `refused`.
 
 ```bash
-python3 scripts/levels_cases.py --build ~/.cargento/drift-levels/spec.json
+python3 scripts/levels_cases.py --build ~/.compass/drift-levels/spec.json
 python3 scripts/levels_cases.py                 # mark: both levels per case, no default
 python3 scripts/levels_cases.py --report        # how far through the key you are
 git add docs/drift-levels/marks-digest.json && git commit -s
-python3 scripts/levels_cases.py --read --reading-home ~/.cargento/drift-levels-readings --dry-run
-python3 scripts/levels_cases.py --read --reading-home ~/.cargento/drift-levels-readings   # spends
-python3 scripts/levels_cases.py --attach-readings ~/.cargento/drift-levels/replayed-readings.json
+python3 scripts/levels_cases.py --read --reading-home ~/.compass/drift-levels-readings --dry-run
+python3 scripts/levels_cases.py --read --reading-home ~/.compass/drift-levels-readings   # spends
+python3 scripts/levels_cases.py --attach-readings ~/.compass/drift-levels/replayed-readings.json
 python3 scripts/levels_cases.py --score         # writes results.json
 ```
 
@@ -151,7 +151,7 @@ than the frozen facts, so the prep left all three cut cases out as `cut-not-live
   on the prompt there is nothing to read, and every case would come back `ledger-empty`.
 
 **One count.** Every call is charged where the board charges a press: `reading_policy.reserve`, on
-the reading home's `cargento-reading-permission.sqlite3`, through the same `GuardedModel` seam. A
+the reading home's `compass-reading-permission.sqlite3`, through the same `GuardedModel` seam. A
 charge happens after every check `produce` makes and before the subprocess, so a case the producer
 withholds costs nothing. A call that starts and then fails is still charged. `--reading-home` names
 the home the reading board ran on. The run refuses before any call if Codex is not allowed there,

@@ -1,0 +1,99 @@
+{
+  "format": 1,
+  "name": "record-newest-to-start",
+  "notes": "The newest message facts reach the start of this short synthetic record.",
+  "request": {
+    "body": null,
+    "headers": {},
+    "method": "GET",
+    "path": "/api/session-record",
+    "query": "project=alpha-app&session=claude:a1b2c3d4&limit=50"
+  },
+  "response": {
+    "body": {
+      "bound": null,
+      "entries": [
+        {
+          "actor_claim": "timestamped non-meta user-role record",
+          "at": 1899998200.0,
+          "evidence": {
+            "confidence": "exact",
+            "source": "timestamped non-meta user-role record"
+          },
+          "fact_id": "fact:4aae9c22a7d95d9a",
+          "intent_promoted": true,
+          "scope": "session",
+          "source_kind": "steer",
+          "source_session": {
+            "harness": "claude",
+            "sid": "a1b2c3d4"
+          },
+          "summary": "Keep the diff small and leave the tests alone.",
+          "type": "user_message",
+          "work_item_id": null
+        },
+        {
+          "actor_claim": "timestamped top-level assistant text record",
+          "at": 1899996460.0,
+          "branch": {
+            "harness": "claude",
+            "record_id": "u1",
+            "sid": "a1b2c3d4"
+          },
+          "evidence": {
+            "confidence": "exact",
+            "source": "timestamped top-level assistant text record"
+          },
+          "fact_id": "fact:97096f7eb5b6d42d",
+          "scope": "session",
+          "source_kind": "agent_say",
+          "source_session": {
+            "harness": "claude",
+            "sid": "a1b2c3d4"
+          },
+          "summary": "Done.",
+          "type": "agent_message",
+          "work_item_id": null
+        },
+        {
+          "actor_claim": "timestamped non-meta user-role record",
+          "at": 1899996400.0,
+          "evidence": {
+            "confidence": "exact",
+            "source": "timestamped non-meta user-role record"
+          },
+          "fact_id": "fact:1b3f7a63986acb47",
+          "intent_promoted": true,
+          "scope": "session",
+          "source_kind": "steer",
+          "source_session": {
+            "harness": "claude",
+            "sid": "a1b2c3d4"
+          },
+          "summary": "Add retry with backoff to the webhook handler.",
+          "type": "user_message",
+          "work_item_id": null
+        }
+      ],
+      "kinds": [
+        "user_message",
+        "agent_message"
+      ],
+      "next": null,
+      "reached_start": true,
+      "scanned_bytes": 890,
+      "session": {
+        "harness": "claude",
+        "sid": "a1b2c3d4"
+      },
+      "state": "ok"
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "1428",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

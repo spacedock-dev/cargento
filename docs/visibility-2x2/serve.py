@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tiny local server for the Cargento Visibility 2x2 working session.
+"""Tiny local server for the Compass Visibility 2x2 working session.
 
 Serves index.html and re-reads items.json on every request, so edits to the
 data show up on a browser refresh without restarting anything.

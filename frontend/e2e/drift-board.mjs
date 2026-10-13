@@ -191,6 +191,35 @@ export async function installScript(context, script) {
       await route.fulfill({ response, body: JSON.stringify(patched) });
     }),
   );
+  await context.route(
+    '**/api/session-record*',
+    quietWhenClosing(async (route) => {
+      const query = new URL(route.request().url()).searchParams;
+      const key = query.get('session') ?? ':';
+      const split = key.indexOf(':');
+      const facts = script.facts
+        .filter((fact) => ['user_message', 'agent_message'].includes(fact.type))
+        .sort((a, b) => b.at - a.at || String(a.fact_id).localeCompare(String(b.fact_id)));
+      const before = Number(query.get('before') ?? 0);
+      const limit = Math.max(1, Math.min(50, Number(query.get('limit') ?? 50)));
+      const entries = facts.slice(before, before + limit);
+      const reached = before + entries.length >= facts.length;
+      await route.fulfill({
+        status: script.contextError ? 500 : 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session: { harness: key.slice(0, split), sid: key.slice(split + 1) },
+          entries,
+          next: reached ? null : String(before + limit),
+          reached_start: reached,
+          bound: null,
+          scanned_bytes: 0,
+          kinds: ['user_message', 'agent_message'],
+          state: 'ok',
+        }),
+      });
+    }),
+  );
   const scripted = [
     '/api/reading',
     '/api/reading/cancel',

@@ -9,12 +9,41 @@ frontend preserves the [existing promises](promise-map.md), including their limi
 The interface it replaced is called the legacy page below. It is gone: it is not served, not
 rendered, and its shell, its rollback flag and the tests that pinned its bytes were removed. What
 remains of it is kept on purpose and is not part of any page. The twenty legacy script parts under
-`cargento_runtime/web/` (`next-*.js` and `project.js`) stay byte for byte, because the paused
+`compass_runtime/web/` (`next-*.js` and `project.js`) remain, because the paused
 Intent and drift study evaluates their text and binds the digest of `page.load_script()`; nothing in
 the runtime, the frontend or the tests reads them. Deleting them is separate work that has to rebind
 that study first. The recorded answers the React page is held to are described in the next section.
 
 ## Held to recorded answers
+
+The rename also preserves saved browser choices until 1.0.0: a missing Compass
+key reads the matching Cargento key through the shared storage adapter. Writes
+use only Compass keys; clearing an old setting leaves an empty new value so it
+stays cleared on reload. `frontend/src/storage/upgrade.test.ts` adds that narrow
+contract for all twelve families without changing recorded answers or the existing
+storage browser proofs.
+The retained study scripts remain frozen and unserved. Extending their reads requires
+requalification, so the fallback applies to the served React storage adapter.
+
+
+The owner renamed the application to Compass on 2026-10-12. The named
+`frontend/test/recorded-name.ts` projection changes only the three case variants of the
+former product name in recorded answers, including object keys used for browser storage.
+The Vitest seam maps renamed arguments back to the recorded spelling before computing
+lookup and state hashes, then projects the encoded answer before decoding it. The browser
+seam projects recorded values when loading them and maps lookup labels and input digests
+back to their recorded spelling, including storage labels before length-based truncation.
+Live observations, assertion shapes,
+case counts and all golden bytes remain unchanged. These are test projections, with no
+runtime fallback for old stores, storage keys or environment variables.
+The same mechanical rename changes literals in the retained retired-page script parts;
+their earlier source bindings require renewed evidence. Recorded measurement receipts
+remain untouched and cannot certify these renamed source bytes.
+The Python tests use `tests/recorded_name.py` to restore only the three name
+spellings before comparing retained study source and final reading headers with their
+historical byte pins. Every original size and digest remains unchanged, and all other
+bytes are still checked. This comparison proves the mechanical rename, not qualification
+of the renamed study or producer.
 
 The DEC-27 correction keeps Sessions orientation in the compared header, qualified by the
 annotation store and reading routes. Project instruction order follows instruction timestamps;
@@ -32,7 +61,8 @@ recorded once and the React page stays held to the recording:
   `frontend/test/legacy_goldens.ts`. A harness there stands in for the legacy functions. A key is a
   hash of the harness, the method, its arguments and the state the earlier calls left it in, so a
   call with no recorded answer fails with the name of the call, never passes.
-- The browser parity proofs replay `frontend/test/golden/e2e/<proof>.json` through
+- The browser parity proofs (retired from CI and the pre-PR suite on 2026-10-12, and kept to run on
+  demand; Storybook now verifies the interface) replay `frontend/test/golden/e2e/<proof>.json` through
   `frontend/e2e/support/golden.mjs`. A key is the step name plus its label, an unread key fails the
   run, and a reading taken twice fails it. Several keys still contain the words "legacy page" or "both
   pages" because that text is the step name the key was recorded under.
@@ -233,7 +263,7 @@ without allowing their text to change the HTML parser's state. A global replacem
 break operators; replacing only script end tags would miss HTML comment and script parser states.
 The browser tests must execute hostile literals, rather than infer safety from a string check.
 
-The JavaScript resource ends with a fixed `sourceURL=cargento-bundle.js` comment. Without
+The JavaScript resource ends with a fixed `sourceURL=compass-bundle.js` comment. Without
 that short name, Chromium captured the full 1.1 MB data URL in callback source locations;
 repeated production drift loads reached 8.3 GiB renderer RSS while the JavaScript heap
 stayed below 65 MiB. The short name kept the same proof below 478 MiB. The callback-stack
@@ -460,6 +490,16 @@ below the trigger, scrolls without shifting the page, and clamps each titled ite
 Escape closes only the popup before any disclosure or route dismissal. A choice fills a pending
 adoption and saves nothing. The request still runs once per opening, never on a poll or mount.
 
+Direction action feedback now stays beside the exact control pressed, including
+activity-row Add and Update intent instead. It is held across polls until the next press or an intent edit, including the pending line,
+announced through the existing persistent polite region, and keeps focus at a
+failed action. The two source refusal tokens have separate page-owned sentences;
+no failed Goal adoption focuses the Goal box. The prompt menu shows newest choices
+first and states an unfinished search beside the list. These repairs are covered
+by `IntentDirections.test.tsx`, `PromptSelect.test.tsx` and
+`IntentDirections.stories.tsx`, including the phone pending-line layout. No
+recorded golden answer was regenerated.
+
 `PromptSelect.test.tsx` covers same-popup loading, arrival, absence and dismissal.
 `intent-parity.mjs` checks first-frame opening and stable widths at 1280, 375 and 320 px, with
 `auto-prompt-width` and `wide-select` mutations. The four select rows in
@@ -495,7 +535,7 @@ three lines; at 760 px and below the earlier compact spacing and one-line fields
 primary control remain in the 375 by 667 first view. The field chrome reference table records the card's
 background, border, radius and padding for the wide Intent panel; nothing else in it changes.
 The ended-session note appears beside the Goal field before typing. Claude's idle session without
-an observed stop says “Analyze opens while this session runs.” The route and browser projections
+ an observed stop says "Analyze opens while this session runs." The route and browser projections
 replace only the former refusal sentence. Recorded-side projections adapt those placements and
 controls; field values, evidence and requests remain asserted.
 The idle drafted panel has a 90-word ceiling outside field values and closed bodies; the browser
@@ -510,7 +550,7 @@ the wider row. The relocated subtitle uses the 15 px prose step. No recording un
 DEC-27 replaces What analysis does with the keyed How Intent and drift works popover beside
 the Intent heading. Its three steps explain the goal, Analyze and the correction. Its limit line
 uses the shared work and steering harness lists and the board's reading route, including a
-missing reader's reason; it retains the promise that Cargento never writes into sessions.
+missing reader's reason; it retains the promise that Compass never writes into sessions.
 The shared Popover proof covers click, keyboard, Escape, outside press, focus return and 320 px.
 No browser storage or first-visit marker is added. The old disclosure is removed only from the
 recorded-side Drift snapshot; the remaining limits and privacy disclosures are still compared.
@@ -548,6 +588,17 @@ words survive but native undo does not. A failed read of the project's observed 
 read" where the legacy page, which reads only the focused session's record, says "not read yet": the Intent
 panel here reads both, and neither sentence is an empty record. Dismissal has no legacy web surface (nothing in
 the web assets calls the dismiss route), so none was built.
+
+Two departures from the recorded answers, 2026-10-13. The coverage line's adopted-source sentence said
+"Analyze read up to 1,000 characters" for every adopted source whatever the prompt's length, so it read as
+a limit that had bitten. The cap is real (a reading takes the head of a prompt's words) and the sentence now
+says only that: "Analyze reads at most the first 1,000 characters of any prompt." `result.differential.test.ts`
+swaps the retired sentence for the new one before comparing, and no other recorded text changes. And a
+reading that cites an entry the page holds none for, while older entries remain to load, adds one sentence
+naming the count and pointing at Show more. The criterion carries that count as `unloaded`; the retired page
+had no such field, so both differentials drop it before a recorded answer's key is computed
+(`withoutKey` in `legacy.test.helper.ts`). The page still loads no record page by itself
+([reader state](design-reader-state.md#the-inventory)).
 
 DEC-27 row 3 removes Analyze again from a current result; the count, disclosure and cap stay.
 A stale result keeps one run control in its reason callout, and a direction question replaces it.
@@ -596,7 +647,7 @@ typing that words saved now cannot be read against it, then says "saved after th
 with no result; idle without a recorded stop keeps Analyze inert and shows its refusal sentence.
 Their attempted paths cost four and two activations respectively, without a model request.
 
-The proof runs in development and `CARGENTO_E2E_BUNDLE=production` modes, packaging only
+The proof runs in development and `COMPASS_E2E_BUNDLE=production` modes, packaging only
 its worktree scratch copy. `JOURNEY_MUTATION=confirm-step` adds a confirmation before Allow;
 it must fail the three-click draft ceiling at four clicks. Production shard a carries the
 proof once, with shard membership pinned by `test_frontend_quality_gate.py`.
@@ -788,7 +839,7 @@ under the ruling. A later rebuild changed the page, and the runs recorded here w
 page and judged under the ruling from the start.
 
 ```bash
-python3 scripts/frontend_cutover.py remeasure --chrome "$CARGENTO_FLUIDITY_CHROME"
+python3 scripts/frontend_cutover.py remeasure --chrome "$COMPASS_FLUIDITY_CHROME"
 python3 scripts/frontend_cutover.py check --final
 ```
 
@@ -811,7 +862,7 @@ React page changes its digest and needs measuring again.
 ## The cutover receipt
 
 [The mapped receipt](frontend-cutover-receipt.json) maps every row of the ownership map (20 parts, 39
-surfaces, 17 routes, 45 reader-state rows and 12 storage families) to the React-side proof that stands for
+surfaces, 17 routes, 49 reader-state rows and 12 storage families) to the React-side proof that stands for
 it: a vitest file and test title, a browser proof and its step, a Python test for server code both pages
 share, or a fluidity verdict. A row is proven, proven with a recorded deviation (the entry links the
 paragraph that records it), deferred to a named owner, or an explicit gap. `python3
@@ -828,7 +879,7 @@ Close controls, the Attention controls and the capacity window rows and consent 
 step that operates them by key.
 
 Every parity proof can run against the shipped `react.html` rather than the development server:
-`CARGENTO_E2E_BUNDLE=production` makes the Python backend serve the minified page, `pnpm
+`COMPASS_E2E_BUNDLE=production` makes the Python backend serve the minified page, `pnpm
 test:production:browser` runs all twelve, and CI runs them as the `Frontend production bundle` job in two
 shards. The receipt's `production_artifact` block names that runner and job, and `check` fails if either
 goes missing from the package scripts or the workflow's steps. The limits it states are these. The controls
@@ -874,7 +925,7 @@ can serve, assemble, select or roll back to the legacy page:
   smoke proof and `pnpm build:check`. The inventory rows that named a deleted Python test now name those.
 
 Candidate parity runs against the shipped bytes as well as the development server. Setting
-`CARGENTO_E2E_BUNDLE=production` makes the shared proof support (`frontend/e2e/support/world.mjs`) start the
+`COMPASS_E2E_BUNDLE=production` makes the shared proof support (`frontend/e2e/support/world.mjs`) start the
 Python backend with no development ticket, so it serves the minified `react.html`;
 the default stays the development server, and a StrictMode-specific assertion keeps running there because
 the production build has no double effect. A proof that serves a scratch copy of the tree (a harness
@@ -930,6 +981,81 @@ The Intent and drift study remains paused. Controlled reading fixtures prove fro
 not model accuracy. Earlier failed measurements stay failed. A future study resume must bind the
 final runtime again rather than reuse a pre-migration source binding.
 
+
+### Activity list order
+
+The retired page listed the numbered activity oldest first and showed "Add to my intent" only on hover.
+The owner ruled on 2026-10-12 that the list reads newest first and that the button is always drawn. The
+numbers are the oldest-first ones every "#<n>" and citation names, so the column
+reads from the highest down to #1. `frontend/src/drift/WorkListView.test.tsx` holds both. The drift
+parity proof restates the rows in number order on a copy before it compares them with the recorded
+answer, which is unchanged. The list is ordered by time over every kind of entry; a check or a message
+the agent wrote sits between the prompts either side of it. Where the rows look grouped, the record read
+for the session holds no entry of the other kind in that stretch: the agent's messages come from the record pages, within the harness limits in the [page contract](design-session-record-pages.md#route-contract).
+
+Opening a session reads its newest fifty message entries once through `/api/session-record`.
+Show more alone requests each older page, up to fifty entries; no poll, manual refresh or idle
+control prefetches one. The page merges context and record facts by `fact_id`, with the record
+winning a conflict; checks and workflow facts still come from context. An unsaved direction
+opened from a record page keeps its words in the existing intent store across leaving and
+returning. Discarding record pages does not prove that its older source entry is gone; reconciliation
+waits for that entry or the record start, without retaining the old page. Every loaded timed entry
+in the intent window is listed, together with cited or revealed entries and open later directions.
+The former twenty general rows and ten agent messages are retired. Loading older entries in the
+window recomputes every number, oldest first. After another page, the list says "Numbers count
+from the oldest entry loaded." The full merged set remains available for citations.
+
+Focus remains on Show more after an append. If it disappears, focus reaches the first new row,
+or the boundary sentence when the page added no visible row, without scrolling. A later focus
+chosen by the reader wins. The paging control states loading, failure and retry, a byte or time stop with its measured MB,
+record start, unsupported harness and a stale restart. A stale response drops held pages and
+restarts once; another stale response waits for the reader. Once the oldest loaded record entry
+predates the intent window, the control is replaced by "Everything since your intent's window
+opened is listed." The [reader-state row](design-reader-state.md#the-inventory) owns the opening-only
+lifetime and abort on leave. `frontend/src/drift/record.test.tsx` and
+`frontend/src/transport/record.test.ts` hold paging and survival; `frontend/stories/RecordPages.stories.tsx`
+asserts each control state and scroll and focus during an append in Chromium.
+
+The recorded-side `projectRecordedLoadedSource` in the work differential replaces the old
+source slice and its shown count with the recording's full source. `projectRecordedLoadedActivity`
+in `frontend/test/recorded-loaded-activity.ts` retains every existing recorded row, reconstructs
+only rows hidden by the old caps from the recorded full source, and removes only the retired cap
+caption. Both full comparisons still run every recorded seed. The golden files are unchanged.
+The browser parity snapshot omits the new paging region on its cloned panel; its scripted backend
+now answers record reads from its synthetic facts. No browser parity run is claimed.
+
+The header appends "Started about <duration> ago" to the existing identity line. It reads
+`started_at`, falling back to `first_prompt_at`, and draws nothing when neither is published.
+The title contains exact local time; the fallback says "From the first message in the record".
+`projectRecordedSessionAge` in the session detail differential appends the age from the
+recording's published timestamp before comparing the retained header. The shared browser recorded-side projection in `frontend/e2e/support/session-deviations.mjs` does the same for session headers, guarded by its Node tests. Session detail tests and
+`frontend/stories/SessionAge.stories.tsx` hold start, fallback, absence and phone wrapping.
+
+The same ruling shortens the row head. The actor and type now say "Agent said" once. The model
+keeps the original `toolReportLine` words exactly, while a check shows "No result", "Passed" or
+"Failed" beside a Phosphor mark. Each mark carries the full result words as its accessible name and
+hover tooltip; "About this record" also states every mark in its Marks legend. "Before the last
+change" and "An earlier run failed" are icon-only alongside the result. All marks use muted caption
+ink, including the hollow absence circle. Time moves into the head's right cluster after flags and
+"Last turn", whose accessible name and tooltip remain "from the last turn". The entry's own words
+remain in its body.
+
+Three or more consecutive eligible checks fold into a closed Collapsible. Failed checks, checks
+with an earlier failure, cited checks, selected finding entries and written files split a run and
+stay listed. The header states counts, number range and newest-to-oldest times. Members stay mounted
+under `hiddenUntilFound`; expanding shows them in drawn order. The footer still counts entries.
+Open state belongs to the existing disclosure store under the oldest member id, project and exact
+session scope. A new check at the newest end does not close it. The [reader-state inventory](design-reader-state.md#the-inventory)
+and both migration records map that state to the mounted survival test.
+
+`frontend/test/recorded-activity.ts` projects only the retired "Agent said" type to "said" on the
+recorded side of the model differential. No fixture or assertion is loosened. On its cloned panel,
+`frontend/e2e/drift-parity.mjs` flattens mounted fold members, omits headers and the new legend,
+restates heads from `data-next-entry-words`, and puts time and the full last-turn phrase back in the
+body before comparing oldest first. It applies the same exact actor correction to the recorded
+head. The browser proof was edited but not run for this change. Component stories assert marks,
+hover, fold opening, failure splits and narrow head wrapping. No browser or fluidity measurement
+is claimed by those stories.
 
 ### Popover snapshot ancestry
 

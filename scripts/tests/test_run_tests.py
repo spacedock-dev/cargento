@@ -175,9 +175,9 @@ class RunnerVerdictTest(unittest.TestCase):
 
     def test_every_worker_gets_a_state_home_outside_the_real_one(self) -> None:
         # The tripwire for the whole class of leak, not one test: any test the
-        # runner starts resolves CARGENTO_HOME to a scratch directory, even when
+        # runner starts resolves COMPASS_HOME to a scratch directory, even when
         # the shell exported the real one.
-        real = str(Path("~/.cargento").expanduser())
+        real = str(Path("~/.compass").expanduser())
         write_suite(
             self.root,
             {
@@ -188,14 +188,14 @@ class RunnerVerdictTest(unittest.TestCase):
 
                 class StateHome(unittest.TestCase):
                     def test_is_scratch(self):
-                        home = os.environ.get("CARGENTO_HOME", "")
-                        self.assertTrue(home, "CARGENTO_HOME is unset in a worker")
+                        home = os.environ.get("COMPASS_HOME", "")
+                        self.assertTrue(home, "COMPASS_HOME is unset in a worker")
                         self.assertNotEqual({real!r}, os.path.realpath(home))
-                        self.assertIn("cargento-runner-home-", home)
+                        self.assertIn("compass-runner-home-", home)
                 """
             },
         )
-        with mock_env({"CARGENTO_HOME": real}):
+        with mock_env({"COMPASS_HOME": real}):
             code, out = run(self.root)
 
         self.assertEqual(0, code, out)

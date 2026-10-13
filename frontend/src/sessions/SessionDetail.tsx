@@ -8,6 +8,7 @@ import { sessionHome, type SessionRoute } from '../router/grammar';
 import { useDisplayed, useShell } from '../shell/context';
 import type { PayloadData } from '../api/types';
 import { AnswerBlock } from './AnswerBlock';
+import { SessionAge } from './SessionAge';
 import { usePruneAnswerNotes } from './usePruneAnswerNotes';
 import {
   useDrift,
@@ -222,6 +223,7 @@ function Header({
               <RouteAnchor route={{ view: 'project', project: label }}>{label}</RouteAnchor>
             </>
           ) : null}
+          <SessionAge session={session} generated={generated} />
         </p>
       </div>
       <div className="next-session-detail-bar">

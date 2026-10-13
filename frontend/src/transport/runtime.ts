@@ -2,8 +2,9 @@ import { readBootstrap } from '../api/bootstrap';
 import { createApiClient, type FetchLike } from '../api/client';
 import { exactIdentity } from '../api/identity';
 import type { FocusOutcome, SessionIdentity } from '../api/types';
-import { createBoardStore } from '../store/board';
+import { createBoardStore, type BoardSnapshot } from '../store/board';
 import { createContextLoader, type ContextScope } from './context';
+import { createRecordLoader, type RecordScope } from './record';
 import { createLiveTransport } from './live';
 import { createPendingRegistry, type PendingToken } from './pending';
 import type { Environment, TimerHandle, TransportStorage } from './ports';
@@ -51,6 +52,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
   interface Owned {
     readonly refresh: ReturnType<typeof createRefreshController>;
     readonly context: ReturnType<typeof createContextLoader>;
+    readonly record: ReturnType<typeof createRecordLoader>;
     readonly live: ReturnType<typeof createLiveTransport>;
   }
 
@@ -98,6 +100,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
     return {
       refresh,
       context: createContextLoader({ client, store, storage }),
+      record: createRecordLoader({ client, store }),
       live: createLiveTransport({
         env,
         storage,
@@ -125,6 +128,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
     closing.live.dispose();
     closing.refresh.dispose();
     closing.context.dispose();
+    closing.record.dispose();
   }
 
   function dispose(): void {
@@ -186,6 +190,16 @@ export function createBoardRuntime(options: RuntimeOptions) {
        both. False before the runtime is owned. */
     isLeader: (): boolean => owned?.live.isLeader() ?? false,
     loadContext: (scope: ContextScope): void => owned?.context.load(scope),
+    openRecord: (scope: RecordScope): (() => void) =>
+      owned?.record.open(scope) ?? (() => undefined),
+    readMoreRecord: (scope: RecordScope): Promise<void> =>
+      owned?.record.more(scope) ?? Promise.resolve(),
+    /* The one read the page makes for the reader: the older pages a reading their own press finished cites.
+       It ends on the test, the record's start, a page that moved nothing, or RESOLVE_MAX_PAGES. */
+    resolveRecord: (
+      scope: RecordScope,
+      until: (snapshot: BoardSnapshot) => boolean,
+    ): Promise<void> => owned?.record.resolve(scope, until) ?? Promise.resolve(),
     requestObserverSummary: (scope: ContextScope): Promise<void> =>
       owned?.context.requestObserverSummary(scope) ?? Promise.resolve(),
 
@@ -208,7 +222,7 @@ export function createBoardRuntime(options: RuntimeOptions) {
 
 export type BoardRuntime = ReturnType<typeof createBoardRuntime>;
 
-const SLOT = Symbol.for('cargento.board.runtime');
+const SLOT = Symbol.for('compass.board.runtime');
 
 /* Module replacement re-runs the module that creates the runtime. The previous
    one is disposed here, before the replacement can start, so a hot update

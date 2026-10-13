@@ -90,7 +90,7 @@ class AReplayTagKeepsEveryChargedProducer(unittest.TestCase):
     def test_charge_rechecks_the_producer_binding_under_the_ledger_lock(self) -> None:
         with _Session() as session:
             config, *_unused = dr._runtime()
-            from cargento_runtime import observer  # noqa: PLC0415
+            from compass_runtime import observer  # noqa: PLC0415
 
             old = observer.claude_reading_provenance(
                 dr._read_model_config(config, "claude-sonnet-5")
@@ -145,7 +145,7 @@ class ADryPlanActuallyBindsThePrompt(unittest.TestCase):
                     )
                 )
             import score_abstention  # noqa: PLC0415
-            from cargento_runtime import reading_route  # noqa: PLC0415
+            from compass_runtime import reading_route  # noqa: PLC0415
 
             with (
                 mock.patch.object(reading_route, "destination", return_value="Anthropic"),
@@ -198,7 +198,7 @@ class ADryPlanActuallyBindsThePrompt(unittest.TestCase):
         ):
             home = _Home(session)
             config, *_unused = dr._runtime()
-            from cargento_runtime import observer  # noqa: PLC0415
+            from compass_runtime import observer  # noqa: PLC0415
 
             producer = observer.claude_reading_provenance(config)
             measurements: dict[str, Any] = {}

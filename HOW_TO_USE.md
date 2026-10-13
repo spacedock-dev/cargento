@@ -1,4 +1,4 @@
-# How to use Cargento
+# How to use Compass
 
 What a person configures by hand, one task per section.
 
@@ -15,12 +15,15 @@ This page owns none of the following, and links to it instead:
 | For | Read |
 |---|---|
 | Installing the plugin, per harness | [README.md](README.md#1-how-to-set-up) |
-| Reading the board: session states, display modes, the queue of things waiting on you, starting and stopping | [cargento/skills/cargento/SKILL.md](cargento/skills/cargento/SKILL.md) |
+| Reading the board: session states, display modes, the queue of things waiting on you, starting and stopping | [compass/skills/compass/SKILL.md](compass/skills/compass/SKILL.md) |
 | What works on which harness and which platform, and what was measured | [COMPATIBILITY.md](COMPATIBILITY.md) |
 | What is read, what is sent, and what granting a permission means | [SECURITY.md](SECURITY.md) |
-| Working on Cargento itself | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Working on Compass itself | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## Find the copy your commands will run
+
+If you already use Cargento, read [Upgrading from Cargento](MANUAL.md#upgrading-from-cargento)
+before updating installed hook, MCP or status-line paths.
 
 Every command below starts with a path to `server.py`, and there are usually two on the machine: the
 one your harness installed and the one in a checkout. They are different builds and they answer
@@ -28,14 +31,14 @@ differently.
 
 ```bash
 # The installed copy. The directory carries the plugin version, so it moves on every update.
-find ~/.claude/plugins/cache -name server.py -path '*cargento*'
+find ~/.claude/plugins/cache -name server.py -path '*compass*'
 ```
 
 On the machine this was written on that printed a 0.10.0 path while the checkout was 0.12.0. Pin
 whichever you meant, and use it for everything in the session including `--status` and `--stop`:
 
 ```bash
-SKILL="$(dirname "$(find ~/.claude/plugins/cache -name server.py -path '*cargento*' | head -1)")"
+SKILL="$(dirname "$(find ~/.claude/plugins/cache -name server.py -path '*compass*' | head -1)")"
 python3 "$SKILL/server.py" --diagnose
 ```
 
@@ -45,9 +48,9 @@ native Windows `python3` is not a reliable spelling; use `python` or `py -3`.
 
 ## Let a session ask you a question
 
-Cargento ships one MCP tool, `ask_operator`. A session that hits a decision it cannot make calls it,
+Compass ships one MCP tool, `ask_operator`. A session that hits a decision it cannot make calls it,
 the question appears as a card on your dashboard, the tool call blocks until you click an option, and
-the option you clicked is what the session gets back. Nothing else Cargento does reaches into a
+the option you clicked is what the session gets back. Nothing else Compass does reaches into a
 running session, and this only happens because the session asked.
 
 Two harnesses can reach it: Claude Code, where the plugin registers the server for you, and Codex,
@@ -61,14 +64,14 @@ expecting your next attended session to start asking questions.
 ### Before either harness
 
 A dashboard has to be running, or the tool has nowhere to put the question and answers the session
-with a decline saying so. [SKILL.md](cargento/skills/cargento/SKILL.md#start) owns starting it.
+with a decline saying so. [SKILL.md](compass/skills/compass/SKILL.md#start) owns starting it.
 
 Your installed copy has to contain `mcp_server.py`, beside `server.py` in the skill directory. If it
 is missing, your release predates the ask lane and no amount of configuration will help:
 
 ```bash
-ls ~/.claude/plugins/cache/*/cargento/*/skills/cargento/mcp_server.py     # Claude Code
-ls ~/.codex/plugins/cache/*/cargento/*/skills/cargento/mcp_server.py      # Codex
+ls ~/.claude/plugins/cache/*/compass/*/skills/compass/mcp_server.py     # Claude Code
+ls ~/.codex/plugins/cache/*/compass/*/skills/compass/mcp_server.py      # Codex
 ```
 
 The examples below use port 4601, because that is where they were run. The default is 4553.
@@ -83,24 +86,24 @@ claude mcp list
 ```
 
 ```
-plugin:cargento:cargento: python3 /.../cargento/skills/cargento/mcp_server.py - Connected
+plugin:compass:compass: python3 /.../compass/skills/compass/mcp_server.py - Connected
 ```
 
 The tool arrives under a name qualified by both the plugin and the server key:
 
 ```
-mcp__plugin_cargento_cargento__ask_operator
+mcp__plugin_compass_compass__ask_operator
 ```
 
 Guessing that name is the one setup step that fails silently, so read it from the harness rather than
 writing it out.
 
-The first call is gated in your terminal before it reaches Cargento. At default permissions the call
+The first call is gated in your terminal before it reaches Compass. At default permissions the call
 is refused and nothing reaches the dashboard, so there is no card and no question. The session is
 told:
 
 ```
-Claude requested permissions to use mcp__plugin_cargento_cargento__ask_operator, but you haven't granted it yet.
+Claude requested permissions to use mcp__plugin_compass_compass__ask_operator, but you haven't granted it yet.
 ```
 
 Interactively that arrives as a prompt you can answer. In an unattended run there is nobody to answer
@@ -111,7 +114,7 @@ project's `.claude/settings.local.json`:
 {
   "permissions": {
     "allow": [
-      "mcp__plugin_cargento_cargento__ask_operator"
+      "mcp__plugin_compass_compass__ask_operator"
     ]
   }
 }
@@ -121,7 +124,7 @@ With that in place the same session called the tool, the card appeared, and the 
 back with no permission denial recorded. [SECURITY.md](SECURITY.md#the-ask-lane-ask_operator) owns
 what granting it means and what it does not.
 
-If your dashboard is not on the default port or not under `~/.cargento`, export `CARGENTO_HOME` in
+If your dashboard is not on the default port or not under `~/.compass`, export `COMPASS_HOME` in
 the shell you launch the harness from. The manifest passes no environment of its own and the server
 inherits the harness's, which is how the runs above reached a dashboard on 4601 with its state under
 a scratch directory. No port needs configuring.
@@ -132,27 +135,27 @@ The plugin does not register it. Point Codex at the `mcp_server.py` inside the i
 CLI writes the table for you:
 
 ```bash
-codex mcp add cargento --env CARGENTO_HOME="$HOME/.cargento" \
-  -- python3 ~/.codex/plugins/cache/<marketplace>/cargento/<version>/skills/cargento/mcp_server.py
+codex mcp add compass --env COMPASS_HOME="$HOME/.compass" \
+  -- python3 ~/.codex/plugins/cache/<marketplace>/compass/<version>/skills/compass/mcp_server.py
 ```
 
 That is the whole configuration, and writing it by hand into `~/.codex/config.toml` is equivalent:
 
 ```toml
-[mcp_servers.cargento]
+[mcp_servers.compass]
 command = "python3"
-args = ["/Users/you/.codex/plugins/cache/cargento-marketplace/cargento/0.12.0/skills/cargento/mcp_server.py"]
+args = ["/Users/you/.codex/plugins/cache/compass-marketplace/compass/0.12.0/skills/compass/mcp_server.py"]
 
-[mcp_servers.cargento.env]
-CARGENTO_HOME = "/Users/you/.cargento"
+[mcp_servers.compass.env]
+COMPASS_HOME = "/Users/you/.compass"
 ```
 
 Three things about that path and that block:
 
 - The version is in the path. Upgrading installs beside the old copy and leaves the table pointing at
   the version you registered, so re-run `codex mcp add` after an upgrade.
-- The `env` block is only needed for a relocated `CARGENTO_HOME`. Leave it out and the server looks
-  in `~/.cargento`, where a default dashboard publishes its state file.
+- The `env` block is only needed for a relocated `COMPASS_HOME`. Leave it out and the server looks
+  in `~/.compass`, where a default dashboard publishes its state file.
 - A port can be given directly instead: `args = [".../mcp_server.py", "4601"]` makes the server try
   4601 first. Verified with no state file at all to read.
 
@@ -163,11 +166,11 @@ codex mcp list
 ```
 
 `Auth: Unsupported` is normal, since the server has no authentication to support. The env value is
-masked in that listing rather than dropped. Codex names the tool `mcp__cargento__ask_operator`,
+masked in that listing rather than dropped. Codex names the tool `mcp__compass__ask_operator`,
 qualified by the server key alone, which is not the same shape as Claude's.
 
 Codex gates the call too, and its own approval policy decides. Under a plain `codex exec`, whose
-policy is `never`, the call never reaches Cargento and the session is told `MCP tool call requires
+policy is `never`, the call never reaches Compass and the session is told `MCP tool call requires
 approval, but approval policy is never`. With approvals available, `codex exec --approve-for-me`,
 the same call went through end to end and Codex held the tool call for a 75 second wait before
 delivering the answer. An interactive session raises an approval prompt on the first call instead.
@@ -175,7 +178,7 @@ delivering the answer. An interactive session raises an approval prompt on the f
 Codex also has a per-server key for a standing grant:
 
 ```toml
-[mcp_servers.cargento]
+[mcp_servers.compass]
 default_tools_approval_mode = "auto"   # accepted values: auto, prompt, writes, approve
 ```
 
@@ -197,7 +200,7 @@ on a small fix, and neither has a hand configuration you could add today.
 
 | Check | Command | Good looks like |
 |---|---|---|
-| The dashboard is up | `python3 "$SKILL/server.py" --port 4601 --status` | `Cargento: running on port 4601 (pid ..., since 12:16)` |
+| The dashboard is up | `python3 "$SKILL/server.py" --port 4601 --status` | `Compass: running on port 4601 (pid ..., since 12:16)` |
 | The lane is on | `curl -s http://127.0.0.1:4601/api/data \| python3 -c 'import json,sys; print(json.load(sys.stdin).get("ask"))'` | `True`. Anything else means the lane is off. Do not grep for `"ask":true`: the payload is serialised with spaces after the colon, so that never matches |
 | The harness has the server | `claude mcp list` or `codex mcp list` | connected, or `enabled` |
 | The tool is reachable | ask the session to name its ask tool | the qualified name above, not a guess |
@@ -207,7 +210,7 @@ the ask lane, and its `--json` output carries no ask-related key. It is the righ
 harness, not a missing question.
 
 Claude Code's own MCP log, on macOS at
-`~/Library/Caches/claude-cli-nodejs/<encoded-cwd>/mcp-logs-plugin-cargento-cargento/`, records the
+`~/Library/Caches/claude-cli-nodejs/<encoded-cwd>/mcp-logs-plugin-compass-compass/`, records the
 connection lifecycle only. It did not contain the server's own diagnostics on either the working or
 the refused path, so do not go looking there for the reason a question was declined. The reason is in
 the text the tool returned to the session, which is written to be quotable.
@@ -246,14 +249,14 @@ after five minutes and the session is told the same thing.
 A second click on the same card is a no-op. Four answers racing one question produced one accepted
 and three no-ops, and the session saw the first.
 
-Cargento will not answer your harness's own permission prompts, type into a terminal, or reach a
+Compass will not answer your harness's own permission prompts, type into a terminal, or reach a
 session that never called the tool.
 
 ## Make the board live rather than polled
 
 Without hooks, state comes from reading session stores on a cadence. With them, a harness pushes
 lifecycle events to the dashboard and the board reacts as things happen.
-[SKILL.md](cargento/skills/cargento/SKILL.md#notifications) owns the hook JSON, the event names, and
+[SKILL.md](compass/skills/compass/SKILL.md#notifications) owns the hook JSON, the event names, and
 which ones matter. What it cannot own is the absolute path those snippets need, because the shipped
 skill body is installed without the repository and is forbidden to name one. Resolve it with `$SKILL`
 from the first section, then paste the resolved path into the snippet.
@@ -268,19 +271,19 @@ other harness can be read after its session ends only when its hooks reach this 
 ## Install or migrate Droid hooks
 
 Droid loads plugin hooks from `<root>/hooks/hooks.json` and supports Factory plugins via `.factory-plugin/plugin.json`.
-Install Droid hooks from `cargento-droid/`:
+Install Droid hooks from `compass-droid/`:
 
 ```bash
-droid plugin install /path/to/cargento-droid
+droid plugin install /path/to/compass-droid
 ```
 
 Restart Droid after installation.
 
-If you previously installed the Claude root (`cargento/`) into Droid, migrate by uninstalling that copy first:
+If you previously installed the Claude root (`compass/`) into Droid, migrate by uninstalling that copy first:
 
 ```bash
-droid plugin uninstall cargento
-droid plugin install /path/to/cargento-droid
+droid plugin uninstall compass
+droid plugin install /path/to/compass-droid
 ```
 
 This ensures Droid's `SessionStart` and `SessionEnd` hooks run with the `droid` harness argument and route to `/api/events/droid` rather than `/api/events/claude`, so Droid session lifecycle events join the existing Droid collector row. Droid Notification and permission events are not mapped.
@@ -294,13 +297,13 @@ Use the dashboard copy selected above and start Pi with its bundled extension:
 pi -e "$SKILL/pi_extension.js"
 ```
 
-For automatic loading, copy that file to `extensions/cargento.js` under the Pi agent
+For automatic loading, copy that file to `extensions/compass.js` under the Pi agent
 configuration directory, then restart Pi or run `/reload`. Repeat the copy when updating
-Cargento. The default configuration directory is `~/.pi/agent`; a relocated
+Compass. The default configuration directory is `~/.pi/agent`; a relocated
 `PI_CODING_AGENT_DIR` changes it.
 
-Pi and the dashboard must use the same Cargento state directory and port. The extension
-reads `CARGENTO_HOME` (default `~/.cargento`) and `CARGENTO_PORT` (default 4553).
+Pi and the dashboard must use the same Compass state directory and port. The extension
+reads `COMPASS_HOME` (default `~/.compass`) and `COMPASS_PORT` (default 4553).
 It reads the run's capability from the state file and sends only to 127.0.0.1.
 
 After a normal model turn has persisted the session, an extension's select, confirm, input,
@@ -320,18 +323,18 @@ installed skill directory [found above](#find-the-copy-your-commands-will-run):
 
 ```bash
 mkdir -p .opencode/plugin
-cp "$SKILL/opencode_plugin.js" .opencode/plugin/cargento.js
+cp "$SKILL/opencode_plugin.js" .opencode/plugin/compass.js
 ```
 
-Start Cargento, then start a fresh OpenCode session. The adapter observes the passive
+Start Compass, then start a fresh OpenCode session. The adapter observes the passive
 `permission.asked` / `permission.replied` pair; answer in OpenCode. A standing parent-session
 permission appears in Attention and clears after its last outstanding request is answered.
 The default dashboard port is 4553. For a different local port, start OpenCode with
-`CARGENTO_PORT=48679 opencode`; set `CARGENTO_HOME` in both processes if using a different state
+`COMPASS_PORT=48679 opencode`; set `COMPASS_HOME` in both processes if using a different state
 home. No URL or remote destination can be configured.
 
-To uninstall, remove `.opencode/plugin/cargento.js` and start a fresh OpenCode session.
-An already running session keeps its loaded plugin. Repeat the copy after a Cargento update.
+To uninstall, remove `.opencode/plugin/compass.js` and start a fresh OpenCode session.
+An already running session keeps its loaded plugin. Repeat the copy after a Compass update.
 No global configuration is changed by this procedure.
 
 Measured on the official OpenCode 1.18.30 macOS binary. Parent permissions only: child routing,
@@ -359,17 +362,17 @@ Two traps in reading its output, both reproduced:
   not that it read anything. A directory at mode `000` and a file that is not a SQLite database both
   still printed `[ok  ] <Harness> 0 session(s)`, with the real problem further down under the stores.
 - **The `overrides` line is narrower than it reads.** It lists only the per-harness store variables,
-  so `CARGENTO_HOME` can move everything Cargento writes while that line still says `none`.
+  so `COMPASS_HOME` can move everything Compass writes while that line still says `none`.
 
 ## Move it: ports, a second dashboard, and where state lives
 
-`--port` moves the listener. `CARGENTO_HOME` moves everything Cargento writes, which is its state
+`--port` moves the listener. `COMPASS_HOME` moves everything Compass writes, which is its state
 file, the dismissal store, the history store, the annotation store and the daemon log. Two
 dashboards on different ports coexist, and each
 publishes its own state file.
 
 The per-harness store variables `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`, `COPILOT_HOME`,
-`PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` point Cargento at a store somewhere other
+`PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` point Compass at a store somewhere other
 than its default. Set one and confirm with `--diagnose` that the store line moved, rather than
 assuming it did.
 
@@ -409,8 +412,8 @@ itself on Windows and carries the address across, so a detached remote-bound das
 bound.
 
 Both `--status` and `--stop` find a live instance by probing the port, so neither needs the home the
-dashboard was started with. Tested: a dashboard started under a scratch `CARGENTO_HOME` was stopped
-by a `--stop` issued with no `CARGENTO_HOME` at all, and its state file was cleaned up anyway, because
+dashboard was started with. Tested: a dashboard started under a scratch `COMPASS_HOME` was stopped
+by a `--stop` issued with no `COMPASS_HOME` at all, and its state file was cleaned up anyway, because
 the process removes its own on the way out.
 
 To analyze drift, press **Analyze drift** on the session page, then read the disclosure and
@@ -421,7 +424,7 @@ can also type your own goal. Adopted words say "from your prompt", and editing t
 goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts
 for as long as the words go where it named: where the disclosure named a destination, start the
 dashboard with a setting that moves it, such as `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_BEDROCK`,
-and the next press asks again first. Where the disclosure said Cargento cannot name the
+and the next press asks again first. Where the disclosure said Compass cannot name the
 destination, which is always on Windows and for a Codex base URL, a later move is not detected,
 and the Allow keeps covering it.
 Use **Turn off readings** on a session page to revoke it. A Claude Code session is read by Claude
@@ -450,8 +453,8 @@ history; this is the only way. It deletes nothing you typed: the goal and the ex
 session, and any reading made against them, go when you discard that session's words on its
 session page. The one thing it takes out of that store is the record of a discard, which holds when the act
 happened and no text, and is the machine's memory of something it did rather than anything you
-wrote. It also deletes `cargento-copied-corrections.json`, the digests of corrections you copied
-from Cargento, which hold no text either.
+wrote. It also deletes `compass-copied-corrections.json`, the digests of corrections you copied
+from Compass, which hold no text either.
 
 Stop the dashboard first if one is running. `--forget` refuses while an instance answers on the port
 it names, because a running server keeps its own copy of the history in memory and writes the
@@ -492,7 +495,7 @@ Each flag belongs to the dashboard process, so changing one means restarting.
 | `--no-observer-model` | Every model call, including goal summaries, reader-requested analyses and unasked checks. It overrides `--observer-model` and `--unasked-readings` for both Claude Code and Codex |
 | `--no-reach` | Off-machine reach nudges. Outbound webhook nudges are disabled for this run |
 
-[SKILL.md](cargento/skills/cargento/SKILL.md#options) owns the full option reference.
+[SKILL.md](compass/skills/compass/SKILL.md#options) owns the full option reference.
 
 ### Select the Claude reading model
 
@@ -521,10 +524,10 @@ afterwards brings nothing with it.
 
 ## Usage and quota
 
-Usage quota reads and operator-configured reach nudges are the outbound requests Cargento can make,
+Usage quota reads and operator-configured reach nudges are the outbound requests Compass can make,
 and neither sends anything until you configure it. The first time the dashboard opens on a machine
 where a harness could be asked, a banner on Session operations, below the session groups, explains that answering yes lets
-Cargento read the credential that harness already stored and send it to that vendor for your usage
+Compass read the credential that harness already stored and send it to that vendor for your usage
 numbers. Until you answer, nothing is read and nothing is sent. The request carries the vendor's own
 token and nothing else, behind a five minute floor.
 
@@ -535,15 +538,15 @@ sent, what comes back, and what is never touched.
 
 ## Reach nudges away from the desk
 
-When configured, Cargento can post a scalar count to a webhook URL you provide when sessions
+When configured, Compass can post a scalar count to a webhook URL you provide when sessions
 need input or finish unread while you are away:
 
 ```bash
 python3 "<skill-dir>/server.py" --reach-url "https://ntfy.sh/my-topic"
 ```
 
-The URL can also be set via the `CARGENTO_REACH_URL` environment variable or saved in
-`~/.cargento/reach_url`. The payload contains only two count integers (`needs_input` and
+The URL can also be set via the `COMPASS_REACH_URL` environment variable or saved in
+`~/.compass/reach_url`. The payload contains only two count integers (`needs_input` and
 `finished_unread`) and never includes session IDs, paths, titles, or prompt text. Outbound
 nudges are disabled by default and can be suppressed for any run with `--no-reach`. See
 [SECURITY.md](SECURITY.md#off-machine-nudges-reaching-the-operator-away-from-the-desk) for the
@@ -551,25 +554,25 @@ full security contract.
 
 ## Quiet hours
 
-When configured, Cargento suppresses non-urgent notifications (native popups, unasked checks,
+When configured, Compass suppresses non-urgent notifications (native popups, unasked checks,
 tripwire alerts, and reach nudges) during a specified local time window:
 
 ```bash
 python3 "<skill-dir>/server.py" --quiet-hours "22:00-08:00"
 ```
 
-The window can also be set via the `CARGENTO_QUIET_HOURS` environment variable or saved in
-`~/.cargento/quiet_hours`. The window format is `HH:MM-HH:MM` in 24-hour local time and can cross
+The window can also be set via the `COMPASS_QUIET_HOURS` environment variable or saved in
+`~/.compass/quiet_hours`. The window format is `HH:MM-HH:MM` in 24-hour local time and can cross
 midnight (e.g. `22:00-08:00`). Direct operator questions asking for input are not suppressed.
 Quiet hours can be disabled for any run with `--no-quiet-hours`.
 
 ## Stop a dashboard, and unstick a port
 
 ```bash
-CARGENTO_HOME="$HOME/.cargento" python3 "$SKILL/server.py" --port 4553 --stop
+COMPASS_HOME="$HOME/.compass" python3 "$SKILL/server.py" --port 4553 --stop
 ```
 
-[SKILL.md](cargento/skills/cargento/SKILL.md#stop) owns the last-resort per-platform commands for a
+[SKILL.md](compass/skills/compass/SKILL.md#stop) owns the last-resort per-platform commands for a
 port that stays held.
 
 State files accumulate, but only from runs that never exited cleanly. A dashboard removes its own on
@@ -585,7 +588,7 @@ pile.
 | A harness's sessions are missing | Its store is elsewhere, or unreadable | `--diagnose`, and read the store lines rather than the harness lines |
 | The board is empty and the harness is installed | You are running a different copy than you think | Re-pin `$SKILL` from the first section |
 | A question never appears | The lane is off, or the first call was gated in the terminal | Check `"ask":true` in the payload, then check the grant |
-| The session says no dashboard is running | It is looking at a different `CARGENTO_HOME` or port | Export `CARGENTO_HOME` in the shell that launches the harness |
+| The session says no dashboard is running | It is looking at a different `COMPASS_HOME` or port | Export `COMPASS_HOME` in the shell that launches the harness |
 | The session says the lane is switched off | The dashboard was started with `--no-ask` | Restart without the flag |
 | A hook works in one shell and not another | Two Pythons on the PATH | Use one interpreter for everything |
 

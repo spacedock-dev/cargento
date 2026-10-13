@@ -7,7 +7,7 @@ import { chromium } from '@playwright/test';
 import { startDevelopment } from '../dev/supervisor.mjs';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
-const copy = await mkdtemp(join(tmpdir(), 'cargento-development-browser-'));
+const copy = await mkdtemp(join(tmpdir(), 'compass-development-browser-'));
 let dev, browser, context;
 const external = [],
   errors = [],
@@ -16,7 +16,7 @@ let restarting = false;
 const failures = [];
 try {
   await cp(join(repository, 'frontend'), join(copy, 'frontend'), { recursive: true });
-  await cp(join(repository, 'cargento'), join(copy, 'cargento'), {
+  await cp(join(repository, 'compass'), join(copy, 'compass'), {
     recursive: true,
     filter: (path) =>
       !path.includes('/tests/') && !path.endsWith('/tests') && !path.includes('__pycache__'),
@@ -37,7 +37,7 @@ try {
     )
     .replace(
       '<main id="app">',
-      '<main id="app"><button onClick={() => setCount(count + 1)}>Fixture count {count}</button><p>Cargento fixture marker</p>',
+      '<main id="app"><button onClick={() => setCount(count + 1)}>Fixture count {count}</button><p>Compass fixture marker</p>',
     );
   assert.notEqual(fixture, original);
   await writeFile(component, fixture);
@@ -55,7 +55,7 @@ try {
     return route.abort();
   });
   await context.routeWebSocket('**/*', (socket) => {
-    if (socket.url().startsWith(dev.viteOrigin.replace('http:', 'ws:') + '/__cargento_hmr'))
+    if (socket.url().startsWith(dev.viteOrigin.replace('http:', 'ws:') + '/__compass_hmr'))
       socket.connectToServer();
     else {
       external.push(socket.url());
@@ -95,13 +95,13 @@ try {
     } else errors.push(message.text());
   });
   await page.goto(dev.origin);
-  await page.getByText('Cargento fixture marker').waitFor();
+  await page.getByText('Compass fixture marker').waitFor();
   assert.equal(await page.evaluate(() => globalThis.document.fonts.size), 15);
   await page.getByRole('button', { name: 'Fixture count 0' }).click();
   await page.evaluate(() => {
     globalThis.__devDocumentSentinel = 'same document';
   });
-  await writeFile(component, fixture.replace('Cargento fixture marker', 'Hot refresh verified'));
+  await writeFile(component, fixture.replace('Compass fixture marker', 'Hot refresh verified'));
   await page.getByText('Hot refresh verified').waitFor();
   await page.getByRole('button', { name: 'Fixture count 1' }).waitFor();
   assert.equal(await page.evaluate(() => globalThis.__devDocumentSentinel), 'same document');
@@ -205,7 +205,7 @@ try {
     return route.abort();
   });
   await context.routeWebSocket('**/*', (socket) => {
-    if (socket.url().startsWith(dev.viteOrigin.replace('http:', 'ws:') + '/__cargento_hmr'))
+    if (socket.url().startsWith(dev.viteOrigin.replace('http:', 'ws:') + '/__compass_hmr'))
       socket.connectToServer();
     else {
       external.push(socket.url());
@@ -216,7 +216,7 @@ try {
   capPage.on('pageerror', (error) => errors.push(error.message));
   await capPage.goto(dev.origin);
   await capPage.getByText('Hot refresh verified').waitFor();
-  const token = await capPage.locator('head meta[name="cargento-focus"]').getAttribute('content');
+  const token = await capPage.locator('head meta[name="compass-focus"]').getAttribute('content');
   assert.match(token, /^[0-9a-f]{64}$/);
   const focus = async (capability) =>
     capPage.evaluate(async (value) => {
@@ -224,7 +224,7 @@ try {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(value ? { 'X-Cargento-Capability': value } : {}),
+          ...(value ? { 'X-Compass-Capability': value } : {}),
         },
         body: JSON.stringify({ harness: 'codex', sid: 'synthetic-missing-session' }),
       });
@@ -241,7 +241,7 @@ try {
       await context.request.post(dev.origin + '/api/focus', {
         headers: {
           Origin: dev.viteOrigin,
-          'X-Cargento-Capability': token,
+          'X-Compass-Capability': token,
         },
         data: { harness: 'codex', sid: 'synthetic-missing-session' },
       })
@@ -252,7 +252,7 @@ try {
   await capPage.reload();
   await capPage.getByText('Hot refresh verified').waitFor();
   const renewedToken = await capPage
-    .locator('head meta[name="cargento-focus"]')
+    .locator('head meta[name="compass-focus"]')
     .getAttribute('content');
   assert.notEqual(renewedToken, token);
   assert.equal((await focus(token)).status, 403);

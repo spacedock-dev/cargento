@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { compatSessKey } from '../api/identity';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/select';
 import { useFocusKey } from '../controls';
 import { goalKey, promptMenu, promptChoices } from './derive';
@@ -9,9 +10,8 @@ import { usePanel } from './useIntent';
 /* Two different absences, said apart. A long session's focused record holds only its newest events, so
    the reader's own prompts can all lie outside it; that is a limit of what is read, not a claim that
    none were written. */
-const EMPTY_NONE =
-  'None of your prompts are in the recent part of this session that Cargento reads.';
-const EMPTY_FAILED = 'Cargento could not read your prompts from this session.';
+const EMPTY_NONE = 'No usable prompts were found in the parts of this session Compass read.';
+const EMPTY_FAILED = 'Compass could not read your prompts from this session.';
 
 /* Open before the async read: a browser picker requested after that read loses the click's user
    activation. Base UI keeps the same popup while loading and across board revisions.
@@ -19,6 +19,7 @@ const EMPTY_FAILED = 'Cargento could not read your prompts from this session.';
 export function PromptSelect() {
   const { ctx, input, session, projectKey } = usePanel();
   const menu = promptMenu(input);
+  const bounded = ctx.held.prompts.get(compatSessKey(session))?.bounded;
   const [open, setOpen] = useState(false);
   const focusKey = `${goalKey(session)}:prompt`;
   const ref = useFocusKey<HTMLButtonElement>(ctx.shell.controls.focusLane, focusKey);
@@ -54,6 +55,11 @@ export function PromptSelect() {
           <SelectValue placeholder="Use your prompt" />
         </SelectTrigger>
         <SelectContent>
+          {!menu.pending && bounded ? (
+            <SelectItem value="__bound" disabled>
+              The prompt search reached its limit. Older prompts may be outside this read.
+            </SelectItem>
+          ) : null}
           {menu.pending ? (
             <SelectItem value="__loading" disabled>
               Loading your prompts

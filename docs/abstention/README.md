@@ -80,7 +80,7 @@ every earlier failure in place. So the second is `claude-continuation-2.json`, w
   Linux and Windows no signature is checked, and it reads `unchecked sha256:<hex>`, the hash of the
   file that ran. [SECURITY.md](../../SECURITY.md#the-abstention-check) states that limit.
 - `spend`, the calls charged to the spend ledger when the run finished and the cap it ran under.
-- `marks_digest`, the sha256 of `~/.cargento/abstention-marks.json` as it was when scored. A later
+- `marks_digest`, the sha256 of `~/.compass/abstention-marks.json` as it was when scored. A later
   `--report` hashes the marks again and refuses PASS if they moved, because a mark written after
   seeing an output is agreement, not a mark.
 - `inputs_digest`, on a historical replay: a hash of the cases and rubric as scored. A later
@@ -113,9 +113,9 @@ cutoff sentence, the model's detail -- appears in it, by name or by value.
 
 ## What does not live here
 
-The cases (`~/.cargento/abstention-cases.json`) name sessions and carry one user turn each. The
-local results (`~/.cargento/abstention-results.json`) carry the producer's withheld reason and its
-cutoff sentence. The rubric expectation file (`~/.cargento/abstention-rubric.json`) may carry
+The cases (`~/.compass/abstention-cases.json`) name sessions and carry one user turn each. The
+local results (`~/.compass/abstention-results.json`) carry the producer's withheld reason and its
+cutoff sentence. The rubric expectation file (`~/.compass/abstention-rubric.json`) may carry
 synthesised case bodies. All three stay on the machine that made them.
 
 ## Historical replay, case format 4
@@ -142,8 +142,8 @@ strings before asking for a mark. Optional `title` and `asked_for` fields add re
 legacy collector counts and output-question flags are not needed. Excerpts and later reviewer
 context may live in the packet for review, but only `producer_facts` enters the producer.
 
-Keep each packet in its own directory under `~/.cargento`, with the standard case and marks
-filenames, and set `CARGENTO_HOME` to that directory for both scripts. Run the scorer's
+Keep each packet in its own directory under `~/.compass`, with the standard case and marks
+filenames, and set `COMPASS_HOME` to that directory for both scripts. Run the scorer's
 `--report` first: it checks every snapshot and lists the recorded lifecycle without spending.
 Then run the marking script interactively. It writes a `cases_digest` alongside the marks and
 refuses to reuse an existing key if the packet changed. Finally, the scorer's `--score` uses those
@@ -197,8 +197,8 @@ for it does not change that. `unconfirmed` lists why, as closed tokens:
   transcript vouch for the lifecycle the spec gives. A
   `working` row needs a history observation in `working` at `captured_at` itself. A turn stop needs
   an `idle` observation whose `last_activity` is the `finished_at`. An end needs the ends store's
-  stamp. The freeze reads `cargento-history.json` and `cargento-ends.json` from `--store-home`,
-  `~/.cargento` by default, never from the packet's own directory. The history store is capped
+  stamp. The freeze reads `compass-history.json` and `compass-ends.json` from `--store-home`,
+  `~/.compass` by default, never from the packet's own directory. The history store is capped
   and rolls, so a Claude Code turn stop older than its oldest observation is vouched instead by the
   transcript's own top-level `stop_hook_summary` for that session at the `finished_at`, one whose
   hooks did not keep the turn going. The board stamps a hook's arrival about a tenth of a second
@@ -287,7 +287,7 @@ lookups were unproven. That draft remains blocked before spending: it needs genu
 proof for those kinds, fresh independent marks and rubric review. Mechanical recovery tests
 do not establish complete-final empirical coverage or turn an earlier failure into a pass.
 
-A model-free audit after the [source identity repair](https://github.com/spacedock-dev/cargento/pull/504)
+A model-free audit after the [source identity repair](https://github.com/spacedock-dev/compass/pull/504)
 on 2026-10-06 recovered all five newest selected final replies from the exact bounded historical
 cuts using their canonical filenames. All 53 selected identity and time joins matched. Four
 prompts stayed unchanged because their excerpts were already whole; one restored a
@@ -621,8 +621,8 @@ the final prompt. Historical failures and packets remain unchanged.
 ### The spend ledger
 
 Every model call is charged, before it runs, to one ledger at a fixed path,
-`~/.cargento/drc-4666-spend.json`. It is shared by every producer and every packet directory, and
-it never follows `CARGENTO_HOME`, so a fresh packet directory does not start the count again. Its
+`~/.compass/drc-4666-spend.json`. It is shared by every producer and every packet directory, and
+it never follows `COMPASS_HOME`, so a fresh packet directory does not start the count again. Its
 `~`, like every other path this check trusts (the installed CLI, `~/.claude/projects`, the
 dashboard's stores), is the account's home from the password database, never `HOME`, and
 `--score` refuses to run while `HOME` names another directory. It
@@ -655,7 +655,7 @@ After a failed qualification, a fresh packet needs a reviewed continuation grant
 repository path `docs/abstention/claude-continuation.json`. Prepare it during that review.
 Its first, `marking` phase binds the old failed result's chain and digests and the new cases file's
 digest. `mark_abstention.py --continue-mark` then permits marking only that case set in a fresh
-`CARGENTO_HOME`, while the account-home ledger contains exactly the old committed charges. It
+`COMPASS_HOME`, while the account-home ledger contains exactly the old committed charges. It
 cannot reset, build or freeze, and ordinary marking remains closed. After every mark and rubric
 expectation has been reviewed and the marker has exited, the `sealed` phase also binds the new
 marks and combined cases-and-rubric digests. The scorer checks those values under the ledger lock
@@ -726,7 +726,7 @@ nothing. It says only what reached its stub; run it under an OS sandbox to know 
 
 Every mode that reads a packet, `mark_abstention.py`, its `--report` and `score_abstention.py`,
 prints the packet's path and case count on its first line, in `~` form, and says so on the next
-when `CARGENTO_HOME` is unset and the default home was read. A report from the wrong home looks
+when `COMPASS_HOME` is unset and the default home was read. A report from the wrong home looks
 like a finished key: check that line before posting one.
 
 The marker also refuses a packet this version of the scripts cannot read, before it shows a case:
@@ -734,14 +734,14 @@ a case format other than 3, 4 or 5, or cases missing a field that `--build` (for
 `--freeze` (format 5) writes. Format 5 Claude Code cases also need `tool_output`,
 `transcript_bytes` and `parser`. The usual cause is a checkout older or newer than the one that froze
 the packet, and the message says to `git pull`. If the checkout is already current, the packet is
-older than the scripts and needs building or freezing again in a fresh `CARGENTO_HOME`.
+older than the scripts and needs building or freezing again in a fresh `COMPASS_HOME`.
 
-The owner's commands, in order. `CARGENTO_HOME` holds the packet; the ledger does not move with it:
+The owner's commands, in order. `COMPASS_HOME` holds the packet; the ledger does not move with it:
 
 ```bash
-export CARGENTO_HOME=~/.cargento/abstention-claude-<date>
+export COMPASS_HOME=~/.compass/abstention-claude-<date>
 python3 scripts/score_abstention.py --probe-argv      # its own stub, spends nothing; expect exit 0
-python3 scripts/mark_abstention.py --freeze "$CARGENTO_HOME/freeze-spec.json"   # spends nothing
+python3 scripts/mark_abstention.py --freeze "$COMPASS_HOME/freeze-spec.json"   # spends nothing
 python3 scripts/score_abstention.py --report          # preflight, spends nothing
 python3 scripts/mark_abstention.py                    # y/n/s/q per constraint, every case
 python3 scripts/mark_abstention.py --report

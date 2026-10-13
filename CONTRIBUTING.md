@@ -1,14 +1,14 @@
-# Contributing to Cargento
+# Contributing to Compass
 
-Thanks for your interest in improving Cargento. This document covers everything you need to get a change from idea to merged PR.
+Thanks for your interest in improving Compass. This document covers everything you need to get a change from idea to merged PR.
 
-## What Cargento is
+## What Compass is
 
-Cargento is an agnostic agent cartography and visualization tool, distributed as a cross-platform plugin (Claude Code, Codex, Antigravity/AGY, Gemini CLI). The repository is markdown-first: the product is the `cargento/` plugin and its single `cargento` skill, backed by a stdlib-only Python dashboard server.
+Compass is an agnostic agent cartography and visualization tool, distributed as a cross-platform plugin (Claude Code, Codex, Antigravity/AGY, Gemini CLI). The repository is markdown-first: the product is the `compass/` plugin and its single `compass` skill, backed by a stdlib-only Python dashboard server.
 
 Read [AGENTS.md](AGENTS.md) for the repository architecture and [COMPATIBILITY.md](COMPATIBILITY.md) for the cross-platform contract before making changes.
 
-If you are looking for what to work on rather than how, [docs/visibility-2x2](docs/visibility-2x2/README.md) is a local board of candidate signals scored on how much a user could act on them against how hard the information is to get without Cargento. Open it with the `visibility-2x2` skill. It is a working document, so treat it as an argument in progress rather than a committed roadmap.
+If you are looking for what to work on rather than how, [docs/visibility-2x2](docs/visibility-2x2/README.md) is a local board of candidate signals scored on how much a user could act on them against how hard the information is to get without Compass. Open it with the `visibility-2x2` skill. It is a working document, so treat it as an argument in progress rather than a committed roadmap.
 
 ## Development setup
 
@@ -18,8 +18,8 @@ while lint, types and the coverage threshold run on 3.12), `git`, the Node 26 ve
 validation. See [COMPATIBILITY.md](COMPATIBILITY.md) for why 3.11 is the floor.
 
 ```bash
-git clone https://github.com/spacedock-dev/cargento.git
-cd cargento
+git clone https://github.com/spacedock-dev/compass.git compass
+cd compass
 # PyYAML for the contract validator; ruff, mypy and coverage for the quality gate.
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
 pnpm install --frozen-lockfile
@@ -34,7 +34,7 @@ again; changing the setting does not repair files already checked out. See the
 Run the dashboard locally without installing any plugin:
 
 ```bash
-python3 cargento/skills/cargento/server.py --port 4553
+python3 compass/skills/compass/server.py --port 4553
 python3 -m webbrowser -t http://127.0.0.1:4553/
 ```
 
@@ -63,8 +63,9 @@ require a refreshed integrity record even when the rendered page bytes stay unch
 The Select story uses shadcn Base UI Select with a reserved fixture width. It exercises opening,
 keyboard choice, titled long labels, disabled and loading items, and keyboard scrolling through thirty
 choices. The page's PromptSelect tests and Intent browser proof own the async prompt loader. The fixture does not certify the
-page's prompt loader. Component stories supplement the application browser proofs, which still own
-routing, refresh continuity, backend behavior and installed-page checks.
+page's prompt loader. Stories are how the interface is verified. The browser proofs, retired from the
+gate, remain runnable on demand for routing, refresh continuity, backend behavior and installed-page
+investigation, but no pull request needs them.
 
 ### Frontend development
 
@@ -105,7 +106,7 @@ terminal assets remain local. The packaging boundaries are in the
 [AGENTS.md](AGENTS.md#pre-pr-checks) for the frontend checks. TypeScript checks source and dependency
 types, Biome lints (JavaScript, TypeScript and React rules) and checks formatting through one
 `pnpm lint`, with `pnpm format` rewriting what it reports, Vitest with Testing Library checks visible
-behavior, and Playwright checks the built page in Chromium. The rule set and what it deliberately
+behavior, and Storybook checks components and views in Chromium. The rule set and what it deliberately
 does not cover are in the [migration contract](docs/design-frontend-migration.md#lint-and-format). Vite and its React plugin own the build and hot
 refresh. Shared controls use vendored shadcn components backed by Base UI; routing and state remain
 owned by the page. Node and pnpm are build tools: the shipped
@@ -113,7 +114,9 @@ Python dashboard still requires neither.
 
 The typed client is tested against fixtures captured from the real server. After changing a route's
 response, run `python3 scripts/regen_client_fixtures.py` and commit the result; `--check` shows
-whether anything is stale. `pnpm test:storage:browser` proves in Chromium that the React storage codecs read
+whether anything is stale. The browser proofs described in the rest of this paragraph and the next are
+retired from CI and from the pre-PR suite (owner, 2026-10-12): they stay runnable on demand, nothing
+requires them, and Storybook verifies the interface. `pnpm test:storage:browser` proves in Chromium that the React storage codecs read
 and write what the retired page did with its storage. `pnpm test:shell:browser` checks the React shell's routes
 against what that page did, and `pnpm test:controls:browser`
 checks that focus, drafts, composition and open selects survive live updates. `pnpm test:sessions:browser`
@@ -136,7 +139,7 @@ consent, checking that no usage parameter, model request or notification starts 
 Drift, Intent, Projects, project, Attention and capacity views of the fixture boards.
 
 Every proof above serves the React side through the development server by default. `pnpm test:production:browser`
-runs the same twelve proofs with `CARGENTO_E2E_BUNDLE=production`, which has the Python backend serve the minified
+runs the same twelve proofs with `COMPASS_E2E_BUNDLE=production`, which has the Python backend serve the minified
 `react.html` that readers get (no Vite child, no hot refresh, no StrictMode double effect), so a difference only the
 shipped bytes show fails a proof. Pass `--shard a` or `--shard b` to run half of them; CI runs the two halves as
 separate jobs. Every surface proof is driven through the shipped page's own mount points (the capacity strip in
@@ -146,7 +149,7 @@ shared controls no one page draws together and is served a production build of a
 proof bundles its codec minified. A few readings that only a harness can take are replaced on the shipped page
 by what a reader can observe, and the proofs say so where they do it; the receipt's `production_artifact` block
 lists the limits. Set the variable yourself to run one proof against the bundle, for example
-`CARGENTO_E2E_BUNDLE=production pnpm test:attention:browser`.
+`COMPASS_E2E_BUNDLE=production pnpm test:attention:browser`.
 
 The parity proofs and the unit differentials hold the React page to what the retired page said. That page no
 longer exists, so what it said is a set of recordings, and nothing starts it. Browser proofs read
@@ -191,7 +194,7 @@ To update an existing component, preview the pinned CLI's registry diff with
 [CLI reference](https://ui.shadcn.com/docs/cli#add). Compare the fetched upstream content with the local file
 before applying changes; preserve the local recipes and reader-state contracts, and refresh the
 upstream digest in the header when taking new upstream content. Repeat the import, scale and
-formatting steps above, then run the affected component and browser proofs.
+formatting steps above, then run the affected stories with `pnpm test:stories`.
 
 Each copied component starts with an upstream header naming the component, CLI version, registry URL
 and SHA-256 of the fetched registry item's `content` before edits. Record why local changes were made.
@@ -286,13 +289,13 @@ same directories through the relative symlinks under `.agents/skills/`.
   label, which is visible in the PR timeline.
 - `platform-tests`, the unit suite re-run natively on macOS, with one dashboard leg and three script
   shards. Ubuntu is covered by the coverage job and the runtime floor, which both run the whole suite there.
-- `Frontend (macos-latest)`, with exact Node and pnpm pins, lint, strict types, unit tests and a clean
-  preview build. It runs browser checks against an installed Python-only copy, plus owned development
-  lifecycle, real Python/Vite hot-refresh, storage conformance, React shell routing, shared-controls
-  continuity and session checks.
-- `Frontend production bundle`, which rebuilds and compares the tracked artifact on Linux, then runs
-  all twelve production parity proofs in two shards. The separate `Frontend proofs` job has been retired;
-  its development-server proofs remain runnable locally through the pre-PR suite.
+- `Frontend (macos-latest)`, with exact Node and pnpm pins, lint, strict types, unit tests, owned
+  development startup and cleanup tests, and a clean preview build.
+- `Frontend production bundle`, which rebuilds and compares the tracked artifact on Linux and runs no
+  proof.
+- `Storybook (ubuntu-latest)`, which builds the offline explorer and runs every story's assertions in
+  pinned Chromium. The interface is verified here. The Playwright browser proofs were retired from CI
+  and from the pre-PR suite on 2026-10-12; they remain runnable on demand.
 
 CI exercises macOS and Linux. Windows is no longer exercised by CI for the dashboard unit suite or
 frontend. The local pre-PR command list remains unchanged.
@@ -326,7 +329,7 @@ share of an empty store.
 `scripts/capture_hook.py` is also outside the gate. It answers the adapter-semantics question for the
 event-driven work: what a harness lifecycle event means, how many arrive per turn, and in what order.
 None of that is documented anywhere, so it has to be observed. `--report` summarises what has
-accumulated, and captures land in `~/.cargento/captures`.
+accumulated, and captures land in `~/.compass/captures`.
 
 `--install` does not print a block to paste. It reads your existing `settings.json`, appends the
 capture hook as an extra matcher group on each event, and writes the result to
@@ -341,7 +344,7 @@ path. A research tool that captured those would be a worse leak than the thing i
 because it writes to disk and accumulates.
 
 `scripts/derive_prompt_shapes.py` re-derives the counts written into the harness-injected-prompt
-comment block in `cargento_runtime/records.py`: which markup tag leads a harness's own machinery,
+comment block in `compass_runtime/records.py`: which markup tag leads a harness's own machinery,
 how often, and which of those a turn scanner already refuses. Point it at your own store with
 `--claude-root` and `--codex-root`, or run it bare for the defaults. Every count in that comment
 block is one of its outputs, so a reviewer can check the numbers instead of trusting them, and a new
@@ -363,15 +366,15 @@ producer over those cases and reports, per case and per constraint, where each l
 `--freeze` and a live `--score` need the dashboard running; `--report` and marking read local files
 only. Scoring needs `--producer claude` and spends Anthropic capacity (Codex may report but not
 score): one call per case whose ledger holds anything citable, charged to the one spend ledger at
-`~/.cargento/drc-4666-spend.json`, which stops at 28 calls across every run. Run `--report` first, which spends nothing, and `--score` on purpose. Neither
+`~/.compass/drc-4666-spend.json`, which stops at 28 calls across every run. Run `--report` first, which spends nothing, and `--score` on purpose. Neither
 runs in CI, and neither may: the marks are a person's, and the run costs the operator's own quota.
 What each file may hold and where the committed half lands is in `SECURITY.md` under The abstention
 check, and the committed half's own README is `docs/abstention/README.md`.
 
 ### Tests
 
-Every behavior change to `server.py` or `cargento_runtime/` needs a regression test in
-`cargento/skills/cargento/tests/`. The suite uses only the standard library, and the fixtures are
+Every behavior change to `server.py` or `compass_runtime/` needs a regression test in
+`compass/skills/compass/tests/`. The suite uses only the standard library, and the fixtures are
 temp directories and in-memory SQLite databases. It has three layers, and a change usually touches
 more than one:
 
@@ -429,7 +432,7 @@ pins.
   destination (wrap the target in `<>`), and links inside a four-space-indented code block (use a
   fence instead).
 - Every file the dashboard needs at runtime must be present, and must be a file rather than a
-  directory. The list is `CARGENTO_RUNTIME_FILES` in `scripts/validate_plugins.py`: the launcher, the
+  directory. The list is `COMPASS_RUNTIME_FILES` in `scripts/validate_plugins.py`: the launcher, the
   hook forwarder, all three package initializers, every runtime module and collector, and every
   frontend source asset. Adding a runtime module or asset means adding it there, and a test compares
   the list against what the checkout actually ships so it cannot fall behind quietly.
@@ -478,7 +481,7 @@ allowlist changes only in a PR that makes a reviewed ownership decision.
   project can write. And never sort rows on a value that ticks: order on the state, then on a fixed
   timestamp, then on the session id, or rows move under the reader between refreshes.
 - The retired `next` query is rejected at the page boundary, not routed to another assembly path. The React
-  page keeps the `cargento.next.*` and `cargento.project*` browser keys the previous page wrote, so old
+  page keeps the `compass.next.*` and `compass.project*` browser keys the previous page wrote, so old
   bookmarks and stored leases stay harmless, and `next-*` class names and `data-next-*` attributes survive in
   its markup; do not infer a second frontend from any of them. [docs/design-next-ui.md](docs/design-next-ui.md)
   owns the promotion decision and route grammar as history. The
@@ -571,7 +574,7 @@ Format: `<type>(<scope>): <description>`, where type is one of `feat`, `fix`, `d
 
 ## Adding support for a new harness
 
-This is the contribution we most want. Each harness is one registry entry: a key, a display label, a cheap discovery predicate, and a collector function. The runtime contract is `HarnessSpec` in `cargento_runtime/aggregate.py`, whose discovery takes `(config, state)` and whose collector takes `(config, state, now, window_hours, show_all)`. The registry itself is `aggregate.default_harnesses()`, and every row is a module under `cargento_runtime/collectors/`: add yours there, then add a row. Follow `collectors/codex.py` for the shape, and study `collectors/droid.py` (JSONL-based) or `collectors/goose.py` (SQLite-based) as templates. Requirements:
+This is the contribution we most want. Each harness is one registry entry: a key, a display label, a cheap discovery predicate, and a collector function. The runtime contract is `HarnessSpec` in `compass_runtime/aggregate.py`, whose discovery takes `(config, state)` and whose collector takes `(config, state, now, window_hours, show_all)`. The registry itself is `aggregate.default_harnesses()`, and every row is a module under `compass_runtime/collectors/`: add yours there, then add a row. Follow `collectors/codex.py` for the shape, and study `collectors/droid.py` (JSONL-based) or `collectors/goose.py` (SQLite-based) as templates. Requirements:
 
 - Discovery must be cheap (an `isdir`, or one of the existence probes: `any_store_dir()`, `any_glob_under()`, `any_glob_stores()`). It answers one bit, so it must not build a match list it will not read, and `collect()` walks the same tree moments later anyway. The collector must degrade gracefully on schema drift.
 - Resolve store roots through the candidate-set resolver rather than a single hardcoded path, and honor the harness's documented relocation variable if it has one.
@@ -579,7 +582,7 @@ This is the contribution we most want. Each harness is one registry entry: a key
 - Add tests with a synthetic store fixture, including a hostile-path case.
 - No frontend registry entry is needed. The page reads harness keys and labels from the payload's
   `harnesses` list, which is derived from `default_harnesses()`.
-- Every row's field set is declared once, in `base_session` in `cargento_runtime/sessions.py`, at `None`. Populate the fields your store can answer and leave the rest; do not add a key that only your harness sets, because then every consumer has to test for presence instead of for a value. `provider` and `model` are there for the same reason. `provider` is Pi's alone, since Pi is the one harness that spends another product's allowance rather than its own; `model` is filled by whichever collectors can read one.
+- Every row's field set is declared once, in `base_session` in `compass_runtime/sessions.py`, at `None`. Populate the fields your store can answer and leave the rest; do not add a key that only your harness sets, because then every consumer has to test for presence instead of for a value. `provider` and `model` are there for the same reason. `provider` is Pi's alone, since Pi is the one harness that spends another product's allowance rather than its own; `model` is filled by whichever collectors can read one.
 
 Before writing any of it, settle whether the thing deserves a row of its own: two store formats can be one harness, and one vendor can be two. [`docs/design-harness-registry.md`](docs/design-harness-registry.md) owns that judgement and the one time it had to be revisited.
 
@@ -611,7 +614,7 @@ fields, proves the archive of that exact commit with Python only, then moves the
 released commit, advances the `stable` branch to it (forward only, never back to an older release),
 and publishes a GitHub Release with generated notes. `stable` is what the shared
 [spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace) listing tracks, so a
-release that did not move it would leave the marketplace serving an older Cargento.
+release that did not move it would leave the marketplace serving an older Compass.
 The bump is skipped when the manifests already carry the tagged version, which is also how you
 release the current version as-is. Every step is idempotent, so a partially failed release is
 finished by **Re-run all jobs** on the same run. That is the only re-run that resolves the release
@@ -620,14 +623,18 @@ pushing the tag a second time does nothing because it already exists. Release ta
 tag ruleset blocks deleting or moving them), and PRs can never change version fields (the
 `version-guard` check).
 
+Before cutting 1.0.0, remove every `legacy-cargento` fallback and the "Upgrading from
+Cargento" section of the manual. The tripwire blocks the release if any fallback
+marker remains, using the higher of the manifest version and the release tag.
+
 To rehearse the sequence without GitHub, run `python3 scripts/release_transition.py --repo <throwaway
 clone> rehearse --tag v0.2.0 --dry-run` in a clone whose remote is a local bare repository; it
-refuses any remote that is not a local path. The `cargento-release` skill describes it, and the
+refuses any remote that is not a local path. The `compass-release` skill describes it, and the
 archive proof `scripts/verify_release_archive.py`, in full.
 
 ## Reporting bugs and requesting features
 
-Use the [issue templates](https://github.com/spacedock-dev/cargento/issues/new/choose). For security concerns, see [SECURITY.md](SECURITY.md), and please don't open public issues for those.
+Use the [issue templates](https://github.com/spacedock-dev/compass/issues/new/choose). For security concerns, see [SECURITY.md](SECURITY.md), and please don't open public issues for those.
 
 ## Code of conduct
 

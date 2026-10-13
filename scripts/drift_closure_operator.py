@@ -59,8 +59,10 @@ class NativeClosureOperator:
         protected_path: Path,
     ) -> None:
         self.campaign = campaigns.Campaign()
-        if not campaigns.REPLAY_PATH or os.path.realpath(replay.LEDGER_PATH) != os.path.realpath(
-            campaigns.REPLAY_PATH
+        if (
+            not campaigns.REPLAY_PATH
+            or not replay.LEDGER_PATH
+            or os.path.realpath(replay.LEDGER_PATH) != os.path.realpath(campaigns.REPLAY_PATH)
         ):
             raise authority.LedgerError("Native closure must use the canonical replay ledger")
         ledger_path = Path(campaigns.REPLAY_PATH)
@@ -142,7 +144,7 @@ class NativeClosureOperator:
             or [r["slot"] for r in self.registrations] != self.campaign.manifest["slots"]["replay"]
         ):
             raise ValueError("Frozen source, scorer, marks or slots differ from reviewed authority")
-        from cargento_runtime.web import page  # noqa: PLC0415 - actual shipped projection
+        from compass_runtime.web import page  # noqa: PLC0415 - actual shipped projection
 
         projection = grading.digest(
             {

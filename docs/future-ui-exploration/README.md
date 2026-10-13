@@ -40,7 +40,7 @@ stages:
 
 # Future UI exploration
 
-This workflow explores bold ways for Cargento to give people a straightforward understanding of what is happening across all of their harnesses and sessions. It treats the Next UI as a command surface rather than an inventory: the overall situation, the work that matters now, current execution, the next action, and captain responsibility must lead; evidence and detail remain reachable without competing with those facts.
+This workflow explores bold ways for Compass to give people a straightforward understanding of what is happening across all of their harnesses and sessions. It treats the Next UI as a command surface rather than an inventory: the overall situation, the work that matters now, current execution, the next action, and captain responsibility must lead; evidence and detail remain reachable without competing with those facts.
 
 The durable integration branch is `feat/future-ui`. Ordinary experiment work, product checkpoints, and accepted corrections stay on that branch. A captain may explicitly approve a promotion PR from `feat/future-ui` to `main`. That promotion does not retire, merge away, or change the role of the experiment branch.
 
@@ -124,7 +124,7 @@ The [Session Operations Board visual walkthrough](presentations/future-ui-sessio
 ## Workflow-specific rules
 
 - `feat/future-ui` is the durable product branch this workflow advances. Product commits and accepted correction checkpoints remain there. Routine workflow PRs target that branch. Only an explicit captain decision may promote an approved checkpoint from `feat/future-ui` to `main`, and the branch remains independent afterward.
-- The pilot is one rolling experiment so all work touching `cargento_runtime/web/next/` stays on one conflict surface. New hypotheses become recorded rounds inside the experiment unless the captain commissions another independent direction.
+- The pilot is one rolling experiment so all work touching `compass_runtime/web/next/` stays on one conflict surface. New hypotheses become recorded rounds inside the experiment unless the captain commissions another independent direction.
 - Large bets are in scope. A round may replace the information architecture, navigation model, visual hierarchy, or session interaction model. Compatibility with the current Next layout is not a value criterion.
 - The primary frame must expose assignment, execution, next action, and captain state without opening Evidence. It must also make project scope and current session activity obvious. Once those facts are truthful and unmistakable, another round needs a material comprehension risk rather than a style preference.
 - Reconnaissance and crucible must include observed Codex, Claude Code, and AGY sessions. A harness that cannot produce evidence is reported as a source limit, never replaced by a mock.
@@ -183,7 +183,7 @@ pr:
 
 ## Design bet
 
-A bold, falsifiable claim about how Cargento can make cross-harness and session state easier to understand.
+A bold, falsifiable claim about how Compass can make cross-harness and session state easier to understand.
 
 ## User questions
 

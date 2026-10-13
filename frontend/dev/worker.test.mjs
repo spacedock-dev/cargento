@@ -31,7 +31,7 @@ function exchange(port, path, headers = {}, upgrade = false) {
 test('real Vite admits only owned handshake and exact Python-origin modules/HMR', {
   timeout: 20000,
 }, async () => {
-  const scratch = await mkdtemp(join(tmpdir(), 'cargento-vite-guard-'));
+  const scratch = await mkdtemp(join(tmpdir(), 'compass-vite-guard-'));
   const privateRoot = join(scratch, 'outside-source');
   const link = join(root, 'frontend/dev', `guard-link-${process.pid}`);
   await mkdir(privateRoot);
@@ -92,28 +92,28 @@ test('real Vite admits only owned handshake and exact Python-origin modules/HMR'
       (await exchange(4590, `/dev/guard-link-${process.pid}/private.js`, headers)).status,
       403,
     );
-    const proof = await exchange(4590, '/__cargento_dev_handshake', {
-      'x-cargento-dev-challenge': '11'.repeat(32),
-      'x-cargento-dev-generation': '33'.repeat(16),
+    const proof = await exchange(4590, '/__compass_dev_handshake', {
+      'x-compass-dev-challenge': '11'.repeat(32),
+      'x-compass-dev-generation': '33'.repeat(16),
     });
     assert.equal(proof.status, 200);
     assert.equal(JSON.parse(proof.body).vite_pid, child.pid);
     assert.ok(!proof.body.includes('00'.repeat(32)), 'handshake must not publish its secret');
     assert.equal(
       (
-        await exchange(4590, '/__cargento_dev_handshake', {
-          'x-cargento-dev-challenge': '11'.repeat(32),
-          'x-cargento-dev-generation': '44'.repeat(16),
+        await exchange(4590, '/__compass_dev_handshake', {
+          'x-compass-dev-challenge': '11'.repeat(32),
+          'x-compass-dev-generation': '44'.repeat(16),
         })
       ).status,
       403,
     );
     assert.equal(
       (
-        await exchange(4590, '/__cargento_dev_handshake', {
+        await exchange(4590, '/__compass_dev_handshake', {
           ...headers,
-          'x-cargento-dev-challenge': '11'.repeat(32),
-          'x-cargento-dev-generation': '33'.repeat(16),
+          'x-compass-dev-challenge': '11'.repeat(32),
+          'x-compass-dev-generation': '33'.repeat(16),
         })
       ).status,
       403,
@@ -128,7 +128,7 @@ test('real Vite admits only owned handshake and exact Python-origin modules/HMR'
       'Sec-WebSocket-Protocol': 'vite-hmr',
     };
     assert.equal(
-      (await exchange(4590, '/__cargento_hmr?token=' + token, socketHeaders, true)).status,
+      (await exchange(4590, '/__compass_hmr?token=' + token, socketHeaders, true)).status,
       101,
     );
     for (const bad of [
@@ -137,10 +137,10 @@ test('real Vite admits only owned handshake and exact Python-origin modules/HMR'
       { ...socketHeaders, Host: 'localhost:4590' },
       { ...socketHeaders, Origin: 'http://evil.example', 'Sec-WebSocket-Protocol': 'vite-ping' },
     ]) {
-      assert.equal((await exchange(4590, '/__cargento_hmr?token=' + token, bad, true)).status, 403);
+      assert.equal((await exchange(4590, '/__compass_hmr?token=' + token, bad, true)).status, 403);
     }
     assert.notEqual(
-      (await exchange(4590, '/__cargento_hmr?token=wrong', socketHeaders, true)).status,
+      (await exchange(4590, '/__compass_hmr?token=wrong', socketHeaders, true)).status,
       101,
     );
   } finally {
@@ -159,7 +159,7 @@ test('real Vite admits only owned handshake and exact Python-origin modules/HMR'
 test('real Vite serves a source tree whose root is spelled through the temporary directory', {
   timeout: 30000,
 }, async () => {
-  const copy = await mkdtemp(join(tmpdir(), 'cargento-vite-root-'));
+  const copy = await mkdtemp(join(tmpdir(), 'compass-vite-root-'));
   const child = fork(fileURLToPath(new URL('./vite-worker.mjs', import.meta.url)), [], {
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
@@ -168,10 +168,10 @@ test('real Vite serves a source tree whose root is spelled through the temporary
   const exited = new Promise((resolve) => child.once('exit', resolve));
   try {
     await cp(join(root, 'frontend'), join(copy, 'frontend'), { recursive: true });
-    await cp(join(root, 'cargento'), join(copy, 'cargento'), {
+    await cp(join(root, 'compass'), join(copy, 'compass'), {
       recursive: true,
       filter: (path) =>
-        !relative(join(root, 'cargento'), path)
+        !relative(join(root, 'compass'), path)
           .split(/[\\/]/)
           .some((part) => part === 'tests' || part === '__pycache__'),
     });
@@ -204,7 +204,7 @@ test('real Vite serves a source tree whose root is spelled through the temporary
       (
         await exchange(
           4592,
-          '/@fs/' + join(copy, 'cargento/skills/cargento/server.py').replaceAll('\\', '/'),
+          '/@fs/' + join(copy, 'compass/skills/compass/server.py').replaceAll('\\', '/'),
           headers,
         )
       ).status,

@@ -1326,7 +1326,7 @@
         "status": "proven",
         "proofs": [
           {
-            "python": "cargento/skills/cargento/tests/test_default_page.py",
+            "python": "compass/skills/compass/tests/test_default_page.py",
             "test": "test_retired_next_query_is_not_a_page_alias"
           },
           {
@@ -1759,6 +1759,10 @@
           {
             "browser": "frontend/e2e/intent-parity.mjs",
             "step": "later directions: asked about before a reading, read whole before Keep settles, added only on Save"
+          },
+          {
+            "vitest": "frontend/src/drift/record.test.tsx",
+            "test": "a reader leaving an older direction draft keeps their words while its record page is unread on return"
           }
         ]
       },
@@ -2235,10 +2239,51 @@
             "step": "finding jumps resolve fact ids after renumbering without requests or launches"
           }
         ]
+      },
+      "An open run of checks": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/WorkListView.test.tsx",
+            "test": "keeps a fold open across a board refresh, remount and a new check at the newest end"
+          },
+          {
+            "vitest": "frontend/src/drift/foldRuns.test.ts",
+            "test": "always sees a failed check outside a fold, splitting the run"
+          }
+        ]
+      },
+      "Loaded session record pages": {
+        "status": "proven",
+        "proofs": [
+          {
+            "vitest": "frontend/src/drift/record.test.tsx",
+            "test": "a reader keeps loaded pages through a board refresh and drops them on leaving the session page"
+          },
+          {
+            "vitest": "frontend/src/transport/record.test.ts",
+            "test": "a reader leaving a session aborts its request even when the network ignores cancellation"
+          }
+        ]
+      },
+      "A direction action's refusal": {
+        "status": "deviation",
+        "deviation": "docs/design-frontend-migration.md#the-intent-log-and-the-intent-panel",
+        "proofs": [
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "keeps a complete settlement refusal beside Keep until the reader edits their intent"
+          },
+          {
+            "vitest": "frontend/src/intent/IntentDirections.test.tsx",
+            "test": "tells a reader at the activity row when its direction is beyond the search and retains that row focus"
+          }
+        ],
+        "note": "Direction refusals survive polls in per-control held state, are adjacent and announced, and clear on the next press or edit. The new Storybook plays verify focus and phone-width pending edits; no browser proof or fluidity run was added."
       }
     },
     "storage": {
-      "cargento.cockpit.memo.v2:": {
+      "compass.cockpit.memo.v2:": {
         "status": "proven",
         "proofs": [
           {
@@ -2251,11 +2296,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.cockpit.memo.v2:"
+            "contains": "compass.cockpit.memo.v2:"
           }
         ]
       },
-      "cargento.next.graph.mode": {
+      "compass.next.graph.mode": {
         "status": "proven",
         "proofs": [
           {
@@ -2272,11 +2317,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.next.graph.mode"
+            "contains": "compass.next.graph.mode"
           }
         ]
       },
-      "cargento.next.guardrails.": {
+      "compass.next.guardrails.": {
         "status": "proven",
         "proofs": [
           {
@@ -2293,11 +2338,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.next.guardrails."
+            "contains": "compass.next.guardrails."
           }
         ]
       },
-      "cargento.next.leader": {
+      "compass.next.leader": {
         "status": "proven",
         "proofs": [
           {
@@ -2314,11 +2359,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.next.leader"
+            "contains": "compass.next.leader"
           }
         ]
       },
-      "cargento.next.live-estimate:": {
+      "compass.next.live-estimate:": {
         "status": "proven",
         "proofs": [
           {
@@ -2335,11 +2380,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.next.live-estimate:"
+            "contains": "compass.next.live-estimate:"
           }
         ]
       },
-      "cargento.next.revision": {
+      "compass.next.revision": {
         "status": "proven",
         "proofs": [
           {
@@ -2356,11 +2401,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.next.revision"
+            "contains": "compass.next.revision"
           }
         ]
       },
-      "cargento.next.usage.consent": {
+      "compass.next.usage.consent": {
         "status": "proven",
         "proofs": [
           {
@@ -2377,11 +2422,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.next.usage.consent"
+            "contains": "compass.next.usage.consent"
           }
         ]
       },
-      "cargento.next.workstream.collapsed": {
+      "compass.next.workstream.collapsed": {
         "status": "proven",
         "proofs": [
           {
@@ -2394,11 +2439,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.next.workstream.collapsed"
+            "contains": "compass.next.workstream.collapsed"
           }
         ]
       },
-      "cargento.observer-model-consent.v1": {
+      "compass.observer-model-consent.v1": {
         "status": "proven",
         "proofs": [
           {
@@ -2411,11 +2456,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.observer-model-consent.v1"
+            "contains": "compass.observer-model-consent.v1"
           }
         ]
       },
-      "cargento.projectCockpitProject": {
+      "compass.projectCockpitProject": {
         "status": "proven",
         "proofs": [
           {
@@ -2428,11 +2473,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.projectCockpitProject"
+            "contains": "compass.projectCockpitProject"
           }
         ]
       },
-      "cargento.projectGoal.v1:": {
+      "compass.projectGoal.v1:": {
         "status": "proven",
         "proofs": [
           {
@@ -2445,11 +2490,11 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.projectGoal.v1:"
+            "contains": "compass.projectGoal.v1:"
           }
         ]
       },
-      "cargento.projectUsage.v1": {
+      "compass.projectUsage.v1": {
         "status": "proven",
         "proofs": [
           {
@@ -2462,7 +2507,7 @@
           },
           {
             "browser": "frontend/e2e/storage-conformance.mjs",
-            "contains": "cargento.projectUsage.v1"
+            "contains": "compass.projectUsage.v1"
           }
         ]
       }
@@ -2947,7 +2992,7 @@
     "proofs": [
       {
         "browser": "frontend/e2e/production-proofs.mjs",
-        "contains": "CARGENTO_E2E_BUNDLE"
+        "contains": "COMPASS_E2E_BUNDLE"
       },
       {
         "browser": "frontend/e2e/installed.mjs",
@@ -2967,13 +3012,7 @@
         "fluidity": "poll_to_paint_median"
       }
     ],
-    "production_bundle": {
-      "switch": "CARGENTO_E2E_BUNDLE=production",
-      "command": "pnpm test:production:browser",
-      "ci_job": "Frontend production bundle (ubuntu-latest, shard ${{ matrix.shard }})",
-      "shards": "frontend/e2e/production-shards.json",
-      "runs": "the eleven parity proofs (storage, shell, controls, sessions, intent, drift, project, console, attention, capacity, terminal and timeline)"
-    },
+    "retired": "The browser parity proofs, including those against the shipped bundle, are retired from the pull request gate (owner, 2026-10-12): the interface is verified by Storybook. The proof files and package scripts stay and run on demand. The shipped bundle is still rebuilt from its sources and compared with the tracked file by the production bundle job.",
     "limits": "The Python backend serves the React side without Vite in production mode. Served the tracked minified react.html itself (no scratch copy, no mutation): the shell, sessions, intent, drift, project, attention, console, capacity, and terminal and timeline proofs. Each drives its surface through the shipped page's own mount point (the strip in the Sessions view, the consent and observer controls and the terminal in the Console tab, the timeline in the Decisions tab), and a `shipped page` step in the capacity proof fails if the strip or the consent is not inside its view. A mutation run is served a production build of a scratch copy made by the same packaging code. Still harness-hosted, because the shipped page cannot reach them with a fixture: the controls proof mounts the controls gallery, which composes combinations of the shared controls (a stack of draft fields, selects and disclosures, composition and undo cases) that no one project or session page draws together, so those controls are proven in the shipped composition only through the sessions, project, intent, drift, attention and shell proofs, not by the gallery's own cases; and the storage proof's React side is the storage codec bundled minified in the browser, not a served page. On the shipped page three harness-only readings are replaced by what a reader can observe, and the proofs say so where they do it: the terminal owner's internal counters become the renderer count and the open terminal sockets (the owner's last-opened key is asserted only in development), the console's accepted-board count becomes the count of board answers, and a manual refresh becomes another tab's revision announcement. StrictMode double effects exist only in development, so the production run proves the same counts without the double mount, and the development run of every proof stays in CI."
   },
   "gates": {

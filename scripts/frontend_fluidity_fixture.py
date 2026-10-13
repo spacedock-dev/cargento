@@ -25,15 +25,15 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
-SKILL = REPO / "cargento" / "skills" / "cargento"
+SKILL = REPO / "compass" / "skills" / "compass"
 sys.path.insert(0, str(SKILL))
-from cargento_runtime.aggregate import Application, HarnessSpec  # noqa: E402 - skill runtime path
-from cargento_runtime.cli import inject_focus_capability  # noqa: E402 - skill runtime path
-from cargento_runtime.config import build_runtime_config  # noqa: E402 - skill runtime path
-from cargento_runtime.http_api import CargentoHTTPServer  # noqa: E402 - skill runtime path
-from cargento_runtime.sessions import base_session  # noqa: E402 - skill runtime path
-from cargento_runtime.state import build_runtime_state  # noqa: E402 - skill runtime path
-from cargento_runtime.web.page import load_frontend_page  # noqa: E402 - skill runtime path
+from compass_runtime.aggregate import Application, HarnessSpec  # noqa: E402 - skill runtime path
+from compass_runtime.cli import inject_focus_capability  # noqa: E402 - skill runtime path
+from compass_runtime.config import build_runtime_config  # noqa: E402 - skill runtime path
+from compass_runtime.http_api import CompassHTTPServer  # noqa: E402 - skill runtime path
+from compass_runtime.sessions import base_session  # noqa: E402 - skill runtime path
+from compass_runtime.state import build_runtime_state  # noqa: E402 - skill runtime path
+from compass_runtime.web.page import load_frontend_page  # noqa: E402 - skill runtime path
 
 COHORTS = {"small": 5, "median": 50, "large": 250}
 STATES = ("healthy", "empty", "unavailable")
@@ -80,7 +80,7 @@ class Fixture:
             environ={
                 "HOME": str(scratch),
                 "USERPROFILE": str(scratch),
-                "CARGENTO_HOME": str(scratch / "state"),
+                "COMPASS_HOME": str(scratch / "state"),
             },
             platform_name=sys.platform,
             os_name=os.name,
@@ -190,8 +190,8 @@ class Fixture:
             rows.append(row)
         return rows
 
-    def server(self, port: int) -> CargentoHTTPServer:
-        return CargentoHTTPServer(("127.0.0.1", validate_port(port)), self.application, self.page)
+    def server(self, port: int) -> CompassHTTPServer:
+        return CompassHTTPServer(("127.0.0.1", validate_port(port)), self.application, self.page)
 
     def control(self, command: Any) -> dict[str, Any]:
         if not isinstance(command, dict) or set(command) != {"cohort", "state", "sequence"}:
@@ -214,7 +214,7 @@ def main() -> int:
         validate_port(args.port)
     except ValueError as error:
         parser.error(str(error))
-    with tempfile.TemporaryDirectory(prefix="cargento-fluidity-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="compass-fluidity-") as scratch:
         fixture = build_fixture(Path(scratch))
         fixture.configure(cohort=args.cohort, state=args.state, sequence=1)
         with fixture.server(args.port) as server:

@@ -61,10 +61,10 @@ honestly: some are genuinely quick, others only sound quick.
 - Write a small script. Assume a competent developer *could*, and judge whether a normal
   user actually *would* before scoring on that basis.
 
-## What Cargento already derives
+## What Compass already derives
 
 Listed only so you understand what an item is referring to, not as evidence that the
-information is easy or hard for a user to get. Cargento is not something the user has.
+information is easy or hard for a user to get. Compass is not something the user has.
 
 Cross-harness session discovery; a live state badge (needs-input for Claude only,
 working, idle); current activity; running subagents; a current-turn elapsed and ETA

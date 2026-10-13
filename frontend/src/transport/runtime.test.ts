@@ -38,7 +38,7 @@ function backend(): Backend {
           build: 'b1',
           sessions: [{ harness: 'claude', sid: `s${String(state.generated)}` }],
         }),
-        { status: 200, headers: { 'X-Cargento-Revision': state.revision } },
+        { status: 200, headers: { 'X-Compass-Revision': state.revision } },
       ),
     fetch: (url, init) => {
       requests.push({ method: init?.method ?? 'GET', url });
@@ -545,7 +545,7 @@ describe('typed payload shape', () => {
 function documentWithFocus(content: string): Pick<Document, 'querySelector'> {
   const page = document.implementation.createHTMLDocument('x');
   const meta = page.createElement('meta');
-  meta.setAttribute('name', 'cargento-focus');
+  meta.setAttribute('name', 'compass-focus');
   meta.setAttribute('content', content);
   page.head.append(meta);
   return page;

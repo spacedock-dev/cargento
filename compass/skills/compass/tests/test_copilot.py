@@ -1,0 +1,1388 @@
+from __future__ import annotations
+
+import json
+import os
+import sqlite3
+import tempfile
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from compass_runtime import records
+from compass_runtime import sessions as runtime_sessions
+from compass_runtime.collectors import copilot as copilot_collector
+
+from .support import (
+    RuntimeTestCase,
+    runtime,
+    store_patch,
+)
+
+
+def write_events(root: Path, base: str, sid: str, iso: str, prompt: str) -> Path:
+    """One `<base>/<sid>/events.jsonl` holding a session start and one prompt."""
+    events = root / base / sid / "events.jsonl"
+    events.parent.mkdir(parents=True, exist_ok=True)
+    events.write_text(
+        json.dumps(
+            {"type": "session.start", "timestamp": iso, "data": {"context": {"cwd": "/w/p"}}}
+        )
+        + "\n"
+        + json.dumps({"type": "user.message", "timestamp": iso, "data": {"text": prompt}})
+        + "\n"
+    )
+    return events
+
+
+def write_ledger(root: Path, rows: list[tuple[str | None, int, float]]) -> None:
+    """A session-store.db whose usage rows are (session_id, nano_aiu, epoch).
+
+    Column names and types are the ones a live `~/.copilot/session-store.db`
+    carries; the table there has 23 columns and this writes the six the collector
+    reads or joins on.
+
+    `agent_id` is left NULL, which is the shape of a row the session itself ran —
+    measured on a live store, where the NULL group was every parent row and the
+    subagent rows carried `sidekick-<name>-<epoch ms>`. It has to exist here even
+    though these rows never set it: the collector selects it, and a column the
+    fixture omits raises inside the read, which the collector catches as schema
+    drift and answers with no ledger at all. Every consumption assertion in this
+    file would then flip to None while the code under test was fine.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(root / "session-store.db")
+    con.execute(
+        "CREATE TABLE assistant_usage_events ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, agent_id TEXT,"
+        " model TEXT, total_nano_aiu INTEGER, created_at TEXT)"
+    )
+    con.executemany(
+        "INSERT INTO assistant_usage_events (session_id, model, total_nano_aiu, created_at)"
+        " VALUES (?, 'gpt-5.6-terra', ?, ?)",
+        [(sid, nano, datetime.fromtimestamp(when, UTC).isoformat()) for sid, nano, when in rows],
+    )
+    con.commit()
+    con.close()
+    # discover() needs a session-state dir to consider the harness present.
+    (root / "session-state" / "abcd").mkdir(parents=True, exist_ok=True)
+
+
+def add_row(root: Path, session_id: str | None, amount: Any, created_at: Any) -> None:
+    """One raw usage row, for the shapes `write_ledger`'s typed tuples cannot hold."""
+    con = sqlite3.connect(root / "session-store.db")
+    con.execute(
+        "INSERT INTO assistant_usage_events (session_id, model, total_nano_aiu, created_at)"
+        " VALUES (?, 'm', ?, ?)",
+        (session_id, amount, created_at),
+    )
+    con.commit()
+    con.close()
+
+
+def add_model_row(
+    root: Path,
+    session_id: str | None,
+    agent_id: str | None,
+    model: Any,
+    amount: Any,
+    created_at: Any,
+) -> None:
+    """One raw usage row with its `agent_id` and `model` cells spelled out.
+
+    The highest id, so the collector's `ORDER BY id DESC` read sees it first —
+    which is what makes it the newest row for whatever key it names.
+    """
+    con = sqlite3.connect(root / "session-store.db")
+    con.execute(
+        "INSERT INTO assistant_usage_events"
+        " (session_id, agent_id, model, total_nano_aiu, created_at) VALUES (?, ?, ?, ?, ?)",
+        (session_id, agent_id, model, amount, created_at),
+    )
+    con.commit()
+    con.close()
+
+
+def unreadable_shapes(now: float) -> list[tuple[str, Any, Any]]:
+    """Every way one row can hold spend Compass can neither size nor place.
+
+    `(label, total_nano_aiu, created_at)`. The first three are charges that are
+    not a nano-AIU quantity — including the negative, whose meaning the store
+    does not document, so it is a number Compass cannot bank rather than a
+    credit it may subtract. The last two are rows that place themselves nowhere:
+    a stamp that will not parse, and one far enough ahead of the clock that
+    `sessions.age` refuses it.
+
+    Both surfaces sweep this same list, so the tile and the session row cannot
+    end up disagreeing about which rows they were able to read.
+    """
+    stamp = datetime.fromtimestamp(now - 60, UTC).isoformat()
+    return [
+        ("a null charge", None, stamp),
+        ("a charge that is not a number", "not a number", stamp),
+        ("a negative charge", -5_000_000_000, stamp),
+        ("a stamp that will not parse", 1_000_000_000, "not a timestamp"),
+        (
+            "a stamp ahead of the clock",
+            1_000_000_000,
+            datetime.fromtimestamp(now + 86_400, UTC).isoformat(),
+        ),
+    ]
+
+
+class CopilotCollectorTest(RuntimeTestCase):
+    def test_copilot_sessions_are_discovered_and_analyzed(self) -> None:
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            events = Path(tmp) / "session-state" / "11112222-aaaa" / "events.jsonl"
+            events.parent.mkdir(parents=True)
+            events.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session.start",
+                                "timestamp": iso,
+                                "data": {"context": {"cwd": "/w/myproj"}},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "user.message",
+                                "timestamp": iso,
+                                "data": {"text": "fix the login bug"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "subagent.started",
+                                "timestamp": iso,
+                                "data": {"id": "a1", "name": "researcher"},
+                            }
+                        ),
+                    ]
+                )
+                + "\n"
+            )
+
+            with store_patch(COPILOT_DIR=str(tmp)):
+                config, state = runtime()
+                sessions = copilot_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual(1, len(sessions))
+        s = sessions[0]
+        self.assertEqual("working", s["state"])
+        self.assertEqual("w/myproj", s["project"])  # DRC-3963: <parent>/<basename>
+        self.assertEqual("fix the login bug", s["last_prompt"])
+        self.assertEqual(
+            [
+                {
+                    "name": "researcher",
+                    "model": None,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
+            s["subagents"],
+        )
+        self.assertEqual(records.parse_ts(iso), s["started_at"])
+
+    def test_the_legacy_history_store_is_discovered_and_collected(self) -> None:
+        # Copilot moved its sessions between two directories, and the older one
+        # is assumed to share the <uuid>/events.jsonl layout. Mutation-checked:
+        # dropping history-session-state made those sessions invisible AND
+        # undiscoverable, and passed the whole suite.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            write_events(Path(tmp), "history-session-state", "33334444-bbbb", iso, "old session")
+            with store_patch(COPILOT_DIR=str(tmp)):
+                config, state = runtime()
+
+                self.assertTrue(copilot_collector.discover(config, state))
+                sessions = copilot_collector.collect(config, state, now, 24, False)
+
+        self.assertEqual(["33334444-bbbb"], [s["sid"] for s in sessions])
+        self.assertEqual("old session", sessions[0]["last_prompt"])
+
+    def test_a_uuid_in_both_stores_reads_from_the_newer_file(self) -> None:
+        # The same uuid can exist in both stores after a migration. The newest
+        # file wins, so a stale copy cannot mask live activity. Mutation-checked:
+        # preferring the older file passed the whole suite.
+        now = time.time()
+        fresh_iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        stale_iso = datetime.fromtimestamp(now - 9000, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            sid = "55556666-cccc"
+            old = write_events(Path(tmp), "history-session-state", sid, stale_iso, "stale prompt")
+            new = write_events(Path(tmp), "session-state", sid, fresh_iso, "live prompt")
+            os.utime(old, (now - 9000, now - 9000))
+            os.utime(new, (now - 5, now - 5))
+            with store_patch(COPILOT_DIR=str(tmp)):
+                config, state = runtime()
+                sessions = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(sessions), "one uuid must yield one row")
+        self.assertEqual("live prompt", sessions[0]["last_prompt"])
+
+    def test_the_cwd_falls_back_to_the_first_line_metadata(self) -> None:
+        # An idle session is not analyzed, so its project label can only come
+        # from the cached first-line metadata. Mutation-checked: dropping that
+        # fallback passed the whole suite and every idle row read "copilot".
+        now = time.time()
+        stale = now - 100_000  # outside the 24-hour window
+        iso = datetime.fromtimestamp(stale, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            events = write_events(Path(tmp), "session-state", "77778888-dddd", iso, "old work")
+            os.utime(events, (stale, stale))
+            with store_patch(COPILOT_DIR=str(tmp)):
+                config, state = runtime()
+                sessions = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(sessions))
+        self.assertFalse(sessions[0]["active"], "fixture must be outside the window")
+        self.assertEqual("w/p", sessions[0]["project"])
+
+    def test_a_billing_table_this_build_does_not_know_is_named_on_every_row(self) -> None:
+        # DRC-4447. `_read_ledger`'s own comment accepts what a schema miss
+        # costs — "no model reported, which is never wrong, only incomplete" —
+        # and the reader was never told. `consumption` and `model` are still the
+        # honest None they were; what is new is that the row says why.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", "aaaabbbb-1111", iso, "live work")
+            con = sqlite3.connect(root / "session-store.db")
+            con.execute("CREATE TABLE sessions (id TEXT)")  # no assistant_usage_events
+            con.commit()
+            con.close()
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                rows = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual([runtime_sessions.UNREAD_TOKENS], rows[0]["source_gaps"])
+        self.assertIsNone(rows[0]["consumption"], "the good fields must not change")
+        self.assertIsNone(rows[0]["model"])
+        self.assertEqual("live work", rows[0]["last_prompt"])
+
+    def test_a_billing_table_that_reads_leaves_the_row_saying_nothing_extra(self) -> None:
+        # The other half of the pair: a store that reads must not disclose, or
+        # the sentence is furniture on every Copilot row forever.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", "aaaabbbb-2222", iso, "live work")
+            write_ledger(root, [("aaaabbbb-2222", 2_000_000_000, now - 60)])
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                rows = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+        self.assertEqual("2.00 AIU", rows[0]["consumption"])
+
+    def test_a_store_that_is_absent_rather_than_unreadable_discloses_nothing(self) -> None:
+        # The distinction the disclosure rests on. No `session-store.db` at all
+        # is not a source that half-read, so the row must stay silent about it
+        # even though `consumption` is None on both paths.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", "aaaabbbb-3333", iso, "live work")
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                rows = copilot_collector.collect(config, state, now, 24, True)
+
+        self.assertEqual([[]], [row["source_gaps"] for row in rows])
+        self.assertIsNone(rows[0]["consumption"])
+
+
+class CopilotUsageTest(RuntimeTestCase):
+    """Copilot's consumption tile: real spend, no limit, windowed on row time."""
+
+    def test_aiu_rows_sum_into_one_used_entry(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            # 0.39 AIU + 16.21 AIU, the two models this account actually used.
+            write_ledger(root, [("s", 393_690_000, now - 600), ("s", 16_213_200_000, now - 60)])
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                entries = copilot_collector.usage(config, state, now, 24)
+
+        self.assertEqual(1, len(entries))
+        entry = entries[0]
+        self.assertEqual("copilot", entry["harness"])
+        self.assertEqual("ok", entry["state"])
+        self.assertEqual("16.61 AIU", entry["used"])
+        # asOf is the newest contributing row, not the collection time.
+        self.assertEqual(int(now - 60), entry["asOf"])
+        # Consumption has no limit, so it must never claim a window gauge.
+        self.assertNotIn("fiveH", entry)
+        self.assertNotIn("week", entry)
+
+    def test_rows_outside_the_window_are_excluded(self) -> None:
+        # The figure answers "in the last window_hours", so old spend must not
+        # inflate it. Without this the number would drift with how much history
+        # happened to be retained.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_ledger(
+                root, [("s", 9_000_000_000, now - 8 * 3600), ("s", 1_000_000_000, now - 60)]
+            )
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                inside = copilot_collector.usage(config, state, now, 24)
+                narrow = copilot_collector.usage(config, state, now, 1)
+
+        self.assertEqual("10.00 AIU", inside[0]["used"])
+        self.assertEqual("1.00 AIU", narrow[0]["used"])
+
+    def test_no_rows_in_the_window_publishes_nothing(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_ledger(root, [("s", 5_000_000_000, now - 48 * 3600)])
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                self.assertEqual([], copilot_collector.usage(config, state, now, 24))
+
+    def test_a_missing_or_schemaless_store_is_a_miss_not_an_error(self) -> None:
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            (root / "session-state" / "abcd").mkdir(parents=True)
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                # No database file at all.
+                self.assertEqual([], copilot_collector.usage(config, state, now, 24))
+                # A database with no usage table: schema drift, not a crash.
+                con = sqlite3.connect(root / "session-store.db")
+                con.execute("CREATE TABLE sessions (id TEXT)")
+                con.commit()
+                con.close()
+                self.assertEqual([], copilot_collector.usage(config, state, now, 24))
+
+    def test_no_shape_of_unreadable_row_quietly_shrinks_the_tile(self) -> None:
+        # This test used to assert "2.00 AIU" here, on the reading that a row
+        # Compass could not parse was a row that did not count. The skip was the
+        # poison: the store recorded a charge, the reader was shown a sum without
+        # it, and nothing said the sum was short. A lower bound wearing the word
+        # "used" is the same wrong number a truncated read publishes, and it goes
+        # quiet for the same reason. Mutation-checked shape by shape: dropping
+        # `measured = False` restored "2.00 AIU" on all five.
+        now = time.time()
+        for label, amount, created_at in unreadable_shapes(now):
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "copilot"
+                write_ledger(root, [("s", 2_000_000_000, now - 60)])
+                add_row(root, "s", amount, created_at)
+                with store_patch(COPILOT_DIR=str(root)):
+                    config, state = runtime()
+                    self.assertEqual([], copilot_collector.usage(config, state, now, 24))
+
+    def test_an_unreadable_row_outside_the_window_costs_the_tile_nothing(self) -> None:
+        # A row is placed before its charge is read, and this is why. An old row
+        # contributes nothing whatever its charge column holds, so withholding
+        # the tile over one would throw a good figure away for a row that never
+        # had a vote — and week-old junk is exactly what accumulates in a ledger.
+        # It still vouches for the read having reached past the window's edge.
+        # Mutation-checked: reading the charge before the stamp withheld the tile.
+        now = time.time()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_ledger(root, [("s", 2_000_000_000, now - 60)])
+            add_row(root, "s", None, datetime.fromtimestamp(now - 48 * 3600, UTC).isoformat())
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                entries = copilot_collector.usage(config, state, now, 24)
+
+        self.assertEqual("2.00 AIU", entries[0]["used"])
+
+
+class CopilotConsumptionTest(RuntimeTestCase):
+    """Per-session AIU: the measured figure, the measured zero, and no accounting.
+
+    The join these tests exercise is measured rather than assumed. On a live
+    `~/.copilot/session-store.db` the distinct `assistant_usage_events.session_id`
+    values matched the `session-state/<uuid>` directory names 2 of 2, and those
+    basenames are what the collector publishes as `sid`.
+    """
+
+    SID_A = "aaaa1111-2222-3333-4444-555555555555"
+    SID_B = "bbbb1111-2222-3333-4444-555555555555"
+
+    def _collect(
+        self,
+        root: Path,
+        now: float,
+        window_hours: float = 24,
+    ) -> dict[str, dict[str, Any]]:
+        """Every collected row for a prepared store, keyed by full sid."""
+        with store_patch(COPILOT_DIR=str(root)):
+            config, state = runtime()
+            rows = copilot_collector.collect(config, state, now, window_hours, True)
+        return {str(row["sid"]): row for row in rows}
+
+    def test_each_session_row_carries_its_own_share_of_the_ledger(self) -> None:
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "one")
+            write_events(root, "session-state", self.SID_B, iso, "two")
+            # Two rows against SID_A. The smaller is a sidekick request, which
+            # the store attributes to the session that launched it: on the live
+            # store those rows carry an `agent_id`, a `request_multiplier` of
+            # 0.33, and a `total_nano_aiu` that already has the multiplier in it.
+            write_ledger(
+                root,
+                [
+                    (self.SID_A, 1_016_840_000, now - 60),
+                    (self.SID_A, 145_050_000, now - 50),
+                    (self.SID_B, 6_428_100_000, now - 40),
+                ],
+            )
+            rows = self._collect(root, now)
+
+        self.assertEqual("1.16 AIU", rows[self.SID_A]["consumption"])
+        self.assertEqual("6.43 AIU", rows[self.SID_B]["consumption"])
+
+    def test_a_session_the_ledger_does_not_mention_reads_a_measured_zero(self) -> None:
+        # The ledger was read to the end of the window and holds nothing for this
+        # session, which is a zero somebody measured. It is a different reading
+        # from the None below, and both have to survive into the payload.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "spent nothing")
+            write_ledger(root, [(self.SID_B, 6_428_100_000, now - 40)])
+            rows = self._collect(root, now)
+
+        self.assertEqual("0.00 AIU", rows[self.SID_A]["consumption"])
+
+    def test_no_ledger_at_all_leaves_the_figure_unmeasured(self) -> None:
+        # No session-store.db: Compass has no accounting for this harness, and a
+        # session it cannot account for must not read as one that spent nothing.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "unaccounted")
+            rows = self._collect(root, now)
+
+        self.assertIsNone(rows[self.SID_A]["consumption"])
+
+    def test_a_drifted_ledger_schema_leaves_the_figure_unmeasured(self) -> None:
+        # A store that no longer carries assistant_usage_events is the same
+        # nothing as a store with no database, not a store full of zeroes.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "drifted")
+            con = sqlite3.connect(root / "session-store.db")
+            con.execute("CREATE TABLE sessions (id TEXT)")
+            con.commit()
+            con.close()
+            rows = self._collect(root, now)
+
+        self.assertIsNone(rows[self.SID_A]["consumption"])
+
+    def test_the_row_and_the_tile_read_the_same_window(self) -> None:
+        # The row figure and the harness tile beside it answer the same question
+        # over the same span. A lifetime per-session total would hold at 24 hours
+        # and diverge the moment the window narrowed, with nothing on the page to
+        # say which of the two numbers the reader was looking at.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "one session")
+            write_ledger(
+                root,
+                [
+                    (self.SID_A, 9_000_000_000, now - 8 * 3600),
+                    (self.SID_A, 1_000_000_000, now - 60),
+                ],
+            )
+            wide = self._collect(root, now, 24)
+            narrow = self._collect(root, now, 1)
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                wide_tile = copilot_collector.usage(config, state, now, 24)
+                narrow_tile = copilot_collector.usage(config, state, now, 1)
+
+        self.assertEqual("10.00 AIU", wide[self.SID_A]["consumption"])
+        self.assertEqual("10.00 AIU", wide_tile[0]["used"])
+        self.assertEqual("1.00 AIU", narrow[self.SID_A]["consumption"])
+        self.assertEqual("1.00 AIU", narrow_tile[0]["used"])
+
+    def test_a_row_naming_no_session_still_counts_toward_the_harness(self) -> None:
+        # Spend the ledger attributes to nobody is still spend. Dropping it would
+        # understate the harness figure; handing it to a session would be worse.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "one session")
+            write_ledger(
+                root, [(self.SID_A, 1_000_000_000, now - 60), (None, 4_000_000_000, now - 50)]
+            )
+            rows = self._collect(root, now)
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                tile = copilot_collector.usage(config, state, now, 24)
+
+        self.assertEqual("1.00 AIU", rows[self.SID_A]["consumption"])
+        self.assertEqual("5.00 AIU", tile[0]["used"])
+
+    def test_an_unreadable_row_withholds_the_figure_of_the_session_it_names(self) -> None:
+        # The defect this pins: an in-window row naming SID_A whose charge cannot
+        # be read published "1.00 AIU" for a session the ledger says spent more,
+        # and a null charge with no other row published "0.00 AIU" — a session
+        # the store billed, rendered as one that was free, under a tooltip that
+        # calls the zero measured. The withdrawal is scoped: SID_B's rows were all
+        # readable, so its figure is exact and it keeps it.
+        # Mutation-checked shape by shape: dropping the `unmeasured.add(named)`
+        # returned SID_A to "1.00 AIU" on all five and passed the rest of the file.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        for label, amount, created_at in unreadable_shapes(now):
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "copilot"
+                write_events(root, "session-state", self.SID_A, iso, "billed")
+                write_events(root, "session-state", self.SID_B, iso, "also billed")
+                write_ledger(
+                    root,
+                    [
+                        (self.SID_A, 1_000_000_000, now - 60),
+                        (self.SID_B, 3_000_000_000, now - 55),
+                    ],
+                )
+                add_row(root, self.SID_A, amount, created_at)
+                rows = self._collect(root, now)
+                with store_patch(COPILOT_DIR=str(root)):
+                    config, state = runtime()
+                    tile = copilot_collector.usage(config, state, now, 24)
+
+                self.assertIsNone(rows[self.SID_A]["consumption"])
+                self.assertEqual("3.00 AIU", rows[self.SID_B]["consumption"])
+                self.assertEqual([], tile)
+
+    def test_an_unreadable_row_naming_no_session_withholds_only_the_tile(self) -> None:
+        # The scoping decision, stated as a test. An unattributed row belongs to
+        # nobody — that is the same reading of the store that keeps such a row's
+        # spend out of every session's figure one test above — so an unreadable
+        # one takes no session's figure with it. Only the sum it would have fed
+        # goes quiet. The alternative, blacking out every session in the harness
+        # over one malformed row, hands a rare fault the power to delete a real
+        # signal. Mutation-checked: adding every collected sid to `unmeasured`
+        # for an unattributed loss made SID_A None and passed the whole file.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "attributed")
+            write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+            add_row(root, None, None, datetime.fromtimestamp(now - 50, UTC).isoformat())
+            rows = self._collect(root, now)
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                tile = copilot_collector.usage(config, state, now, 24)
+
+        self.assertEqual("1.00 AIU", rows[self.SID_A]["consumption"])
+        self.assertEqual([], tile)
+
+    def test_a_session_older_than_the_window_has_no_zero_to_publish(self) -> None:
+        # A zero is a claim that the window was read to its end and covers this
+        # session. For a session last active three days ago the second half is
+        # false: the ledger has no reach over the hours it was running, so
+        # "0.00 AIU" answers a question about the last window_hours in the type
+        # of an answer about this session. These are the rows behind "Show all N
+        # idle", beside a detail panel that promises what the session spent.
+        # The measured zero one test above is the counterpart: an *active*
+        # session the window does cover still reads "0.00 AIU", and this must not
+        # collapse the two. Mutation-checked: ignoring `active` published
+        # "0.00 AIU" here and passed the whole file.
+        now = time.time()
+        stale = now - 100_000  # three days back, well outside the 24-hour window
+        iso = datetime.fromtimestamp(stale, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = write_events(root, "session-state", self.SID_A, iso, "long finished")
+            os.utime(events, (stale, stale))
+            write_ledger(root, [(self.SID_B, 6_428_100_000, now - 40)])
+            rows = self._collect(root, now)
+
+        self.assertFalse(rows[self.SID_A]["active"], "fixture must be outside the window")
+        self.assertIsNone(rows[self.SID_A]["consumption"])
+
+    def test_a_session_older_than_the_window_keeps_a_figure_the_window_holds(self) -> None:
+        # Only the zero makes the coverage claim. A number claims no more than
+        # that these rows exist, which is true however old the session file is,
+        # and the tooltip beside it names the window. Withholding it too would
+        # lose a real reading to a rule aimed at a false one.
+        # Mutation-checked: returning None for every inactive session dropped
+        # this figure and passed the whole file.
+        now = time.time()
+        stale = now - 30 * 3600  # outside a 24-hour window, its spend inside it
+        iso = datetime.fromtimestamp(stale, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = write_events(root, "session-state", self.SID_A, iso, "billed late")
+            os.utime(events, (stale, stale))
+            write_ledger(root, [(self.SID_A, 2_000_000_000, now - 20 * 3600)])
+            rows = self._collect(root, now)
+
+        self.assertFalse(rows[self.SID_A]["active"], "fixture must be outside the window")
+        self.assertEqual("2.00 AIU", rows[self.SID_A]["consumption"])
+
+    def _capped_ledger(self, root: Path, now: float, older: int) -> None:
+        """A ledger longer than the read cap, `older` of whose rows predate 24h.
+
+        The old rows go in first so the newest rows carry the highest ids, which
+        is the order the collector reads: id descending, newest first.
+        """
+        rows: list[tuple[str | None, int, float]] = [
+            (self.SID_A, 1_000_000, now - 48 * 3600) for _ in range(older)
+        ]
+        rows += [
+            (self.SID_A, 1_000_000, now - 60)
+            for _ in range(copilot_collector._USAGE_ROW_CAP + 1 - older)
+        ]
+        write_ledger(root, rows)
+
+    def test_a_read_that_reaches_past_the_window_measures_beyond_the_cap(self) -> None:
+        # The cap bounds the read, not the answer. A long-lived ledger whose read
+        # still got back past the window's far edge has been read to the end of
+        # the window, so the figure stands — otherwise every heavy user would
+        # lose the signal permanently once their history outgrew the cap.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "long history")
+            self._capped_ledger(root, now, older=20)
+            rows = self._collect(root, now)
+
+        # 5001 rows read, 20 of them older than the window: 4981 in-window rows
+        # at 0.001 AIU each.
+        self.assertEqual("4.98 AIU", rows[self.SID_A]["consumption"])
+
+    def test_a_read_truncated_inside_the_window_publishes_no_figure(self) -> None:
+        # Every row read is inside the window, so there is unread history that
+        # could hold any amount of it. A sum over what was read would be a lower
+        # bound rendered as a total, and a session absent from it would read as a
+        # measured zero. Both surfaces go quiet instead.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "torrent")
+            self._capped_ledger(root, now, older=0)
+            rows = self._collect(root, now)
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                tile = copilot_collector.usage(config, state, now, 24)
+
+        self.assertIsNone(rows[self.SID_A]["consumption"])
+        self.assertEqual([], tile)
+
+    def test_an_unreadable_stamp_does_not_vouch_for_the_window_being_read(self) -> None:
+        # A row whose created_at will not parse places itself nowhere. Read as an
+        # age instead, an unparseable stamp becomes an enormous one, which looks
+        # exactly like the old row that proves the read reached past the window —
+        # and one such row would restore both figures on a truncated read.
+        #
+        # SID_B carries the assertion, because SID_A no longer can. An unplaceable
+        # row now withholds the figure of the session it names, so SID_A reads
+        # None whether or not the vouching rule holds, and a test resting on it
+        # would pass a build where that rule had been reversed. SID_B is named by
+        # no bad row, so only the truncated read stands between it and a figure.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "torrent")
+            write_events(root, "session-state", self.SID_B, iso, "a trickle beside it")
+            self._capped_ledger(root, now, older=0)
+            con = sqlite3.connect(root / "session-store.db")
+            con.execute(
+                "INSERT INTO assistant_usage_events (session_id, total_nano_aiu, created_at)"
+                " VALUES (?, 1000000, ?)",
+                (self.SID_B, datetime.fromtimestamp(now - 45, UTC).isoformat()),
+            )
+            # Highest id, so the read sees it first and cannot miss it.
+            con.execute(
+                "INSERT INTO assistant_usage_events (session_id, total_nano_aiu, created_at)"
+                " VALUES (?, 1000000, 'not a timestamp')",
+                (self.SID_A,),
+            )
+            con.commit()
+            con.close()
+            rows = self._collect(root, now)
+            with store_patch(COPILOT_DIR=str(root)):
+                config, state = runtime()
+                tile = copilot_collector.usage(config, state, now, 24)
+
+        self.assertIsNone(rows[self.SID_A]["consumption"])
+        self.assertIsNone(rows[self.SID_B]["consumption"])
+        self.assertEqual([], tile)
+
+
+def collect_rows(root: Path, now: float, window_hours: float = 24) -> dict[str, dict[str, Any]]:
+    """Every collected row for a prepared store, keyed by full sid."""
+    with store_patch(COPILOT_DIR=str(root)):
+        config, state = runtime()
+        rows = copilot_collector.collect(config, state, now, window_hours, True)
+    return {str(row["sid"]): row for row in rows}
+
+
+class CopilotModelTest(RuntimeTestCase):
+    """The model a session ran on, read off the ledger rows it already reads.
+
+    Measured on a live store, and the shape of that store is what these fixtures
+    reproduce: five rows with `agent_id` SQL NULL, all on one model, spanning two
+    sessions; four rows with a `sidekick-<name>-<epoch ms>` `agent_id`, all on a
+    different one. Both halves of the key are load-bearing because of the first
+    of those — the NULL group is not per-session.
+
+    None here is "no model reported", and it is a third reading beside a name.
+    Nothing in this file may let a collector guess one.
+    """
+
+    SID_A = "aaaa1111-2222-3333-4444-555555555555"
+    SID_B = "bbbb1111-2222-3333-4444-555555555555"
+    PARENT = "gpt-5.6-terra"
+    CHILD = "gpt-5.4-mini"
+
+    def test_the_sessions_own_rows_name_the_model_the_card_publishes(self) -> None:
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "on some model")
+            write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+            rows = collect_rows(root, now)
+
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+        # Copilot's authority is Copilot. A provider here would render "via
+        # Copilot" beside a Copilot badge — a clause that carries no information
+        # and takes the space that says which model.
+        self.assertIsNone(rows[self.SID_A]["provider"])
+
+    def test_a_store_with_no_ledger_reports_no_model_rather_than_guessing(self) -> None:
+        # There is no second source to fall back to, and the fallbacks that look
+        # available are not: `session.start` carries no model field at all, and
+        # the model-cache list near the tail is a TTL record rather than a
+        # statement of what ran. So the honest answer is that none was read.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "unaccounted")
+            rows = collect_rows(root, now)
+
+        self.assertIsNone(rows[self.SID_A]["model"])
+
+    def test_sessions_sharing_the_null_agent_group_keep_their_own_models(self) -> None:
+        # The live shape: `agent_id` NULL is not a per-session marker, it is every
+        # parent row in the store, and on the store this was measured against that
+        # group spanned both sessions. Keyed on `agent_id` alone, whichever model
+        # the id-descending read met first would be published for every session in
+        # the harness. Mutation-checked: dropping the session half of the key gave
+        # both rows "gpt-5.4-mini".
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "one")
+            write_events(root, "session-state", self.SID_B, iso, "two")
+            write_ledger(root, [])
+            add_model_row(root, self.SID_A, None, self.PARENT, 1_000_000_000, iso)
+            add_model_row(root, self.SID_B, None, self.CHILD, 1_000_000_000, iso)
+            rows = collect_rows(root, now)
+
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+        self.assertEqual(self.CHILD, rows[self.SID_B]["model"])
+
+    def test_a_subagents_row_is_never_read_as_the_sessions_own_model(self) -> None:
+        # The ledger attributes a sidekick's spend to the session that launched
+        # it, so its rows carry this session's `session_id` and run on a different
+        # model. Reading the newest row for the *session* rather than the newest
+        # row naming the session is what keeps the child's model off the parent's
+        # card — where it would be a measured value in the wrong place, which is
+        # indistinguishable from the right one.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            write_events(root, "session-state", self.SID_A, iso, "launched a sidekick")
+            write_ledger(root, [])
+            add_model_row(root, self.SID_A, None, self.PARENT, 1_000_000_000, iso)
+            # Highest id, so an unkeyed newest-wins read would take this one.
+            agent = "sidekick-github-context-memory-1785829732526"
+            add_model_row(root, self.SID_A, agent, self.CHILD, 330_000_000, iso)
+            rows = collect_rows(root, now)
+
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+        self.assertEqual("1.33 AIU", rows[self.SID_A]["consumption"])
+
+    def test_an_unusable_model_cell_withdraws_the_model_and_not_the_charge(self) -> None:
+        # Two quantities, withdrawn independently. The charge on such a row is
+        # perfectly accountable and blacking a session's spend out over the cell
+        # beside it would be the same over-withdrawal this collector already
+        # rejects for a row that names no session.
+        #
+        # And the withdrawal reaches the newest reading only. An unusable newest
+        # cell records "cannot tell" deliberately, so the older row below cannot
+        # promote a stale model into a confident answer.
+        #
+        # `TEXT NOT NULL` on the live column is not a guard: it excludes NULL and
+        # nothing else. A number written into it is not testable here and does not
+        # need to be — TEXT affinity stores 5 as the string "5", which no reader
+        # can tell from a one-character model name; what survives as a non-string
+        # is a blob, which affinity does not convert.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        unusable: list[tuple[str, Any]] = [
+            ("an empty cell", ""),
+            ("whitespace only", "   "),
+            ("a null cell", None),
+            ("a blob", sqlite3.Binary(b"\x01\x02")),
+        ]
+        for label, model in unusable:
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "copilot"
+                write_events(root, "session-state", self.SID_A, iso, "billed anyway")
+                write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+                add_model_row(root, self.SID_A, None, model, 1_000_000_000, iso)
+                rows = collect_rows(root, now)
+
+                self.assertIsNone(rows[self.SID_A]["model"])
+                self.assertEqual("2.00 AIU", rows[self.SID_A]["consumption"])
+
+    def test_a_charge_that_cannot_be_read_does_not_withhold_the_model(self) -> None:
+        # The other direction, and the one an implementation loses by accident:
+        # every one of these rows hits a `continue` before the charge is banked,
+        # so a model accumulated after it is silently dropped. The row still says
+        # which model ran, and that reading is good.
+        #
+        # The assertion is the *newest* model rather than merely a non-None one.
+        # An older readable row sits underneath, so "a model came back" would pass
+        # a build that skipped the bad row entirely.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        for label, amount, created_at in unreadable_shapes(now):
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp) / "copilot"
+                write_events(root, "session-state", self.SID_A, iso, "billed")
+                write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+                add_model_row(root, self.SID_A, None, self.CHILD, amount, created_at)
+                rows = collect_rows(root, now)
+
+                self.assertEqual(self.CHILD, rows[self.SID_A]["model"])
+                self.assertIsNone(rows[self.SID_A]["consumption"])
+
+    def test_a_session_outside_the_window_still_names_its_model(self) -> None:
+        # The window continue, which is the other one the accumulation sits above.
+        # Window coverage and model coverage are different questions: the ledger
+        # has no reach over the hours this session was running, so it has no
+        # figure to publish, but the row it does hold still says what ran. These
+        # are the rows behind "Show all N idle", which is where a reader browses.
+        now = time.time()
+        stale = now - 100_000
+        iso = datetime.fromtimestamp(stale, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = write_events(root, "session-state", self.SID_A, iso, "long finished")
+            os.utime(events, (stale, stale))
+            write_ledger(root, [(self.SID_A, 1_000_000_000, stale)])
+            rows = collect_rows(root, now)
+
+        self.assertFalse(rows[self.SID_A]["active"], "fixture must be outside the window")
+        self.assertIsNone(rows[self.SID_A]["consumption"])
+        self.assertEqual(self.PARENT, rows[self.SID_A]["model"])
+
+    def test_a_working_sessions_subagent_carries_the_model_it_started_on(self) -> None:
+        # The two-measured-values case, and Copilot is where it was measured on
+        # both sides at once: the parent on `gpt-5.6-terra` from the ledger, the
+        # child on `gpt-5.4-mini` from its own start event.
+        #
+        # The child's model comes off the same JSON object as its name, so the
+        # pair is right by construction. The ledger's `agent_id` for that child is
+        # `sidekick-github-context-memory-<epoch ms>` while the published name is
+        # `github-context-memory`: related by string construction only, so
+        # recovering one from the other is prefix-parsing, which is inference.
+        #
+        # The fixture must be *working*. Copilot only reads its events at all
+        # while the session is active, so an idle one publishes no subagents and
+        # this path would never run.
+        #
+        # The collector publishes both models raw. Whether the child's is worth
+        # screen space is the page's decision, made on two measured values, and
+        # duplicating it here would put the rule in two places.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = root / "session-state" / self.SID_A / "events.jsonl"
+            events.parent.mkdir(parents=True)
+            events.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session.start",
+                                "timestamp": iso,
+                                "data": {"context": {"cwd": "/w/myproj"}},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "subagent.started",
+                                "timestamp": iso,
+                                "agentId": "sidekick-github-context-memory-1785829732526",
+                                "id": "5c868fe4-340b-4d4e-a4b5-9540074b612f",
+                                "data": {
+                                    "toolCallId": "sidekick-github-context-memory-1785829732526",
+                                    "agentName": "github-context-memory",
+                                    "model": self.CHILD,
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n"
+            )
+            write_ledger(root, [(self.SID_A, 1_000_000_000, now - 60)])
+            rows = collect_rows(root, now)
+
+        row = rows[self.SID_A]
+        self.assertEqual("working", row["state"], "an idle session publishes no subagents")
+        self.assertEqual(self.PARENT, row["model"])
+        self.assertEqual(
+            [
+                {
+                    "name": "github-context-memory",
+                    "model": self.CHILD,
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
+            row["subagents"],
+        )
+
+    def test_a_childs_model_is_bounded_and_guarded_like_the_sessions_own(self) -> None:
+        # Both readings go through one function, so a hostile value cannot be
+        # bounded on one path and not the other. The name is capped in the
+        # analyzer at its own width; the model is capped here, at the width
+        # `sessions` declares for every model on the payload.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 5, UTC).isoformat()
+        cap = runtime_sessions.MODEL_CAP_CHARS
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            events = root / "session-state" / self.SID_A / "events.jsonl"
+            events.parent.mkdir(parents=True)
+            events.write_text(
+                json.dumps(
+                    {
+                        "type": "subagent.started",
+                        "timestamp": iso,
+                        "agentId": "a1",
+                        "data": {"agentName": "n" * 200, "model": "m\x00o" + "d" * 100},
+                    }
+                )
+                + "\n"
+            )
+            rows = collect_rows(root, now)
+
+        pill = rows[self.SID_A]["subagents"][0]
+        self.assertEqual("n" * 70, pill["name"])
+        self.assertEqual("m o" + "d" * (cap - 3), pill["model"])
+
+
+class CopilotPermissionGateTest(RuntimeTestCase):
+    """The standing permission prompt, read off the pair Copilot already writes.
+
+    Measured, not designed: ``docs/captures/copilot/permission-events-1.0.78-macos.jsonl``
+    records across six interactive 1.0.78 sessions that ``permission.requested``
+    is on disk in the first poller frame the dialog is visible, that
+    ``permission.completed`` does not arrive until the human answers, and that
+    ``data.requestId`` joins the two 1:1 in 6 of 6 pairs. Gates stood 36 s, 44 s
+    and 48 s on a shell prompt and 23 s on a url one, so an outstanding request is
+    a person being held up rather than a record in flight.
+
+    The fixtures carry the *whole* measured key set, command text included, so the
+    test that asserts none of it reaches the row is asserting against a payload
+    that really contains it. The key set is kind-dependent rather than a union:
+    ``kind="url"`` carries none of the shell keys, which is why an adapter that
+    reads them before branching on ``kind`` gets its own arm.
+    """
+
+    SID = "cb3dfc76-1111-2222-3333-444444444444"
+    # The strings an adapter must never surface. `intention` is a model's prose,
+    # `fullCommandText` and `commands[]` are the command line, and
+    # `docs/captures/README.md` excludes exactly that class.
+    COMMAND_TEXT = "rmdir /srv/notes-private"
+    INTENTION = "clear the notes directory the user mentioned"
+    URL = "https://example.invalid/notes-private"
+
+    def shell_request(self, request_id: str, iso: str) -> dict[str, Any]:
+        """One `permission.requested` in the live shape, `kind="shell"`."""
+        return {
+            "type": "permission.requested",
+            "id": "evt-" + request_id,
+            "parentId": "turn-1",
+            "timestamp": iso,
+            "data": {
+                "requestId": request_id,
+                "permissionRequest": {
+                    "canOfferSessionApproval": True,
+                    "commandSegments": [
+                        {"fullCommandText": self.COMMAND_TEXT, "identifier": "rmdir"}
+                    ],
+                    "commands": [{"identifier": "rmdir", "readOnly": False}],
+                    "fullCommandText": self.COMMAND_TEXT,
+                    "hasWriteFileRedirection": False,
+                    "intention": self.INTENTION,
+                    "kind": "shell",
+                    "possiblePaths": ["/srv/notes-private"],
+                    "possibleUrls": [],
+                    "toolCallId": "tc-" + request_id,
+                },
+                "promptRequest": {
+                    "canOfferSessionApproval": True,
+                    "commandIdentifiers": ["rmdir"],
+                    "fullCommandText": self.COMMAND_TEXT,
+                    "intention": self.INTENTION,
+                    "kind": "commands",
+                    "toolCallId": "tc-" + request_id,
+                },
+            },
+        }
+
+    def url_request(self, request_id: str, iso: str) -> dict[str, Any]:
+        """One `permission.requested`, `kind="url"` — four keys and no shell one."""
+        return {
+            "type": "permission.requested",
+            "id": "evt-" + request_id,
+            "parentId": "turn-1",
+            "timestamp": iso,
+            "data": {
+                "requestId": request_id,
+                "permissionRequest": {
+                    "intention": self.INTENTION,
+                    "kind": "url",
+                    "toolCallId": "tc-" + request_id,
+                    "url": self.URL,
+                },
+                "promptRequest": {
+                    "intention": self.INTENTION,
+                    "kind": "url",
+                    "toolCallId": "tc-" + request_id,
+                    "url": self.URL,
+                },
+            },
+        }
+
+    def completed(self, request_id: str, iso: str, kind: str, **result: Any) -> dict[str, Any]:
+        """The answer half of the pair, keyed on the same `requestId`."""
+        return {
+            "type": "permission.completed",
+            "id": "evt-done-" + request_id,
+            "parentId": "turn-1",
+            "timestamp": iso,
+            "data": {
+                "requestId": request_id,
+                "toolCallId": "tc-" + request_id,
+                "result": {"kind": kind, **result},
+            },
+        }
+
+    def opening(self, now: float) -> list[dict[str, Any]]:
+        """A session that is unambiguously fresh, and the tool call under the gate.
+
+        Fresh on purpose: without it a row could reach Needs input by aging out of
+        Working, and the precedence this feature needs would not be under test.
+        """
+        iso = datetime.fromtimestamp(now - 60, UTC).isoformat()
+        return [
+            {
+                "type": "session.start",
+                "timestamp": iso,
+                "data": {"sessionId": self.SID, "context": {"cwd": "/w/myproj"}},
+            },
+            {"type": "user.message", "timestamp": iso, "data": {"text": "tidy the notes"}},
+            {
+                "type": "tool.execution_start",
+                "timestamp": datetime.fromtimestamp(now - 41, UTC).isoformat(),
+                "data": {"toolName": "shell"},
+            },
+        ]
+
+    def row(self, now: float, *events: dict[str, Any]) -> dict[str, Any]:
+        """The collected row for a store holding exactly these events."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            path = root / "session-state" / self.SID / "events.jsonl"
+            path.parent.mkdir(parents=True)
+            path.write_text("".join(json.dumps(e) + "\n" for e in events))
+            os.utime(path, (now - 40, now - 40))
+            return collect_rows(root, now)[self.SID]
+
+    def test_a_standing_request_holds_the_row_at_needs_input(self) -> None:
+        # The positive arm of the capture: requested on disk, no completed behind
+        # it, and the file quiescent for the 36-48 s the dialog stood. The row must
+        # outrank Working -- the request lands 0.045 s after `tool.execution_start`,
+        # so every gate opens inside the working window and a Working row would be
+        # the whole defect.
+        now = time.time()
+        iso = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        row = self.row(now, *self.opening(now), self.shell_request("req-1", iso))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(iso), row["blocked_since"])
+        self.assertIn("shell", row["state_detail"])
+        self.assertIn("waiting", row["state_detail"])
+
+    def test_the_completed_half_of_the_pair_clears_the_gate(self) -> None:
+        # `permission.completed` is the only thing that arrives when the human
+        # answers, so the row has to come back off the gate on the strength of it
+        # alone. Mutation direction: an adapter that only ever inserts leaves every
+        # answered session red for the rest of its life.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 4, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.completed("req-1", answered, "approved"),
+        )
+
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_every_measured_result_kind_closes_the_gate(self) -> None:
+        # Four spellings in the capture's `result.kind` enum, and the join is on
+        # `requestId` rather than on the answer, so none of them may be treated as
+        # a special case. A reading that closed only on `approved` would hold a
+        # denied session red forever.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 4, UTC).isoformat()
+        for kind, extra in (
+            ("approved", {}),
+            ("cancelled", {"reason": "user pressed escape"}),
+            ("denied-interactively-by-user", {"feedback": "no, not that directory"}),
+            ("denied-no-approval-rule-and-could-not-request-from-user", {}),
+        ):
+            with self.subTest(kind=kind):
+                row = self.row(
+                    now,
+                    *self.opening(now),
+                    self.shell_request("req-1", asked),
+                    self.completed("req-1", answered, kind, **extra),
+                )
+                self.assertNotEqual("needs_input", row["state"])
+
+    def test_a_non_interactive_denial_never_raises_a_wait(self) -> None:
+        # The headless control arm, and it gets its own test because it is the one
+        # that would flicker a card on the board for a run nobody is watching.
+        # `copilot -p` with no allow flags is not refused: it proceeds and
+        # auto-denies every gated call, writing the pair 1 ms apart with
+        # `denied-no-approval-rule-and-could-not-request-from-user`. That is a
+        # machine-readable "no human was available", never a person being held up.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 40 + 0.001, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.completed(
+                "req-1", answered, "denied-no-approval-rule-and-could-not-request-from-user"
+            ),
+        )
+
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_a_url_request_is_read_without_the_shell_keys(self) -> None:
+        # `kind="url"` carries `{intention, kind, toolCallId, url}` and none of
+        # `fullCommandText`, `commands`, `commandSegments`, `possiblePaths` or
+        # `possibleUrls`. An adapter written from a flattened key list reads fields
+        # that are simply not there, so this is the arm that catches a union.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 23, UTC).isoformat()
+        row = self.row(now, *self.opening(now), self.url_request("req-2", asked))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(asked), row["blocked_since"])
+        self.assertIn("url", row["state_detail"])
+
+    def test_no_command_text_or_prose_reaches_the_published_row(self) -> None:
+        # Constraint 3, and it is a capture-contract rule rather than a preference:
+        # `fullCommandText`, `commands[]`, `intention`, `result.reason` and
+        # `result.feedback` are command lines and prose a person or a model wrote.
+        # Asserted over the whole serialized row, so a field added later cannot
+        # smuggle one in past a per-key check.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.url_request("req-2", asked),
+        )
+
+        published = json.dumps(row)
+        for secret in (self.COMMAND_TEXT, self.INTENTION, self.URL, "notes-private", "rmdir"):
+            self.assertNotIn(secret, published, f"{secret!r} must not reach the row")
+
+    def test_the_longest_standing_request_dates_the_wait(self) -> None:
+        # Two gates can stand at once, and the gate queue ranks on `blocked_since`.
+        # The older one is the one that has cost somebody something, so it dates
+        # the row; taking the newest would restart the clock every time a second
+        # prompt opened.
+        now = time.time()
+        older = datetime.fromtimestamp(now - 48, UTC).isoformat()
+        newer = datetime.fromtimestamp(now - 12, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", older),
+            self.url_request("req-2", newer),
+        )
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(older), row["blocked_since"])
+
+    def test_an_answer_to_another_request_leaves_this_one_standing(self) -> None:
+        # The join is `data.requestId` and nothing else. Closing on the event type
+        # alone would clear a standing gate the moment any other prompt in the same
+        # session was answered.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        answered = datetime.fromtimestamp(now - 4, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now),
+            self.shell_request("req-1", asked),
+            self.completed("req-2", answered, "approved"),
+        )
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(asked), row["blocked_since"])
+
+    def test_a_gated_session_keeps_the_children_it_started(self) -> None:
+        # A gate says the parent is held up; it says nothing about the subagents
+        # already running. They were published only from the Working branch, so
+        # without this a fan-out reaching a prompt drops every pill at the moment
+        # the row becomes the one worth looking at.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 40, UTC).isoformat()
+        started = {
+            "type": "subagent.started",
+            "timestamp": datetime.fromtimestamp(now - 50, UTC).isoformat(),
+            "agentId": "sidekick-researcher-1785829732526",
+            "data": {"agentName": "researcher", "model": "gpt-5.4-mini"},
+        }
+        row = self.row(now, *self.opening(now), started, self.shell_request("req-1", asked))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(
+            [
+                {
+                    "name": "researcher",
+                    "model": "gpt-5.4-mini",
+                    "started_at": None,
+                    "active": None,
+                    "parent": None,
+                }
+            ],
+            row["subagents"],
+        )
+
+    def test_a_prompt_typed_past_a_request_retires_it(self) -> None:
+        # The liveness bound. `permission.completed` is the only record that
+        # answers a request, and it is never written when the terminal closes on
+        # the dialog or the process is killed at it — so the request stands for
+        # the whole activity window, ahead of the busy test, and a session that
+        # was resumed and is unambiguously working reads Needs input against its
+        # own live activity. A prompt the person typed is proof the dialog is
+        # gone: it owns the input while it is up.
+        now = time.time()
+        orphan = datetime.fromtimestamp(now - 3600, UTC).isoformat()
+        row = self.row(
+            now,
+            *self.opening(now - 3600),
+            self.shell_request("req-1", orphan),
+            {
+                "type": "user.message",
+                "timestamp": datetime.fromtimestamp(now - 30, UTC).isoformat(),
+                "data": {"text": "carry on"},
+            },
+            {
+                "type": "tool.execution_start",
+                "timestamp": datetime.fromtimestamp(now - 5, UTC).isoformat(),
+                "data": {"toolName": "view"},
+            },
+        )
+
+        self.assertEqual("working", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_a_request_with_nothing_yet_behind_it_is_not_a_wait(self) -> None:
+        # The headless race, and since DRC-4192 it raises a real desktop popup
+        # rather than a cosmetic blink. `copilot -p` without `--allow-all-tools`
+        # is not refused: it auto-denies every gated call, writing the pair 1 ms
+        # apart. A collection tick landing inside that millisecond — or on a
+        # `permission.completed` line still being appended, which the parser
+        # drops as unreadable JSON, and which is the tail this fixture builds —
+        # sees a request with no answer behind it. The settled end state is
+        # pinned by `test_a_non_interactive_denial_never_raises_a_wait`, which
+        # cannot see this window at all.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 0.2, UTC).isoformat()
+        torn = json.dumps(
+            self.completed(
+                "req-1",
+                datetime.fromtimestamp(now - 0.199, UTC).isoformat(),
+                "denied-no-approval-rule-and-could-not-request-from-user",
+            )
+        )[:40]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "copilot"
+            path = root / "session-state" / self.SID / "events.jsonl"
+            path.parent.mkdir(parents=True)
+            events = [*self.opening(now), self.shell_request("req-1", asked)]
+            path.write_text("".join(json.dumps(e) + "\n" for e in events) + torn)
+            os.utime(path, (now - 0.2, now - 0.2))
+            row = collect_rows(root, now)[self.SID]
+
+        self.assertNotEqual("needs_input", row["state"])
+        self.assertIsNone(row.get("blocked_since"))
+
+    def test_the_floor_does_not_hold_back_a_gate_a_person_is_at(self) -> None:
+        # The other half of the floor: two seconds is three orders of magnitude
+        # above the 1 ms pair it exists to beat and an order below the shortest
+        # 23 s gate the capture recorded, so a prompt in front of a person is
+        # never withheld by it.
+        now = time.time()
+        asked = datetime.fromtimestamp(now - 3, UTC).isoformat()
+        row = self.row(now, *self.opening(now), self.shell_request("req-1", asked))
+
+        self.assertEqual("needs_input", row["state"])
+        self.assertEqual(records.parse_ts(asked), row["blocked_since"])

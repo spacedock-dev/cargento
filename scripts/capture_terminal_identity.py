@@ -2,7 +2,7 @@
 """Record what terminal identity a hook can see, as shape only.
 
 B5 (DRC-4017) wants one click in the dashboard to raise the terminal a waiting
-session is sitting in. Nothing Cargento collected when this was written could
+session is sitting in. Nothing Compass collected when this was written could
 locate one: `events.py`'s `ALLOWED_FIELDS` was nine fields with no pid, no tty
 and no terminal identity, and no collector read one. B5 then shipped and added
 the three `tmux_*` members, so the set is twelve now — the past tense is the
@@ -108,7 +108,7 @@ PS_TIMEOUT_SEC = 10
 #: events on a desk with Terminal open, as a side effect of the canonical pre-PR
 #: suite naming this module. A real capture never sets it, so what an operator
 #: records is unchanged and no arm silently becomes a null.
-NO_TERMINAL_QUERY_ENV = "CARGENTO_NO_TERMINAL_QUERY"
+NO_TERMINAL_QUERY_ENV = "COMPASS_NO_TERMINAL_QUERY"
 
 EMULATOR_VARS: tuple[str, ...] = (
     "TERM_PROGRAM",

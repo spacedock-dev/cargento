@@ -19,6 +19,7 @@ import {
   type WorkSource,
 } from '../intent/work';
 import type { Row } from '../observed';
+import type { RecordEntry } from '../store/board';
 import { harnessLabels } from '../sessions/rows';
 import { analysisLevel, liveEstimate, type Contexts, type DriftLevel } from './level';
 import { readingJob, readingRoute } from './route';
@@ -98,6 +99,7 @@ export function outputLimit(payload: Row, harness: string): string {
 }
 
 export interface ModelInput {
+  readonly record?: RecordEntry;
   readonly session: Row;
   readonly payload: Row;
   readonly base: Row;
@@ -115,7 +117,7 @@ export function buildModel(input: ModelInput): DriftModel {
   /* With the store off the page draws no words of the reader's and no stored reading, whatever the row carries. */
   const annotation = annotate ? annotationOf(session) : null;
   const draftInput: DraftInput = { held, contexts, payload, session, annotation };
-  const source = workSource(contexts, input.projectKey, session);
+  const source = workSource(contexts, input.projectKey, session, input.record);
   const entries = source.all || source.entries;
   const numbers = entryNumbers(session, source, payload);
   const harness = String(session['harness'] || '');

@@ -159,7 +159,7 @@ export function chosenIsStale(input: DraftInput): boolean {
   return Boolean(chosenCandidate(held, contexts, session)) || choicesSettled(contexts, session);
 }
 
-/* The goal a goal-less session arrives with: the first prompt as Cargento publishes it, or the latest where
+/* The goal a goal-less session arrives with: the first prompt as Compass publishes it, or the latest where
    no first prompt with a time is published, and null where neither can be adopted. Derived from the payload
    on every render and never written, so it holds no reader state; the box's own edits ride the held draft.
    Nothing is drafted over a store this build cannot read, where Save intent could not save. A prompt chosen
@@ -465,17 +465,25 @@ export function promptMenu(input: DraftInput): PromptMenu {
   /* "First" only for the row's own first prompt. The choices come from the focused record, which holds the
      newest 100 events, so in a long session its earliest prompt is a later message. */
   const firstAt = nextNumber(session['first_prompt_at']);
-  const first =
-    !openedWithControl(session) && firstAt !== null && choices[0] && choices[0].at === firstAt
-      ? 'First prompt'
-      : 'Earliest prompt';
+  const earliestAt = Math.min(...choices.map((choice) => choice.at ?? Infinity));
+  const latestAt = Math.max(...choices.map((choice) => choice.at ?? -Infinity));
   /* The face shows the pick only while the box still holds it untouched; a keystroke puts it back to the
      placeholder, so the same prompt can be picked again. */
   const key = goalKey(session);
   const chosen = held.chosen.get(key);
   const holds = Boolean(chosen) && (!held.goals.has(key) || held.goals.get(key) === chosen?.text);
-  const options = choices.map((choice, index) => {
-    const name = index === 0 ? first : index === 1 ? 'Latest prompt' : 'Earlier prompt';
+  const options = choices.map((choice) => {
+    const name =
+      !openedWithControl(session) &&
+      firstAt !== null &&
+      choice.at === firstAt &&
+      choice.at === earliestAt
+        ? 'First prompt'
+        : choice.at === earliestAt
+          ? 'Earliest prompt'
+          : choice.at === latestAt
+            ? 'Latest prompt'
+            : 'Earlier prompt';
     return {
       value: choice.factId,
       label: `${name} · ${clockText(choice.at ?? 0)}${choice.cut ? ' · excerpt' : ''} — ${promptClip(choice.text, 60)}`,

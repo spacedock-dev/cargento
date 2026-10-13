@@ -168,7 +168,7 @@ describe('what raises a banner', () => {
     // Asks are the one thing a first board raises for: a question already waiting is still waiting.
     expect(api.made).toHaveLength(1);
     expect(api.made[0]?.title).toBe('6 questions are waiting for your answer');
-    expect(api.made[0]?.tag).toBe('cargento-ask');
+    expect(api.made[0]?.tag).toBe('compass-ask');
   });
 
   it('raises nothing without permission, and a revoked permission is not an error', async () => {

@@ -1,11 +1,11 @@
 # Reading a session against what you asked for
 
-Cargento lets a person type what a session should achieve and what it should produce, then shows
+Compass lets a person type what a session should achieve and what it should produce, then shows
 that beside what the record says. Whether it may go further, and say something about how the two
 compare, is a product question rather than an engineering one, and it was settled by four rulings
 rather than by code.
 
-This file is where those rulings live for the code to cite. They were made on the Cargento
+This file is where those rulings live for the code to cite. They were made on the Compass
 Visibility 2x2 roadmap, now closed, and their full arguments stay on its issues, but a runtime
 comment cannot cite a tracker, and the shape contract below is not background: three of its rules
 are built into the producer rather than checked after it.
@@ -184,9 +184,9 @@ session publishes `annotation_window_start`, a scalar time, and it is not admitt
 `history.OBSERVATION_FIELDS`: nothing in history reads it yet, so it stays out, as `settled_at`
 does.
 
-## DEC-16: Cargento does not write into a session
+## DEC-16: Compass does not write into a session
 
-A departure is raised to the reader and nowhere else. Cargento does not write into an agent, and
+A departure is raised to the reader and nowhere else. Compass does not write into an agent, and
 the steer box holds a note in the reader's browser rather than sending one. Automatic correction is
 withheld, including when a later instruction contradicts the annotation: that is an unresolved
 baseline conflict for the person to settle, not agent drift for the board to declare.
@@ -194,7 +194,7 @@ baseline conflict for the person to settle, not agent drift for the board to dec
 ### Amended 2026-09-24: a correction you copy, and a later direction you keep or add
 
 [DEC-24](#dec-24-your-intent-is-a-drafted-goal-and-a-checklist-and-a-correction-is-yours-to-copy)
-amends this section in four places, and Cargento still writes nothing into a session. It composes a
+amends this section in four places, and Compass still writes nothing into a session. It composes a
 correction without a model, from your goal, your outcome lines with their state and the cited entry
 numbers and times, for you to edit and copy (item 7). Sending it into the session stays refused;
 DEC-25, the follow-on that would decide that, is not ruled (DRC-4698). Before an analysis, an
@@ -244,6 +244,9 @@ reader was looking at, and is clamped to now so a forged value cannot disable th
 the entries and cannot be counted, so on a long session the suppression can release because the
 evidence aged out rather than because the question was answered. The block states what it read
 rather than implying it read everything.
+A reader's press on Claude Code reads past the tail
+([2026-10-13](#amended-2026-10-13-a-press-reads-the-message-record-back-to-the-window-start)); the
+suppression here still reads the board's own, tail-bound record.
 
 ## DEC-17: the shape contract
 
@@ -296,7 +299,7 @@ Expected Output stays not verifiable there, which is where it already was. The c
 narrows what may be said.
 
 Two rules were added beside it, both from the same pass and both demoting on either constraint. A
-verdict resting only on entries Cargento itself derived is this board quoting itself: an observer
+verdict resting only on entries Compass itself derived is this board quoting itself: an observer
 snapshot is a paraphrase of the session, not evidence about it. And a `consistent` resting only on
 the reader's own request is agreeing with the question, which is the shape a reader is most likely
 to misread as corroboration because the words match. A departure on her own words is different and
@@ -323,7 +326,7 @@ making.
 Owner ruling, 2026-09-24 (DRC-4677 review). Under
 [DEC-23](#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work) item 8 the only
 `consistent` Expected Output can carry rests on a cited check whose latest run passed, and the row
-the model read says so in Cargento's own words ("passed, as the tool reported"). A model that
+the model read says so in Compass's own words ("passed, as the tool reported"). A model that
 described that evidence truthfully tripped the success-word half of the backstop, so every such
 reading was withdrawn as a stated verdict, and "no later write" or "not inspected" tripped the
 negator half on its own. The two sentences above still hold everywhere else. For an Expected Output
@@ -339,7 +342,7 @@ negator half on its own. The two sentences above still hold everywhere else. For
    rest of the list.
 
 The prompt now asks for `detail` only under a departure, and says a check's result words are
-Cargento's, so the prose the rule reads is rarer at the source. A consistent's prose is never shown,
+Compass's, so the prose the rule reads is rarer at the source. A consistent's prose is never shown,
 so this adds no prose to the page. Goal verdicts and departures are unchanged.
 
 ### Amended 2026-09-12: rules 3, 4, 5 and 7 are told apart in the stored shape
@@ -402,7 +405,7 @@ What it reverses and what it narrows:
   departure or a `consistent` on one stands. Nothing else the agent's tooling publishes joins it:
   a decision, a task's birth, a stage, a dispatch, Pi narration or a Codex final answer still
   carries no verdict on a line, and `no-work-shown` is still emitted for a line resting only on
-  those, on the reader's own request or on Cargento's paraphrase.
+  those, on the reader's own request or on Compass's paraphrase.
 - [The 2026-10-01 rule on a line about what the agent tells you](#amended-2026-10-01-a-line-about-what-the-agent-tells-you-cannot-be-shown)
   is narrowed, not reversed. A `consistent` on such a line is still withdrawn as
   `tells-the-person` unless one of the agent's messages is among what it rests on, sent at or after
@@ -433,7 +436,9 @@ budget, and then the agent's, newest first, inside a quarter of it. An agent mes
 lowest priority in the byte bound, below a written path: measured on review, a hundred newer
 messages otherwise dropped the older write that showed what the session did. The project event cap
 reserves the agent's messages after the session's own checks and the reader's messages, so a
-talkative session cannot evict either.
+talkative session cannot evict either. The 2026-10-13 amendment "a press keeps the closing agent
+message of each earlier turn" reserves an eighth of the budget, and some of the cap, for the agent
+messages that closed earlier turns, ahead of the newest; nothing else in the order moves.
 
 Only a reading the reader pressed for reads them. The unasked lane, which nobody watches, sends
 nothing the agent said, and the scorers keep the same default.
@@ -460,7 +465,7 @@ What stays:
 - [DEC-15](#dec-15-the-floor-and-the-overlay)'s rule that a reading never states the work was met,
   and the prompt sentence saying so.
 - Rule 4's success-word backstop.
-- `board-quoting-itself`: a verdict resting only on Cargento's own paraphrase.
+- `board-quoting-itself`: a verdict resting only on Compass's own paraphrase.
 - `uncorroborated`: a `consistent` resting only on the reader's own request.
 - [DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn)'s floor. "None or low"
   from an analysis still needs every outcome line `consistent` on a passing tool-reported check, so
@@ -567,7 +572,7 @@ Its results, on this constraint only:
 - `consistent`: every such claim is shown, by the work: it cites the message and a tool report or
   work result showing it, never a person agreeing with the agent.
 - `not verifiable`: there is no such claim, or the evidence cannot settle it. A claim of a state
-  nothing Cargento records can show (running, merged, pushed, deployed, sent, filed, a PR opened) is
+  nothing Compass records can show (running, merged, pushed, deployed, sent, filed, a PR opened) is
   a departure where the record contradicts it and not verifiable otherwise, never `unsupported`
   (the arbiter's ruling on review, 2026-10-04).
 
@@ -594,7 +599,7 @@ Nothing of it is published, sent or stored. Measured with the amended listing or
 second run found to be real. The success-word backstop reads a claims `consistent`'s
 prose as before, and not a departure's or an `unsupported`'s, which quote the agent's own success
 words by their nature ("said the change works, but the check errored") and say nothing landed. A
-comparison resting only on Cargento's own paraphrase is `board-quoting-itself`. `check_supports`
+comparison resting only on Compass's own paraphrase is `board-quoting-itself`. `check_supports`
 drops a cited check that does not carry the verdict, so a pass followed by a change does not show
 "passing" now, and no write carries a claims verdict; a consistent beside a failure in the window
 is withdrawn as for a line, cited (`check-does-not-show-it`) or unread (`failed-check-unread`). The
@@ -623,7 +628,7 @@ floor, and a claims row never holds "Nothing found" or "None or low" back. The a
 names a contradicted claim `claim-contradicted` rather than a departure. Claims are independent of
 the intent, so an unsettled later direction demotes the intent's rows and never the claims row
 (reversing the first build on review). Steer back adds one line for such a claim, in the
-owner-approved template's style: `You said "<claim>" at 14:02 (#12 in Cargento); the record does not
+owner-approved template's style: `You said "<claim>" at 14:02 (#12 in Compass); the record does not
 show it.` for an unshown claim, and `…; the record shows otherwise at 14:05 (#13).` for a
 contradicted one (the arbiter's wording, under the owner's delegation). Steer back is offered for
 the claim from the claims row itself, so it never offers "Update intent instead" for one. The claim
@@ -914,8 +919,8 @@ daily cap, once DRC-4640 ships. The press and the disclosure still apply to each
 #### How the check is run, 2026-09-12
 
 Two scripts, both outside the gate and neither in CI. `scripts/mark_abstention.py --build` draws
-cases from the live board into `~/.cargento/abstention-cases.json`, and its marking mode collects
-the captain's `judge` or `abstain` per constraint into `~/.cargento/abstention-marks.json`.
+cases from the live board into `~/.compass/abstention-cases.json`, and its marking mode collects
+the captain's `judge` or `abstain` per constraint into `~/.compass/abstention-marks.json`.
 `scripts/score_abstention.py --score --producer <name>` then hands each case to `reading.produce`
 with the two constant yardstick sentences as a synthetic revision (or, in format 5, the case's own
 goal and outcome lines), through the named producer's reading model, and writes two halves: a local results file beside the cases, and a committable summary under
@@ -1059,7 +1064,7 @@ to the provider and moves a [SECURITY.md](../SECURITY.md#observer-model-calls) b
    harness's user-role message, and an Antigravity direction.
 2. A person's message carries its words in the ledger beside its title, under a 1,000-character
    cap of its own, with the menu-field scrub that stops a separator forging a column. Every other
-   entry is unchanged, and so is a copied correction, which is Cargento's text rather than the
+   entry is unchanged, and so is a copied correction, which is Compass's text rather than the
    reader's. A fact with no words, from a packet frozen earlier or republished by the history
    store, has its title alone.
 3. The reader's words may not cost a verdict its evidence. Entries are chosen by their titles,
@@ -1114,7 +1119,7 @@ Which sessions Claude Code reads is [DEC-21](#amended-2026-10-02-claude-code-is-
 A reading is produced only in response to a discrete reader action, asserted rather than assumed,
 and never on render, poll, reconnect, resume, focus change or revision save. One reading in flight
 per session. No retry on failure, because a fresh press is required. Each reading is counted and the
-count is shown beside the control, against the capacity surface Cargento already renders, so the
+count is shown beside the control, against the capacity surface Compass already renders, so the
 reader spends their own capacity and can see it going.
 
 ### Two arguments that were withdrawn
@@ -1251,7 +1256,7 @@ permits: the preconditions gate the default rather than whether the thing may be
 
 ## DEC-19: the page may report a lane, never a delivery
 
-Decided 2026-09-11. Cargento notifies through two independent producers. The server runs one
+Decided 2026-09-11. Compass notifies through two independent producers. The server runs one
 `osascript` call and exists on macOS alone. The page constructs a browser `Notification` and is the
 only lane on Linux and Windows. They do not raise the same events, and the page reports nothing
 back.
@@ -1321,13 +1326,13 @@ and every session's page is one click away by DRC-4638. The row's goal slot and 
 are built by DRC-4637 and DRC-4641, as the amendment to
 [NUI-16](design-next-ui.md#nui-16-operations-lead-observation-stays-reachable) describes.
 
-The question was what a person sees about drift when they open Cargento. Measured on a default run
+The question was what a person sees about drift when they open Compass. Measured on a default run
 the day it was decided, the honest answer was nothing: four of four sessions had no typed goal, none
 had been read, and a departure comes only from a model reading, which a default run does not make.
 A first screen built from drift results would have been an empty state. So the ruling puts DEC-15's
 floor on the first screen and lets a result add to it, rather than the other way round.
 
-1. Cargento opens on Sessions. Drift belongs to a session, the journey never asks for grouping, and
+1. Compass opens on Sessions. Drift belongs to a session, the journey never asks for grouping, and
    Projects caps each row's members and draws no member lines for a project whose sessions are all
    idle. NUI-3, NUI-5 and NUI-16 are amended to match.
 2. Every row puts your goal beside the NOW line and leaves the comparison to you, which needs no
@@ -1463,7 +1468,7 @@ fetch metadata, from spending readings through a route with no capability token.
 allowed only with something that does that job instead.
 
 1. The first press of "Check for drift" shows the reading disclosure with "Allow and check". The
-   answer is kept in `~/.cargento`, so every tab and a respawned daemon agree; `--forget` clears it,
+   answer is kept in `~/.compass`, so every tab and a respawned daemon agree; `--forget` clears it,
    and the session page carries the off switch. The startup flag is no longer needed for
    reader-requested readings. It still governs goal summaries, which keep their own consent.
 2. A daily cap on reader-requested readings replaces the flag as the bound on a local process. It
@@ -1608,7 +1613,7 @@ The binding catches that move only where the destination was named, as item 5 sa
    `destination` names nothing wherever `OPENAI_BASE_URL` or `OPENAI_API_BASE` is set, so moving
    from one Codex base URL to another asks nothing; moving from OpenAI to one does. And it is every
    Claude Code setting SECURITY.md lists as naming nothing. The disclosure the reader answered says
-   so: "wherever your ... settings send it, which Cargento cannot name". The owner's rule that
+   so: "wherever your ... settings send it, which Compass cannot name". The owner's rule that
    unnamed is a value of its own (item 1) stands.
 6. The unasked lane sends under the same binding (consent F5, ui5). It sends the goal and messages
    to Codex with nobody at the desk, so before each send, at the model seam, it asks whether a
@@ -1717,7 +1722,7 @@ of the reader's own prompts from the session's observed record, offered by "Use 
 - The list is `annotations.prompt_choices`: the earliest prompt in the record first, then the most
   recent, a repeated text offered once, at most five. Each is a `user_message` fact of this session
   that `reading.author_of` calls the person's, with a valid time and its whole words. A correction
-  copied from Cargento, a harness control and a local command are refused exactly as the
+  copied from Compass, a harness control and a local command are refused exactly as the
   first-prompt draft refuses them; a local command already reaches the record with no words.
 - Each is resolved whole: its words as a reading reads them, clipped to the goal's 240-character
   cap with `cut` saying the offer is an excerpt. The text offered is the text an adoption stores.
@@ -1831,8 +1836,8 @@ in one session cut off the instruction that mattered and in another kept only pl
   its words have no room, the reading reads the clip and the cutoff sentence says which.
 - The owner, approving the Analyze drift plan, amended this on 2026-10-04. The tail lookup
   fell back to the goal clip in all 123 adopted readings in the replay. At a press, a separate
-  forward lookup now finds the source in the transcript's first 32 MiB, retaining at most 4,096
-  user-message facts. It uses the same author, source-time and ambiguity checks as the tail lookup.
+  source lookup now uses the [newest and opening reads](#long-session-direction-and-prompt-reads),
+  retaining at most 4,096 user-message facts. It uses the same author, source-time and ambiguity checks as the tail lookup.
   Its capped, redacted words stay in memory, cached for at most eight transcripts by path,
   harness, session, size and modification time. Neither the cache nor its facts enter a store or
   a page response. They supply only the adopted Goal, leaving the evidence ledger unchanged.
@@ -1864,7 +1869,7 @@ transcript.
 The recovered words stay in memory, up to 1,000 characters each, and replace titles only within
 the reader's existing share. Credentials are masked before whitespace is folded, including before
 slash-command arguments are rendered. This press-only scan is uncached. The adopted Goal still
-uses its separate prefix lookup; the press uses its uncached raw-masking arm. Default callers keep
+uses its separate [newest and opening lookup](#long-session-direction-and-prompt-reads); the press uses its uncached raw-masking arm. Default callers keep
 the existing lookup cache and prompt. Nothing new is stored or published, and an unasked reading
 does not run this recovery. Other harnesses retain their existing in-tail words.
 
@@ -2063,7 +2068,7 @@ shows it: set with Pi's own "Command exited with code N" line it is a nonzero ex
 timeout line it is a run with no result, and set with no status line the call never ran. The
 latest run of each check is kept, and its fact carries `subject` and `result`, so item 8 applies
 to it: `check_supports` now keys on a check on any harness, not only Claude Code's
-`tool_report`. The title is Cargento's and no command or output is published.
+`tool_report`. The title is Compass's and no command or output is published.
 
 Three rulings from the review round (2026-09-27) hold it there. A Pi check never enters the
 semantic history store, as item 6 already said of Claude Code's: the store keeps an allowlist of
@@ -2085,7 +2090,7 @@ new surviving failure class: a false `consistent` resting on a success the tool 
 qualifies the producer against it.
 
 1. Three things are never conflated: what was run, what the harness recorded as its result, and
-   whether the requested outcome exists, which Cargento never claims. Evidence is the recorded
+   whether the requested outcome exists, which Compass never claims. Evidence is the recorded
    result. A background launch is not a success, and an absent or malformed error flag is unknown,
    never success. `records.tool_outcome` turns an absent flag into `False` today, and that is the
    reading this item refuses.
@@ -2146,7 +2151,7 @@ qualifies the producer against it.
    relevant check passing inside the window with no later write, and is labelled as reported by the
    tool, not inspected. Absence supports neither. DEC-24 item 13 sets the evidence window.
 9. Tool output is quoted into the reading's prompt as untrusted data, never into an instruction
-   Cargento writes.
+   Compass writes.
 10. The unasked lane never receives tool outcomes until DEC-18's rubric thresholds exist.
 
 This amends the rule 7 amendment of 2026-09-10, whose "On Claude and Codex nothing does" no longer
@@ -2600,7 +2605,7 @@ the measured note that DEC-23 reads the root session's calls alone.
    in the background beside its parent is ordered by its own records' times.
 6. An Agent call is not itself a change. DRC-4709 named "an Agent call after a pass" because a
    subagent's work was unread; it is read now. The exposure left is a subagent whose transcript is
-   not on this machine, whose writes Cargento cannot see.
+   not on this machine, whose writes Compass cannot see.
 7. The bound, amended 2026-09-30. One check-evidence scan spends at most
    `turn_scan_max_bytes` (normally 8 MiB) on the parent and all admitted children together. It
    charges actual binary bytes returned, including invalid records, discarded partial lines and a
@@ -2672,7 +2677,7 @@ DRC-4697, among the milestone's other layers.
 
 A reader who opens a session to see whether it drifted meets DRIFT, GOAL and EXPECTED OUTPUT, empty
 fields, and a result that says "0 departures" beside "raised nothing and confirmed nothing". This
-decides the words, the intent, the answer, when an analysis may run, and what Cargento may hand
+decides the words, the intent, the answer, when an analysis may run, and what Compass may hand
 back.
 
 The owner ruled four things first. The goal is drafted from the reader's first prompt. The expected
@@ -2694,7 +2699,7 @@ the later-direction floor (item 9).
    name departures, never "no drift": "Departs from your intent", "Can't tell", "Nothing found
    against what it read". The attempt count stays beside the control.
 2. The goal draft. On a session with no saved goal, the goal field shows the reader's first prompt
-   as Cargento publishes it (one line, a clipped excerpt marked as such), marked "from your
+   as Compass publishes it (one line, a clipped excerpt marked as such), marked "from your
    prompt", unsaved. "Looks right" saves it; an edit saves it as typed; pressing Analyze drift
    adopts it in the same press (DEC-22). Nothing is inferred for the expected outcome. Amended
    2026-10-02 (owner): there is no "Looks right"; Save intent is enabled over the untouched draft
@@ -2782,13 +2787,13 @@ the later-direction floor (item 9).
 9. A copied correction coming back. The server records a digest of the exact text the reader
    copied, edited or not, per session: bounded per session, one use per digest, matched only after
    the copy. Each user message's digest is computed from its raw text before any clipping. A later
-   message that matches exactly is Cargento-assisted: not adopted as the goal, not person-authored
+   message that matches exactly is Compass-assisted: not adopted as the goal, not person-authored
    evidence, and not an unsettled later direction. No match, no special treatment. SECURITY.md
    names the route and its local-process residual. Built by DRC-4678 to the owner's rulings of
    2026-09-28: both sides normalise CRLF and CR to LF and a tab to four spaces and are trimmed at
    both ends, which is what a live paste into Claude Code 2.1.283 measured; eight digests per
    session, the oldest dropped; and the activity list labels a recognised message "You · Copied
-   from Cargento". An edited paste, a backspace that wipes it included, is the reader's own words.
+   from Compass". An edited paste, a backspace that wipes it included, is the reader's own words.
    The review round added three things. "After the copy" is a position in the transcript, not a
    clock: a message counts only if it was written past where the transcript ended when the text
    was copied. A recognised message is stored by its fact id and stays recognised after the tail
@@ -2814,7 +2819,7 @@ the later-direction floor (item 9).
     person-authored message at or before the save, else the save time. It is stored on the revision
     beside the save time, as a new revision field admitted under DEC-15b, and a build that does not
     know it falls back to the save time. The page shows both times and labels work before the save
-    as "from the last turn". The unasked lane still withholds at a turn stop.
+    with a "Last turn" word beside the head time, carrying "from the last turn" as its accessible name and tooltip. The unasked lane still withholds at a turn stop.
 14. The answer reducer. Any valid departure gives "Departs from your intent", and other lines keep
     their own state. Otherwise any saved constraint without a valid `departure` or `consistent`,
     including a malformed or missing result and a line the reading could not ask, gives "Can't
@@ -2822,7 +2827,7 @@ the later-direction floor (item 9).
     work was done." A failed check in the window outranks both "Nothing found" and "Can't tell". A
     departure count renders only beside a departure. "No reading was produced" and the refusals are
     process states, never answers. All of it is session-page only: never on a row, a total or a
-    notification. Elsewhere than Claude Code the panel states the harness limit ("Cargento can't
+    notification. Elsewhere than Claude Code the panel states the harness limit ("Compass can't
     read work from this harness"). "Stop session" is not offered (DEC-16, SECURITY.md).
 
 ### Amended 2026-10-05: verified request age belongs to a line
@@ -2850,7 +2855,8 @@ parent fact and the line's words. A missing or changed source leaves age unknown
 build may discard this optional binding, which also leaves age unknown. No time is guessed for
 older lines.
 
-Source proof comes from the existing bounded transcript prefix, not from historical summaries.
+Source proof comes from the bounded newest and opening transcript reads, not from historical summaries.
+The [long-session lookup](#long-session-direction-and-prompt-reads) owns their current bounds.
 Each operation reuses one source lookup; the bounded cache checks device, inode, size and
 modification time before reuse. A record beyond the byte or fact bound supplies no proof. The
 transient raw-record and complete-word digests and source version never reach the page, model
@@ -2905,7 +2911,7 @@ within the milestone's scope and recorded on the issue.
   22 recorded Bash calls had a message from the reader between the call and its result. Using the
   result time would move layer 1's published timestamps, so it is filed separately.
 - The page reads the window from the reading, and derives it the old way for a reading stored
-  without one. It labels work "from the last turn" only on a Claude Code session waiting at its
+  without one. It labels work "Last turn" beside its head time, with "from the last turn" as the accessible name and tooltip, only on a Claude Code session waiting at its
   prompt, and only the observed last turn inside the window: from the reader's latest message at or
   before the stop (or the window start, if later) up to the stop, never on the reader's own messages.
   The first build labelled from the window start to the save. That range is fixed at the save, so
@@ -3017,7 +3023,7 @@ issue, and the rest were made within them.
   leaves the exit unwatchable, and the call then polls rather than reading it as an exit and killing
   a running CLI. A helper that leaves the group is not reached, and the docs say so.
 - A spent outcome the store refuses keeps its marker, marked as refused, and the next start records
-  that the analysis ran and its outcome could not be stored, not that Cargento stopped. A refused
+  that the analysis ran and its outcome could not be stored, not that Compass stopped. A refused
   "interrupted" or "unstopped" keeps its own reason, so "may still be running" is never turned
   into "ran".
 - A finished step is a filled mark and never a check mark. Item 6's rule is about results, but a
@@ -3090,7 +3096,7 @@ throughout (arbiter spec, `ui3`).
   "Saving your intent…" rather than telling the reader to save it. The start is said to the polite
   region only when the request is still open after 400 ms, and the outcome only once the refresh
   has drawn it. A request with no answer is aborted at 15 s and the control comes back with
-  "Cargento did not answer, so this page cannot tell whether your intent was saved", never "Not
+  "Compass did not answer, so this page cannot tell whether your intent was saved", never "Not
   saved", unless the refresh shows a newer revision holding exactly what was sent, which is the
   save. A 5 s backstop after the bound clears the busy state whatever the fetch did. The state is
   held by the control's focus key (`docs/design-reader-state.md`), and only the press that started
@@ -3105,7 +3111,7 @@ throughout (arbiter spec, `ui3`).
   and Cancel reads "Cancelling…" until the server accepts or answers that the job is not running.
   A lost request comes back with the control's existing sentence, so nothing stays busy forever.
 - An inert Analyze says something true and actionable. No line says Analyze opens "once this
-  session finishes a turn", which was false of a turn that had finished where Cargento could not
+  session finishes a turn", which was false of a turn that had finished where Compass could not
   see it. Amended 2026-10-06: beside an idle row with no end, a Claude Code session reads "Last turn
   isn't recorded as finished. Run another turn to open Analyze." This names the working-turn
   path that `press_eligibility` admits, without promising a recorded finish. Codex keeps its own
@@ -3206,7 +3212,7 @@ in 4, 6 and 5 items, each said once:
 4. `To:` where the words go as `reading_route.destination` names it, with credential shapes
    redacted, through the provider's own CLI and sign-in, spending the reader's capacity: the
    company off this machine, or the cloud or base-URL host configured in its place, or, where
-   nothing can be named, that Cargento cannot name it. It follows everything it covers, tool
+   nothing can be named, that Compass cannot name it. It follows everything it covers, tool
    output included, so it alone says where all of it goes. Until verifier C1 (2026-10-02) this
    item named the company whatever the environment said, so under Bedrock, a base URL or a unix
    socket the reader allowed one receiver and the words went to another.
@@ -3373,11 +3379,11 @@ DRC-4680 built items 1 and 14 on the session page: the Intent and drift panel be
 activity. The owner ruled the first three calls below on the issue; the orchestrator made the rest on
 the analysis's recommendation.
 
-- The harness limit replaces only the level and meter. "Cargento can't read work from this harness"
+- The harness limit replaces only the level and meter. "Compass can't read work from this harness"
   stands in the level's slot on every harness except Claude Code and Pi, and `Analyze drift` stays
   wherever the route names a reader, because DEC-21 item 4 still lets Codex read a Codex session.
   Never on Pi, whose work results are read, so the sentence would be false there. The observed
-  record's old line "Cargento reads those on Pi alone" is retired for the same reason: Claude Code's
+  record's old line "Compass reads those on Pi alone" is retired for the same reason: Claude Code's
   checks are read too.
 - On Antigravity the limit stays true because only the person's typed directions are read, never
   its work (owner, 2026-09-27, DRC-4689). Those directions give a pressed reading something to read
@@ -3401,7 +3407,7 @@ the analysis's recommendation.
   reading stored, "Not checked yet" stands over the unlit four-segment meter and its labels
   ([the result in the button's place](#amended-2026-10-01-the-result-takes-the-buttons-place)).
   The pill stays level-only.
-- The header shows the state in Cargento's own words (working, needs input, idle), not the design's
+- The header shows the state in Compass's own words (working, needs input, idle), not the design's
   "Running", which would rename a state across the product from one page.
 - The panel is not a scroll container and is not sticky; the page scrolls as one document, so the
   reader-state inventory gains no row. The panel comes first in the markup and the stylesheet places
@@ -3561,7 +3567,7 @@ at most 174 words (175 ceiling), the idle fixture 82 (85 ceiling), and the parti
   behind "What a reading reads". The READING section is drawn only for a stored reading this build
   could not read, and that sentence stays in view. A malformed reading keeps the section.
 - The introduction sits behind "What analysis does". Amended 2026-10-06: a saved goal gets
-  "When you analyze drift, Cargento lists where this session departed from your saved goal."
+  "When you analyze drift, Compass lists where this session departed from your saved goal."
   A row without a saved goal
   keeps "Choose a goal or use your prompt, then analyze drift..."; an unsaved prompt draft is
   not described as saved. Amended 2026-10-02 (NU-10): under a stored reading the introduction is
@@ -3636,7 +3642,10 @@ calls below on the issue; the rest follow the analysis.
   pass from the middle; and the observer snapshot moves with each snapshot. A fifth since
   [2026-10-03](#amended-2026-10-03-owner-the-agents-own-words-are-evidence): an agent message
   leaves the transcript tail the board reads, and since it is never stored in the session history
-  it drops out of the list and the entries after it renumber. A departure that cited it then reads
+  it used to drop out of the list and the entries after it renumbered. Record pages now keep loaded
+  messages for the open session page, independently of that tail. Loading older messages in the
+  intent window can renumber every entry; the list says "Numbers count from the oldest entry loaded."
+  After leaving, the next opening starts with the newest page. A departure citing an unloaded entry reads
   as citing nothing resolvable, with the generic sentence: a citation is a hashed fact id, so the
   page cannot tell that the entry it named was one of the agent's messages. The list and every
   citation are recomputed together on each render, so the screen never disagrees with itself, and
@@ -3652,20 +3661,23 @@ calls below on the issue; the rest follow the analysis.
   predicate the conflict block narrows to the unsettled ones, so the two cannot disagree. It stays
   flagged once settled, because settling says the baseline still applies, not that the direction was
   never given. It is never called drift (DEC-16).
-- The bound is the newest twenty entries in the window that are not checks or files, and every
+- The readability bound was retired on 2026-10-12. Opening reads the newest fifty message entries;
+  Show more alone reads each older page. Every loaded timed entry in the window is listed, and every
   check and file in the window. A check or file from before the window is counted with the earlier
   entries and not drawn, where every listed one used to be. When nothing is numbered but the record
   holds earlier or untimed entries, the list says no entry is from after the window opened (or that
   none has a time) rather than that the record names nothing. Every entry a departure cites is drawn as well, at its own number, so the gaps in
-  the numbering show and no expand control is needed. A later direction past the bound is counted,
-  not drawn; the conflict block lists the unsettled ones.
+  the numbering show and no expand control is needed for a loaded citation. Revealed entries and
+  open later directions are listed as well. Older message pages exist only after Show more; once
+  they reach before the intent window, the list says "Everything since your intent's window opened
+  is listed." and stops offering invisible older rows.
 - The list sits right after CURRENT ACTIVITY under the column's "Session activity" heading, and the
   OBSERVED RECORD heading is retired. The header's second row says "N entries" and omits the count,
   rather than showing 0, when the record was not read.
 - The design's strings this replaces: "Key turns" is gone; "Drift began", "Off goal" and "Breaks
   outcome" become "Cited" or "A later direction you gave"; "In progress" is the source's own words;
   an entry is one fact, so "2 files" and other per-turn counts are not drawn. Your message reads
-  "You · Prompt", the agent's entries "Agent", and Cargento's own summary of the session "Cargento's
+  "You · Prompt", the agent's entries "Agent", and Compass's own summary of the session "Compass's
   summary", never the agent.
 
 ### What the direction-adoption server build decided, 2026-09-27
@@ -3680,7 +3692,8 @@ asks whether to keep standing outcome lines, and waits for Save intent. A refuse
 Add offers that choice; its line editor says "Write the rule, not the moment". The menu's five
 choices are resolved only when opened, under the same source checks as adoption.
 They retain known source clipping after whitespace folds. The source-list cap limits returned
-facts, not ambiguity checks against their identities within the bounded prefix.
+facts, not ambiguity checks against their identities within the consumed source ranges.
+The [long-session lookup](#long-session-direction-and-prompt-reads) owns the current bounds.
 
 A stored reading keeps the baseline it read: only unsettled directions at or before its
 `read_at` demote its intent rows, answer, level and correction. A later message instead labels
@@ -3716,8 +3729,8 @@ can start. The page half comes after it.
   characters first, so raw text that reaches the bound counts as clipped; one of exactly 2,000 is
   flagged too, which says less was shown than was, the safe error.
 - One refusal body. An unknown session or fact, another session's entry, one that is not a
-  person's message, one not later than the words and one outside the source bound all answer the same
-  200 body, so the route says nothing about which sessions exist.
+  person's message, one not later than the words and one outside the source bound answer HTTP 200. The [long-session lookup](#long-session-direction-and-prompt-reads)
+  now distinguishes an unfinished search from an unverified direction without a separate unknown-session HTTP status.
 - The write. The line, the settlement through that direction's time and, over a draft, the adopted
   goal go in one store write, under the revision the page drafted against. A full list is refused
   unless the body names the line to replace, counted from 0 as `origins` is. A settlement never
@@ -3734,6 +3747,148 @@ can start. The page half comes after it.
   store can still race, and these writes share that gap with every other save (DRC-4661).
 - Not permanent. A line added from an entry becomes a typed line once the reader edits it and
   saves, as an edited adopted goal becomes typed, so "added from #n" lasts until the first edit.
+
+
+### Long-session direction and prompt reads
+
+A failing-first 74 MB synthetic session proved that the earlier prefix lookup could
+not open a recent direction or restore the recent prompt choices. A second test
+proved that a paged direction could be present in the native record but absent
+from semantic history. Opening and adopting a direction now recomputes its fact
+identity from its own native source, independently of that history. The same
+person-message parser, copied-correction exclusions, direction floor, redaction,
+2,000-character review cap and saved revision checks still apply.
+
+`config.DIRECTION_SCAN_MAX_BYTES` is 64 MiB and
+`config.DIRECTION_SCAN_MAX_SECONDS` is two seconds. The direction lookup uses
+`record_pages.scan_source`, the page reader's chunk and line-boundary machinery,
+from the newest end. It compares device, inode, size and modification time before
+and after the read and refuses any change, including an append during the request.
+A conservative byte prefilter avoids decoding tool-result-only records; escaped
+keys still reach the authoritative JSON parser. Lines larger than 16 MiB are
+skipped to their delimiter and count as incomplete coverage. A local filesystem
+operation or one decode must return before the next clock check can run.
+
+Finding a match does not stop the scan. Every conflicting raw-content fingerprint for that identity
+within the consumed allowance still refuses the words, even when the difference
+is beyond the 2,000-character review crop. Copies outside the byte
+or clock allowance cannot be checked; this is a bounded source verification,
+not a claim that the entire transcript contains no conflicting copy. A direction
+that is not found before an unfinished search answers `out_of_reach`. A complete
+search with no match, a changed or ambiguous source, or a known request that is
+not later than the intent answers `not_found`. Both remain an HTTP 200 body;
+unknown sessions use the latter body too. Older pages can read the `why` sentence
+without understanding the new tokens. No fallback substitutes a listed summary.
+
+The prompt and request-source lookup adds the newest 64 MiB to the opening read
+of at most 32 MiB, with the same two-second clock shared across both. The ranges
+do not duplicate complete records; a boundary fragment can be reread. At most
+4,096 facts survive, reserving the oldest source alongside the newest facts so
+an adopted opening prompt does not disappear merely because recent prompts fill
+the allowance. Conflicting identities and same-time request ambiguity are checked
+throughout the consumed ranges, including after the fact allowance fills for
+identities still retained. Its cache binds the full file stamp, even when the
+cached result is empty. The menu arm remains uncached and masks raw separators
+before folding words. Analyze retains its separate word masking and ledger.
+
+The focused prompt response carries `prompt_scan.state` and `prompt_scan.bound`,
+never source paths, stamps or whole records. The menu offers at most five verified
+native prompts, newest first, preserving an opening choice when it qualifies.
+It no longer depends on semantic titles surviving eviction. A byte or clock stop
+is stated beside the choices: "The prompt search reached its limit. Older prompts
+may be outside this read." An empty successful read says "No usable prompts were
+found in the parts of this session Compass read." A failed read states that it
+could not read the prompts. Selecting still fills a draft and saves nothing.
+
+Copied-correction recognition now covers the same newest 64 MiB and opening
+32 MiB sources. A restart cannot expose an unmarked copied prompt merely because
+it is farther than the former 32 MiB tail. Incremental reads also clamp their
+cached end to the current tail allowance after a large append; they do not read
+an unbounded gap. Opening-range matches are cached separately and overlap is
+deduplicated in physical file order, preserving the first matching paste rule.
+The store still holds only digests, offsets and recognized identities.
+
+A refused Goal, Add, activity-row Add or Keep says what happened beside the
+control pressed, with a persistent polite announcement, and keeps focus there.
+The answer survives polls and remains until the next press or an intent edit,
+including an edit in a pending direction line. Keys compare exact session
+identities. Update intent instead uses the same local feedback path.
+Successful Goal and Add still focus their respective editors. Keep first shows
+every direction whole, and a later press alone settles it. A failure never focuses
+the Goal box or draws a pending outcome line as though the read succeeded. A
+successful Keep derives its settled count from the directions that press showed,
+so several directions are not described as one.
+
+Successful direction lookups use the freshly recomputed native fact as their author,
+identity and timestamp proof. They no longer recompose project evidence for each source.
+A failed lookup still checks the listed record to distinguish a known earlier request
+from an out-of-reach one. The real scratch audit exposed the repeated composition cost
+after the individual Add reads had all succeeded.
+
+`POST /api/direction` accepts either the existing `fact_id` or `fact_ids`, a
+nonempty list of at most 64 nonempty strings, each at most 256 characters. Sending
+both forms, an invalid item or an oversized list answers HTTP 400 before a source
+scan. The existing body-size, session and loopback guards still apply. A batch
+answers HTTP 200 with `{"results": [...]}`: one result per requested id, in request
+order, including repeated ids. Each result has exactly the single-id shape:
+`ok`, `fact_id`, `text`, `clipped`, `fits` and `goal_choice` on success; `ok: false`,
+`reason` and `why` on refusal. One backward walk shares its byte allowance, clock
+and file-stamp checks across all ids. Each id's fingerprint is checked throughout
+the consumed allowance. No source words are cached between requests.
+
+Keep uses one batch for all missing source words under its existing 15-second
+control deadline, including when its second press may analyze. Goal and per-row
+Add retain the simpler single-id request. A partial batch draws successful words
+and states the refusal beside Keep and in the polite live region. Nothing is
+settled or analyzed while any direction is missing or clipped. Successful words
+stay held in the page for a retry; recovering the missing words asks for another
+review press before settlement. More than 64 missing directions is explicitly
+refused without a request, rather than split into repeated scans.
+
+Measured on 2026-10-13 with the same-size synthetic 73 MB and 105 MB fixtures,
+one-MiB tool-result lines and 64 compact requests at the newest end. Fixture
+construction and identity collection are excluded. Every request opened all its
+requested ids and read 67,108,864 bytes once:
+
+| Fixture bytes | Ids | Bytes read | Milliseconds |
+|---:|---:|---:|---:|
+| 73,407,766 | 1 | 67,108,864 | 494.030 |
+| 73,407,766 | 5 | 67,108,864 | 504.218 |
+| 73,407,766 | 20 | 67,108,864 | 495.186 |
+| 73,407,766 | 64 | 67,108,864 | 504.404 |
+| 104,868,016 | 1 | 67,108,864 | 497.351 |
+| 104,868,016 | 5 | 67,108,864 | 492.056 |
+| 104,868,016 | 20 | 67,108,864 | 488.315 |
+| 104,868,016 | 64 | 67,108,864 | 489.128 |
+
+The single-id scan measured about half a second, as in the previous run below.
+A batch of 64 took at most 1.02 times its fixture's single-id cost.
+The behavioural timing regression derives its limit from the measured single-id
+read, with threefold scheduling headroom, and separately requires one scan.
+A mounted page regression shows all twenty answers after one single-source reply
+interval and settles only on the next press. Mutations of per-id requests,
+per-id ambiguity, unreached refusal and request order each fail their regressions.
+On the real scratch board, a fresh load with a seeded intent showed all twenty
+unsettled directions 1,135 milliseconds after the first Keep press. None was
+clipped, the review announcement appeared, and nothing was settled.
+
+Measured locally on 2026-10-12 with synthetic one-MiB tool-result lines:
+
+| Fixture bytes | Direction | Bytes read | Milliseconds | Result |
+|---|---|---:|---:|---|
+| 73,407,766 | Recent | 67,108,864 | 517.272 | Opened |
+| 73,407,766 | Older, inside allowance | 67,108,864 | 518.431 | Opened |
+| 73,407,766 | Opening, beyond allowance | 67,108,864 | 519.706 | Out of reach |
+| 104,868,016 | Recent | 67,108,864 | 519.571 | Opened |
+| 104,868,016 | Older, inside allowance | 67,108,864 | 526.601 | Opened |
+| 104,868,016 | Opening, beyond allowance | 67,108,864 | 518.880 | Out of reach |
+
+The menu returned all three synthetic prompts and request sources on both files.
+Its two ranges read 74,449,762 bytes on the smaller file, including reread boundary
+fragments, and 100,663,296 bytes on the larger file. The latter reported a byte
+stop for the unread middle. Fixture construction is excluded from timings.
+The two-second allowance leaves headroom over those reads; it does not guarantee
+those timings on a loaded machine. No real prompt corpus was copied.
 
 ### Amended 2026-10-05: an adoption reply names its own saved revision
 
@@ -3762,7 +3917,7 @@ DRC-4682's page half, on the server half's wire, built to the owner's decisions 
 no level or pill over an unsaved draft, every unsettled later direction drawn at its own number, the
 question before the press in place of "Conflict to settle", and Add adopting a draft in its write.
 
-- The draft. The goal box holds the first prompt as Cargento publishes it, or the latest where no
+- The draft. The goal box holds the first prompt as Compass publishes it, or the latest where no
   first prompt with a time is published, marked "from your prompt" (and "latest" for the second),
   with "Shown excerpt only." on a clipped one, a tinted box and (until the owner's 2026-10-02
   amendment, which leaves Save intent the one save) Looks right. It is derived on every
@@ -3822,7 +3977,7 @@ question before the press in place of "Conflict to settle", and Add adopting a d
   retry after a lost answer was told "Not saved" about words on disk).
   `nextReadingCheckSupports` mirrors `check_supports` on every harness, including `changed_after`,
   `read_incomplete` and the subjectless Pi rows an older build stored, held by a test built from the server's own Pi
-  fixture; the record column opens with "Cargento reads work results from Claude Code and Pi
+  fixture; the record column opens with "Compass reads work results from Claude Code and Pi
   only." The analyzing box lost `role="status"`, which re-announced it on every render: its start
   and its outcome are written once each to the persistent polite region. The question adds no
   full stop after a quote that ends in its own mark, and the Intent heading's keyboard focus draws
@@ -3867,9 +4022,9 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
   stored before this, so a line resting only on it reads "uncited" on both sides and falls to "not
   verifiable". No new reason token was needed.
 - Two more reasons come before those, because a record that was never read is not an empty one
-  (DRC-4689). `no-record-reader` is for a harness Cargento has no observed-record reader for:
+  (DRC-4689). `no-record-reader` is for a harness Compass has no observed-record reader for:
   Copilot, Cursor, OpenCode, Goose, Droid and Gemini CLI. Their collectors still read prompts and
-  titles for the board, so the sentence says that and no more (owner, 2026-09-27): "Cargento
+  titles for the board, so the sentence says that and no more (owner, 2026-09-27): "Compass
   reads only this harness's prompts and titles, not the session's work, so there is nothing to
   read your words against. No reading was made and nothing was spent." `record-unread` is for a
   harness that has a reader and whose transcript was not found. Both withhold before the ledger
@@ -3911,11 +4066,119 @@ even though no expansion was needed. A missing or unroomed source is named besid
 a found source that was read gets the up-to-1,000-character promise. Drafts promise a lookup
 attempt. Absent legacy measurements stay unknown, never measured zero.
 
+#### Amended 2026-10-13: a press reads the message record back to the window start
+
+A reader pressed Analyze on a Claude Code session whose Goal was its first prompt and read "Can't
+tell ... may be in the part not read". The transcript was 1.82 MB and the 400,000-byte tail began
+four minutes after the prompt, so the agent's own account of that first turn, the evidence a
+reader most needs for an early Goal, was outside the reading. Only the agent's messages are lost
+that way. The person's older messages come back from the history store and the window-words lookup,
+and checks and writes read backward under their own 8 MiB budget. The history store never keeps an
+agent message, so the tail was its only source.
+
+A press now reads the focused Claude Code session's person and agent messages backward from the end
+of the file (`project_context.press_message_events`) until it has read sixteen timestamped records in
+a row older than the window. (It first stopped as well once it held more than 100 messages, which is
+more than the project cap can keep; the amendment below that follows removed that stop.) One older record does not stop it, because a resumed transcript can rewrite earlier records
+after newer ones. It runs under the press bounds the adopted-source lookup already uses (the newest
+64 MiB under one two-second clock) and refuses a file that moved. It does not read a message whose
+text is longer than 256 Ki characters: redaction is not linear in the worst case, the clock is only
+asked between records, and a message worth reading is a few kilobytes. Such a message, like a line the
+scan skips whole, is an unread region. The text is measured, not the record, because a pasted
+screenshot makes a user record several megabytes of image data around a short question. The window is the one of the revision being read,
+not the previous reading's: a first press has no stored one and an edited Goal has moved it.
+Ordinary collection, every poll, and every other harness keep the tail. Enlarging `tail_bytes` stays
+rejected ([session record pages](design-session-record-pages.md#rejected-alternatives)): it taxes every
+collection and cannot cover a long session.
+
+Coverage keeps its five keys and the page's wording. For a press that read back the two message keys
+describe what was kept, not what was scanned. `tail_truncated` is true when the read stopped before the
+window start (bytes, clock or a moved file), when an unread region lies inside the window, or when
+the read or the project cap dropped any in-window message of the session. `tail_start` is where the record is whole
+from: the oldest in-window time before the first unread region, or, after the cap, the oldest message
+kept that is newer than the newest one lost. It is not the oldest message kept, because the cap keeps
+the session's own reader messages ahead of the agent's, so that one is usually the Goal's own prompt at
+the window start, and the page would then call a partial record complete. A record older than the
+window never lowers it, so one replayed record cannot pull a partial read back to itself. A read that
+reached the window start while the cap dropped its oldest messages would otherwise say the window was
+covered, which reports a fact about the read as though it were one about the record. A truncated read
+with no start to name says so in the cutoff, as the page already did. A reading stored before
+this keeps the old meaning, the oldest time in a 400,000-byte tail and a size above it, and nothing
+distinguishes old from new.
+
+The page holds the board's own record, which is tail-bound, so it cannot resolve a citation to an
+entry only the press read, and it demotes an unresolved citation to "can't tell, uncited". A row now
+counts the cited ids it holds no entry for and, once a record page has loaded and older entries remain,
+says that Show more may load them. "May", because the entry could also be newer than the last poll or
+not a message the record pages return. The owner ruled on 2026-10-13 that the finishing of a press this
+page watched asks the page to read older record pages for that session until each cited entry
+resolves, the record reaches its start or its window, or 20 pages have been read, and nothing else
+loads a page ([reader state](design-reader-state.md#the-inventory) owns the exception and its stops).
+The sentence stays for where that stops short. Rejected: the focused context reaching back to the
+stored window, because the page polls that context and it would repeat the tail enlargement for one
+session on every poll.
+
 This also amends DEC-24 item 6: an otherwise blank unverifiable row citing entries says "Can't
 tell: what was read does not settle this". An uncited blank keeps the recorded-absence sentence.
 The scope names unread git, gh and connected-tool replies and the person's screen. The Codex
 limit explicitly says the agent's replies were not read. No detector verdict changes merely
 because coverage is partial.
+
+#### Amended 2026-10-13: a press keeps the closing agent message of each earlier turn
+
+Reading back to the window start was not enough for a long window. Two limits still stood between
+the first turns' messages and the model, and the first was not the prompt budget. Measured on the
+session that prompted this (a 6.4 MB transcript, still growing): the press scan stopped once it held
+more than 100 messages, 92 agent and 9 of the reader's, before the window start, and the project cap
+then kept 79 agent messages, the oldest at 08:26, though the window opened at 07:59. All 79 fit the
+16 KiB prompt, which came to 16,372 bytes, so the first turns were lost to retention and the budget
+had not yet cost anything. A window with more agent messages than the budget holds loses them to
+both, newest kept first.
+
+The evidence an early Goal rests on is what the agent said it had done, and that is the last message
+of a turn. A turn's first messages usually announce what the agent is about to do and carry no claim. So a
+press now keeps, besides its newest 100 messages, the closing agent message of the oldest twelve
+earlier turns (`PRESS_ANCHORS`): the last agent message before a reader's message going forward in
+time, kept together with that reader's message, because the prompt recognises a turn's close by the
+reader's message after it and the history store may not hold that one. It goes on reading to the
+window start for them, under the same press bounds, and keeps only that handful in memory. The
+project cap reserves the anchors after the session's own checks and the reader's messages and before
+the rest of the agent's, oldest first, so they cost a reader's message or a check nothing. The
+newest turn's closing is among the newest messages and is not reserved apart: reserving it would let
+a reader-heavy session lose its newest reply to the oldest anchors. The same measurement after the change, on the transcript as it had grown to 7.2 MB: the press read
+the whole window in 0.11 seconds, the oldest agent message in the ledger was 08:00:28, and the prompt
+was 16,367 bytes. Reading to the window start has a cost the stop at the cap avoided. Redaction
+dominates it, so a synthetic 20,000-message window (9 MB) spent the whole two-second clock, stopped
+on time and reported the window as not reached; the coverage says so rather than claiming the first
+turns.
+
+The prompt reserves an eighth of its budget for these closings (`ANCHOR_SHARE_DIVISOR`, about ten
+rows at 130 to 190 bytes), oldest first, before the newest agent messages take the rest. It is a
+share of bytes, not a count: a flat count of 40 would take about 60% of the agent capacity and still
+lose about 22 messages from the middle. It displaces, because a full prompt has no unused space, and
+what it displaces is the middle: the messages between the oldest closings and the newest. A reader's
+message, a check, a write and the newest agent messages keep their rank, and a prompt everything
+fits in is selected exactly as before. A closing the share cannot hold falls back to the ordinary
+newest-first order. Which messages closed a turn is derived from the ledger's own order, so no new
+field is published and `for_page` is unchanged.
+
+Coverage keeps its five keys. A read that did not keep every in-window message is truncated, and its
+start is where the record is whole from: after the newest message the read or the cap lost. The kept
+closings older than that are extra evidence, not a contiguous record, and never move it. When the read
+stopped on bytes or the clock, or skipped an unread region, the start is no earlier than where the
+contiguous read began. The cutoff
+adds one clause to the message-tail sentence, naming how many agent messages that closed an earlier turn
+were kept, so the split reads in plain counts.
+
+Decided against: a Show more condition on what enters the prompt, since the prompt is built before
+the page exists and cannot depend on what the reader has loaded without making a stored reading
+irreproducible; since a finished press reads older record pages for itself, it is also unneeded. Not
+done: the first agent message after each reader's message, which was proposed first and carries no
+claim. Not covered: a window of one turn has a single closing, its newest message, so it behaves as
+before; and a reading opened by a reload or a second tab does not run the page's read, so a citation
+to a closing the page does not hold still shows as uncited until Show more loads it. No numbered rule
+of the shape contract changes: it names no selection order, and the 2026-10-03 sentence that ranks
+the agent's messages last is amended above.
 
 ### What the Steer back and Update intent build decided, 2026-09-28
 
@@ -3928,7 +4191,7 @@ saved-line labels. The calls the rulings left open:
 - The route is `POST /api/correction`, answering parts rather than a published field, because
   composition reads the record, and a per-session field would compose on every collection for a
   box few readers open. A part is text or `{"entry": fact_id}`. The page writes the first number
-  it draws as "(#n in Cargento)" and the rest as "(#n)", as the template shows them, and an entry
+  it draws as "(#n in Compass)" and the rest as "(#n)", as the template shows them, and an entry
   it does not number keeps only its time, which the server already wrote.
 - Each line's state is the stored reading's, re-derived against the record as it is now with the
   page's rules for whether a verdict survives: a reading of an older revision lends no state, an
@@ -3978,7 +4241,7 @@ saved-line labels. The calls the rulings left open:
   primary. The result stage gains nothing, so DRC-4695 renders around it. Amended 2026-10-12
   under DEC-27: after a current result, Steer back has no Analyze again beside it. A stale result
   offers the one rerun in its reason callout.
-- The box is labelled "Correction to copy" with the hint "Cargento never sends this. Copy it and
+- The box is labelled "Correction to copy" with the hint "Compass never sends this. Copy it and
   paste it into the session." Copy writes the box's text, frozen at the press, and posts it to
   `POST /api/correction/copied` only after the clipboard took it. The owner approved "Copy",
   "Nothing recorded now gives a correction to steer back from." and "Could not compose a
@@ -4242,6 +4505,7 @@ types one.
   Codex sessions do. Before, every one of them drafted the command as the goal; now none does,
   and the other 1,051 Claude Code sessions draft as before.
 
+
 ## DEC-26: four drift levels, and a live estimate after every turn
 
 Amended 2026-10-11 by [DEC-27](#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result): the live monitor switch moves into More (placement only), and an intent with no outcome line is stated in the how-to as a valid "Not enough recorded yet".
@@ -4345,7 +4609,7 @@ the record does not show (`claim-not-shown`) blocks None or low only.
 
 ### What the levels build decided, 2026-09-24
 
-DRC-4692 built the two functions in `cargento_runtime/levels.py`, and `scripts/levels_cases.py`
+DRC-4692 built the two functions in `compass_runtime/levels.py`, and `scripts/levels_cases.py`
 to measure them. The ruling left these open. Each was settled on the withholding side, and each is
 part of what the owner's marks validate.
 
@@ -4572,7 +4836,7 @@ even when its explanation needs more words than the one-citation example.
 Decided 2026-10-11 (DRC-4855), on the Actions Front and Center project, in the milestone "Intent
 and drift first". DRC-4856 to DRC-4866 build it. The owner signed every row below as recommended.
 
-The question was what a new reader sees first. A reviewer who tried Cargento on recorded sessions
+The question was what a new reader sees first. A reviewer who tried Compass on recorded sessions
 said the interface is too complicated, that people do not know where to start, and that only three
 things matter: the goal, a view of where the session drifted from it, and the analysis. They asked
 for an experiment that keeps those three and removes the rest. The owner's direction of the same
@@ -4599,7 +4863,7 @@ sentence about work the page cannot see stay reachable.
 | 6d | What analysis does | Replaced by the "How Intent and drift works" popup. One explainer, not two. | Nothing |
 | 6e | Delegated work | Moves into More and stays reachable from Analyze drift. It is an honest limit. | Nothing |
 | 6f | Turn off readings | Moves into More. The promise map's off switch stays. | Nothing |
-| 6g | Add to my intent on each activity row | Shown on hover, focus and focus within the row, and always visible when hover is unavailable or the pointer is coarse. Always in the page. DEC-24 item 3 needs it. | Nothing |
+| 6g | Add to my intent on each activity row | Always visible on a row that holds a later direction. Amended 2026-10-12: a control that appears only on hover is one a reader never learns is there. DEC-24 item 3 needs it. | Nothing |
 | 6h | "No terminal to raise" and its "Why" | Shown only when the session is blocked on the reader. | DEC-20 (the raise is primary when a session is blocked) |
 
 The first view at rest holds about eight buttons, links and disclosure summaries: How Intent and
@@ -4695,6 +4959,11 @@ removing one separate row before Keep. A used outcome has Remove beside its box.
 the level and direction selector; the visible summary is the count, with its floor retained in
 the accessible sentence. A blocked header limits the visible title to two lines, retaining the
 full title in its text and title attribute, and moves its measured counts to Session activity.
+The session age appends to the existing identity line, wrapping only when necessary at the
+phone width. It uses the published start or the first message time, states that fallback in its
+exact-local-time tooltip, and draws nothing when both are absent. It adds no separate metadata
+block before the signed content. Storybook verifies phone wrapping; the retired first-view proof
+is not a new measurement of this addition.
 The first-view proof covers stored results, one and four
 unsettled directions, short and wrapped blocked headers, and touch activity actions at desktop
 and phone sizes; each placement and the touch fallback have a rejecting mutation.

@@ -1,7 +1,7 @@
 import { nextNumber } from '../api/bootstrap';
 import { compatSessKey, contextKey } from '../api/identity';
 import { isRecord, type Row } from '../observed';
-import type { ContextEntry } from '../store/board';
+import type { ContextEntry, RecordEntry } from '../store/board';
 import { PROMPT_SOURCES, type PromptCandidate } from '../sessions/intent';
 import type { Annotation } from './annotation';
 
@@ -102,10 +102,6 @@ export function workEntries(session: Row, semantic: unknown): WorkEntry[] {
     });
 }
 
-/* How many entries the list draws. Nothing upstream caps the semantic facts, so this is a readability
-   bound and not a measurement, which is why the count it hid is stated under the rows. */
-export const WORK_ROWS = 20;
-
 export type WorkState = 'unread' | 'error' | 'partial' | 'empty' | 'read';
 
 export interface WorkSource {
@@ -132,19 +128,22 @@ export function workSource(
   contexts: ReadonlyMap<string, ContextEntry>,
   projectKey: string,
   session: Row,
+  record?: RecordEntry,
 ): WorkSource {
   const key = compatSessKey(session);
   const focused = contexts.get(contextKey(projectKey, session as never));
   const project = contexts.get(contextKey(projectKey, null));
   const entry = focused?.data ? focused : project;
-  if (!entry) return { entries: [], state: 'unread' };
-  if (!entry.data) return { entries: [], state: entry.error ? 'error' : 'unread' };
-  const data = entry.data as unknown as Row;
-  const all = workEntries(session, data['semantic']);
-  /* The window bounds the other rows only. A check or a written file is one of at most twelve, chosen
-     failures first, and trimming them to the most recent would hide a listed failure. */
-  const others = all.filter((row) => row.type !== 'tool_report').slice(-WORK_ROWS);
-  const entries = all.filter((row) => row.type === 'tool_report' || others.includes(row));
+  if (!record && !entry) return { entries: [], state: 'unread' };
+  if (!record && !entry?.data) return { entries: [], state: entry?.error ? 'error' : 'unread' };
+  const data = (entry?.data ?? {}) as unknown as Row;
+  const semantic = isRecord(data['semantic']) ? data['semantic'] : {};
+  const facts = Array.isArray(semantic['facts']) ? semantic['facts'].filter(isRecord) : [];
+  const merged = new Map(facts.map((fact) => [String(fact['fact_id'] || ''), fact]));
+  for (const fact of record?.entries ?? []) merged.set(fact.fact_id, fact);
+  const all = workEntries(session, record ? { facts: [...merged.values()] } : data['semantic']);
+  const entries = all;
+  const others = all.filter((row) => row.type !== 'tool_report');
   const otherTotal = all.filter((row) => row.type !== 'tool_report').length;
   const sources = isRecord(data['sources']) ? data['sources'] : null;
   const work = sources && isRecord(sources['work']) ? sources['work'] : null;
@@ -172,7 +171,14 @@ export function workSource(
       total: otherTotal,
     };
   }
-  if (entry.error) return { entries, all, state: 'error' };
+  if (record?.status === 'error' || (record?.status === 'stale' && record.error) || entry?.error)
+    return { entries, all, state: 'error' };
+  if (
+    (!entry?.data && record?.status !== 'loaded') ||
+    record?.status === 'loading' ||
+    (record?.status === 'stale' && !record.error)
+  )
+    return { entries, all, state: 'unread' };
   /* Whether the scan that produces these facts reached this session. The answer is `sources.work.omitted`,
      a list of the sessions the analysis context bounded out, and naming the session is what makes the
      state a fact rather than an inference from two counts. It is not `command_attention_coverage`, which
@@ -209,7 +215,7 @@ export function workAbsence(source: Pick<WorkSource, 'state' | 'scanned' | 'omit
   return 'No entry in the observed record names this session.';
 }
 
-/* A message the server recognised as a correction the reader copied from Cargento is Cargento's words:
+/* A message the server recognised as a correction the reader copied from Compass is Compass's words:
    not theirs here, so not a later direction and not a turn's start either. */
 export function personAuthored(
   entry: Pick<WorkEntry, 'type' | 'copied' | 'by'> | null | undefined,
@@ -222,10 +228,33 @@ export function personAuthored(
 /* Where the numbers start: the evidence window of the saved words, and the whole record where nothing is
    saved or the store is off. Read from the session's own published start, the one the producer reads from,
    so the list's #1 and a reading's window are one moment. */
-function entryWindow(session: Row, payload: Row): number | null {
+export function entryWindow(session: Row, payload: Row): number | null {
   if (payload['annotate'] !== true) return null;
   const opened = nextNumber(session['annotation_window_start']);
   return opened !== null && opened > 0 ? opened : null;
+}
+
+/* Where Show more stops: the record already holds an entry from before the intent's window opened, so
+   everything since it opened is listed. */
+export function recordPastWindow(record: RecordEntry | undefined, opened: number | null): boolean {
+  return (
+    opened !== null &&
+    (record?.entries ?? []).some((entry) => {
+      const at = nextNumber(entry.at);
+      return at !== null && at > 0 && at < opened;
+    })
+  );
+}
+
+/* Whether a reader's Show more can still bring in older entries, said only once a page has loaded: before
+   that the entry a reading cites may simply be on the first page, and the sentence would come and go. A
+   reading cites what its press read, which can reach past the 400 KB the board holds; a finished press reads
+   older pages for it, and this says when asking for more would still help. */
+export function olderEntriesRemain(
+  record: RecordEntry | undefined,
+  opened: number | null,
+): boolean {
+  return record?.status === 'loaded' && !record.reachedStart && !recordPastWindow(record, opened);
 }
 
 export interface EntryNumbering {

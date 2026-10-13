@@ -9,7 +9,7 @@ import { RailUsage } from './UsageConsent';
    The request is read where it is made: every `/api/data` URL the page sent is counted, because the legacy
    page's test of this was a unit over one function and the failure that matters is a request nobody asked
    for. Nothing here reads a credential: the backend is a script that answers from a board. */
-const CONSENT = 'cargento.next.usage.consent';
+const CONSENT = 'compass.next.usage.consent';
 const board = (over: Record<string, unknown> = {}) => ({
   generated: 1000,
   usage_fetch: true,

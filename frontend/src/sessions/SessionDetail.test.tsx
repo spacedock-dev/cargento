@@ -28,6 +28,31 @@ const ONE = {
 };
 const ROUTE = '#n=session:p:claude:one';
 
+describe('the session age in the header', () => {
+  it('a reader sees the published start and its exact local time on the existing identity line', async () => {
+    const start = 1900000000;
+    await open({
+      ...board([{ ...ONE, started_at: start, first_prompt_at: start - 600 }]),
+      generated: start + 23 * 3600,
+    });
+    const age = screen.getByText('Started about 23h 0m ago');
+    expect(age.closest('.next-session-identity')).not.toBeNull();
+    expect(age.getAttribute('title')).toBe(`Started: ${new Date(start * 1000).toLocaleString()}`);
+  });
+  it('a reader with only a first message sees that honest source in the tooltip', async () => {
+    await open(board([{ ...ONE, first_prompt_at: 1000 }]));
+    const age = screen.getByText('Started about 1h 6m ago');
+    expect(age.getAttribute('title')).toBe(
+      `From the first message in the record: ${new Date(1000000).toLocaleString()}`,
+    );
+  });
+  it('a reader sees no guessed age when neither start nor first message time is published', async () => {
+    await open(board([ONE]));
+    expect(document.querySelector('[data-session-age]')).toBeNull();
+    expect(screen.queryByText(/Started about/)).toBeNull();
+  });
+});
+
 async function open(
   data: unknown,
   options: {
@@ -461,7 +486,7 @@ describe('the checks run while the reader was away, when that lane is off', () =
       (node) => node.textContent,
     );
     expect(sentences).toEqual([
-      'Nothing watches for a departure on its own. Start with --unasked-readings to have Cargento check a session against what you asked for while you are away.',
+      'Nothing watches for a departure on its own. Start with --unasked-readings to have Compass check a session against what you asked for while you are away.',
       'The checks that run while you were away are off for this run, so nothing new is being checked. What was already raised is still on record.',
     ]);
     expect(part().textContent).toContain('The change widened the goal.');

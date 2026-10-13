@@ -1,7 +1,7 @@
 import { act, fireEvent } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { RecordedRequest } from '../intent/testing';
-import { byAction, check, driftBoard, json, mountDrift, press, textOf } from './testing';
+import { byAction, check, driftBoard, fact, json, mountDrift, press, textOf } from './testing';
 
 const ASSESSMENT = {
   revision_read: 3,
@@ -35,6 +35,25 @@ function mountSteer(extra: Record<string, unknown> = {}) {
 }
 
 describe('Steer back', () => {
+  it('tells a reader beside Update intent when its offered direction cannot be opened', async () => {
+    const page = mountSteer({
+      facts: [...FACTS, fact('d1', 995)],
+      store: { settled_through: 995 },
+      session: { ...session, annotation_settled_at: 1000, annotation_settled_revision: 3 },
+      routes: { '/api/direction': () => json({ ok: false, reason: 'out_of_reach' }) },
+    });
+    await page.settle();
+    await page.settle();
+    const button = byAction('update-intent') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    button.focus();
+    await press(button);
+    await page.settle();
+    expect(button.parentElement?.querySelector('[data-next-action-feedback]')?.textContent).toBe(
+      'That direction is beyond the part of the record Compass could search. No outcome line was added.',
+    );
+    expect(document.activeElement).toBe(button);
+  });
   it('composes nothing until pressed, then once, and writes nothing into the session', async () => {
     const page = mountSteer({ strict: true });
     await page.settle();
@@ -48,9 +67,9 @@ describe('Steer back', () => {
     await page.settle();
     expect(corrections(page)).toHaveLength(1);
     expect(corrections(page)[0]?.body).toEqual({ harness: 'claude', sid: 's1' });
-    expect(box()?.value).toBe('Your last check failed (#1 in Cargento). Fix it, then say so.');
+    expect(box()?.value).toBe('Your last check failed (#1 in Compass). Fix it, then say so.');
     expect(byAction('steer-back')?.getAttribute('aria-expanded')).toBe('true');
-    expect(textOf('[data-next-steer-box]')).toContain('Cargento never sends this.');
+    expect(textOf('[data-next-steer-box]')).toContain('Compass never sends this.');
     // Every request so far was a read or the one composition: nothing reached the session.
     expect(page.state.requests.filter((r) => r.method !== 'GET')).toHaveLength(1);
   });
@@ -102,13 +121,13 @@ describe('Steer back', () => {
     await page.settle();
     await press(byAction('correction-copy'));
     await page.settle();
-    expect(page.written).toEqual(['Your last check failed (#1 in Cargento). Fix it, then say so.']);
+    expect(page.written).toEqual(['Your last check failed (#1 in Compass). Fix it, then say so.']);
     const recorded = corrections(page).filter((r) => r.path === '/api/correction/copied');
     expect(recorded).toHaveLength(1);
     expect(recorded[0]?.body).toEqual({
       harness: 'claude',
       sid: 's1',
-      text: 'Your last check failed (#1 in Cargento). Fix it, then say so.',
+      text: 'Your last check failed (#1 in Compass). Fix it, then say so.',
     });
     expect(textOf('[data-next-correction-cue]')).toBe('Copied');
     await page.poll({ ...(page.state.data as object), generated: 1100 });

@@ -47,13 +47,13 @@ A line in a Claude reply that quotes another session's prompts is replaced with
 The original four sessions use `scripts/redact_session.py`. The October 5 collection uses its
 generic rules plus private, session-specific rules for the full logs. Names, handles,
 organisations and places are kept in local configuration, never committed. The repository
-redactor's default configuration is `~/.cargento/redaction.json`:
+redactor's default configuration is `~/.compass/redaction.json`:
 
 ```json
 {
   "v": 1,
   "home_user_prefix": "<the start of your macOS user name>",
-  "repository_under_home": "repos/<org>/cargento",
+  "repository_under_home": "repos/<org>/compass",
   "self_tag": "NAME_1",
   "names": [{"pattern": "Full Name|\\bFirst\\b|handle", "tag": "NAME_1"}],
   "orgs": [{"pattern": "Company|company", "tag": "ORG_NAME_1"}],
@@ -103,7 +103,7 @@ cannot say which person it means. Other numbered tags are local to each session.
 
 In the original collection, redacting an organisation also redacts it inside URLs and paths. A link
 to another organisation's repository therefore reads `github.com/[ORG_NAME_N]/...`, and this
-checkout's own path reads `/Users/[NAME_1]/repos/[ORG_NAME_2]/cargento`. The public `spacedock-dev` organisation, loopback
+checkout's own path reads `/Users/[NAME_1]/repos/[ORG_NAME_2]/compass`. The public `spacedock-dev` organisation, loopback
 addresses, issue keys (`DRC-NNNN`), session IDs, the documented `AKIAIOSFODNN7EXAMPLE` placeholder
 and Claude's `noreply` commit trailer are left as they are. Base64 image data is left untouched so
 that images still decode.

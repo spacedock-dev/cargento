@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import abstention_ledger as ledger
 import analyze_campaign as campaigns
+import legacy_paths
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -30,15 +31,20 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "docs/drift-replay/closure-claude-route-conditional-priority.json"
 HANDOFF_PATH = ROOT / "docs/drift-replay/closure-claude-route-conditional-priority-handoff.json"
-OWNER_HOME = Path.home().resolve()
+OWNER_HOME = Path(ledger.canonical_home() or "/unavailable").resolve()
 STATE_PATH = Path(
-    ledger.canonical_path(".cargento", "analyze-closure-route-conditional-priority-spend.json")
+    ledger.canonical_store_path("analyze-closure-route-conditional-priority-spend.json")
     or "/unavailable"
 )
-PRIVATE_DIR = OWNER_HOME / ".cargento" / "claude-route-conditional-priority-verification"
+PRIVATE_DIR = (
+    Path(legacy_paths.default_home(str(OWNER_HOME)))
+    / "claude-route-conditional-priority-verification"
+)
 # Independent of both mutable account/receipt history and the startup context.
 # A prepared-profile rollback cannot erase this one-time activation evidence.
-ACTIVATION_PATH = OWNER_HOME / ".cargento" / "claude-route-live00.ACTIVATED.json"
+ACTIVATION_PATH = (
+    Path(legacy_paths.default_home(str(OWNER_HOME))) / "claude-route-live00.ACTIVATED.json"
+)
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TRANSPORT_KEYS = {"provider", "destination", "model", "effort", "binary_sha256", "argv_digest"}
 
@@ -78,6 +84,7 @@ def _canonical(path: Path) -> None:
 
 
 def _read(path: Path, *, private: bool = False) -> Any:
+    path = Path(str(path))
     _canonical(path)
     try:
         value = ledger._review_json(str(path), "route artifact", cap=2 * 1024 * 1024)  # noqa: SLF001 - shared bounded non-symlink reader
@@ -135,10 +142,10 @@ def _exclusive(path: Path, value: Any) -> None:
 
 
 def _runtime() -> tuple[Any, Any, Any, Any, Any]:
-    skill = str(ROOT / "cargento/skills/cargento")
+    skill = str(ROOT / "compass/skills/compass")
     if skill not in sys.path:
         sys.path.insert(0, skill)
-    from cargento_runtime import (  # noqa: PLC0415 - operator-only runtime admission
+    from compass_runtime import (  # noqa: PLC0415 - operator-only runtime admission
         annotations,
         observer,
         reading,
@@ -156,7 +163,7 @@ def _qualification_snapshot() -> dict[str, Any]:
 
     evidence = current.manifest["evidence"]["qualification"]
     runtime_digest = campaigns.runtime_source_digest(
-        ROOT / "cargento/skills/cargento/cargento_runtime"
+        ROOT / "compass/skills/compass/compass_runtime"
     )
     _require(
         isinstance(evidence, dict)
@@ -307,14 +314,15 @@ class RouteVerification:
         self.receipts = Path(str(self.path) + ".receipts")
         self.binding = profile_binding(self.profile)
         self.context = self._validate()
-        if any(os.path.lexists(path) for path in (ACTIVATION_PATH, self.path, self.receipts)):
+        if any(os.path.lexists(str(path)) for path in (ACTIVATION_PATH, self.path, self.receipts)):
             self._state()
 
     def _validate(self) -> dict[str, Any]:
         _canonical(OWNER_HOME)
+        account_home = Path(legacy_paths.default_home(str(OWNER_HOME)))
         _require(
-            self.path.parent == OWNER_HOME / ".cargento"
-            and ACTIVATION_PATH == OWNER_HOME / ".cargento" / "claude-route-live00.ACTIVATED.json",
+            self.path.parent == account_home
+            and account_home / "claude-route-live00.ACTIVATED.json" == ACTIVATION_PATH,
             "route account is not in the canonical owner home",
         )
         profile = _read(PROFILE_PATH)
@@ -401,7 +409,7 @@ class RouteVerification:
             and handoff["qualification_review_digest"] == profile["qualification"]["review_digest"],
             "route has no bound independent review",
         )
-        context_path = PRIVATE_DIR / "context.json"
+        context_path = Path(str(PRIVATE_DIR / "context.json"))
         context = _read(context_path, private=True)
         _require(
             profile["context_sha256"] == sha(context_path.read_bytes())
@@ -543,7 +551,8 @@ class RouteVerification:
         with ledger.locked(str(self.path)):
             _require(
                 not any(
-                    os.path.lexists(path) for path in (ACTIVATION_PATH, self.path, self.receipts)
+                    os.path.lexists(str(path))
+                    for path in (ACTIVATION_PATH, self.path, self.receipts)
                 ),
                 "route cannot be initialized again or refunded",
             )
@@ -810,7 +819,7 @@ def install_native_guard() -> Iterator[dict[str, Any]]:
     """Guard this owned genuine server process; no fake provider or replacement HTTP route."""
     qualification_snapshot()
     _, observer, _, _, _ = _runtime()
-    from cargento_runtime import cli, supervise  # noqa: PLC0415 - canonical server/runtime seams
+    from compass_runtime import cli, supervise  # noqa: PLC0415 - canonical server/runtime seams
 
     native_exec = observer.claude_exec
     native_codex = observer.codex_exec
@@ -906,7 +915,7 @@ def install_native_guard() -> Iterator[dict[str, Any]]:
 
 def run_server(argv: Sequence[str]) -> int:
     _runtime()
-    from cargento_runtime import cli  # noqa: PLC0415 - genuine normal server entry point
+    from compass_runtime import cli  # noqa: PLC0415 - genuine normal server entry point
 
     args = cli.build_parser().parse_args(list(argv))
     _require(

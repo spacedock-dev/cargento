@@ -4,6 +4,6 @@
 * text=auto eol=lf
 
 # Tracked candidate artifacts retain their generated LF bytes on every platform.
-/cargento/skills/cargento/cargento_runtime/web/react.html text eol=lf
-/cargento/skills/cargento/cargento_runtime/web/react.integrity.json text eol=lf
-/cargento/skills/cargento/cargento_runtime/web/react-licenses.txt text eol=lf
+/compass/skills/compass/compass_runtime/web/react.html text eol=lf
+/compass/skills/compass/compass_runtime/web/react.integrity.json text eol=lf
+/compass/skills/compass/compass_runtime/web/react-licenses.txt text eol=lf

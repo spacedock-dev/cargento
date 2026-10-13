@@ -90,7 +90,7 @@
   },
   {
    "id": "B4",
-   "signal": "Answer it from Cargento",
+   "signal": "Answer it from Compass",
    "outcome": "the trip to the tab disappears",
    "state": "new",
    "column": "gate",

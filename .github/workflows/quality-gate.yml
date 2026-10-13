@@ -1,7 +1,7 @@
 name: Quality Gate
 
 # Strict lint (ruff, all rules), formatting, mypy --strict, the frontend's own
-# checks (Biome, strict types, unit tests, the build and the browser proofs),
+# checks (Biome, strict types, unit tests and the build; the UI is verified by Storybook),
 # and the full unittest suite under coverage with an enforced threshold. The
 # final `quality-gate` job aggregates every result into the one status that
 # branch protection requires.
@@ -63,7 +63,7 @@ jobs:
           # dependency analysis, so review new reads (and the root allowlist) by
           # hand. validate.yml's unfiltered suite remains the backstop.
           # 1. Whole double-quoted docs paths in the tests.
-          ASSERTED=$(grep -rhoE '"docs/[^"]+\.md"' cargento/skills/cargento/tests/*.py \
+          ASSERTED=$(grep -rhoE '"docs/[^"]+\.md"' compass/skills/compass/tests/*.py \
                      | tr -d '"' | sort -u || true)
           # 2. DocumentedCaptureFiguresTest builds this path from CAPTURES.
           ASSERTED=$(printf '%s\n' "$ASSERTED" 'docs/captures/README.md' | sort -u)
@@ -76,7 +76,7 @@ jobs:
           # landed, which is DRC-4462's defect one layer up, so deriving it is
           # the only form that cannot go stale as citations move.
           CITED=$(grep -rhoE '\(docs/[^)]+\.md#' \
-                    cargento/skills/cargento/cargento_runtime/ 2>/dev/null \
+                    compass/skills/compass/compass_runtime/ 2>/dev/null \
                   | sed 's/^(//; s/#$//' | sort -u || true)
           ASSERTED=$(printf '%s\n%s\n' "$ASSERTED" "$CITED" | grep . | sort -u)
           # Frontend/script tests can also read docs, including root prose.
@@ -220,8 +220,8 @@ jobs:
       - name: Direct-launch smoke on the supported floor
         run: |
           cd "${RUNNER_TEMP}"
-          python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --help
-          python "${GITHUB_WORKSPACE}/cargento/skills/cargento/server.py" --diagnose --json
+          python "${GITHUB_WORKSPACE}/compass/skills/compass/server.py" --help
+          python "${GITHUB_WORKSPACE}/compass/skills/compass/server.py" --diagnose --json
       # Plain unittest, not `coverage run`. The threshold is owned by the `test`
       # job below and is enforced there once; a second `coverage report` on a
       # second interpreter measured nothing new, because nothing in the product
@@ -235,7 +235,7 @@ jobs:
       # cores (131s serial against 34s on four workers, measured 2026-09-23).
       - name: Run the full suite on the floor
         run: |
-          python scripts/run_tests.py --slowest 10 -s cargento/skills/cargento/tests -t .
+          python scripts/run_tests.py --slowest 10 -s compass/skills/compass/tests -t .
           python scripts/run_tests.py -s scripts/tests -t scripts/tests
 
   test:
@@ -266,7 +266,7 @@ jobs:
       - name: Run full unittest suite under coverage
         run: |
           coverage erase
-          python3 scripts/run_tests.py --coverage --slowest 10 -s cargento/skills/cargento/tests -t .
+          python3 scripts/run_tests.py --coverage --slowest 10 -s compass/skills/compass/tests -t .
           python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
           coverage combine
 
@@ -402,7 +402,7 @@ jobs:
         run: python -c "import sqlite3; print(sqlite3.sqlite_version)"
       - name: Run dashboard test discovery
         if: matrix.suite == 'dashboard'
-        run: python scripts/run_tests.py --slowest 10 -s cargento/skills/cargento/tests -t .
+        run: python scripts/run_tests.py --slowest 10 -s compass/skills/compass/tests -t .
       - name: Run script unit tests
         if: matrix.suite == 'scripts'
         run: python scripts/run_tests.py --slowest 10 --shard ${{ matrix.shard }}/3 -s scripts/tests -t scripts/tests
@@ -412,9 +412,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
-    # Eleven browser proofs take about 15 minutes on a hosted macOS runner (three shared cores) and the migration
-    # adds more; each step keeps its own short timeout, so a hang still ends in minutes.
-    timeout-minutes: 30
+    # The browser proofs are no longer part of the gate (owner, 2026-10-12): the UI is verified by the
+    # `storybook` job below. Their scripts stay in package.json and run on demand.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -467,66 +467,21 @@ jobs:
       - name: Owned development lifecycle and isolation tests
         timeout-minutes: 3
         env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
+          COMPASS_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
         run: pnpm test:dev
       - name: Clean native preview build (not the shipping artifact)
         timeout-minutes: 3
         run: pnpm build:preview
-      - name: Install pinned Chromium and its host dependencies
-        timeout-minutes: 5
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Hostile inline artifact parser browser proof
-        timeout-minutes: 3
-        run: pnpm test:parser
-      - name: Installed Python-only artifact browser proof
-        timeout-minutes: 3
-        env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: pnpm test:installed
-      - name: Real Python and Vite hot refresh browser proof
-        timeout-minutes: 3
-        env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: pnpm test:dev:browser
-      - name: Storage conformance browser proof
-        timeout-minutes: 3
-        env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: pnpm test:storage:browser
-      - name: React shell and routing browser proof
-        timeout-minutes: 5
-        env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: pnpm test:shell:browser
-      - name: Shared controls continuity browser proof
-        timeout-minutes: 5
-        env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: pnpm test:controls:browser
-      - name: Session lists and detail browser proof
-        timeout-minutes: 5
-        env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: pnpm test:sessions:browser
 
-  # The same proofs against the SHIPPED bundle. Every other frontend proof serves the React side through the
-  # development server (Vite modules, HMR, StrictMode double effects); this job sets `CARGENTO_E2E_BUNDLE=production`
-  # (see frontend/e2e/support/world.mjs), so the Python backend serves the minified react.html that readers get,
-  # and a difference only the shipped bytes show (minification, dead-code elimination, CSS order, the absence of
-  # StrictMode's double effect) fails here. It adds coverage; the development runs above stay. Ubuntu only: the
-  # bundle is platform-independent bytes, and the native legs exist for the platform-specific work above.
-  # `pnpm build:check` runs first so the file served is the one the sources produce, not a stale commit of it.
+  # The shipped bundle is rebuilt from its sources and compared with the tracked file. Ubuntu only: the bundle is
+  # platform-independent bytes, and a stale artifact has been caught here that a local build did not show. The
+  # parity proofs that used to run against the bundle are retired from the gate (owner, 2026-10-12).
   frontend-production:
-    name: Frontend production bundle (ubuntu-latest, shard ${{ matrix.shard }})
+    name: Frontend production bundle (ubuntu-latest)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        # Balanced from measured production-mode times in frontend/e2e/production-shards.json.
-        shard: [a, b]
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -558,14 +513,6 @@ jobs:
       - name: Canonical rebuild and tracked artifact comparison
         timeout-minutes: 3
         run: pnpm build:check
-      - name: Install pinned Chromium and its host dependencies
-        timeout-minutes: 5
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Parity proofs against the shipped bundle
-        timeout-minutes: 20
-        env:
-          CARGENTO_TEST_PYTHON: ${{ steps.python.outputs.python-path }}
-        run: pnpm test:production:browser --shard ${{ matrix.shard }}
 
   storybook:
     name: Storybook (ubuntu-latest)

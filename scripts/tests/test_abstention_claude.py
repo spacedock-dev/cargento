@@ -33,11 +33,11 @@ import mark_abstention
 import score_abstention
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL = ROOT / "cargento" / "skills" / "cargento"
+SKILL = ROOT / "compass" / "skills" / "compass"
 if str(SKILL) not in sys.path:
     sys.path.insert(0, str(SKILL))
 
-from cargento_runtime import observer, reading  # noqa: E402
+from compass_runtime import observer, reading  # noqa: E402
 
 CLAUDE_SID = "c1a2b3c4-SECRET-SID"
 CODEX_SID = "d5e6f7a8-SECRET-SID"
@@ -301,7 +301,7 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
                 "verify_claude_binary",
                 return_value=_VERIFIED,
             ),
-            mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
+            mock.patch("compass_runtime.reading_route.destination", return_value="Anthropic"),
             mock.patch("builtins.print"),
         ):
             self.assertEqual(0, score_abstention.main(["--score", "--producer", "claude"]))
@@ -328,7 +328,7 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
             mock.patch.object(score_abstention, "score", side_effect=fake_score),
             mock.patch.object(score_abstention, "argv_digest", return_value="cd" * 32),
             mock.patch.object(score_abstention, "verify_claude_binary", return_value=_VERIFIED),
-            mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
+            mock.patch("compass_runtime.reading_route.destination", return_value="Anthropic"),
             mock.patch("builtins.print"),
         ):
             self.assertEqual(
@@ -360,11 +360,11 @@ class TheClaudeProducerIsChosenExplicitlyTest(unittest.TestCase):
 
 
 def _state_config() -> Any:
-    from cargento_runtime.config import build_runtime_config  # noqa: PLC0415
+    from compass_runtime.config import build_runtime_config  # noqa: PLC0415
 
     home = tempfile.mkdtemp()
     return build_runtime_config(
-        environ={"HOME": home, "CARGENTO_HOME": home},
+        environ={"HOME": home, "COMPASS_HOME": home},
         platform_name="linux",
         os_name="posix",
         launcher_path=Path(home, "server.py"),
@@ -739,16 +739,16 @@ class Q1TheMarksAreBoundToEveryChargeTest(_Ledgered):
 class Q2OneLedgerThatFailsClosedTest(_Ledgered):
     """F2: one fixed ledger for every producer and home, locked, and never reset by damage."""
 
-    def test_the_path_is_fixed_whatever_cargento_home_says(self) -> None:
+    def test_an_operator_cannot_move_the_account_ledger_with_a_store_override(self) -> None:
         import importlib  # noqa: PLC0415
 
-        with mock.patch.dict("os.environ", {"CARGENTO_HOME": str(self.home / "fresh")}):
+        with mock.patch.dict("os.environ", {"COMPASS_HOME": str(self.home / "fresh")}):
             fresh = importlib.reload(abstention_ledger)
             path = fresh.LEDGER_PATH
         importlib.reload(abstention_ledger)
         _LEDGER_PATCH.stop()
         _LEDGER_PATCH.start()
-        self.assertEqual(str(Path("~/.cargento/drc-4666-spend.json").expanduser()), path)
+        self.assertEqual(abstention_ledger.canonical_store_path("drc-4666-spend.json"), path)
         self.assertNotIn("fresh", path)
 
     def test_the_cap_is_the_owners_ceiling_and_cannot_be_raised(self) -> None:
@@ -875,7 +875,7 @@ class Q3TheDestinationAndBinaryAreBoundTest(_Packet):
         with (
             mock.patch.object(score_abstention, "_load_corpus", return_value=corpus),
             mock.patch.object(score_abstention, "score", side_effect=AssertionError("scored")),
-            mock.patch("cargento_runtime.reading_route.destination", return_value="127.0.0.1:9"),
+            mock.patch("compass_runtime.reading_route.destination", return_value="127.0.0.1:9"),
             mock.patch("builtins.print"),
         ):
             self.assertEqual(2, score_abstention.main(["--score", "--producer", "claude"]))
@@ -1213,7 +1213,7 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
 
     def test_a_destination_other_than_the_stub_runs_nothing(self) -> None:
         runner = mock.Mock(side_effect=AssertionError("ran"))
-        with mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"):
+        with mock.patch("compass_runtime.reading_route.destination", return_value="Anthropic"):
             self.assertEqual(2, self.probe(runner))
         runner.assert_not_called()
 
@@ -1221,7 +1221,7 @@ class DRC4710TheProbeCannotReachARealModelTest(unittest.TestCase):
         # What the Windows runner measured on PR #416: the route names nothing
         # there, so the probe says so and the CLI never starts.
         runner = mock.Mock(side_effect=AssertionError("ran"))
-        with mock.patch("cargento_runtime.reading_route.platform.system", return_value="Windows"):
+        with mock.patch("compass_runtime.reading_route.platform.system", return_value="Windows"):
             self.assertEqual(2, self.probe(runner))
         runner.assert_not_called()
         self.assertEqual(
@@ -1689,7 +1689,7 @@ class DRC4731CodeSensitiveParserStampTest(unittest.TestCase):
         self.actual_parser_files = mark_abstention._PARSER_FILES
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        runtime = Path(self.temp.name, "cargento_runtime")
+        runtime = Path(self.temp.name, "compass_runtime")
         runtime.mkdir()
         self.parser = runtime / "sample.py"
         patch = mock.patch.multiple(
@@ -1716,9 +1716,9 @@ class DRC4731CodeSensitiveParserStampTest(unittest.TestCase):
         self.assertNotEqual(first, second)
 
     def test_shared_byte_reader_change_invalidates_a_frozen_packet(self) -> None:
-        runtime = Path(self.temp.name, "cargento_runtime")
+        runtime = Path(self.temp.name, "compass_runtime")
         for name in ("project_context.py", "reading.py", "io.py"):
-            shutil.copy2(SKILL / "cargento_runtime" / name, runtime / name)
+            shutil.copy2(SKILL / "compass_runtime" / name, runtime / name)
         with mock.patch.object(mark_abstention, "_PARSER_FILES", self.actual_parser_files):
             before = mark_abstention.parser_digest()
             with (runtime / "io.py").open("a") as handle:
@@ -2209,7 +2209,7 @@ def _board_facts(config: Any, rows: list[dict[str, Any]], sid: str) -> list[dict
     1b4a141f and a2364dbf: every non-check fact a Claude Code case carries is
     a `steer` user message, and this rebuild matched the board's ledger rows.
     """
-    from cargento_runtime import project_context  # noqa: PLC0415
+    from compass_runtime import project_context  # noqa: PLC0415
 
     facts = []
     for row in rows:
@@ -3011,7 +3011,7 @@ def audit(event, args):
     if event in ('socket.connect', 'socket.bind'):
         counts['network'] += 1
         raise AssertionError('network forbidden')
-    if event == 'import' and str(args[0]).startswith('cargento_runtime'):
+    if event == 'import' and str(args[0]).startswith('compass_runtime'):
         counts['runtime'] += 1
         raise AssertionError('runtime must not be reached')
     if event in ('os.mkdir', 'os.remove', 'os.rename', 'os.rmdir', 'os.link', 'os.symlink', 'os.chmod'):
@@ -3061,7 +3061,7 @@ try:
             except ledger.LedgerError:
                 result['default_charge_refused'] = True
         else:
-            result['canonical_roots'] = ledger.LEDGER_PATH == os.path.join(canonical, '.cargento', 'drc-4666-spend.json') and marker.CLAUDE_PROJECTS_ROOT == os.path.join(canonical, '.claude', 'projects') and marker.STORE_HOME == os.path.join(canonical, '.cargento') and score.CLAUDE_VERSIONS_ROOTS == (os.path.join(canonical, '.local', 'share', 'claude', 'versions'),)
+            result['canonical_roots'] = ledger.LEDGER_PATH == os.path.join(canonical, '.compass', 'drc-4666-spend.json') and marker.CLAUDE_PROJECTS_ROOT == os.path.join(canonical, '.claude', 'projects') and marker.STORE_HOME == os.path.join(canonical, '.compass') and score.CLAUDE_VERSIONS_ROOTS == (os.path.join(canonical, '.local', 'share', 'claude', 'versions'),)
             args = argparse.Namespace(score=True, probe_argv=False, producer='claude', max_calls=1, resume=False)
             result['refusal'] = score._argument_refusal(args)
             result['home_moved'] = ledger.home_moved()
@@ -3077,7 +3077,7 @@ print(json.dumps(result))
             environ = {
                 **os.environ,
                 "HOME": canonical + ("-other" if mode == "moved_home" else ""),
-                "CARGENTO_HOME": str(Path(temporary, "private-packet")),
+                "COMPASS_HOME": str(Path(temporary, "private-packet")),
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
             result = subprocess.run(
@@ -3300,7 +3300,7 @@ class V2TheScorerReChecksProvenanceTest(_Packet):
                 return_value=_VERIFIED,
             ),
             mock.patch.object(mark_abstention, "machine_vouch", return_value="VOUCH") as built,
-            mock.patch("cargento_runtime.reading_route.destination", return_value="Anthropic"),
+            mock.patch("compass_runtime.reading_route.destination", return_value="Anthropic"),
             mock.patch("builtins.print"),
         ):
             self.assertEqual(0, score_abstention.main(["--score", "--producer", "claude"]))

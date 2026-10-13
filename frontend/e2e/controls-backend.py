@@ -19,7 +19,7 @@ sys.path.insert(0, str(HERE.parent / "test"))
 
 import dev_capability_backend as capability  # noqa: E402
 import fixture_backend as board  # noqa: E402
-from cargento_runtime import cli  # noqa: E402
+from compass_runtime import cli  # noqa: E402
 
 if __name__ == "__main__":
     cli.aggregate.default_harnesses = board.fixture_harnesses

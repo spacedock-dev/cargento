@@ -5,7 +5,7 @@ import { fakeBackend } from '../../test/storage_backends';
 import { createLegacyStorage } from '../storage';
 import { createTimelineModes, useTimelineModeIn, type TimelineModes } from './modes';
 
-const KEY = 'cargento.next.graph.mode';
+const KEY = 'compass.next.graph.mode';
 
 function modesOver(initial: Record<string, string> = {}) {
   const backend = fakeBackend(initial);

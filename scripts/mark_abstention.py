@@ -69,7 +69,7 @@ The two constraints below live in this file, not in the annotation store. A
 producer handed a session with no stored revision refuses it outright with
 `nothing-typed`, before any evidence is read. So `score_abstention.py` hands
 `reading.produce` these two lines as a **synthetic revision**, per case, as an
-argument: nothing is written to `cargento-annotations.json`, no reading count
+argument: nothing is written to `compass-annotations.json`, no reading count
 moves, and the Intent log stays the reader's. The first draft of this paragraph
 had the scorer write and clear a store revision instead; `produce` takes
 `revisions` as a parameter, so that was a write for nothing, and a write into
@@ -97,13 +97,14 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeGuard, cast
 
 import abstention_ledger
+import legacy_paths
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
     from typing import BinaryIO
 
 _SKILL = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cargento", "skills", "cargento"
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "compass", "skills", "compass"
 )
 
 
@@ -121,16 +122,16 @@ def _reading() -> Any:
     """
     if _SKILL not in sys.path:
         sys.path.insert(0, _SKILL)
-    from cargento_runtime import reading  # noqa: PLC0415
+    from compass_runtime import reading  # noqa: PLC0415
 
     return reading
 
 
-HOME = os.environ.get("CARGENTO_HOME") or os.path.expanduser("~/.cargento")
+HOME = legacy_paths.store_home()
 # Read once, with HOME: a report from the default home was once posted as the
 # marks for a packet that lived elsewhere, so every mode that reads a packet
 # says when this was the case.
-DEFAULT_HOME = not os.environ.get("CARGENTO_HOME")
+DEFAULT_HOME = not legacy_paths.environment_value(os.environ, "COMPASS_HOME")
 CASES_PATH = os.path.join(HOME, "abstention-cases.json")
 MARKS_PATH = os.path.join(HOME, "abstention-marks.json")
 
@@ -155,7 +156,7 @@ ORIGIN_SYNTHETIC = "synthetic"
 CLAUDE_PROJECTS_ROOT = abstention_ledger.canonical_path(".claude", "projects")
 # Where the freeze reads the dashboard's own history and ends: the store the
 # lifecycle was observed into, never the packet's directory.
-STORE_HOME = abstention_ledger.canonical_path(".cargento")
+STORE_HOME = abstention_ledger.canonical_store_path()
 
 # Cases per (harness, end shape), so the corpus spreads instead of filling up
 # with whichever harness ran most today. v2 had this constant and no bucketing,
@@ -211,8 +212,8 @@ def packet_lines(path: str, body: dict[str, Any]) -> list[str]:
     lines = [f"Packet: {display_path(path)} ({held if os.path.exists(path) else 'not found'})"]
     if DEFAULT_HOME:
         lines.append(
-            f"CARGENTO_HOME is not set, so this read the default home, {display_path(HOME)}. "
-            "Set CARGENTO_HOME to the packet's directory if this is not the packet you meant."
+            f"COMPASS_HOME is not set, so this read the default home, {display_path(HOME)}. "
+            "Set COMPASS_HOME to the packet's directory if this is not the packet you meant."
         )
     return lines
 
@@ -258,7 +259,7 @@ def _refuse_mismatch(body: dict[str, Any], nothing: str) -> bool:
     print(f"  {why}")
     print("  Run from an up-to-date checkout (git pull) and try again. If this checkout is")
     print("  current, the packet is older than these scripts: build or freeze a new one in a")
-    print("  fresh CARGENTO_HOME.")
+    print("  fresh COMPASS_HOME.")
     print(nothing)
     return True
 
@@ -394,7 +395,7 @@ def _final_metadata(result: dict[str, Any] | None) -> dict[str, Any] | None:
 
 def _bounded_source_cut(handle: BinaryIO, captured: float, max_bytes: int) -> int:
     """Find the cut on the opened source, with one bounded future-record lookahead."""
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     offset = 0
     while raw := handle.readline(project_context.FINAL_WORDS_RECORD_MAX_BYTES + 1):
@@ -420,7 +421,7 @@ def _bounded_source_cut(handle: BinaryIO, captured: float, max_bytes: int) -> in
 @contextlib.contextmanager
 def _historical_source(case: dict[str, Any], transcript: str) -> Iterator[tuple[str, str]]:
     """An owned bounded capture prefix; raw/full words never enter the packet."""
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     size = case.get("transcript_bytes")
     if type(size) is not int or size < 0 or size > project_context.FINAL_WORDS_SCAN_MAX_BYTES:
@@ -448,7 +449,7 @@ def _historical_source(case: dict[str, Any], transcript: str) -> Iterator[tuple[
     frozen = case.get("production_reading")
     if isinstance(frozen, dict) and frozen.get("prefix_digest") != digest:
         raise FreezeError("production-source-differs")
-    with tempfile.TemporaryDirectory(prefix="cargento-native-source-") as folder:
+    with tempfile.TemporaryDirectory(prefix="compass-native-source-") as folder:
         path = os.path.join(folder, os.path.basename(transcript))
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descriptor, "wb") as handle:
@@ -459,7 +460,7 @@ def _historical_source(case: dict[str, Any], transcript: str) -> Iterator[tuple[
 def _production_capture(config: Any, case: dict[str, Any], transcript: str) -> dict[str, Any]:
     """Capture the actual production selection using a model-free prompt sink."""
     reading = _reading()
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     revision = case_revision(case)
     if (
@@ -550,7 +551,7 @@ def _native_source_lookup(
     if not isinstance(frozen, dict) or frozen.get("v") != 1:
         raise FreezeError("production-source-invalid")
     reading = _reading()
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     actual_config = config if config is not None else _runtime_config()
     exported = "reviewed_export" in case
@@ -914,7 +915,7 @@ def build(port: int, *, force: bool = False) -> int:
 def _runtime_config() -> Any:
     """The runtime config the dashboard would build here, for the freeze's reads."""
     _reading()
-    from cargento_runtime import config  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import config  # noqa: PLC0415 - see `_reading`
 
     return config.build_runtime_config(
         environ=os.environ,
@@ -1077,7 +1078,7 @@ class ReviewedExports:
     def _source(  # noqa: C901, PLR0915 - independent bounded identity/lifecycle guards
         self, case: dict[str, Any], config: Any, *, frozen: bool
     ) -> tuple[str, bytes, dict[str, Any]]:
-        from cargento_runtime import project_context  # noqa: PLC0415 - same native source boundary
+        from compass_runtime import project_context  # noqa: PLC0415 - same native source boundary
 
         _export_require(
             hashlib.sha256(_export_bytes(self.path, 65_536)).hexdigest() == self.digest,
@@ -1285,7 +1286,7 @@ class ReviewedExports:
                 case.get("reviewed_export") == self.receipt(case, proof),
                 "reviewed-export-receipt-differs",
             )
-        with tempfile.TemporaryDirectory(prefix="cargento-reviewed-export-") as folder:
+        with tempfile.TemporaryDirectory(prefix="compass-reviewed-export-") as folder:
             owned = os.path.join(folder, os.path.basename(path))
             descriptor = os.open(owned, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "wb") as handle:
@@ -1300,7 +1301,7 @@ class ReviewedExports:
             )
 
     def freeze(self, config: Any, entry: dict[str, Any]) -> dict[str, Any]:
-        from cargento_runtime import project_context  # noqa: PLC0415 - native source reconstruction
+        from compass_runtime import project_context  # noqa: PLC0415 - native source reconstruction
 
         _export_require(
             isinstance(entry.get("intent"), dict) and bool(case_lines(entry)), "no-outcome-line"
@@ -1492,7 +1493,7 @@ def _transcript_stop(transcript: str, sid: str, stop: float) -> bool:
     """
     if len(sid) < 8:
         return False
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     try:
         with open(transcript, encoding="utf-8", errors="replace") as handle:
@@ -1549,7 +1550,7 @@ def _frozen_checks(
         unconfirmed.append("transcript-outside-projects")
     if not _transcript_is_the_session(transcript, sid):
         unconfirmed.append("transcript-other-session")
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     size = capture_prefix(transcript, captured)
     stop = _stop(snapshot)
@@ -1583,7 +1584,7 @@ def capture_prefix(transcript: str, captured: float) -> int:
     check scan makes too: an append-only file holds nothing written later
     before that line, and a line stamped earlier after it was written later.
     """
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     offset = 0
     with open(transcript, "rb") as handle:
@@ -1616,9 +1617,9 @@ def parser_digest() -> str:
     The format prefix keeps old byte stamps conservatively incompatible;
     neither frozen packets nor owner marks are rewritten to fit new code.
     """
-    digest = hashlib.sha256(b"cargento-parser-ast-v1\0")
+    digest = hashlib.sha256(b"compass-parser-ast-v1\0")
     for name in _PARSER_FILES:
-        with open(os.path.join(_SKILL, "cargento_runtime", name), "rb") as handle:
+        with open(os.path.join(_SKILL, "compass_runtime", name), "rb") as handle:
             tree = ast.parse(handle.read(), filename=name)
         digest.update(name.encode() + b"\0")
         digest.update(ast.dump(tree, include_attributes=False).encode() + b"\0")
@@ -1669,7 +1670,7 @@ def content_refusal(config: Any, case: dict[str, Any], transcript: str) -> list[
     reading = _reading()
     sid = str(case.get("sid") or "")
     captured = float(case["captured_at"])
-    from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
     stop = _stop(case.get("row_snapshot") or {})
     production = "production_reading" in case
@@ -1989,7 +1990,7 @@ def freeze_case(  # noqa: C901 - retain legacy provenance order with opt-in sour
         case["transcript_cut"] = "capture"
         case["parser"] = parser_digest()
         if production_reading:
-            from cargento_runtime import project_context  # noqa: PLC0415 - see `_reading`
+            from compass_runtime import project_context  # noqa: PLC0415 - see `_reading`
 
             _whole, agents = project_context.frozen_claude_agent_messages(
                 config, transcript, sid, until=captured, size=case["transcript_bytes"]
@@ -2009,11 +2010,11 @@ def _observed_stores(store_home: str | None) -> tuple[Any, Any]:
     if store_home is None:
         raise FreezeError("account-home-unavailable")
     _reading()
-    from cargento_runtime import config as config_mod  # noqa: PLC0415 - see `_reading`
-    from cargento_runtime import ends, history  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import config as config_mod  # noqa: PLC0415 - see `_reading`
+    from compass_runtime import ends, history  # noqa: PLC0415 - see `_reading`
 
     config = config_mod.build_runtime_config(
-        environ={**os.environ, "CARGENTO_HOME": store_home},
+        environ={**os.environ, "COMPASS_HOME": store_home},
         platform_name=sys.platform,
         os_name=os.name,
         launcher_path=pathlib.Path(_SKILL, "server.py"),
@@ -2043,7 +2044,7 @@ def freeze(  # noqa: PLR0911 - refuse each distinct source/identity preparation 
         return 1
     if _marks(_load(MARKS_PATH)) and not force:
         print("Marks already exist here and would belong to a different packet.")
-        print("Use a fresh CARGENTO_HOME, or --force to write the packet anyway.")
+        print("Use a fresh COMPASS_HOME, or --force to write the packet anyway.")
         return 1
     config = _runtime_config()
     try:
@@ -2211,13 +2212,13 @@ def _show(case: dict[str, Any], position: str) -> None:
     if asked:
         print(f"    {_short(asked, 260)}")
     elif case.get("title"):
-        print(f"    {case.get('title')}   (a title Cargento derived; the ask was not recorded)")
+        print(f"    {case.get('title')}   (a title Compass derived; the ask was not recorded)")
     else:
-        print("    nothing Cargento managed to record")
+        print("    nothing Compass managed to record")
     if latest and latest[:60] != asked[:60]:
         print(f"\n  LAST TOLD\n    {_short(latest, 180)}")
 
-    print("\n  WHAT CARGENTO HAS TO GO ON")
+    print("\n  WHAT COMPASS HAS TO GO ON")
     if not case.get("reached"):
         print("    the evidence ledger could not be read")
     elif case.get("citable"):
@@ -2240,12 +2241,12 @@ def _question(case: dict[str, Any]) -> str:
     tail = "    y = it has enough to answer    n = it must say it cannot tell\n    [y/n/s/q] "
     if not case.get("asked_for"):
         return (
-            "\n  Cargento never recorded what this session was asked for.\n"
+            "\n  Compass never recorded what this session was asked for.\n"
             "  Should it still say whether the session did it?\n" + tail
         )
     return (
         f"\n  You want to know: did it {_headline(case)}\n"
-        "  Should Cargento answer that, or say it cannot tell?\n" + tail
+        "  Should Compass answer that, or say it cannot tell?\n" + tail
     )
 
 
@@ -2326,13 +2327,13 @@ def _mark_question(body: dict[str, Any], case: dict[str, Any], constraint: str) 
             what = f"outcome line {k}: {case_lines(case)[k - 1]}"
         return (
             f"\n  Against {what}\n"
-            "  Should Cargento answer from the frozen record, or say it cannot tell?\n"
+            "  Should Compass answer from the frozen record, or say it cannot tell?\n"
             "    y = it has enough to answer    n = it must say it cannot tell\n    [y/n/s/q] "
         )
     if body.get("v") == 4:
         return (
             f"\n  Against this {constraint} yardstick: {body.get(constraint) or ''}\n"
-            "  Should Cargento answer from the frozen ledger, or say it cannot tell?\n"
+            "  Should Compass answer from the frozen ledger, or say it cannot tell?\n"
             "    y = it has enough to answer    n = it must say it cannot tell\n    [y/n/s/q] "
         )
     if constraint == "goal":
@@ -2450,9 +2451,7 @@ def mark(*, continuation: bool = False) -> int:  # noqa: PLR0911 - guard before 
     digest = cases_digest(body)
     if replay and entries and saved.get("cases_digest") != digest:
         print("These marks belong to a different or unfrozen case set. Nothing was changed.")
-        print(
-            "Keep that key with its original cases; use a separate CARGENTO_HOME for this packet."
-        )
+        print("Keep that key with its original cases; use a separate COMPASS_HOME for this packet.")
         return 1
 
     todo = [c for c in cases if c.get("id") not in entries]
@@ -2463,7 +2462,7 @@ def mark(*, continuation: bool = False) -> int:  # noqa: PLR0911 - guard before 
 
     print(f"\n{len(todo)} of {len(cases)} left. y, n, s to skip, q to stop and keep what you did.")
     print("\nEach screen restates what that session was asked, so you never have to")
-    print("scroll back. You are saying what Cargento SHOULD be able to say about it,")
+    print("scroll back. You are saying what Compass SHOULD be able to say about it,")
     print("not what it currently does.")
 
     done = 0

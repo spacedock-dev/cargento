@@ -1,7 +1,7 @@
 import './drift.css';
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { payloadSessions } from '../api/bootstrap';
-import { compatSessKey, stableProjectKey } from '../api/identity';
+import { compatSessKey, contextKey, stableProjectKey } from '../api/identity';
 import { useLiveEstimateOn } from '../intent/liveMonitor';
 import { useHeldVersion } from '../intent/useIntent';
 import type { Row } from '../observed';
@@ -11,6 +11,8 @@ import { buildModel, type DriftModel } from './model';
 import { overlaid } from './overlay';
 import { driftCtxFor, useDriftVersion, type DriftCtx } from './state';
 import { clearFlipLines } from './flip';
+import { entryWindow } from '../intent/work';
+import { citationsHeld, citedIdsOf } from './citations';
 import { trackJobs } from './jobs';
 import { syncPaused } from './steerActions';
 
@@ -46,6 +48,7 @@ export function DriftProvider({
   useDriftVersion(ctx.drift);
   const overlay = useSyncExternalStore(ctx.drift.subscribe, ctx.drift.getOverlay);
   const contexts = useDisplayed((snapshot) => snapshot.contexts);
+  const records = useDisplayed((snapshot) => snapshot.records);
   const count = useDisplayed((snapshot) => snapshot.acceptedCount);
   const key = compatSessKey(session);
   const live = useMemo(
@@ -74,6 +77,7 @@ export function DriftProvider({
     [view.payload, project],
   );
   const liveOn = useLiveEstimateOn(session);
+  const record = records.get(contextKey(projectKey, session as never));
   const model: DriftModel = buildModel({
     liveOn,
     session: view.session,
@@ -83,6 +87,7 @@ export function DriftProvider({
     projectKey,
     contexts: view.contexts,
     held: ctx.intent.held,
+    ...(record ? { record } : {}),
   });
   const [chosen, setChosen] = useState<{ session: string; readAt: unknown; key: string } | null>(
     null,
@@ -107,16 +112,38 @@ export function DriftProvider({
   useEffect(() => {
     ctx.drift.applyTimers();
   });
-  useEffect(
-    () => {
-      const drawn = new Set<string>();
-      const id = model.job?.['id'];
-      if (typeof id === 'string') drawn.add(id);
-      trackJobs(ctx, model.payload, drawn);
-    },
-    // The jobs move with the board, not with every keystroke held beside it.
-    [ctx, model.payload, model.job],
-  );
+  const {
+    payload: board,
+    job,
+    key: sessionKey,
+    projectKey: boardProject,
+    raw,
+    session: row,
+  } = model;
+  const harness = model.identity?.harness;
+  const sid = model.identity?.sid;
+  useEffect(() => {
+    const drawn = new Set<string>();
+    const id = job?.['id'];
+    if (typeof id === 'string') drawn.add(id);
+    const finished = trackJobs(ctx, board, drawn);
+    /* The one read the page makes for the reader: this press stored a reading, and it may cite entries
+         past the ones the board holds, so older record pages are read until they resolve. Nothing else
+         loads a page. docs/design-reader-state.md#the-inventory owns the exception. A press ends once, so
+         the effect running again for another dependency asks for nothing. */
+    const cited = citedIdsOf(raw);
+    if (!finished.includes(sessionKey) || !harness || !sid || !cited.length) return;
+    const scope = {
+      projectKey: boardProject,
+      session: row,
+      cited,
+      opened: entryWindow(row, board),
+    };
+    void ctx.shell.runtime.resolveRecord(
+      { projectKey: boardProject, focus: { harness, sid } },
+      (snapshot) => citationsHeld(snapshot, scope),
+    );
+  }, [ctx, board, job, sessionKey, boardProject, raw, row, harness, sid]);
   const editing =
     waiting && shown !== live && !ctx.drift.editor.composition && !ctx.drift.editor.pointer;
   useEffect(() => syncPaused(ctx, key, editing), [ctx, key, editing]);

@@ -5,7 +5,7 @@ import { compatSessKey } from '../api/identity';
 import { useFocusKey } from '../controls';
 import { clock } from '../observed';
 import { useDisplayed } from '../shell/context';
-import { ActionButton } from './ActionButton';
+import { DirectionActionButton } from './DirectionActionButton';
 import { DirectionGoalButton } from './OutcomeLines';
 import {
   directionSelected,
@@ -24,7 +24,7 @@ import { usePanel } from './useIntent';
 
 /* The question before the press: "You gave a later direction ...", asked in the Analyze control's place, so
    the answer has one home and is asked before a reading is spent rather than after one was demoted. It asks
-   and never answers whether the direction conflicts: Cargento does not write into a session, and deciding
+   and never answers whether the direction conflicts: Compass does not write into a session, and deciding
    that a later instruction contradicts a typed goal is a reading of two prose strings, which the reader
    settles. The number comes from the entry list, and every unsettled later direction is drawn at its own
    number, so the "#<n>" named is on screen; the sentence drops the number rather than naming one the list
@@ -119,7 +119,7 @@ export function DirectionQuestion({
   const job = reading?.job ?? false;
   const analyze = Boolean(reading) && !reason && !job && !(reading?.owed ?? false);
   const request = ctx.held.requests.get(key);
-  const answered = request?.message && !request.refusal ? String(request.message) : '';
+
   const earliest = directionSelected(ctx.held, session, pending);
   if (!earliest) return null;
   const draft = intentDraft(input);
@@ -138,7 +138,7 @@ export function DirectionQuestion({
     : reading?.disclosureId && analyze
       ? reading.disclosureId
       : '';
-  const opened = ctx.held.directions.get(key);
+
   return (
     <>
       {before}
@@ -152,7 +152,8 @@ export function DirectionQuestion({
         </p>
         <WholeList pending={pending} numbers={numbers} />
         <div className="next-cockpit-reading-ask [&>button]:flex-auto">
-          <ActionButton
+          <DirectionActionButton
+            feedbackKey={`direction-keep:${key}`}
             weight={primary ? 'primary' : 'secondary'}
             label={analyze ? KEEP_ANALYZE : KEEP}
             busyLabel="Keeping…"
@@ -164,8 +165,9 @@ export function DirectionQuestion({
             fallbackKey={`reading:${key}`}
             onPress={() => void keepIntent(ctx, session, projectKey, reading)}
           />
-          <ActionButton
+          <DirectionActionButton
             weight="secondary"
+            feedbackKey={`direction-add:${key}`}
             label={ADD_DIRECTION}
             busyLabel="Opening…"
             pendingKey={`direction-add:${key}`}
@@ -221,19 +223,6 @@ export function DirectionQuestion({
         {edited ? (
           <p className="next-cockpit-reading-why" id={REFUSED_ID}>
             {reason}
-          </p>
-        ) : null}
-        {opened?.error ? (
-          <p className="next-cockpit-reading-why" role="status">
-            {opened.error}
-          </p>
-        ) : null}
-        {answered ? (
-          <p
-            className="next-cockpit-reading-why"
-            {...(request?.announced ? {} : { role: 'status' })}
-          >
-            {answered}
           </p>
         ) : null}
         {after}

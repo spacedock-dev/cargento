@@ -8,7 +8,7 @@ import { ObserverControls } from './ObserverControls';
    one that is on but unanswered, one allowed and one declined; that allowing sends nothing; and that the only
    thing that starts a model request is the press of "Summarize this session", once, for the exact session on
    screen. Every request is counted at the fetch: the backend is a script, so no model is called here. */
-const CONSENT = 'cargento.observer-model-consent.v1';
+const CONSENT = 'compass.observer-model-consent.v1';
 const DISCLOSURE = 'Send redacted transcript excerpts for a goal summary? Each prompt is capped.';
 const focus = { harness: 'claude', sid: 's1' };
 const board = {
@@ -154,7 +154,7 @@ describe('allowing summaries sends nothing', () => {
 
   it('declining says so and offers only Allow; quota consent authorizes nothing here', async () => {
     const page = mount(offer(), {
-      storage: { [CONSENT]: 'declined', 'cargento.next.usage.consent': 'granted' },
+      storage: { [CONSENT]: 'declined', 'compass.next.usage.consent': 'granted' },
     });
     await page.settle();
     expect(text()).toContain('Model summaries are off in this browser.');
@@ -163,7 +163,7 @@ describe('allowing summaries sends nothing', () => {
     expect(modelRequests(page)).toEqual([]);
     page.unmount();
     // Quota granted, observer unanswered: still only the question.
-    const other = mount(offer(), { storage: { 'cargento.next.usage.consent': 'granted' } });
+    const other = mount(offer(), { storage: { 'compass.next.usage.consent': 'granted' } });
     await other.settle();
     expect(action('allow')).not.toBeNull();
     expect(action('request')).toBeNull();

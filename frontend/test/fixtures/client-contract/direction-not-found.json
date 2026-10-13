@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "name": "direction-not-found",
+  "notes": "A direction the session record cannot open answers one 200 body, never a 404.",
+  "request": {
+    "body": {
+      "fact_id": "fact-1",
+      "harness": "claude",
+      "sid": "a1b2c3d4"
+    },
+    "headers": {
+      "Origin": "{origin}"
+    },
+    "method": "POST",
+    "path": "/api/direction",
+    "query": ""
+  },
+  "response": {
+    "body": {
+      "ok": false,
+      "reason": "not_found",
+      "why": "Compass could not find that later direction in the session's current record. Nothing was opened."
+    },
+    "headers": {
+      "Cache-Control": "no-store",
+      "Content-Length": "138",
+      "Content-Security-Policy": "frame-ancestors 'none'",
+      "Content-Type": "application/json"
+    },
+    "status": 200
+  }
+}

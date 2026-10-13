@@ -160,7 +160,7 @@ describe('the Copy briefing control', () => {
       await page.settle();
     });
     expect(page.written).toHaveLength(1);
-    expect(page.written[0]).toMatch(/^Cargento recovery briefing\nProject: app\nScope: Project\n/);
+    expect(page.written[0]).toMatch(/^Compass recovery briefing\nProject: app\nScope: Project\n/);
     expect(page.written[0]).toContain('Your attention: Authorize the dispatch?');
     expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy();
   });
@@ -395,7 +395,7 @@ describe('the workstream panel', () => {
     ).toBe('false');
     blocked.unmount();
     const stray = open(CALM as never, ':course', {
-      storage: { 'cargento.workstream.collapsed': '1' },
+      storage: { 'compass.workstream.collapsed': '1' },
     });
     await stray.settle();
     expect(

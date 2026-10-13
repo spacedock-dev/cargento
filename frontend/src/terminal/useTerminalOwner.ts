@@ -11,7 +11,7 @@ const owners = new WeakMap<Shell, TerminalOwner>();
 /* A hot update re-runs the module that builds the shell, which makes a new shell and so a new owner. The
    previous one is disposed here, before the new one can open anything, for the reason `replaceRuntime`
    gives for the board's runtime: two owners would hold a socket each. */
-const SLOT = Symbol.for('cargento.terminal.owner');
+const SLOT = Symbol.for('compass.terminal.owner');
 
 /* The browser's WebSocket behind the interface the stream is written against. The close handler and the
    message handler are wrapped rather than assigned straight, and there is no `send` on what it returns:

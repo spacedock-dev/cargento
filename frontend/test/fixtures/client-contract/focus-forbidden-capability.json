@@ -9,7 +9,7 @@
     },
     "headers": {
       "Origin": "{origin}",
-      "X-Cargento-Capability": "stale-capability"
+      "X-Compass-Capability": "stale-capability"
     },
     "method": "POST",
     "path": "/api/focus",

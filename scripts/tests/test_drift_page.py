@@ -42,7 +42,7 @@ class TheReplayMeasuresThePage(unittest.TestCase):
         }
         measured = dr._page_states([payload])[0]
         self.assertEqual("steer-secondary", measured["page_state"])
-        self.assertEqual("A check failed at 12:00 (#1 in Cargento).", measured["correction_text"])
+        self.assertEqual("A check failed at 12:00 (#1 in Compass).", measured["correction_text"])
         payload["reader_available"] = False
         self.assertEqual("steer-primary", dr._page_states([payload])[0]["page_state"])
         payload["facts"].append(

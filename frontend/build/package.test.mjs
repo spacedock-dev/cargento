@@ -26,7 +26,7 @@ test('hostile JavaScript and CSS values remain exact embedded bytes', () => {
     css,
   );
   assert.equal(document.querySelectorAll('#root').length, 1);
-  assert.equal(document.querySelectorAll('meta[name="cargento-focus"]').length, 0);
+  assert.equal(document.querySelectorAll('meta[name="compass-focus"]').length, 0);
 });
 
 test('canonical font descriptors and all fifteen WOFF2 subsets are embedded', async () => {
@@ -34,7 +34,7 @@ test('canonical font descriptors and all fifteen WOFF2 subsets are embedded', as
   assert.equal(fonts.provenance.length, 15);
   assert.equal(fonts.css.match(/@font-face/g).length, 15);
   assert.equal(fonts.css.match(/data:font\/woff2;base64,/g).length, 15);
-  assert.equal(fonts.css.includes('{{CARGENTO_FONT_'), false);
+  assert.equal(fonts.css.includes('{{COMPASS_FONT_'), false);
   assert.equal(
     fonts.provenance.reduce((total, font) => total + font.bytes, 0),
     142840,
@@ -59,7 +59,7 @@ test('production packaging includes full licenses and a matching document digest
     ),
   );
   assert.equal(packed.document.includes('sourceMappingURL'), false);
-  assert.equal(packed.document.includes('cargento-focus'), false);
+  assert.equal(packed.document.includes('compass-focus'), false);
 });
 
 async function copiedSource(prefix, use) {
@@ -74,7 +74,7 @@ async function copiedSource(prefix, use) {
     ])
       await cp(join(root, file), join(copy, file));
     await cp(join(root, 'frontend'), join(copy, 'frontend'), { recursive: true });
-    const web = 'cargento/skills/cargento/cargento_runtime/web';
+    const web = 'compass/skills/compass/compass_runtime/web';
     await mkdir(join(copy, web), { recursive: true });
     await cp(join(root, web), join(copy, web), { recursive: true });
     await symlink(
@@ -90,19 +90,19 @@ async function copiedSource(prefix, use) {
 
 test('two clean builds in distinct paths and a plugin-version-only bump match', async () => {
   let first;
-  await copiedSource('cargento-package-a-', async (copy) => {
+  await copiedSource('compass-package-a-', async (copy) => {
     first = await packageFrontend({ root: copy, write: false });
   });
-  await copiedSource('cargento-package-b-', async (copy) => {
-    await mkdir(join(copy, 'cargento/.claude-plugin'), { recursive: true });
-    await writeFile(join(copy, 'cargento/.claude-plugin/plugin.json'), '{"version":"99.99.99"}\n');
+  await copiedSource('compass-package-b-', async (copy) => {
+    await mkdir(join(copy, 'compass/.claude-plugin'), { recursive: true });
+    await writeFile(join(copy, 'compass/.claude-plugin/plugin.json'), '{"version":"99.99.99"}\n');
     const second = await packageFrontend({ root: copy, write: false });
     assert.deepEqual(second, first);
   });
 });
 
 test('check mode leaves tracked outputs untouched and rejects a stale artifact', async () => {
-  await copiedSource('cargento-package-check-', async (copy, web) => {
+  await copiedSource('compass-package-check-', async (copy, web) => {
     await packageFrontend({ root: copy });
     const file = join(copy, web, 'react.html');
     const before = await stat(file);
@@ -115,14 +115,14 @@ test('check mode leaves tracked outputs untouched and rejects a stale artifact',
 });
 
 test('a corrupt canonical font fails instead of silently falling back', async () => {
-  await copiedSource('cargento-package-font-', async (copy, web) => {
+  await copiedSource('compass-package-font-', async (copy, web) => {
     await writeFile(join(copy, web, 'fonts/space-grotesk-v22-latin.woff2.b64'), 'not-a-font');
     await assert.rejects(readFonts(copy), /invalid base64/);
   });
 });
 
 test('an actual autocrlf checkout preserves the served page and every candidate artifact', async () => {
-  const temporary = await mkdtemp(join(tmpdir(), 'cargento-line-endings-'));
+  const temporary = await mkdtemp(join(tmpdir(), 'compass-line-endings-'));
   try {
     const source = join(temporary, 'source'),
       checkout = join(temporary, 'checkout');
@@ -135,7 +135,7 @@ test('an actual autocrlf checkout preserves the served page and every candidate 
     await writeFile(join(source, '.autocrlf-control.txt'), 'control\n');
     const binaryControl = Buffer.from([0, 255, 13, 10, 0, 65, 10]);
     await writeFile(join(source, '.autocrlf-binary.bin'), binaryControl);
-    await cp(join(root, 'cargento'), join(source, 'cargento'), {
+    await cp(join(root, 'compass'), join(source, 'compass'), {
       recursive: true,
       filter: (path) => !path.split(/[\\/]/).includes('__pycache__'),
     });
@@ -153,7 +153,7 @@ test('an actual autocrlf checkout preserves the served page and every candidate 
       );
     await mkdir(join(temporary, 'empty-hooks'));
     git('init');
-    git('add', '--', '.gitattributes', '.autocrlf-control.txt', '.autocrlf-binary.bin', 'cargento');
+    git('add', '--', '.gitattributes', '.autocrlf-control.txt', '.autocrlf-binary.bin', 'compass');
     git(
       '-c',
       'user.name=Frontend test',
@@ -167,19 +167,19 @@ test('an actual autocrlf checkout preserves the served page and every candidate 
     assert.equal(await readFile(join(checkout, '.autocrlf-control.txt'), 'utf8'), 'control\r\n');
     assert.deepEqual(await readFile(join(checkout, '.autocrlf-binary.bin')), binaryControl);
     const python =
-      process.env.CARGENTO_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+      process.env.COMPASS_TEST_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
     const digest = (directory) =>
       execFileSync(
         python,
         [
           '-c',
-          'import sys,hashlib;sys.path.insert(0,sys.argv[1]);from cargento_runtime.web.page import load_frontend_page;print(hashlib.sha256(load_frontend_page()).hexdigest())',
-          join(directory, 'cargento/skills/cargento'),
+          'import sys,hashlib;sys.path.insert(0,sys.argv[1]);from compass_runtime.web.page import load_frontend_page;print(hashlib.sha256(load_frontend_page()).hexdigest())',
+          join(directory, 'compass/skills/compass'),
         ],
         { encoding: 'utf8', timeout: 10000 },
       ).trim();
     assert.equal(digest(source), digest(checkout));
-    const web = 'cargento/skills/cargento/cargento_runtime/web';
+    const web = 'compass/skills/compass/compass_runtime/web';
     for (const name of ['react.html', 'react.integrity.json', 'react-licenses.txt']) {
       assert.deepEqual(
         await readFile(join(checkout, web, name)),
@@ -193,7 +193,7 @@ test('an actual autocrlf checkout preserves the served page and every candidate 
 
 for (const name of ['react.html', 'react.integrity.json', 'react-licenses.txt']) {
   test(`check mode rejects a BOM in ${name} without rewriting bytes`, async () => {
-    await copiedSource('cargento-package-bom-', async (copy, web) => {
+    await copiedSource('compass-package-bom-', async (copy, web) => {
       await packageFrontend({ root: copy });
       const file = join(copy, web, name);
       const original = await readFile(file);

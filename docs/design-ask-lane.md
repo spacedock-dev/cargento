@@ -41,7 +41,7 @@ The capture is
 [`captures/claude/ask-roundtrip-2.1.239-macos.jsonl`](captures/claude/ask-roundtrip-2.1.239-macos.jsonl).
 
 Two trials, the same scenario both times: an ambiguous irreversible delete where nothing on disk
-records which file to keep. Neither prompt mentioned the tool, Cargento, or asking.
+records which file to keep. Neither prompt mentioned the tool, Compass, or asking.
 
 Attended, the agent did not call it. It checked mtimes, git and project memory, then ended its turn
 with a report refusing to guess. That is the right behaviour and the tool was redundant to it, because

@@ -18,13 +18,13 @@ statement and an option survey rather than a commitment.
 
 Which runtime file owns what, and the inward-only dependency rule any new module must respect, is
 owned by [`design-runtime-architecture.md`](../design-runtime-architecture.md). The per-harness
-store formats are owned by the shipped [`SKILL.md`](../../cargento/skills/cargento/SKILL.md). This
+store formats are owned by the shipped [`SKILL.md`](../../compass/skills/compass/SKILL.md). This
 file records the August 2026 investigation into replacing request-driven session polling with
 lower-latency collection.
 
 ## Recommendation
 
-Cargento should keep its Python runtime and existing collectors, but stop making a browser refresh
+Compass should keep its Python runtime and existing collectors, but stop making a browser refresh
 the scheduler for all collection work.
 
 **Phase 0 has run its measurement, collector and quota-repair tasks, and the recommendation below is
@@ -68,34 +68,34 @@ pending several multi-harness profiles.
 The design that survives those numbers is an event-triggered, materialized dashboard snapshot:
 
 1. Harness-native lifecycle hooks, status-line callbacks, native event streams, a coarse store
-   probe, and optional Cargento-managed ACP connections report that something changed.
+   probe, and optional Compass-managed ACP connections report that something changed.
 2. An authenticated, bounded loopback ingress normalizes the signal and marks one session or harness
    dirty.
 3. The existing defensive collector for that harness reconstructs authoritative state from its
    store when the event does not contain enough trustworthy state on its own.
-4. Cargento merges the result into a versioned in-memory snapshot.
+4. Compass merges the result into a versioned in-memory snapshot.
 5. The server pushes a revision notification to dashboard tabs with Server-Sent Events (SSE).
 6. A full reconstruction on first demand and periodic reconciliation retain correctness when an
    event is missed or an integration is unavailable.
 
 In short:
 
-> Events tell Cargento **when** to look. Collectors determine **what** the authoritative state is.
+> Events tell Compass **when** to look. Collectors determine **what** the authoritative state is.
 
 That invariant is the one thing in this document that should survive any cut. Where it and a
 latency goal conflict, it wins, with the narrow per-field exceptions written out under
 [Event overlays versus store truth](#event-overlays-versus-store-truth).
 
-ACP is useful for sessions Cargento launches, owns, or transparently proxies. It is not a suitable
+ACP is useful for sessions Compass launches, owns, or transparently proxies. It is not a suitable
 replacement for passive discovery of arbitrary agent sessions already running under other clients.
 
 ## The current collection path
 
-Before Phase 1c the browser called `/api/data` every five seconds from `cargento_runtime/web/main.js`;
+Before Phase 1c the browser called `/api/data` every five seconds from `compass_runtime/web/main.js`;
 the section below describes that path, which is the baseline every figure in this document was
 measured against. The page now drives itself from `/api/stream` in `web/live.js`, with a twenty-second
 safety net and the five-second cadence retained only for browsers without `EventSource`. A cold request
-enters `Application.collect` in `cargento_runtime/aggregate.py`, iterates the harness registry, runs
+enters `Application.collect` in `compass_runtime/aggregate.py`, iterates the harness registry, runs
 discovery for each harness, invokes every discovered collector, and serializes the complete
 aggregate response.
 
@@ -124,7 +124,7 @@ provide historical reconstruction and a fallback that does not depend on an agen
 
 ### State is partly time-derived
 
-Cargento treats activity within `working_threshold_sec` as Working. A session can therefore become
+Compass treats activity within `working_threshold_sec` as Working. A session can therefore become
 Idle without another file write or lifecycle event. Moving to events does not remove the need for
 clocks: the server must schedule state invalidations for deadlines such as:
 
@@ -152,20 +152,20 @@ cadence when nothing has changed.
 
 ### Existing push paths
 
-Cargento already has two partial push integrations:
+Compass already has two partial push integrations:
 
 - Claude `Notification` and `SessionEnd` hooks can forward JSON to `POST /api/notify` through
   `notify_hook.py`. The resulting hook state augments Claude session state and can drive native
   notifications even when no dashboard tab is open.
 - Antigravity invokes its configured `statusLine` command on agent-state changes. That payload reaches
-  `POST /api/usage` and Cargento retains the shaped quota receipt in memory.
+  `POST /api/usage` and Compass retains the shaped quota receipt in memory.
 
 One script serves both. The shipped skill configures Antigravity's `statusLine` as
 `notify_hook.py <url>/api/usage` and states that it is the same forwarder the Claude hooks use with a
 different URL. It is payload-agnostic, forwarding raw stdin bytes to whichever URL it is given. That
 coupling is easy to miss and constrains anything done to the forwarder later.
 
-Both paths reach Cargento only for a user who has edited the harness's own configuration by hand. They
+Both paths reach Compass only for a user who has edited the harness's own configuration by hand. They
 prove that loopback event ingestion fits the product; they are not evidence that the mechanism is
 installed anywhere. Today they update side state; they do not maintain the session-board snapshot or
 trigger browser delivery.
@@ -275,7 +275,7 @@ No ACP page states in so many words that `session/update` is connection-scoped; 
 from the stdio-subprocess topology, in which the stream belongs to the connection on which the client
 set up, loaded, resumed, or prompted the session. The direct evidence for the claim that matters is
 negative and stronger: the v1 method index contains no `session/subscribe`, `session/observe` or
-`session/watch`. A normal terminal session, a session in an editor, and a Cargento process are
+`session/watch`. A normal terminal session, a session in an editor, and a Compass process are
 normally different processes and different connections. An implementation may expose a shared daemon
 or custom transport, but ACP does not require it. Remote transports are moving: the introduction calls
 ACP suitable for remote scenarios over HTTP or WebSocket with full support still in progress, and
@@ -288,7 +288,7 @@ more expensive than reading the already-local store.
 ### Nominal coverage is not passive observability
 
 The [ACP agent directory](https://agentclientprotocol.com/get-started/agents) as read in August 2026
-lists nine of Cargento's ten harnesses. It is a live page, so re-read it before relying on either the
+lists nine of Compass's ten harnesses. It is a live page, so re-read it before relying on either the
 membership or the maturity annotations:
 
 - Claude Agent, through an adapter;
@@ -305,16 +305,16 @@ Antigravity is not listed. More importantly, the implementations do not have one
 one deployment topology. Being able to launch a harness as an ACP agent does not mean a second ACP
 client can subscribe to sessions that another terminal or editor already owns.
 
-### Where ACP does fit Cargento
+### Where ACP does fit Compass
 
 ACP fits an optional managed-session lane:
 
-- Cargento launches an ACP agent and becomes its client.
+- Compass launches an ACP agent and becomes its client.
 - The dashboard gains prompts, permission UI, cancellation, plans, and tool progress for sessions it
   owns.
-- An editor is configured to launch a Cargento proxy, which forwards ACP traffic bidirectionally
+- An editor is configured to launch a Compass proxy, which forwards ACP traffic bidirectionally
   while copying lifecycle notifications into the dashboard.
-- Cargento connects to a harness daemon that explicitly supports multiple clients and live
+- Compass connects to a harness daemon that explicitly supports multiple clients and live
   subscription semantics.
 
 Every form changes the product boundary. A direct ACP client must answer or relay permission
@@ -333,7 +333,7 @@ covers hooks and rollouts only, so the managed-Codex recommendation is provision
 and status values it actually emits. Those explicit loaded-thread states make it the provisional
 first managed Codex topology, subject to an adapter fixture comparison rather than an assumed
 superiority over ACP. It only provides exact runtime status for threads loaded in that
-app-server; ordinary standalone CLI sessions do not silently join a separate Cargento server.
+app-server; ordinary standalone CLI sessions do not silently join a separate Compass server.
 
 ## Alternative acquisition strategies
 
@@ -342,7 +342,7 @@ app-server; ordinary standalone CLI sessions do not silently join a separate Car
 | Fix the dominant collector | Yes | Whatever stores persist | One collector's algorithm | Done in Phase 0 | **Done first, unconditionally** |
 | Coarse periodic `stat` probe | Intended to, pending mutation tests | Low: says bytes changed, not what the agent is doing | 0.14 ms for one warm 97-path Mac profile; cross-platform cost unmeasured | Medium, gate unreached | Primary latency candidate only after its independent gate |
 | Harness-native hooks, extensions, and status lines | Yes, when installed at user or plugin scope | High for lifecycle and input waits | Per-harness adapters, user trust, an indefinite support tail | Medium | Semantic supplement, needs-input first |
-| ACP | Not guaranteed; normally only sessions on Cargento's connection | Very high for owned sessions | Changes Cargento into a client, launcher, or proxy | Technically feasible | Optional managed mode |
+| ACP | Not guaranteed; normally only sessions on Compass's connection | Very high for owned sessions | Changes Compass into a client, launcher, or proxy | Technically feasible | Optional managed mode |
 | Native harness server or event API | Only sessions connected to that server | Very high | Agent-specific topology and lifecycle | Medium | Use opportunistically; prefer where already running |
 | Native filesystem-event watcher | Yes | Low | Three platform backends or a dependency | Poor fit | For precision the product does not need |
 | OpenTelemetry | Yes for opted-in processes | Strong telemetry, uneven interactive state | Configuration, decoding, and partial harness coverage | Low | Optional observability lane |
@@ -360,7 +360,7 @@ sufficient as the source of truth:
   subagent started.
 - Linux inotify, macOS FSEvents, and Windows directory-change APIs require separate implementations.
 
-The last two objections are objections to a *native* watcher, not to a cheap one. Cargento's runtime
+The last two objections are objections to a *native* watcher, not to a cheap one. Compass's runtime
 has a deliberate stdlib-only, no-dependencies contract; the Python floor is owned by
 [`COMPATIBILITY.md`](../../COMPATIBILITY.md) and the implementation constraint by
 [`CONTRIBUTING.md`](../../CONTRIBUTING.md). A watcher library would overturn that contract and three
@@ -380,7 +380,7 @@ OTel can provide session identifiers, prompts, API lifecycle, token usage, tool 
 metrics, logs, and traces. Prompt logging is configurable but its default is not uniform, which matters
 for a security review: Claude redacts prompts unless `OTEL_LOG_USER_PROMPTS` is set, Codex has
 `log_user_prompt`, and Gemini's `logPrompts` defaults to true. It is useful for organizational
-observability and could eventually become an optional Cargento source.
+observability and could eventually become an optional Compass source.
 
 It should not be the core transport because it is disabled by default, does not cover the full
 harness set, introduces OTLP receiving and decoding concerns, and is aimed more at telemetry than a
@@ -404,13 +404,13 @@ seconds, which the measured 294 ms ordinary p50 later bore out. No probe-to-rend
 exists, so the two are not directly comparable. Each phase beyond the first two must carry its own
 justification against the probe baseline rather than inherit this recommendation.
 
-Distribution asymmetry compounds it. Cargento currently ships artifacts to four harnesses (Claude,
+Distribution asymmetry compounds it. Compass currently ships artifacts to four harnesses (Claude,
 Codex, Antigravity and Gemini) and currently has no distribution artifact for the other six. That is
 not the same as those ecosystems lacking manageable lifecycle support: [Pi has packages](https://pi.dev/docs/latest/packages),
 [Cursor has plugin-installed hooks](https://cursor.com/docs/hooks.md), and Factory is said to install
 hooks through its plugin surface, a claim carried here with no citation behind it. Other harnesses
 vary. Assess
-install, trust, update and exact removal per harness. Until Cargento actually ships such an artifact,
+install, trust, update and exact removal per harness. Until Compass actually ships such an artifact,
 any hand-written setup instructions remain a user-owned support tail.
 
 Harness counts stated in prose drift. `docs/design-harness-registry.md` H-4 owns that problem, and
@@ -479,7 +479,7 @@ can bundle hooks through `hooks/hooks.json` or a manifest-specific path. Non-man
 the user to review and trust their current definition, which is an appropriate consent boundary.
 
 Codex command hooks should call a small forwarder that always exits successfully and returns quickly
-when Cargento is not running. For a future managed mode, native app-server exposes explicit loaded
+when Compass is not running. For a future managed mode, native app-server exposes explicit loaded
 thread status and is preferable to scraping rollouts; compare it with the ACP adapter using fixtures
 before choosing between those managed transports.
 
@@ -490,7 +490,7 @@ Two separate questions. Both are now answered, the second one late.
 **Distribution is verified.** Claude Code loads a plugin's bundled hooks from
 `hooks/hooks.json` at the plugin root, by convention, with no manifest key. Confirmed by running
 `claude --plugin-dir <copy> -p` against a copy carrying probe hooks and watching them fire, then
-end to end with the shipped file: a dashboard on an isolated `CARGENTO_HOME` showed the nested
+end to end with the shipped file: a dashboard on an isolated `COMPASS_HOME` showed the nested
 session's row with `acquisition: event`. `${CLAUDE_PLUGIN_ROOT}` is expanded in the hook's
 environment, so a command referencing it stays stable across plugin upgrades. So Claude no longer
 needs a hand-edited `settings.json` for events, which was the last harness that did.
@@ -719,10 +719,10 @@ user turn may contain several invocations. `Stop.fullyIdle` is useful, but no ad
 these as `turn_started` and `turn_stopped` until real fixtures establish cardinality and ordering.
 The decisive detail is trust asymmetry:
 [plugins can bundle `hooks.json` at plugin root](https://antigravity.google/docs/cli/plugins), and
-Cargento already ships an Antigravity plugin manifest, whereas `statusLine` cannot be plugin-bundled
+Compass already ships an Antigravity plugin manifest, whereas `statusLine` cannot be plugin-bundled
 under the documented plugin schema. Status-line forwarding still requires explicit user opt-in via
 `/statusline <command>` or settings, but not necessarily hand-editing a file. So this document's own
-rule, to prefer plugin-bundled hooks where Cargento already ships through the harness's plugin system,
+rule, to prefer plugin-bundled hooks where Compass already ships through the harness's plugin system,
 applies here and makes Antigravity a Phase 2 target on the same footing as Claude.
 
 Neither path replaces the other. Antigravity's hooks include no session start or end and no
@@ -739,7 +739,7 @@ what can be installed without separate user configuration.
 `hooks.json`**, which settles both the location and the schema. Two schema facts
 matter, and neither matches Claude:
 
-1. **There is no `hooks` wrapper.** Each top-level key is a hook name. Cargento's
+1. **There is no `hooks` wrapper.** Each top-level key is a hook name. Compass's
    own validator rejected the file until it learned this, having required the
    wrapper that Claude and Codex use.
 2. **Two handler layouts in one file.** `PreToolUse` and `PostToolUse` group their
@@ -1045,7 +1045,7 @@ push.
    for, and any wait built on it needs both a precedence rule and a deadline.
 
    Two claims this document made alongside that one were wrong and are withdrawn here. The status
-   line is not "Cargento's only source" of Needs input for this harness by choice:
+   line is not "Compass's only source" of Needs input for this harness by choice:
    `collectors/antigravity.py` carries no `needs_input` path at all and assigns only `idle` or
    `working`, so nothing reports it and the gap is unqualified. And an `ask_question` is not covered
    either: one stood 144 s with `agent_state` at `working` and then `idle`, adding no key, in a
@@ -1078,7 +1078,7 @@ that the deadline stays.
 server's per-source rate budget restating it, and forwards quota on its own slower interval because
 quota changes on its own schedule.
 
-The `hooks.json` path for Antigravity has since been built and ships: `cargento/hooks.json` registers
+The `hooks.json` path for Antigravity has since been built and ships: `compass/hooks.json` registers
 `agy_hook.py` on `PostToolUse` and `PostInvocation`. What has not changed is why it claims so little.
 Its hook vocabulary (`PreInvocation`, `PostInvocation`) is a different one, its payloads are
 uncaptured, and the status line already supplies the state those hooks would only hint at, so the
@@ -1105,7 +1105,7 @@ in part, and Copilot's is a documentation read with no capture and no adapter:
   not: every one of the three types this binary can produce is raised from agent-turn code, which
   needs a Factory account, so it is unreachable rather than absent. Two things in that file bear on
   what may ship. Droid loads a `.claude-plugin` root, unwraps the same `hooks` key Claude's format
-  uses, and expands `${CLAUDE_PLUGIN_ROOT}`, so a Droid that finds a cargento root would run
+  uses, and expands `${CLAUDE_PLUGIN_ROOT}`, so a Droid that finds a compass root would run
   Claude's hooks file and post to `/api/events/claude`, where the id is truncated to eight
   characters and matches no row. And `auth_success`, the fourth documented notification type, does
   not appear in the 0.202.0 binary at all.
@@ -1190,7 +1190,7 @@ Gemini CLI reads `<extension>/hooks/hooks.json` and its reference states plainly
 defined in the `gemini-extension.json` manifest", so it cannot be redirected either. Both were
 confirmed by running the two validators against the same directory.
 
-Before this was noticed, `cargento/` carried both `gemini-extension.json` and Claude's
+Before this was noticed, `compass/` carried both `gemini-extension.json` and Claude's
 `hooks/hooks.json`, and the README told users to install that directory as a Gemini extension. What
 that produced, measured on a real session:
 
@@ -1200,7 +1200,7 @@ that produced, measured on a real session:
 - 258 ms and 259 ms of synchronous cost per session, for nothing.
 
 That is precisely the failure this section warned about two paragraphs earlier: making an unavailable
-dashboard visible as a harness failure. The fix is a separate extension root, `cargento-gemini/`,
+dashboard visible as a harness failure. The fix is a separate extension root, `compass-gemini/`,
 holding the Gemini manifest, a Gemini-vocabulary `hooks/hooks.json` using `${extensionPath}`, and
 byte-identical copies of `event_hook.py` and `notify_hook.py`. The copies are the cost of the split:
 `gemini extensions install` copies the directory and a git-URL install clones it, so a command
@@ -1356,7 +1356,7 @@ validated Claude clearing rule described under security and is never echoed.
 Ordering uses three deliberately separate concepts:
 
 - `arrival_seq` is assigned by the server under the ingress lock after authentication and validation;
-  it is monotonic for one Cargento process and defines deterministic reducer order for concurrent
+  it is monotonic for one Compass process and defines deterministic reducer order for concurrent
   handler threads.
 - `(source_instance_id, source_sequence)` is optional and is used only when the native source supplies
   both trustworthy values. It supports source-local deduplication and ordering.
@@ -1376,7 +1376,7 @@ container whose clock runs hours ahead must not be able to pin a row.
 
 ### Envelope versioning
 
-Adapters installed in user-owned configuration are not upgraded when Cargento is. The envelope is
+Adapters installed in user-owned configuration are not upgraded when Compass is. The envelope is
 therefore a versioned compatibility surface with an indefinite support tail, not an internal wire
 format. Every event carries `v`; the server accepts a documented range of versions; and an
 out-of-range `v` is reported through `--diagnose` and the acquisition-mode strip as
@@ -1411,7 +1411,7 @@ Instead it should:
 2. Assign its `arrival_seq` and apply only a transition that is unambiguous and safe, if one exists.
 3. Mark the session or harness dirty by advancing its dirty generation.
 4. Signal the coordinator condition.
-5. Return promptly; the reporting shim exits successfully even if Cargento rejects or drops it.
+5. Return promptly; the reporting shim exits successfully even if Compass rejects or drops it.
 
 The coordinator coalesces an event burst for roughly 50 to 150 milliseconds. The window is fixed,
 not sliding: a sliding window never closes under a sustained burst and the board would stop updating
@@ -1707,8 +1707,8 @@ dashboard snapshot.
 
 ## Installation, upgrade, and removal
 
-Every adapter Cargento does not distribute through a harness plugin is user-owned configuration that
-outlives Cargento's own installation. The hazard is already reachable: the shipped skill tells users
+Every adapter Compass does not distribute through a harness plugin is user-owned configuration that
+outlives Compass's own installation. The hazard is already reachable: the shipped skill tells users
 to hand-add a `notify_hook.py` command to their Claude settings, and uninstalling the plugin deletes
 that path while leaving the hook in place, so every later session runs a command that cannot be found.
 
@@ -1716,12 +1716,12 @@ The plan must therefore include:
 
 - plugin- or extension-bundled hooks wherever the harness supports them, using its native trust and
   uninstall lifecycle;
-- an `--install-hooks <harness>` / `--uninstall-hooks <harness>` pair only for adapters Cargento must
+- an `--install-hooks <harness>` / `--uninstall-hooks <harness>` pair only for adapters Compass must
   place in user configuration. It previews a diff and requires explicit confirmation, rejects
   symlinked or wrongly owned targets, uses compare-and-swap plus atomic replacement, preserves a
   recovery backup, marks the exact entry and removes only that entry, and detects concurrent edits;
 - a self-contained stable shim outside a versioned plugin/cache path, for example under
-  `CARGENTO_HOME/bin`, installed atomically and retained as a silent no-op until its matching config
+  `COMPASS_HOME/bin`, installed atomically and retained as a silent no-op until its matching config
   entry is removed. A deleted script cannot execute code to exit 0, so manually installed hooks must
   never point only at the removable plugin copy;
 - `notify_hook.py` retained at its current plugin-relative path and default URL for legacy settings
@@ -1729,7 +1729,7 @@ The plan must therefore include:
   deleted. New behavior arrives behind arguments rather than breaking the legacy invocation;
 - a minimum schema per destination. Antigravity forwarding retains only the quota buckets and
   lifecycle fields actually consumed, and drops account email and unrelated state before transport;
-- `--diagnose` listing installed adapters with the Cargento version that wrote them.
+- `--diagnose` listing installed adapters with the Compass version that wrote them.
 
 [`SECURITY.md`](../../SECURITY.md) now names all three written paths: the server's two, and
 `statusline_hook.py`'s deduplication memo, which its invariant 2 had always described while the
@@ -1796,7 +1796,7 @@ below are how this design satisfies them.
   unrelated native payload fields.
 - Deduplicate only when an adapter supplies a trustworthy source instance and key. Otherwise document
   at-least-once/out-of-order delivery, use idempotent reducers and reconcile ambiguous events.
-- Always return quickly and never make a missing Cargento server disrupt an agent session.
+- Always return quickly and never make a missing Compass server disrupt an agent session.
 - Keep hook installation visible and consented. Where a harness has plugin hook trust, use it.
 - Make ACP control access an explicit separate mode rather than silently weakening the read-only
   product promise.
@@ -1834,7 +1834,7 @@ The visible benefits:
 - Store-only and older harness versions retain today's scan cadence until a probe or persistent source
   passes the gate that permits reducing it.
 
-Cargento should disclose the quality of each source rather than make all rows look equally live. Do
+Compass should disclose the quality of each source rather than make all rows look equally live. Do
 not collapse configuration, mode and health into one label. Diagnostics and possibly the harness
 strip expose:
 
@@ -1867,7 +1867,7 @@ was not:
 | Number of collections with one and several tabs | **Not yet measured, blocks the phase it gates.** Only meaningful once Phase 1 owns the render path. |
 | Forwarder p50, p95 and p99 per OS, against a closed port, a stale listener and a live server | **Not yet measured, blocks the phase it gates.** One macOS median (56 ms, server absent) exists and is not a distribution. Depends on the authenticated discovery Phase 2 designs. |
 | Native hook event count per turn per harness | **Measured for the four harnesses with captures.** Claude 38 invocations over five turns, Codex ten over one subagent turn, Gemini 56 over four turns, Antigravity 13 and 24 status-line pushes for two turns. Unmeasured for the six harnesses with no adapter. |
-| Probe dependency table, mutation corpus, warm and cold probe cost and false negatives on three OSes | **Measured, with one part still outstanding.** `cargento_runtime/probe.py` shipped after this row was written, and `tests/test_probe.py` runs its mutation corpus on Ubuntu, macOS and Windows through `platform-tests`, asserting cost per path rather than as a total, with one documented false negative. The reviewed per-harness dependency and fingerprint table is still unwritten. See the probe gate verdict below. |
+| Probe dependency table, mutation corpus, warm and cold probe cost and false negatives on three OSes | **Measured, with one part still outstanding.** `compass_runtime/probe.py` shipped after this row was written, and `tests/test_probe.py` runs its mutation corpus on Ubuntu, macOS and Windows through `platform-tests`, asserting cost per path rather than as a total, with one documented false negative. The reviewed per-harness dependency and fingerprint table is still unwritten. See the probe gate verdict below. |
 | Event cardinality and ordering from real harness fixtures | **Not yet measured, blocks the phase it gates.** Prerequisite for assigning semantic transitions. |
 
 Event-to-render latency and reconciliation repair counts are post-change measurements, but
@@ -1942,7 +1942,7 @@ The gates are independent. Verdicts, one per gate:
   interface that can serve either one full aggregate or per-harness merges, and should not hard-code
   the full-aggregate assumption that a single-machine reading would have justified.
 - **Coarse probe: MEASURED, and it passes with one documented false negative.** The probe is
-  `cargento_runtime/probe.py`, and its corpus is `tests/test_probe.py`, which performs real
+  `compass_runtime/probe.py`, and its corpus is `tests/test_probe.py`, which performs real
   filesystem mutations against a real temporary store rather than mocking `stat`.
 
   Detected: an append to a tracked transcript; an append inside one filesystem tick, which mtime
@@ -1970,7 +1970,7 @@ The gates are independent. Verdicts, one per gate:
 - **Adapter semantics: MEASURED for Claude, Codex, Gemini and the Antigravity status line. NOT
   measured for the Antigravity hooks adapter.** Antigravity has two adapters at two standings. The
   status-line adapter is measured. The hooks adapter (`agy_hook.py`, shipped and registered in
-  `cargento/hooks.json`) rests on a static read of the guide embedded in the agy 1.1.10 binary: its
+  `compass/hooks.json`) rests on a static read of the guide embedded in the agy 1.1.10 binary: its
   payload keys are unconfirmed by any capture and its cardinality and ordering are unmeasured, which
   is why it maps only to `store_changed`.
   Codex's evidence is under [Codex](#codex): cardinality, ordering, per-event payload fields, a p99
@@ -1989,7 +1989,7 @@ The gates are independent. Verdicts, one per gate:
   existed to collect exactly that from the start. No captures were taken for a whole phase, and not
   for want of tooling: the recording hook writes a merged `settings_with_hooks.json` for review and
   deliberately never edits the real settings file, and nobody swapped it in, so
-  `~/.cargento/captures` stayed empty. Phase 2 shipped on a decision to accept unproven event
+  `~/.compass/captures` stayed empty. Phase 2 shipped on a decision to accept unproven event
   semantics rather than on measurement.
 
   The lesson is about the route, not the diligence. The proposed route was itself unusable: isolating
@@ -2025,7 +2025,7 @@ Split into 1a and 1b. Both are shipped; what each delivered is recorded below.
   `Application`, because the memo it replaces lived there and two applications over one state must
   share one scan; putting it per-instance broke that single-flight property outright.
 - **Shipped in 1a.** `/api/data` serves the snapshot, initialized lazily on first demand, and names
-  the revision it served in an `X-Cargento-Revision` header so a client can hold a cursor. The
+  the revision it served in an `X-Compass-Revision` header so a client can hold a cursor. The
   freshness floor stays at `collect_memo_sec` rather than being retuned, so worst-case staleness for
   `curl` and the headless path is unchanged and the change is provable as a refactor. The payload was
   verified byte-identical against the pre-snapshot branch.
@@ -2064,7 +2064,7 @@ produce.
 - Ship a minimal plugin-bundled lifecycle hook for Claude first, using its native trust model, and get
   the ingress to one working producer end to end before adding a second.
 - Then add Antigravity's plugin-bundled `hooks.json` as model/tool/execution-loop hints, not asserted
-  user-turn boundaries. It installs with the plugin Cargento already ships, which makes it the
+  user-turn boundaries. It installs with the plugin Compass already ships, which makes it the
   cheapest second producer.
 - Generalize notification ownership off the Claude-specific path.
 - Extend `notify_hook.py` with source-aware minimal schemas behind arguments, keeping its legacy path
@@ -2085,13 +2085,13 @@ produce.
 - Do **not** reduce reconciliation from a one-shot hook receipt or for a harness without positive
   liveness and proven invalidation coverage.
 
-This is the highest-value validation milestone because the repository already distributes Cargento to
+This is the highest-value validation milestone because the repository already distributes Compass to
 Claude and Antigravity and already has push plumbing for both.
 
 ### Phase 3: Codex and Gemini, then nothing else by default
 
 Add the Codex adapter once Claude has proven the ingress; its plugin can bundle hooks and its
-app-server is a provisional managed target later. Evaluate Gemini next because Cargento already ships
+app-server is a provisional managed target later. Evaluate Gemini next because Compass already ships
 a Gemini extension and that extension can bundle `hooks/hooks.json`; consumer-account transition does
 not erase enterprise and API-key CLI use.
 
@@ -2186,12 +2186,12 @@ The implementation plan should include tests for:
 | Coarse stat-poll invalidation across all ten harnesses | Gate cleared | The mutation corpus passes on Ubuntu, macOS and Windows with one documented false negative, an untracked session whose directory does not change. WSL, remote, bind and network stores remain unproven and keep the current cadence |
 | Materialized snapshot with SSE delivery | Medium to high | Fits the runtime, but needs a real coordinator, demand producer, restart cursor, server-wide resource limits and shutdown lifecycle |
 | Event-triggered selective collection | Value depends on the session mix | Below the 25% gate on a Claude-dominated machine and well clear of it once other harnesses supply about a third of active sessions, measured with `bench_collect.py --simulate`. The coordinator runs one full aggregate per floor until real multi-harness mixes are known |
-| Near-real-time Claude and Codex | Medium to high | Both plugin formats can bundle hooks; Cargento still needs authenticated routing, fixtures and its own lifecycle wiring |
+| Near-real-time Claude and Codex | Medium to high | Both plugin formats can bundle hooks; Compass still needs authenticated routing, fixtures and its own lifecycle wiring |
 | Near-real-time Antigravity | Medium to high | Hooks are bundleable and the status line adds agent state; the confirmation field does arrive interactively, but it is a repeating render rather than a transition edge, hooks are not clean turn boundaries, and the status line is opt-in |
 | Near-real-time Gemini | Medium | The shipped extension can bundle hooks, but supported auth populations and event semantics need fixtures |
-| Near-real-time coverage across all ten harnesses | Low to medium | Several adapters and passive topologies remain unproven; Cargento lacks artifacts for six even where upstream lifecycle support exists |
+| Near-real-time coverage across all ten harnesses | Low to medium | Several adapters and passive topologies remain unproven; Compass lacks artifacts for six even where upstream lifecycle support exists |
 | Zero polling for every arbitrary external session | Not presently feasible | No universal observer protocol; events can be missed and time-derived state still needs deadlines |
-| ACP-backed sessions launched by Cargento | Technically feasible | Standard event model, broad nominal harness support |
+| ACP-backed sessions launched by Compass | Technically feasible | Standard event model, broad nominal harness support |
 | ACP as a transparent universal replacement for collectors | Not feasible | Connection-scoped lifecycle and incomplete passive/global semantics |
 | Native filesystem-event watcher | Poor fit | Three platform backends or a dependency, for precision the product does not need |
 
@@ -2216,11 +2216,11 @@ public latency promise.
 - Do use the coarse probe for latency only after per-harness mutation and cross-platform gates prove
   its coverage; keep current scans for every unproven source.
 - Do add hooks for the needs-input semantics an mtime genuinely cannot express, starting with a
-  harness for which Cargento already ships a plugin artifact.
-- Do use plugin-bundled hooks where Cargento ships through the harness's plugin system, and treat
+  harness for which Compass already ships a plugin artifact.
+- Do use plugin-bundled hooks where Compass ships through the harness's plugin system, and treat
   every other adapter according to a harness-specific distribution and removal assessment.
 - Do version the event envelope; it is a public compatibility surface the moment a third-party harness
-  executes a Cargento hook.
+  executes a Compass hook.
 - Do serialize collections through one coordinator, fence them with `arrival_seq` and dirty
   generations, and set overlay precedence per field and provenance rather than timestamp recency.
 - Do normalize native session ids onto collector `sid`s, quarantine unmatched overlays without

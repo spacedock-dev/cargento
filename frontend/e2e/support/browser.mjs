@@ -229,7 +229,7 @@ export function refreshReact(page, shipped) {
         (number) =>
           globalThis.dispatchEvent(
             new globalThis.StorageEvent('storage', {
-              key: 'cargento.next.revision',
+              key: 'compass.next.revision',
               newValue: `9999999999.${String(number)}`,
             }),
           ),

@@ -6,7 +6,7 @@ import { board, mountSession, SESSION_HASH, text } from './panel.testing';
 /* The live monitor switch decides only whether the deterministic level is drawn. It is off by default,
    remembered for this exact session in this browser, and it never sends anything. */
 
-const KEY = 'cargento.next.live-estimate:claude:s1';
+const KEY = 'compass.next.live-estimate:claude:s1';
 const switchButton = () =>
   document.querySelector('[data-next-cockpit-action="live-monitor"]') as HTMLButtonElement;
 
@@ -38,7 +38,10 @@ describe('the live monitor switch', () => {
     expect(page.posts()).toBe(0);
     expect(
       page.state.requests.filter(
-        (r) => r.path !== '/api/data' && r.path !== '/api/project-context',
+        (r) =>
+          r.path !== '/api/data' &&
+          r.path !== '/api/project-context' &&
+          r.path !== '/api/session-record',
       ),
     ).toEqual([]);
     expect(KEY).toContain('claude:s1');

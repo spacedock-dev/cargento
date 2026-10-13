@@ -42,11 +42,13 @@ export interface PromptList {
   readonly choices: readonly PromptChoice[];
   /** The read itself failed, as distinct from a read that found none of the reader's prompts. */
   readonly failed?: boolean;
+  readonly bounded?: boolean;
 }
 
 /* A later direction opened for review as one pending outcome line. Its box carries no `maxlength`, so
    nothing truncates it; a line over the store's bound is refused at the save, never cut. */
 export interface DirectionLine {
+  readonly recordOrigin?: boolean;
   readonly factId: string;
   readonly n: number | null;
   readonly later: boolean;
@@ -110,6 +112,7 @@ export function createHeld(deps: HeldDeps) {
   const directions = new Map<string, DirectionLine>();
   const wholes = new Map<string, DirectionWhole>();
   const requests = new Map<string, RequestNote>();
+  const actionFeedback = new Map<string, string>();
   const cues: KeyedState<CueKind> = createKeyedState<CueKind>({
     clock,
     ttlMs: CUE_TTL_MS,
@@ -157,6 +160,20 @@ export function createHeld(deps: HeldDeps) {
     directions,
     wholes,
     requests,
+    actionFeedback,
+
+    clearActionFeedback(sessionKey: string): void {
+      for (const key of actionFeedback.keys()) {
+        const scope = key.slice(key.indexOf(':') + 1);
+        if (scope === sessionKey || scope.startsWith(`${sessionKey}:`)) {
+          actionFeedback.delete(key);
+          announcer.forget(`action:${key}`);
+        }
+      }
+      const request = requests.get(sessionKey);
+      if (request && !request.pending) request.message = '';
+      announcer.forget(`keep:${sessionKey}`);
+    },
     cues,
 
     subscribe(listener: () => void): () => void {

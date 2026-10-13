@@ -13,7 +13,7 @@ import './steering.css';
    panel says so in its heading and again beneath the rows, because nothing on this page enforces them, and a
    control that looks like a guard and is not one is the false reassurance this board exists to avoid.
 
-   The rules live in the guardrail store (the released `cargento.next.guardrails.` family, older string rules
+   The rules live in the guardrail store (the released `compass.next.guardrails.` family, older string rules
    still readable); what is typed and not yet added, and whether the add box is open, live in the held state
    by the exact project label. */
 export function Tripwires({ project }: { readonly project: string }) {

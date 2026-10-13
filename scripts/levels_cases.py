@@ -6,7 +6,7 @@ owner marks the level each case should get BEFORE any rule is scored against it,
 digest is committed first, because a mark written after seeing an output is agreement, not a mark.
 This follows `mark_abstention.py` and `score_abstention.py`, and keeps their split:
 
-    levels_cases.py --build SPEC   freeze cases from recorded transcripts, under ~/.cargento
+    levels_cases.py --build SPEC   freeze cases from recorded transcripts, under ~/.compass
     levels_cases.py                mark the unmarked ones, one level per source per case
     levels_cases.py --report       how far through the key you are; scores nothing
     levels_cases.py --read --reading-home DIR [--case ID ...] [--dry-run]
@@ -21,7 +21,7 @@ unsettled, and an optional stored reading for the analysis source. Nothing is de
 missing the intent or the direction count is refused, because a default there is the author's thumb
 on the case.
 
-The cases carry recorded check lines and written paths, so they stay under `~/.cargento`, never in
+The cases carry recorded check lines and written paths, so they stay under `~/.compass`, never in
 the repository. What is committed is the marks' digest (`docs/drift-levels/marks-digest.json`) and
 the scored summary (`docs/drift-levels/results.json`): case ids, kinds, marks, levels, reason
 tokens and outcomes, and never a session id, a path, a command, the intent's words, a fact id or
@@ -49,11 +49,13 @@ import tempfile
 import time
 from typing import TYPE_CHECKING, Any
 
+import legacy_paths
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_SKILL = os.path.join(_ROOT, "cargento", "skills", "cargento")
+_SKILL = os.path.join(_ROOT, "compass", "skills", "compass")
 
 
 def _runtime() -> tuple[Any, Any, Any]:
@@ -64,12 +66,12 @@ def _runtime() -> tuple[Any, Any, Any]:
     """
     if _SKILL not in sys.path:
         sys.path.insert(0, _SKILL)
-    from cargento_runtime import config, levels, project_context  # noqa: PLC0415
+    from compass_runtime import config, levels, project_context  # noqa: PLC0415
 
     return config, project_context, levels
 
 
-HOME = os.environ.get("CARGENTO_HOME") or os.path.expanduser("~/.cargento")
+HOME = legacy_paths.store_home()
 SUBDIR = "drift-levels"
 DIGEST_PATH = os.path.join(_ROOT, "docs", "drift-levels", "marks-digest.json")
 RESULTS_PATH = os.path.join(_ROOT, "docs", "drift-levels", "results.json")
@@ -317,7 +319,7 @@ def build(spec_path: str | os.PathLike[str], *, home: str, repo_root: str, say: 
     paths = _paths(home)
     if _inside(paths["dir"], repo_root):
         say(f"{paths['dir']} is inside the repository. The cases name sessions and stay local.")
-        say("Set CARGENTO_HOME outside it, or leave it unset for ~/.cargento.")
+        say("Set COMPASS_HOME outside it, or leave it unset for ~/.compass.")
         return 2
     spec = _load(str(spec_path))
     entries = spec.get("cases") if spec.get("v") == 1 else None
@@ -668,7 +670,7 @@ def _admit(config: Any, value: Any) -> Any:
     """A reading the store would keep, or None: the store's own validator, not a copy of it."""
     if _SKILL not in sys.path:
         sys.path.insert(0, _SKILL)
-    from cargento_runtime import annotations  # noqa: PLC0415
+    from compass_runtime import annotations  # noqa: PLC0415
 
     return annotations._assessment(value, config.annotation_text_cap_chars)  # noqa: SLF001
 
@@ -902,7 +904,7 @@ def reading_config(reading_home: str) -> Any:
     """The runtime config for the home the reading board ran on, whose ledger is charged."""
     config_mod, _project_context, _levels = _runtime()
     return config_mod.build_runtime_config(
-        environ={**os.environ, "CARGENTO_HOME": reading_home},
+        environ={**os.environ, "COMPASS_HOME": reading_home},
         platform_name=sys.platform,
         os_name=os.name,
         launcher_path=pathlib.Path(_SKILL, "server.py"),
@@ -913,7 +915,7 @@ def reading_config(reading_home: str) -> Any:
 def _read_runtime() -> tuple[Any, Any, Any]:
     """(reading, reading_policy, reading_route), deferred for `_runtime`'s reason."""
     _runtime()
-    from cargento_runtime import reading, reading_policy, reading_route  # noqa: PLC0415
+    from compass_runtime import reading, reading_policy, reading_route  # noqa: PLC0415
 
     return reading, reading_policy, reading_route
 

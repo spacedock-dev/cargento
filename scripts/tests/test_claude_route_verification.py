@@ -28,10 +28,10 @@ class RouteSidecarGuards(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
         self.owner = self.root
-        self.context_dir = self.root / ".cargento" / "claude-route-verification"
+        self.context_dir = self.root / ".compass" / "claude-route-verification"
         self.context_dir.mkdir(mode=0o700, parents=True)
         self.context_dir.parent.chmod(0o700)
-        self.state = self.root / ".cargento" / "analyze-closure-route-spend.json"
+        self.state = self.root / ".compass" / "analyze-closure-route-spend.json"
         self.profile = self.root / "profile.json"
         self.handoff = self.root / "handoff.json"
         for name, path in (
@@ -40,7 +40,7 @@ class RouteSidecarGuards(unittest.TestCase):
             ("STATE_PATH", self.state),
             ("PRIVATE_DIR", self.context_dir),
             ("OWNER_HOME", self.owner),
-            ("ACTIVATION_PATH", self.root / ".cargento" / "claude-route-live00.ACTIVATED.json"),
+            ("ACTIVATION_PATH", self.root / ".compass" / "claude-route-live00.ACTIVATED.json"),
         ):
             patch = mock.patch.object(self.route, name, path, create=True)
             patch.start()
@@ -397,7 +397,7 @@ class RouteSidecarGuards(unittest.TestCase):
 
     def test_daemon_and_background_model_flags_cannot_escape_the_owned_guard(self) -> None:
         self.route._runtime()
-        from cargento_runtime import cli  # noqa: PLC0415 - genuine entry point must not be called
+        from compass_runtime import cli  # noqa: PLC0415 - genuine entry point must not be called
 
         for flag in (
             "--daemon",
@@ -448,7 +448,7 @@ class RouteSidecarGuards(unittest.TestCase):
         self._exercise_native_job_status("oversized", source_changed=True)
 
     def _assert_native_job_outcome(self, app: Any, guarded: Any, status: str) -> None:
-        from cargento_runtime import (  # noqa: PLC0415 - actual job outcome seam
+        from compass_runtime import (  # noqa: PLC0415 - actual job outcome seam
             reading,
             reading_jobs,
             supervise,
@@ -478,13 +478,13 @@ class RouteSidecarGuards(unittest.TestCase):
         from types import SimpleNamespace  # noqa: PLC0415 - owned test-only application
 
         _annotations, observer, reading, policy, _route = self.route._runtime()
-        from cargento_runtime import cli, supervise  # noqa: PLC0415 - real runtime seams
-        from cargento_runtime import (  # noqa: PLC0415 - actual runtime configuration
+        from compass_runtime import cli, supervise  # noqa: PLC0415 - real runtime seams
+        from compass_runtime import (  # noqa: PLC0415 - actual runtime configuration
             config as runtime_config,
         )
 
         config = runtime_config.build_runtime_config(
-            environ={"HOME": str(self.owner), "CARGENTO_HOME": str(self.root / "app-state")},
+            environ={"HOME": str(self.owner), "COMPASS_HOME": str(self.root / "app-state")},
             platform_name="linux",
             os_name="posix",
             launcher_path=self.root / "server.py",
@@ -584,13 +584,13 @@ class RouteSidecarGuards(unittest.TestCase):
         from types import SimpleNamespace  # noqa: PLC0415 - owned test-only application
 
         _annotations, observer, reading, _policy, _route = self.route._runtime()
-        from cargento_runtime import cli  # noqa: PLC0415 - real runtime seams
-        from cargento_runtime import (  # noqa: PLC0415 - actual runtime configuration
+        from compass_runtime import cli  # noqa: PLC0415 - real runtime seams
+        from compass_runtime import (  # noqa: PLC0415 - actual runtime configuration
             config as runtime_config,
         )
 
         config = runtime_config.build_runtime_config(
-            environ={"HOME": str(self.owner), "CARGENTO_HOME": str(self.root / "app-state")},
+            environ={"HOME": str(self.owner), "COMPASS_HOME": str(self.root / "app-state")},
             platform_name="linux",
             os_name="posix",
             launcher_path=self.root / "server.py",
@@ -640,11 +640,11 @@ class RouteSidecarGuards(unittest.TestCase):
         from types import SimpleNamespace  # noqa: PLC0415 - test-only collected row owner
 
         annotations, _observer, _reading, policy, _route = self.route._runtime()
-        from cargento_runtime import config as runtime_config  # noqa: PLC0415 - real configuration
-        from cargento_runtime import state as runtime_state  # noqa: PLC0415 - real state and stores
+        from compass_runtime import config as runtime_config  # noqa: PLC0415 - real configuration
+        from compass_runtime import state as runtime_state  # noqa: PLC0415 - real state and stores
 
         config = runtime_config.build_runtime_config(
-            environ={"HOME": str(self.owner), "CARGENTO_HOME": str(self.root / "app-state")},
+            environ={"HOME": str(self.owner), "COMPASS_HOME": str(self.root / "app-state")},
             platform_name="linux",
             os_name="posix",
             launcher_path=self.root / "server.py",
@@ -813,7 +813,7 @@ class GenuineQualificationAdmission(unittest.TestCase):
         cls.fixture.manifest["protocols"]["qualification"] = "closure-three-repeats"
         cls.fixture.manifest["evidence"]["qualification"].update(
             source=cls.route.campaigns.runtime_source_digest(
-                cls.route.ROOT / "cargento/skills/cargento/cargento_runtime"
+                cls.route.ROOT / "compass/skills/compass/compass_runtime"
             ),
             scorer=cls.route.sha(Path(scorer.__file__).read_bytes()),
         )

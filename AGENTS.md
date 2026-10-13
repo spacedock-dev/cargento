@@ -2,14 +2,14 @@
 
 ## Project Overview
 
-This repository distributes Cargento — an agnostic agent cartography and visualization tool — to Codex, Claude Code, Antigravity/AGY, and Gemini CLI. It contains one markdown-first plugin rather than a code application:
+This repository distributes Compass — an agnostic agent cartography and visualization tool — to Codex, Claude Code, Antigravity/AGY, and Gemini CLI. It contains one markdown-first plugin rather than a code application:
 
-- `cargento/` — the agent cartography dashboard skill, and the plugin root Claude Code, Codex
+- `compass/` — the agent cartography dashboard skill, and the plugin root Claude Code, Codex
   and Antigravity all install
-- `cargento-gemini/` — a hooks-only Gemini CLI extension root. It exists because Claude Code and
+- `compass-gemini/` — a hooks-only Gemini CLI extension root. It exists because Claude Code and
   Gemini CLI both load extension hooks from `<root>/hooks/hooks.json` and neither lets that path
   be moved, so a shared root hands each harness the other's event vocabulary
-- `cargento-droid/` — a hooks-only Droid plugin root. It exists because Droid reads
+- `compass-droid/` — a hooks-only Droid plugin root. It exists because Droid reads
   `.claude-plugin/plugin.json` and `<root>/hooks/hooks.json` by default, colliding with Claude Code's
   hook commands and sending events to `/api/events/claude` instead of `/api/events/droid`
 
@@ -17,12 +17,12 @@ Repository development skills are canonical under `.claude/skills/`. Claude Code
 there; Codex discovers the same directories through relative symlinks under `.agents/skills/`.
 Each canonical skill owns its `SKILL.md`, supporting files and `agents/openai.yaml` metadata.
 
-The user-facing workflow lives in `cargento/skills/cargento/`. Every user-facing workflow must be usable as a skill so Codex can discover it; Claude-only agents and lifecycle hooks may remain in their native directories if ever added.
+The user-facing workflow lives in `compass/skills/compass/`. Every user-facing workflow must be usable as a skill so Codex can discover it; Claude-only agents and lifecycle hooks may remain in their native directories if ever added.
 
 ## Architecture
 
 ```
-cargento/                           # plugin root: Claude Code, Codex, Antigravity
+compass/                           # plugin root: Claude Code, Codex, Antigravity
 ├── .claude-plugin/plugin.json      # Claude Code manifest
 ├── .codex-plugin/plugin.json       # Codex manifest
 ├── bin/cargento                    # launcher the Spacedock installer links as `cargento` and `spacedock-compass`
@@ -31,9 +31,9 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
 ├── hooks/codex-hooks.json          # Codex lifecycle hooks (declared in its manifest)
 ├── hooks.json                      # Antigravity lifecycle hooks (its path, at the root)
 └── skills/
-    └── cargento/                   # the dashboard skill
+    └── compass/                   # the dashboard skill
         ├── SKILL.md                # shared skill body (all harnesses)
-        ├── server.py               # the stable launcher: calls cargento_runtime.cli.main
+        ├── server.py               # the stable launcher: calls compass_runtime.cli.main
         ├── notify_hook.py          # loopback POST forwarder for the user-installed Claude hooks
         ├── event_hook.py           # posts Claude and Codex command-hook lifecycle events
         ├── opencode_plugin.js      # passive per-project OpenCode parent permission events
@@ -41,7 +41,7 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         ├── agy_hook.py             # posts Antigravity's hook events
         ├── statusline_hook.py      # posts Antigravity's status-line state
         ├── mcp_server.py           # stdio MCP server: the one tool a session calls to ask the reader
-        ├── cargento_runtime/       # importable dashboard runtime package
+        ├── compass_runtime/       # importable dashboard runtime package
         │                           # per-module map: docs/design-runtime-architecture.md
         │   ├── collectors/         # one harness collector per file, one per supported harness
         │   └── web/                # the built React page, its integrity metadata and licenses, vendored
@@ -49,20 +49,20 @@ cargento/                           # plugin root: Claude Code, Codex, Antigravi
         │                           # legacy script parts stay for the paused study only, never served
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
-frontend/                           # React sources, unit tests and browser proofs (Node and pnpm; not shipped)
+frontend/                           # React sources, unit tests, Storybook stories and on-demand browser proofs (Node and pnpm; not shipped)
 ├── .storybook/                     # offline component explorer and Chromium test config
 ├── stories/                        # component examples with play-function assertions
 ├── src/                            # the React page; `pnpm build` packages it into `web/react.html`
 ├── test/                           # test support, synthetic backends and the recorded answers
 │                                   # (`test/golden/`: fixtures of record, never regenerated)
-├── e2e/                            # Playwright browser proofs, run by `pnpm test:*:browser`
+├── e2e/                            # Playwright browser proofs, run on demand by `pnpm test:*:browser`; not required by CI or the pre-PR list
 └── build/ dev/                     # the packager and the contributor development supervisor
-cargento-gemini/                    # extension root: Gemini CLI (hooks only)
+compass-gemini/                    # extension root: Gemini CLI (hooks only)
 └── hooks/
     ├── hooks.json                  # Gemini CLI lifecycle hooks
     ├── event_hook.py               # posts Gemini command-hook lifecycle events
     └── notify_hook.py              # loopback POST forwarder
-cargento-droid/                     # plugin root: Droid (hooks only)
+compass-droid/                     # plugin root: Droid (hooks only)
 ├── .factory-plugin/plugin.json     # Droid plugin manifest
 └── hooks/
     ├── hooks.json                  # Droid lifecycle hooks
@@ -74,7 +74,7 @@ tests/                              # pushback session fixtures (not shipped, no
 ```
 
 The Codex/AGY marketplace lives at `.agents/plugins/marketplace.json`. There is no Claude
-marketplace in this repository: cargento is listed in the shared
+marketplace in this repository: compass is listed in the shared
 [spacedock-dev/marketplace](https://github.com/spacedock-dev/marketplace), which tracks the
 `stable` branch that the Release workflow advances on every release.
 
@@ -86,7 +86,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 
 | File | Owns |
 |---|---|
-| `README.md` | The front door: what Cargento is, install per harness, skill inventory, links out. |
+| `README.md` | The front door: what Compass is, install per harness, skill inventory, links out. |
 | `MANUAL.md` | The standalone `server.py` command reference: every option and alias, defaults, interactions, environment, files, exit status and examples. Keep its option rows current when changing `cli.build_parser`; the documentation suite checks their inventory. The installed skill remains self-contained. |
 | `HOW_TO_USE.md` | What a person configures by hand: the harness settings the plugin does not install, one verified procedure per task. |
 | `AGENTS.md` | **This file.** The repository contract for agents, the canonical pre-PR command list, the parallel-worktree hazards measured while burning down the roadmap, and how much review a change is worth (**Calibrating Effort**). |
@@ -94,31 +94,31 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `CONTRIBUTING.md` | The human contributor journey, and the dashboard implementation constraints. |
 | `COMPATIBILITY.md` | The cross-harness and cross-platform contract, and the Python floor. |
 | `SECURITY.md` | Security invariants, accepted exposures, and private reporting. |
-| `cargento/skills/cargento/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |
+| `compass/skills/compass/SKILL.md` | The shipped product surface. A validated artifact — see the portability rules below. |
 | `docs/promise-map.md` | **Canonical** user-facing promise: one promise per stage of the user's day, the shipped capability behind each, and where each stops. Release notes and the README lede restate it rather than reinvent it. |
 | `docs/development-tracking.md` | **Canonical** development taxonomy: promise IDs, journey labels, board columns, moves and tracker copies. It links to the public promise map without putting tracker provenance into that map. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
 | `docs/design-reader-state.md` | **Canonical** rule for what survives a board refresh: one row per thing a reader can leave in the page, which React owner keeps it, and — for the two it does not manage — why. The code cites it instead of repeating it. |
 | `docs/design-frontend-migration.md` | The React frontend: its boundaries, the recorded answers it is held to, its deviations from the retired page and why, and the measurement method. `scripts/frontend-migration.json` maps the retired page's parts, surfaces, routes, reader state and browser storage to owners and proofs; `scripts/frontend_inventory.py` checks that each row is owned and names proofs that exist. |
-| `docs/design-reading-a-session.md` | **Canonical** record of the four rulings that govern what Cargento may say about a session against the words a reader typed: the evidence floor and the reader-requested model overlay, whether an assessment may be stored, that Cargento never writes into a session, and the seven-rule shape contract a reading must satisfy. The runtime cites its headings, because three of those rules are built into the producer rather than checked after it. |
+| `docs/design-reading-a-session.md` | **Canonical** record of the four rulings that govern what Compass may say about a session against the words a reader typed: the evidence floor and the reader-requested model overlay, whether an assessment may be stored, that Compass never writes into a session, and the seven-rule shape contract a reading must satisfy. The runtime cites its headings, because three of those rules are built into the producer rather than checked after it. |
 | [docs/design-adapter-packaging.md](docs/design-adapter-packaging.md) | **Canonical** adapter admission and packaging contract: identity normalizers, hook-shaped mappings, and implementation-language boundaries. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
 | `docs/plans/*.md` | Transient plans for unshipped work. Delete a plan once its work ships. |
 | `docs/roadmap-burndown/README.md` | The Spacedock workflow the roadmap burndown runs on: its stages, gates, and the measured rules each one earned. Machinery rather than prose — entity state lives on an orphan branch and is gitignored. |
 | `docs/captures/` | Recorded hook payload shapes from real harness sessions: the evidence behind any adapter gate marked measured. Field names and timings, plus closed harness vocabularies such as `notification_type` and `reply`, each earned one at a time on the reasoning the captures README gives; never a value a person or a model wrote. |
-| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `sync-project`, `visibility-2x2`, `burndown`, `cargento-release`, `visual-review-and-fix`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
+| `.claude/skills/*/SKILL.md` | Canonical repository development skills (`sync-docs`, `sync-project`, `visibility-2x2`, `burndown`, `compass-release`, `visual-review-and-fix`) and their Codex presentation metadata. Not shipped with the plugin, so the portability rules below do not apply to them. |
 | `.agents/skills/*` | Codex discovery aliases for repository development skills. Each entry is a relative symlink to the matching canonical directory under `.claude/skills/`; `scripts/validate_plugins.py` rejects missing, copied, orphaned or misdirected aliases. |
-| `docs/abstention/` | The committed half of DEC-17's abstention check: a README saying what the file may hold and how to argue with a result, and — once a scoring run has been committed — the scorer's summary (case ids, marks, outcomes, counts, coverage, the marks digest). The cases, the local results and the rubric expectations stay under `~/.cargento`; `SECURITY.md` owns that ruling. |
+| `docs/abstention/` | The committed half of DEC-17's abstention check: a README saying what the file may hold and how to argue with a result, and — once a scoring run has been committed — the scorer's summary (case ids, marks, outcomes, counts, coverage, the marks digest). The cases, the local results and the rubric expectations stay under `~/.compass`; `SECURITY.md` owns that ruling. |
 | `docs/evidence/intent-and-drift/` | The optional exploratory teammate prompt and participant notice, archived cold-study protocol, and redacted run template for live Intent and drift feedback. Raw sessions and screenshots stay outside Git; issue attachments require participant review. The owner retired the cold-study acceptance requirement on 2026-10-06; application verification and producer qualification remain required. |
 | `tests/README.md` | The pushback session fixtures under `tests/raw_sessions/` and `tests/annotated_sessions/`: what is committed (steering excerpts and annotations), why the full sanitized session logs stay local and gitignored, the redaction tags, and how the sessions were chosen. |
-| `docs/drift-replay/` | The committed half of the drift replay check: a README saying what the files may hold, the run order (blind marks before any output) and how to argue with a result, plus the marks digest and, once scored, the outcome summary. `scripts/drift_replay.py` runs it and `scripts/redact_session.py` makes its replayable fixtures; cases, marks, outputs and the spend ledger stay under `~/.cargento/drift-replay/`. |
+| `docs/drift-replay/` | The committed half of the drift replay check: a README saying what the files may hold, the run order (blind marks before any output) and how to argue with a result, plus the marks digest and, once scored, the outcome summary. `scripts/drift_replay.py` runs it and `scripts/redact_session.py` makes its replayable fixtures; cases, marks, outputs and the spend ledger stay under `~/.compass/drift-replay/`. |
 | `docs/visibility-2x2/` | The Visibility 2x2 prioritisation board and the blind-panel evidence behind its scores. A local working tool, opened by the `visibility-2x2` skill. |
 | `docs/screenshots/` | Screenshots taken in this repository. Every capture — browser or screen — lands here unless the request names another location. Its contents are gitignored, so a capture never reaches a commit, and a committed `.gitkeep` holds the directory itself for a fresh clone. Write a descriptive filename, because the directory has no index and nothing prunes it. |
 
 `scripts/validate_plugins.py` gates the docs as well as the plugin: across the files above it
 resolves every relative Markdown link **and heading anchor**, and rejects the `localhost` spelling of
 the dashboard URL (the server is IPv4-only). Deleting or renaming any of them fails the build. It also
-owns `CARGENTO_RUNTIME_FILES`, the inventory of every file the shipped dashboard needs at runtime;
+owns `COMPASS_RUNTIME_FILES`, the inventory of every file the shipped dashboard needs at runtime;
 `--runtime-files <plugin root>` checks an installed copy without the repository around it.
 
 There is no blanket orphan-document gate. The documentation graph has no agreed scope or entry
@@ -169,7 +169,7 @@ tracker synchronization live in [development tracking](docs/development-tracking
 ## Commit Conventions
 
 ```bash
-git commit -s -m "feat(skill): add new capability to cargento"
+git commit -s -m "feat(skill): add new capability to compass"
 ```
 
 **Format:** `<type>(<scope>): <description>` with sign-off (DCO required)
@@ -227,8 +227,11 @@ root-document prose allowlist by hand. The unfiltered validate suite remains the
 misclassification; the detector's job is to request all measurable jobs with `code=true` for
 these dependencies.
 
-The local frontend proofs below remain required before a PR even where CI no longer runs their
-development-server mode. CI now exercises macOS and Linux; Windows dashboard and frontend
+The interface is verified in Storybook: a visible change is proven by a story whose `play` function
+asserts it, and `pnpm build:storybook` with `pnpm test:stories` are required before a PR. The Playwright
+browser proofs under `frontend/e2e` were retired from CI and from this list by the owner on 2026-10-12.
+They stay in the repository and run on demand with `pnpm test:*:browser`, for example to investigate a
+regression, but nothing requires them. CI exercises macOS and Linux; Windows dashboard and frontend
 checks require a local run. See [Quality Gate](#quality-gate) for the retained jobs.
 
 ```bash
@@ -254,26 +257,8 @@ pnpm test:dev
 pnpm build
 pnpm build:check
 pnpm exec playwright install chromium   # lockfile-pinned browser, once per installation
-pnpm test:browser
-pnpm test:parser
-pnpm test:installed
-pnpm test:dev:browser
-pnpm test:storage:browser
-pnpm test:shell:browser
-pnpm test:controls:browser
-pnpm test:sessions:browser
-pnpm test:terminal:browser
-pnpm test:intent:browser
-pnpm test:drift:browser
-pnpm test:journey:browser
-pnpm test:project:browser
-pnpm test:console:browser
-pnpm test:attention:browser
-pnpm test:capacity:browser
-pnpm test:css:browser         # computed-style readability contract: type floor, absences, inks, controls, variables, focus rings, Button gallery targets
-pnpm test:production:browser   # the same parity proofs against the shipped bundle: CARGENTO_E2E_BUNDLE=production, two shards in CI
 coverage erase
-python3 scripts/run_tests.py --coverage -s cargento/skills/cargento/tests -t .
+python3 scripts/run_tests.py --coverage -s compass/skills/compass/tests -t .
 python3 scripts/run_tests.py --coverage -s scripts/tests -t scripts/tests
 coverage combine
 coverage report   # enforces the fail_under threshold from pyproject.toml
@@ -288,15 +273,15 @@ coverage report   # enforces the fail_under threshold from pyproject.toml
 # Both are read-only property reads that select nothing, activate nothing and
 # open no window, but they are still automation of someone else's application.
 # Two switches hold it shut, with different audiences: the test module sets
-# `CARGENTO_NO_TERMINAL_QUERY=1` on every recorder subprocess it starts, which a
+# `COMPASS_NO_TERMINAL_QUERY=1` on every recorder subprocess it starts, which a
 # real capture never sets, so what an operator records is unchanged; and the one
 # test that talks to a live Terminal on purpose is behind
-# `CARGENTO_ALLOW_APPLE_EVENTS=1` and skips without it. CI never sets that flag,
+# `COMPASS_ALLOW_APPLE_EVENTS=1` and skips without it. CI never sets that flag,
 # so the live read runs on an operator's desk or nowhere, and the static shape
 # test beside it is what still guards those scripts in CI.
 # Native validators, if the CLIs are installed (they are not available on stock runners):
-claude plugin validate ./cargento --strict
-agy plugin validate ./cargento
+claude plugin validate ./compass --strict
+agy plugin validate ./compass
 ```
 
 Then reconcile the docs before you push. Invoke the `sync-docs` skill in your agent — it is not a
@@ -351,7 +336,7 @@ an end-to-end test of every reservation, settlement and the full 239-call ceilin
 production receipt validation or relax durability to make a test faster.
 
 **The built page is the conflict you will get.** `react.html`, `react.integrity.json` and
-`react-licenses.txt` under `cargento_runtime/web/` are build output. Two branches that change anything
+`react-licenses.txt` under `compass_runtime/web/` are build output. Two branches that change anything
 the build reads (a source file, `page.py`'s font table, the font rows of `styles.css`, a lockfile)
 produce a conflict where **each side is correct for a tree that no longer exists**, so a textual
 resolution ships an artifact that matches neither. Resolve the sources, then rebuild with `pnpm build`
@@ -432,7 +417,7 @@ Without that pass the lens count would have to rise to compensate.
 **One PR per conflict surface, not one per issue.** Issues are units of reasoning; PRs are units of
 merge risk. Five issues became five PRs on that run where three would have done. The only
 constraint that genuinely forces a split is that exactly one line of history may touch
-`cargento_runtime/web/`: one PR, or one stack whose layers build on each other (see Parallel Work). Every extra PR costs a review, a fix round, a CI cycle, and — because a
+`compass_runtime/web/`: one PR, or one stack whose layers build on each other (see Parallel Work). Every extra PR costs a review, a fix round, a CI cycle, and — because a
 ruleset requires branches be up to date — a merge serialization that puts every sibling behind.
 
 **Review the diff in the worktree before opening the PR.** Reviewing after means every PR runs CI
@@ -481,18 +466,14 @@ suite or the frontend. `platform-tests` keeps the macOS dashboard leg and three 
 the Linux coverage and runtime-floor jobs still run both Python suites.
 
 `Frontend (macos-latest)` uses pinned Node and pnpm for lint, strict types, unit tests and a clean
-preview build. It checks the hand-written CSS record against the actual pull request base, hostile
-HTML literals and an installed Python 3.11 copy in pinned Chromium, with Node hidden from the backend
-and external asset requests refused. It also exercises owned development startup/cleanup, real
-Python/Vite hot refresh, API/SSE, backend restart and inert capability guards with models, usage and
-native actions disabled, followed by storage, shell, shared-controls and session browser proofs.
-The separate `Frontend proofs` job has been retired after the major frontend refactor. Its longer
-development-server proofs remain runnable through the unchanged local pre-PR command list.
+preview build. It checks the hand-written CSS record against the actual pull request base, and it
+exercises owned development startup and cleanup (`pnpm test:dev`, Node tests). The browser proofs that
+used to follow, including the separate `Frontend proofs` job retired earlier, are no longer part of
+the gate (owner, 2026-10-12); the interface is verified by Storybook.
 
-`Frontend production bundle` runs on Linux in two shards: it rebuilds and compares the tracked
-artifact, then runs all thirteen parity proofs against the shipped bundle, with shard membership
-kept in `frontend/e2e/production-shards.json`. The `Storybook (ubuntu-latest)` job builds the offline explorer and runs component assertions in
-pinned Chromium. All three frontend jobs are in the aggregator's
+`Frontend production bundle` runs on Linux: it rebuilds the tracked artifact from its sources and
+compares it, and runs no proof. The `Storybook (ubuntu-latest)` job builds the offline explorer and
+runs the component assertions in pinned Chromium. All three frontend jobs are in the aggregator's
 `needs`, and a skipped result passes only when the detector said `code=false`. The required status
 checks on main remain `validate`, `version-guard` and `quality-gate`. Native harness canary Node
 requirements remain independent of this build toolchain.
@@ -533,7 +514,9 @@ no longer published about an end published seconds later. The comment above the
 anything in that sequence, because three of the calls around it are ordered for reasons of their
 own and one of them is deliberately ordered by convention alone.
 
-A change to a component or view updates its story and passes `pnpm test:stories`.
+A change to a component or view updates its story and passes `pnpm test:stories`. Storybook is where the
+interface is verified now: a story's `play` function asserts what a reader sees and does, in pinned
+Chromium, offline. New UI or UX behaviour is proven there, not in a new browser proof.
 
 ## Code Comments
 
@@ -550,7 +533,7 @@ Do not write one to restate the line below it, to summarize a function its name 
 Length follows the decision, not the code. A one-line change can deserve two lines of why; it rarely deserves six. If the explanation runs longer than the code it explains, the reason is durable enough for `docs/design-*.md`, and the comment shrinks to a reference.
 
 The citation syntax is checked by `RuntimeDecisionCitationsTest` in `test_documentation.py`.
-It reads `.py`, `.js`, `.css` and `.html` recursively under `cargento_runtime`, without importing
+It reads `.py`, `.js`, `.css` and `.html` recursively under `compass_runtime`, without importing
 those files or using the network. The finite local-label grammar is `D1`, `D-1`, `DEC-1`, `AC1`,
 `AC-1`, `DR-1`, `N-1`, `NUI-1`, `Q-1`, `R-1`, `S-1` and `U-1`, with decimal digits in place of
 `1` and exact token boundaries (no adjoining word character or hyphen). Each retained active label
@@ -581,10 +564,10 @@ obligation, like the prose voice standard in `sync-docs`.
 
 ## Versioning and Releases
 
-The plugin version must be identical in three places: `cargento/.claude-plugin/plugin.json` (the
-source of truth `bump_version.py` reads and writes from), `cargento/.codex-plugin/plugin.json`,
-and `cargento-gemini/gemini-extension.json`. The plugin description must be identical in four:
-those three manifests plus the Antigravity `cargento/plugin.json` (`cargento-droid/.factory-plugin/plugin.json`
+The plugin version must be identical in three places: `compass/.claude-plugin/plugin.json` (the
+source of truth `bump_version.py` reads and writes from), `compass/.codex-plugin/plugin.json`,
+and `compass-gemini/gemini-extension.json`. The plugin description must be identical in four:
+those three manifests plus the Antigravity `compass/plugin.json` (`compass-droid/.factory-plugin/plugin.json`
 carries only name and description without a version field). `scripts/validate_plugins.py`
 enforces both.
 
@@ -592,13 +575,13 @@ Version fields are **owned by the tag-driven Release workflow** — never edit t
 
 **Releases are on hold** while a `RELEASE_HOLD` file is tracked at the repository root. React is the
 only dashboard page: the legacy page and its `--frontend legacy` rollback were removed, and the hold
-lasts until the final browser, Python-only install and backend-connected development checks pass on
+lasts until the Python-only install and backend-connected development checks pass on
 one build of `main`. The guard is not prose:
 `scripts/release_transition.py resolve` refuses while the file is on `main`, for a fresh release and a
 resume, before any verifier or credential, `assert-checkout` asks again before anything is published,
 an unreadable `main` refuses rather than passing, and `scripts/tests/test_release_transition.py` rehearses it
 against temporary repositories. Do not edit or delete the file to get a release through; the owner lifts
-it in a reviewed pull request. The `cargento-release` skill owns the procedure.
+it in a reviewed pull request. The `compass-release` skill owns the procedure.
 
 After a release lands, `scripts/publish-cli.sh vX.Y.Z` attaches the installer archives Spacedock reads
 (`cargento_X.Y.Z_<os>_<arch>.tar.gz` and `checksums.txt`, built by `scripts/package-cli.sh`); the
@@ -618,7 +601,7 @@ The Release workflow is four jobs, split by what each may hold:
 - `verify-frontend` and `verify-tree` (read-only token, checkout with `persist-credentials: false`, no deploy key) check out exactly that target. The first installs the pinned Node and pnpm with dependency scripts denied, rebuilds the React bundle and compares it with the tracked artifact, runs lint, types and tests, and runs the Python-only installed proof. The second runs the contract validator, its own tests, the bump-version tests and the whole dashboard test suite, and exists because several of those start `node` whenever it is on PATH. Neither is the quality gate, which already ran on every commit that reached main.
 - `release` is the only job with `RELEASE_DEPLOY_KEY` and the write token, and it runs no Node, pnpm, npm, corepack or frontend dependency code. Its first command is plain shell: fresh mode checks `HEAD` equals the target, resume mode detaches onto the target, so no repository script runs while `HEAD` is unverified. Then `assert-checkout` confirms both verifiers recorded that same SHA, one `chore(release)` bump commit is written via `scripts/bump_version.py`, `git archive` of that exact commit is proven with Python only (`scripts/verify_release_archive.py`: version parity, a diff confined to the `version` value of the owned manifests, a byte-identical React bundle, the runtime inventory, the page integrity check and a launcher start under an empty PATH), and only then the bump is pushed, the tag moved onto it, `stable` advanced (forward only) and a GitHub Release published.
 
-The decisions live in `scripts/release_transition.py`, not in YAML, and are tested against temporary repositories with a bare origin (`scripts/tests/test_release_transition.py`, `scripts/tests/test_verify_release_archive.py`); the job boundaries are pinned by `cargento/skills/cargento/tests/test_release_workflow.py`. The React bundle is version-independent, so a bump must leave it untouched; a changed bundle byte after verification stops the release before `stable` moves.
+The decisions live in `scripts/release_transition.py`, not in YAML, and are tested against temporary repositories with a bare origin (`scripts/tests/test_release_transition.py`, `scripts/tests/test_verify_release_archive.py`); the job boundaries are pinned by `compass/skills/compass/tests/test_release_workflow.py`. The React bundle is version-independent, so a bump must leave it untouched; a changed bundle byte after verification stops the release before `stable` moves.
 
 Every step is idempotent: a re-run after a partial failure resumes cleanly, verifying and publishing that tag's own release commit rather than a newer main, and tagging the version the manifests already carry releases it as-is (that is how the initial 0.1.0 ships). If main advances while the verifiers run, the `release` job fails before it pushes or tags anything. Recovery is **Re-run all jobs** on the same run, never Re-run failed jobs (which keeps the stale target) and never pushing the tag again (it already exists, so nothing starts): only a full re-run runs `resolve` again, which takes the new tip or resumes the tag's own release commit. If main advances between the tag push and `resolve`, the release includes those extra commits. A resume of a release commit that predates the frontend toolchain cannot pass `verify-frontend` and needs a manual release. Release tags are immutable — a tag ruleset blocks deleting or moving them.
 
@@ -631,5 +614,5 @@ Shared skill bodies must work in every harness:
 - No host-specific tool names (`mcp__claude_ai_*`, `ToolSearch(`, `Skill(skill=`, `subagent_type`) — describe capabilities semantically.
 - The validator (`scripts/validate_plugins.py`) rejects all six of these markers in any bundled Markdown.
 
-These rules apply to Markdown **under `cargento/skills/`**. In `AGENTS.md` and `CLAUDE.md` the same
+These rules apply to Markdown **under `compass/skills/`**. In `AGENTS.md` and `CLAUDE.md` the same
 strings are the documentation of the rule and must stay.

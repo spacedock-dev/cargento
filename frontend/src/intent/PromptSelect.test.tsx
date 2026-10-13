@@ -25,6 +25,19 @@ async function opening() {
 }
 
 describe('a reader opening their prompts', () => {
+  it('sees that a long-record prompt search stopped, beside the choices it did find', async () => {
+    const { page } = await opening();
+    await page.release(
+      '/api/project-context',
+      json({ prompt_choices: choices, prompt_scan: { state: 'ok', bound: 'bytes' } }),
+    );
+    expect(
+      screen.getByRole('option', {
+        name: 'The prompt search reached its limit. Older prompts may be outside this read.',
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole('option', { name: /Fix the login redirect/ })).toBeTruthy();
+  });
   it('sees an open loading list on the first press and chooses from that same popup when the request arrives', async () => {
     const { page, select, user } = await opening();
     expect(select.textContent).toBe('Use your prompt');
@@ -49,12 +62,9 @@ describe('a reader opening their prompts', () => {
   it.each([
     [
       json({ prompt_choices: [] }),
-      'None of your prompts are in the recent part of this session that Cargento reads.',
+      'No usable prompts were found in the parts of this session Compass read.',
     ],
-    [
-      json({ error: 'unavailable' }, 503),
-      'Cargento could not read your prompts from this session.',
-    ],
+    [json({ error: 'unavailable' }, 503), 'Compass could not read your prompts from this session.'],
   ])(
     'keeps an empty or failed list open with its own stated absence (%#)',
     async (response, sentence) => {
@@ -87,7 +97,7 @@ describe('a reader opening their prompts', () => {
     expect(
       screen
         .getByRole('option', {
-          name: 'None of your prompts are in the recent part of this session that Cargento reads.',
+          name: 'No usable prompts were found in the parts of this session Compass read.',
         })
         .getAttribute('aria-disabled'),
     ).toBe('true');
@@ -105,7 +115,7 @@ describe('a reader opening their prompts', () => {
     expect(select.getAttribute('aria-busy')).toBe('false');
     expect(
       screen.getByRole('option', {
-        name: 'Cargento could not read your prompts from this session.',
+        name: 'Compass could not read your prompts from this session.',
       }),
     ).toBeTruthy();
   });
@@ -125,7 +135,7 @@ describe('a reader opening their prompts', () => {
     await page.release('/api/project-context', json({ error: 'unavailable' }, 503));
     expect(
       screen.getByRole('option', {
-        name: 'Cargento could not read your prompts from this session.',
+        name: 'Compass could not read your prompts from this session.',
       }),
     ).toBeTruthy();
   });

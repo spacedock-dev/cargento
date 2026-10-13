@@ -14,11 +14,11 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import drift_study_controls as controls
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cargento/skills/cargento"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "compass/skills/compass"))
 from unittest import mock
 
-from cargento_runtime import http_api, observer, project_context, reading
-from cargento_runtime.config import build_runtime_config
+from compass_runtime import http_api, observer, project_context, reading
+from compass_runtime.config import build_runtime_config
 
 
 def entry(**overrides: Any) -> Any:
@@ -139,7 +139,7 @@ class MatchedScopeControls(unittest.TestCase):
     def test_actual_produce_sends_the_final_digest_and_preserves_truthful_scope(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             config = build_runtime_config(
-                environ={"HOME": home, "CARGENTO_HOME": home},
+                environ={"HOME": home, "COMPASS_HOME": home},
                 launcher_path=Path(home) / "server.py",
                 platform_name="linux",
                 os_name="posix",
@@ -349,7 +349,7 @@ class ProductionFinalLookupParity(unittest.TestCase):
     def test_production_produce_matches_actual_shipped_http_composition(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             config = build_runtime_config(
-                environ={"HOME": home, "CARGENTO_HOME": home},
+                environ={"HOME": home, "COMPASS_HOME": home},
                 launcher_path=Path(home) / "server.py",
                 platform_name="linux",
                 os_name="posix",

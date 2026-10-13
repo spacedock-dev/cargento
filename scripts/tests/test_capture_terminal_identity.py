@@ -837,7 +837,7 @@ class CommittedCaptureTest(unittest.TestCase):
                     self.assertGreaterEqual(found["invocations"], 2)
 
     def test_the_recorder_cannot_reach_the_network(self) -> None:
-        # The user has a Cargento running, and a recorder that posted to it
+        # The user has a Compass running, and a recorder that posted to it
         # would contaminate the thing being measured.
         source = (ROOT / "scripts" / "capture_terminal_identity.py").read_text(encoding="utf-8")
         for banned in ("import socket", "import urllib", "import http", "requests"):

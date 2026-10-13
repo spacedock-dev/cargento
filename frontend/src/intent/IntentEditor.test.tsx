@@ -40,7 +40,11 @@ describe('a goal-less session arrives with its first prompt drafted and nothing 
     const page = mountSession();
     await settle(page);
     const paths = new Set(page.state.requests.map((r) => `${r.method} ${r.path}`));
-    expect([...paths].sort()).toEqual(['GET /api/data', 'GET /api/project-context']);
+    expect([...paths].sort()).toEqual([
+      'GET /api/data',
+      'GET /api/project-context',
+      'GET /api/session-record',
+    ]);
   });
 });
 
@@ -215,7 +219,7 @@ describe('Save intent', () => {
     });
     await settle(page);
     expect(footerCue()).toBe(
-      'Cargento did not answer, so this page cannot tell whether your intent was saved. Your words are still in the box.',
+      'Compass did not answer, so this page cannot tell whether your intent was saved. Your words are still in the box.',
     );
     expect(goalBox().value).toBe('Edited words');
     expect(page.posts()).toBe(1);

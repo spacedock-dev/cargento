@@ -10,13 +10,13 @@ import { startDevelopment } from './supervisor.mjs';
 
 test('missing Python fails before owned children start', async () => {
   await assert.rejects(
-    startDevelopment({ python: '/missing/cargento-python', port: 4585, vitePort: 4586 }),
+    startDevelopment({ python: '/missing/compass-python', port: 4585, vitePort: 4586 }),
     /Python/,
   );
 });
 
 test('missing frozen frontend dependencies gives an actionable error before any bind', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'cargento-missing-dependencies-'));
+  const root = await mkdtemp(join(tmpdir(), 'compass-missing-dependencies-'));
   try {
     await assert.rejects(
       startDevelopment({ root, port: 4585, vitePort: 4586 }),
@@ -63,6 +63,12 @@ test('real backend restarts serialize fresh identities and close only owned chil
     const first = dev.ready;
     const data = await (await fetch(first.origin + '/api/data')).json();
     assert.match(data.build, /^react-dev-/);
+    const record = await (
+      await fetch(first.origin + '/api/session-record?project=synthetic&session=claude:unknown')
+    ).json();
+    assert.equal(record.state, 'unavailable');
+    assert.equal(record.reached_start, false);
+    assert.deepEqual(record.entries, []);
     await Promise.all([dev.restart(), dev.restart()]);
     assert.notEqual(dev.ready.pid, first.pid);
     assert.notEqual(dev.ready.generation, first.generation);
@@ -114,7 +120,7 @@ test('documented contributor executable exits cleanly on stdin EOF after readine
       );
       child.stdout.on('data', (chunk) => {
         output += chunk;
-        if (output.includes('Cargento development: http://127.0.0.1:4585')) {
+        if (output.includes('Compass development: http://127.0.0.1:4585')) {
           clearTimeout(timer);
           resolve();
         }

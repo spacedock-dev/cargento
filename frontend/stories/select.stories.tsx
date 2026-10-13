@@ -52,7 +52,11 @@ export const KeyboardAndLongText: Story = {
     await userEvent.click(trigger);
     const page = within(canvasElement.ownerDocument.body);
     await expect(await page.findByRole('option', { name: long })).toHaveAttribute('title', long);
-    await expect(await page.findByRole('listbox')).toBeVisible();
+    const list = await page.findByRole('listbox');
+    await expect(list).toBeVisible();
+    await waitFor(() =>
+      expect(list.contains(canvasElement.ownerDocument.activeElement)).toBe(true),
+    );
     await userEvent.keyboard('{End}{Enter}');
     await waitFor(() => expect(trigger).toHaveTextContent('Short choice'));
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');

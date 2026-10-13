@@ -1,6 +1,6 @@
 """The drift replay check: its key, its blind order, its ledger, and what it may commit.
 
-The check replays recorded pushback sessions through Cargento's drift detectors against the owner's
+The check replays recorded pushback sessions through Compass's drift detectors against the owner's
 marks. These tests build small synthetic sessions; nothing here reads a real session log.
 """
 
@@ -858,7 +858,7 @@ class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
                 ),
             )
             import score_abstention  # noqa: PLC0415
-            from cargento_runtime import reading_route  # noqa: PLC0415 - runtime is installed above
+            from compass_runtime import reading_route  # noqa: PLC0415 - runtime is installed above
 
             with (
                 mock.patch.object(reading_route, "destination", return_value="Anthropic"),
@@ -960,8 +960,8 @@ class ATaggedReadKeepsTheEarlierRunsOutput(unittest.TestCase):
             # The destination is pinned, since a runner without the CLI refuses on that first.
             said.clear()
             other = f"{home.ids[-1]}:realistic"
-            dr._runtime()  # puts cargento_runtime on the path
-            from cargento_runtime import reading_route  # noqa: PLC0415
+            dr._runtime()  # puts compass_runtime on the path
+            from compass_runtime import reading_route  # noqa: PLC0415
 
             with mock.patch.object(
                 reading_route, "destination", return_value=reading_route.VENDORS["claude"]
