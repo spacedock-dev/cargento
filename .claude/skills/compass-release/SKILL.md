@@ -344,12 +344,12 @@ in the publishing job, so a hold merged while the verifiers ran still stops a re
 bump, tag move or `stable`. If main cannot be read at all, both refuse: an unreadable repository
 is not a missing hold.
 
-The file records why the hold exists and what lifts it. The legacy frontend and its rollback are
-removed (the script parts frozen for the recorded Intent and drift replay live under
-`scripts/frozen-page/`, outside the plugin), so the
-current hold lasts until the Python-only install and backend-connected development
-checks pass on one build of `main`. Only the repository owner lifts it, by deleting the file in a
-reviewed pull request. This skill never deletes it, and never edits it to make a release pass.
+When a hold exists, the file records why and what lifts it. The hold that covered the React cutover
+lifted for 1.0.0: the legacy frontend and its rollback were removed (the script parts frozen for the
+recorded Intent and drift replay live under `scripts/frozen-page/`, outside the plugin), and the
+Python-only install and backend-connected development checks passed on one build of `main`. Only the
+repository owner lifts a hold, by deleting the file in a reviewed pull request. This skill never
+deletes it, and never edits it to make a release pass.
 
 After the file is gone from `main`, use **Re-run all jobs** on a run that stopped at the hold (a
 tag that is already pushed cannot be pushed again), or push the next version tag.
