@@ -198,7 +198,7 @@ button that would write a mark against a session id for a question the store can
 mark would lapse on that session's next write rather than when the question is answered. The two
 concepts have different lifetimes, and the row shape has one.
 
-Taken: `nextAttentionModel()` in `web/next-attention.js` keeps asks as first-class Attention
+Taken: `nextAttentionModel()` in the retired page's `next-attention.js` keeps asks as first-class Attention
 signals. An ask with an exact owner joins that session's Needs-you subject; an unmatched ask remains
 a standalone subject rather than becoming a synthetic session. Native gates without a matched ask
 form their own session subjects. The comparator then ranks those subjects by the strongest waiting

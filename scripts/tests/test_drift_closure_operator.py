@@ -20,6 +20,7 @@ import analyze_campaign as campaigns
 import drift_closure_grading as grading
 import drift_replay as replay
 import drift_study_controls as controls
+import frozen_page
 import levels_cases as level_cases
 import score_abstention
 
@@ -298,12 +299,11 @@ class NativeOperator(unittest.TestCase):
                 },
             },
         }
-        from compass_runtime.web import page  # noqa: PLC0415 - actual native projection fixture
 
         self.proto["input_digest_bindings"]["native_page_projection"] = grading.digest(
             {
                 "node": self.sha(Path(replay._ROOT) / "scripts/drift_page.js"),
-                "script": grading.digest(page.load_script()),
+                "script": grading.digest(frozen_page.load_script()),
             }
         )
         self.seal()

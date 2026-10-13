@@ -20,6 +20,7 @@ import analyze_campaign as campaigns
 import drift_closure_grading as grading
 import drift_replay as replay
 import drift_study_controls as controls
+import frozen_page
 import levels_cases as level_cases
 
 
@@ -144,12 +145,10 @@ class NativeClosureOperator:
             or [r["slot"] for r in self.registrations] != self.campaign.manifest["slots"]["replay"]
         ):
             raise ValueError("Frozen source, scorer, marks or slots differ from reviewed authority")
-        from compass_runtime.web import page  # noqa: PLC0415 - actual shipped projection
-
         projection = grading.digest(
             {
                 "node": _sha(Path(replay._ROOT) / "scripts/drift_page.js"),
-                "script": grading.digest(page.load_script()),
+                "script": grading.digest(frozen_page.load_script()),
             }
         )
         if self.protocol["input_digest_bindings"].get("native_page_projection") != projection:

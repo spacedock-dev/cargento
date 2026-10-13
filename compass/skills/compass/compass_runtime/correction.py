@@ -20,8 +20,8 @@ with the previous page's rules for whether a verdict survives
 has demoted.
 
 The `next*` functions this module names are the previous page's. They survive only as the frozen,
-study-bound parts under `web/` (`tests/test_frozen_study_parts.py` pins them); the React page ports
-the same rules under `frontend/src/drift/`.
+study-bound parts under `scripts/frozen-page/` (`scripts/tests/test_frozen_page.py` pins them); the
+React page ports the same rules under `frontend/src/drift/`.
 """
 
 from __future__ import annotations
