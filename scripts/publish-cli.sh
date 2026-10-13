@@ -48,5 +48,14 @@ if [ "$dry" = --dry-run ]; then
 	exit 0
 fi
 [ -z "$dry" ] || { echo "publish-cli.sh: unknown option $dry" >&2; exit 1; }
-# --clobber: a re-run of the release workflow attaches again rather than failing on the first run's files.
-(cd "$dir" && gh release upload "$tag" "$@" checksums.txt --clobber)
+# gh finds the repository from the working directory, so the upload runs where this script was
+# started, which is the checkout, and not inside $dir, which is not a repository: the first release
+# to use this failed that way. gh names each asset by its file name, so full paths attach the same
+# five names. --clobber makes a re-run attach again instead of failing on the first run's files.
+count=$#
+while [ "$count" -gt 0 ]; do
+	set -- "$@" "$dir/$1"
+	shift
+	count=$((count - 1))
+done
+gh release upload "$tag" "$@" "$dir/checksums.txt" --clobber
