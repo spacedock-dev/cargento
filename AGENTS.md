@@ -44,8 +44,7 @@ compass/                           # plugin root: Claude Code, Codex, Antigravit
         │                           # per-module map: docs/design-runtime-architecture.md
         │   ├── collectors/         # one harness collector per file, one per supported harness
         │   └── web/                # the built React page, its integrity metadata and licenses, vendored
-        │                           # terminal assets, fonts and the page loader (`page.py`); the frozen
-        │                           # legacy script parts stay for the paused study only, never served
+        │                           # terminal assets, fonts and the page loader (`page.py`)
         ├── agents/openai.yaml      # Codex presentation metadata
         └── tests/                  # dashboard unit tests and shared support
 frontend/                           # React sources, unit tests, Storybook stories and on-demand browser proofs (Node and pnpm; not shipped)
@@ -56,6 +55,8 @@ frontend/                           # React sources, unit tests, Storybook stori
 │                                   # (`test/golden/`: fixtures of record, never regenerated)
 ├── e2e/                            # Playwright browser proofs, run on demand by `pnpm test:*:browser`; not required by CI or the pre-PR list
 └── build/ dev/                     # the packager and the contributor development supervisor
+scripts/frozen-page/               # the retired page's script parts, outside the plugin: the paused study
+│                                   # binds their digest (`scripts/frozen_page.py` loads them); not shipped
 compass-gemini/                    # extension root: Gemini CLI (hooks only)
 └── hooks/
     ├── hooks.json                  # Gemini CLI lifecycle hooks

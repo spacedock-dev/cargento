@@ -263,43 +263,6 @@ class ReactFrontendTest(unittest.TestCase):
         self.assertNotIn("frontend", result)
 
 
-class StudyScriptGuardTest(unittest.TestCase):
-    """The previous interface's script stays only for the recorded Intent and drift replay.
-
-    `load_script` carries no integrity metadata, and measured on a scratch plugin an emptied
-    part once served a 200 page with no message where a deleted part refused. The replay
-    still reads it, so the empty part must keep refusing by name.
-    """
-
-    def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory(prefix="compass-study-script-")
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        shutil.copytree(
-            page.WEB_DIR,
-            self.root,
-            dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns("react*", "vendor", "fonts", "__pycache__"),
-        )
-        self.addCleanup(mock.patch.stopall)
-        mock.patch.object(page, "WEB_DIR", self.root).start()
-
-    def test_the_untouched_copy_still_loads(self) -> None:
-        self.assertTrue(page.load_script())
-
-    def test_an_empty_or_blank_script_part_refuses_by_name(self) -> None:
-        for name in page.APP_PARTS:
-            for blank in ("", " \n\t\n"):
-                with self.subTest(part=name, blank=blank):
-                    original = (self.root / name).read_bytes()
-                    (self.root / name).write_text(blank, encoding="utf-8")
-                    try:
-                        with self.assertRaisesRegex(RuntimeError, f"{name} is empty"):
-                            page.load_script()
-                    finally:
-                        (self.root / name).write_bytes(original)
-
-
 class InstalledFrontendTest(unittest.TestCase):
     @staticmethod
     def child_environment(root: Path) -> dict[str, str]:

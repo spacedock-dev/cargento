@@ -8,34 +8,6 @@ from typing import Any
 
 WEB_DIR = Path(__file__).resolve().parent
 
-# The previous interface's script parts, in the order the old page concatenated them into one
-# scope. The dashboard no longer serves them. They stay, byte for byte, because the recorded
-# Intent and drift replay (`scripts/drift_page.js`, run by `scripts/drift_replay.py`) evaluates
-# this text and its closure ledger binds the digest of `load_script()`; changing a byte would
-# unfreeze that study. Nothing in the runtime or the page reads this table.
-APP_PARTS: tuple[str, ...] = (
-    "next-boot.js",
-    "next-observed.js",
-    "next-attention.js",
-    "next-notify.js",
-    "next-cockpit-compat.js",
-    "project.js",
-    "next-chrome.js",
-    "next-capacity.js",
-    "next-sessions.js",
-    "next-projects.js",
-    "next-project.js",
-    "next-intent.js",
-    "next-activity.js",
-    "next-session.js",
-    "next-workstream.js",
-    "next-delegation.js",
-    "next-controls.js",
-    "next-cockpit.js",
-    "next-render.js",
-    "next-live.js",
-)
-
 # The page is one self-contained response, so the packaged font subsets travel inside it as
 # base64 rather than behind a second HTTP asset surface. Python never reads this table: the
 # build (`frontend/build/package.mjs`, `readFonts`) parses it and the `@font-face` rows of
@@ -106,18 +78,6 @@ FONT_ASSETS: tuple[tuple[str, str], ...] = (
 
 def asset_path(name: str) -> Path:
     return WEB_DIR / name
-
-
-def load_script() -> str:
-    """Return the previous interface's script parts, in order, as one text (study replay only)."""
-    pieces = []
-    for name in APP_PARTS:
-        text = asset_path(name).read_text(encoding="utf-8")
-        if not text.strip():
-            msg = f"{name} is empty"
-            raise RuntimeError(msg)
-        pieces.append(text)
-    return "".join(pieces)
 
 
 def _object(value: Any, keys: set[str]) -> dict[str, Any]:

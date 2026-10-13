@@ -4,8 +4,9 @@ Why: the React dashboard is the only dashboard, and the final checks on the buil
 actually ship have not passed.
 
 What lifts it, all on one commit of main:
-  1. Done: the legacy frontend, its rollback, byte pins and tests are removed. What remains are
-     the legacy script parts frozen for the recorded Intent and drift replay, which still ship.
+  1. Done: the legacy frontend, its rollback, byte pins and tests are removed, and the legacy
+     script parts no longer ship. They moved byte for byte to scripts/frozen-page/, outside the
+     plugin, for the paused Intent and drift study.
   2. The Python-only installed copy and the backend-connected development checks pass on that
      same build.
 

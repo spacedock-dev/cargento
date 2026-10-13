@@ -58,6 +58,7 @@ if os.path.join(_ROOT, "scripts") not in sys.path:
 import abstention_ledger as campaign_authority  # noqa: E402 - operator scripts path
 import analyze_campaign as campaign_guard  # noqa: E402 - same operator scripts path
 import drift_study as study  # noqa: E402 - scripts/ is put on the path just above
+import frozen_page  # noqa: E402 - same scripts path
 import levels_cases as lc  # noqa: E402 - scripts/ is put on the path just above
 
 try:
@@ -1099,16 +1100,13 @@ def _correction_kinds(text: str) -> list[str]:
 
 
 def _page_states(payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The shipped page's resolved criteria, answer and None-or-low guard, without a browser."""
-    _runtime()
-    from compass_runtime.web import page  # noqa: PLC0415
-
+    """The retired page's resolved criteria, answer and None-or-low guard, without a browser."""
     node = shutil.which("node")
     if node is None:
         raise RuntimeError("Page replay requires node; no page result was guessed.")
     result = subprocess.run(  # noqa: S603 - resolved node, owned script; payload is JSON on stdin
         [node, os.path.join(_ROOT, "scripts", "drift_page.js")],
-        input=json.dumps({"script": page.load_script(), "payloads": payloads}),
+        input=json.dumps({"script": frozen_page.load_script(), "payloads": payloads}),
         capture_output=True,
         text=True,
         encoding="utf-8",

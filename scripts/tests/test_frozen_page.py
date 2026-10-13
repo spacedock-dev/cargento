@@ -1,8 +1,9 @@
 """The previous interface's script parts are frozen except for the owner's rename.
 
-The dashboard no longer serves them. `scripts/drift_replay.py` evaluates `page.load_script()` in
-`scripts/drift_page.js`, and the paused Intent and drift study (`docs/drift-replay/`) binds the
-digest of that text into its ledger. A changed byte would unfreeze the study without a word and
+The dashboard no longer ships or serves them; `scripts/frozen_page.py` loads them from
+`scripts/frozen-page/` for the paused Intent and drift study. `scripts/drift_replay.py` evaluates
+`frozen_page.load_script()` in `scripts/drift_page.js`, and the study (`docs/drift-replay/`) binds
+the digest of that text into its ledger. A changed byte would unfreeze the study without a word and
 only surface when it resumes, so each part and the concatenation are pinned here. If a part must
 change beyond that rename, re-qualify it and re-pin these values together. The named test
 projection preserves the historical pins; it does not certify the renamed study bytes.
@@ -11,11 +12,29 @@ projection preserves the historical pins; it does not certify the renamed study 
 from __future__ import annotations
 
 import hashlib
+import shutil
+import sys
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
-from compass_runtime.web import page as frontend_page
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import frozen_page
 
-from .recorded_name import original_product_name
+
+def original_product_name(text: str) -> str:
+    """Restore only the three product-name spellings for historical hash checks.
+
+    A test-only comparison with recorded bytes, never certification of the renamed producer or
+    study source. Their live qualification still requires evidence.
+    """
+    return (
+        text.replace("Compass", "Cargento")
+        .replace("COMPASS", "CARGENTO")
+        .replace("compass", "cargento")
+    )
+
 
 # Sizes and sha256 of each part, as the previous interface's own byte pins recorded them.
 PARTS: dict[str, tuple[int, str]] = {
@@ -105,31 +124,66 @@ SCRIPT = (
     "392e3d83dee6d5bf504ff4f38fafac7c63d1dca0a2913284525cba4ea85a9fb9",
 )
 WHY = (
-    "{name} is bound by the paused Intent and drift study (`page.load_script()` feeds "
+    "{name} is bound by the paused Intent and drift study (`frozen_page.load_script()` feeds "
     "`scripts/drift_page.js`, and its ledger binds the digest). Its bytes must not change; "
-    "re-opening the study means re-qualifying it and re-pinning `tests/test_frozen_study_parts.py`."
+    "re-opening the study means re-qualifying it and re-pinning `scripts/tests/test_frozen_page.py`."
 )
 
 
 class TheStudyBoundPartsAreFrozenTest(unittest.TestCase):
     def test_the_part_list_and_order_are_the_studys(self) -> None:
-        self.assertEqual(tuple(PARTS), frontend_page.APP_PARTS, WHY.format(name="APP_PARTS"))
+        self.assertEqual(tuple(PARTS), frozen_page.APP_PARTS, WHY.format(name="APP_PARTS"))
 
     def test_each_part_keeps_its_size_and_digest(self) -> None:
         for name, (size, digest) in PARTS.items():
             with self.subTest(part=name):
                 data = original_product_name(
-                    frontend_page.asset_path(name).read_bytes().decode("utf-8")
+                    (frozen_page.FROZEN_DIR / name).read_bytes().decode("utf-8")
                 ).encode("utf-8")
                 self.assertEqual(size, len(data), WHY.format(name=name))
                 self.assertEqual(digest, hashlib.sha256(data).hexdigest(), WHY.format(name=name))
 
     def test_the_text_the_replay_evaluates_keeps_its_size_and_digest(self) -> None:
-        script = original_product_name(frontend_page.load_script()).encode("utf-8")
+        script = original_product_name(frozen_page.load_script()).encode("utf-8")
         self.assertEqual(SCRIPT[0], len(script), WHY.format(name="load_script()"))
         self.assertEqual(
             SCRIPT[1], hashlib.sha256(script).hexdigest(), WHY.format(name="load_script()")
         )
+
+
+class TheLoaderRefusesAnEmptyPartTest(unittest.TestCase):
+    """`load_script` carries no integrity metadata, and an emptied part once served silently."""
+
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory(prefix="compass-frozen-page-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        shutil.copytree(frozen_page.FROZEN_DIR, self.root, dirs_exist_ok=True)
+        self.addCleanup(mock.patch.stopall)
+        mock.patch.object(frozen_page, "FROZEN_DIR", self.root).start()
+
+    def test_the_untouched_copy_still_loads(self) -> None:
+        self.assertTrue(frozen_page.load_script())
+
+    def test_an_empty_or_blank_script_part_refuses_by_name(self) -> None:
+        for name in frozen_page.APP_PARTS:
+            for blank in ("", " \n\t\n"):
+                with self.subTest(part=name, blank=blank):
+                    original = (self.root / name).read_bytes()
+                    (self.root / name).write_text(blank, encoding="utf-8")
+                    try:
+                        with self.assertRaisesRegex(RuntimeError, f"{name} is empty"):
+                            frozen_page.load_script()
+                    finally:
+                        (self.root / name).write_bytes(original)
+
+
+class TheDashboardNoLongerCarriesThemTest(unittest.TestCase):
+    def test_no_part_remains_under_the_shipped_web_directory(self) -> None:
+        web = Path(__file__).resolve().parents[2] / "compass/skills/compass/compass_runtime/web"
+        for name in frozen_page.APP_PARTS:
+            with self.subTest(part=name):
+                self.assertFalse((web / name).exists())
 
 
 if __name__ == "__main__":
