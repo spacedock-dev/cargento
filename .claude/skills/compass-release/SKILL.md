@@ -208,7 +208,7 @@ The proposal carries:
 6. What pushing the tag will do, in one line each: validate the tag and fix the commit to release,
    verify the frontend and the tree on exactly that commit without credentials, write one
    `chore(release)` bump commit, prove its `git archive` with Python only, then move the tag onto
-   it, advance `stable`, publish the Release.
+   it, advance `stable`, publish the Release, then stamp the version onto the marketplace listing.
 7. The question: cut it, and separately, do you want release notes posted to Slack afterwards?
 
 Prepare the complete public note before asking, including any generated changelog to be retained.
@@ -288,6 +288,15 @@ The last line must list five files: `compass_$VERSION_<os>_<arch>.tar.gz` for `d
 the release itself, from the `attach-cli` job, so look again before calling it missing. The
 Spacedock installer reads exactly these names from `releases/latest`.
 
+The marketplace listing is stamped by the `marketplace` job, after `release`. Confirm it shows the
+version, because `stable` alone already serves the release and a failed stamp would otherwise pass
+unnoticed:
+
+```bash
+gh api repos/spacedock-dev/marketplace/contents/.claude-plugin/marketplace.json --jq .content \
+  | base64 -d | jq -r '.plugins[] | select(.name == "compass") | .version'   # equals $VERSION
+```
+
 The bump commit is the one outcome that is conditional: the workflow skips it when the manifests
 already carry the tagged version, which is the initial-release path and the resume path. Step 1's
 parity check is what makes it unconditional on every normal release.
@@ -327,6 +336,12 @@ Read which job failed first:
 - **`attach-cli` failed.** The release exists and is correct; it only lacks its archives, so the
   Spacedock installer skips Compass until they are there. Re-run all jobs: the workflow resumes, finds
   the release already published, and attaches again (`--clobber` makes that safe).
+- **`marketplace` failed.** The release is published and `stable` serves it, so installs already get
+  the new version; only the listing's displayed version is behind. Re-run that job alone: it never
+  moves the version backwards, so it is safe. If the log says the entry must point at `stable`, or
+  that it found no `compass` entry, the marketplace listing has drifted from this repository, and the
+  entry needs a pull request there before any re-run can pass. A rejected push three times means the
+  marketplace's `main` is busy or the deploy key was removed; check the key on that repository.
 - **A later step failed (push, tag, `stable`, publish).** Re-run all jobs: the workflow finds this
   tag's release commit on `main`, verifies that commit, and publishes it, never a newer `main`. It
   moves `stable` forward only, so resuming an older release after a newer one leaves `stable` where
