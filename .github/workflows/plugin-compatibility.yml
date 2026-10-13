@@ -141,9 +141,14 @@ jobs:
           export HOME="$RUNNER_TEMP/agy-home"
           mkdir -p "$HOME"
           agy plugin install "$GITHUB_WORKSPACE/compass"
-          agy plugin list | tee /tmp/compass-agy-plugins.txt
-          jq -e '.imports | map(.name) | index("compass") != null' /tmp/compass-agy-plugins.txt
-          jq -e '.imports[] | select(.name == "compass") | .components | index("skills") != null' /tmp/compass-agy-plugins.txt
+          # `agy plugin list` printed JSON up to 1.3.3 and plain text from 1.3.4, so ask for JSON.
+          # 1.3.3 answers `--json` in its old shape ({"imports": [{"components": [...]}]}) and
+          # 1.3.4 answers with an array ([{"skills": [...]}]); the filters read either, so the
+          # canary keeps checking that the plugin and its skill installed rather than the format.
+          agy plugin list --json | tee /tmp/compass-agy-plugins.txt
+          LISTED='(if type == "array" then . else .imports end)'
+          jq -e "${LISTED} | map(.name) | index(\"compass\") != null" /tmp/compass-agy-plugins.txt
+          jq -e "${LISTED}[] | select(.name == \"compass\") | ((.skills // []) | length > 0) or ((.components // []) | index(\"skills\") != null)" /tmp/compass-agy-plugins.txt
 
       - name: Install the extension with Gemini CLI
         env:

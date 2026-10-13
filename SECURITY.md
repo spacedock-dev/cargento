@@ -1164,9 +1164,12 @@ window start instead of from the 400,000-byte tail (2026-10-13, `project_context
 [the amendment](docs/design-reading-a-session.md#amended-2026-10-13-a-press-reads-the-message-record-back-to-the-window-start)).
 The read is backward and memory-only, under the same allowance as the adopted-source lookup: the newest
 64 MiB under one two-second clock, a stamp check that refuses a file changed since the press began, and
-a stop after sixteen timestamped records in a row older than the window or once it holds more than 100
-messages, the project event cap. A message whose text is over 256 Ki characters is not read and counts as an unread region. It
-adds no content class. The messages it finds are the person and agent messages
+a stop after sixteen timestamped records in a row older than the window. It keeps the newest 100
+messages, the project event cap, and the closing agent message of up to twelve earlier turns with the
+reader's message after each, a bounded handful held in memory (2026-10-13, [the amendment](docs/design-reading-a-session.md#amended-2026-10-13-a-press-keeps-the-closing-agent-message-of-each-earlier-turn)).
+A message whose text is over 256 Ki characters is not read and counts as an unread region. The prompt
+reserves an eighth of its 16 KiB (`reading.ANCHOR_SHARE_DIVISOR`) for those closings ahead of the newest
+agent messages, and no entry of another kind is displaced. It adds no content class. The messages it finds are the person and agent messages
 a reading already sends, redacted and capped the same way, `for_page` still strips both words fields,
 and nothing is stored or retained after the press. Ordinary collection and every other harness keep the
 tail, and `CONTENT_VERSION` is unchanged.
@@ -1922,7 +1925,7 @@ or used to alter a verdict. It permits no additional transcript text to be store
 ([the ruling](docs/design-reading-a-session.md#amended-2026-10-04-owner-disclose-measured-reading-coverage)).
 For a Claude Code press that read back (2026-10-13), the two message measurements describe what the
 project cap kept rather than the 400,000-byte tail: the boolean is true when the read stopped before the
-window start, left an unread region inside it or the cap dropped an in-window message of the session, and
+window start, left an unread region inside it, or the read or the cap dropped an in-window message of the session, and
 the time is where the record is whole from. The keys, types and exposure are unchanged.
 
 ### The abstention check

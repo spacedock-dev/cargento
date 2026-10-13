@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import time
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -645,6 +646,11 @@ PRESS_OLDER_RUN = 16
 # oversized line does. The text is measured, not the record: a pasted screenshot makes a user record
 # several megabytes of image data around a short question, and parsing that costs milliseconds.
 PRESS_TEXT_MAX_CHARS = 256 * 1024
+# How many turns' closing agent messages a press keeps beyond the newest messages and the project
+# cap. A long session's first turns are what an early Goal rests on, and what the agent said it had
+# done is the last message of a turn, not its first. Twelve is about what the prompt's anchor share
+# (an eighth of the budget) carries at 130 to 190 bytes a row.
+PRESS_ANCHORS = 12
 
 
 class MessageReach(NamedTuple):
@@ -653,17 +659,22 @@ class MessageReach(NamedTuple):
     `reached` is whether the window's start was read: a record older than it, or the file's start,
     with no unread region inside the window. `earliest` is where the contiguous read began: the
     oldest timestamp seen when it reached, else the oldest in-window time before the first thing it
-    could not read (None when it read none). `stopped_by` says why the read ended.
+    could not read (None when it read none). `stopped_by` says why the read ended. `lost` is the
+    newest message the read saw and did not keep, which is where a whole record would begin after.
     """
 
     reached: bool
     earliest: float | None
     stopped_by: str
+    lost: float | None = None
 
 
 class PressMessages(NamedTuple):
     events: list[dict[str, Any]]
     reach: MessageReach
+    # The message keys of the turn-closing agent messages the read kept past its newest messages, so
+    # the project cap can reserve them without a marker on the event, which a page would carry.
+    anchors: frozenset[tuple[object, ...]] = frozenset()
 
 
 class PressWindow(NamedTuple):
@@ -700,7 +711,22 @@ class _MessageRead:
         self.config, self.harness, self.sid = config, harness, sid
         self.window_start = window_start
         self.found: list[dict[str, Any]] = []
+        # Turn-closing agent messages found after `found` was full, each with the reader's message
+        # that followed it, newest first and bounded: the oldest `PRESS_ANCHORS` stay, which are
+        # the earliest turns' evidence. The reader's message rides with it because the prompt
+        # finds a turn's close by the reader's message after it, and the history store may not
+        # hold that one.
+        self.anchors: deque[tuple[dict[str, Any], dict[str, Any] | None]] = deque(
+            maxlen=PRESS_ANCHORS
+        )
+        self.anchored: set[tuple[object, ...]] = set()
         self.keys: set[tuple[object, ...]] = set()
+        # The latest reader's message seen after `found` was full, not yet kept with an anchor.
+        self.pending: dict[str, Any] | None = None
+        # Going back, a reader's message ends one turn's messages and the next agent message found
+        # closes the turn before it; the scan's first agent message closes the newest turn.
+        self.closing = True
+        self.lost: float | None = None
         self.older = 0
         self.seen_older = False
         self.earliest: float | None = None
@@ -714,13 +740,13 @@ class _MessageRead:
 
     @property
     def full(self) -> bool:
-        # One past the cap: a window of exactly the cap's size, read to its start, is complete.
+        # One past the cap, as before: a window of exactly the cap's size is whole.
         return len(self.found) > MAX_PROJECT_EVENTS
 
     def stop(self, skipped: bool = False) -> bool:
         if skipped:
             self.unread(self._before)
-        return self.at_window or self.full
+        return self.at_window
 
     def unread(self, begun: float | None) -> None:
         """A region the read could not take. Only one inside the window matters: once a record older
@@ -753,6 +779,9 @@ class _MessageRead:
         if not self.gap and (self.begun is None or at < self.begun):
             self.begun = at
         self._take("instruction", _instruction_event(self.config, record, self.harness, self.sid))
+        if self.full and self.lost is not None and not self.closing:
+            # Neither kept nor the newest loss, so building and redacting its event would only cost.
+            return
         said = _agent_message_event(self.config, record, self.harness, self.sid, text_cap=len(text))
         self._take("agent", said)
 
@@ -764,9 +793,61 @@ class _MessageRead:
         if event is None:
             return
         key = (kind, event["at"], event["title"], str(event.get("record_id") or ""))
-        if key not in self.keys:
+        if key in self.keys:
+            return
+        if kind == "instruction":
+            self.closing = True
+            if not self.full:
+                self.keys.add(key)
+                self.found.append(event)
+                return
+            self._lose_pending()
+            self.pending = event
+            return
+        anchor, self.closing = self.closing, False
+        if not self.full:
             self.keys.add(key)
             self.found.append(event)
+        elif not anchor:
+            self._lose(event)
+        else:
+            self._keep_anchor(key, event)
+
+    def _keep_anchor(self, key: tuple[object, ...], event: dict[str, Any]) -> None:
+        """Keep a turn's closing message with the reader's message after it."""
+        boundary, self.pending = self.pending, None
+        if len(self.anchors) == PRESS_ANCHORS:
+            # A newer anchor goes to make room; whatever the read does not keep is lost.
+            gone, gone_boundary = self.anchors[0]
+            self.anchored.discard(_message_key(gone))
+            for lost in (gone, gone_boundary):
+                if lost is not None:
+                    self._lose(lost)
+                    self.keys.discard(_scan_key(lost))
+        self.keys.add(key)
+        if boundary is not None:
+            self.keys.add(_scan_key(boundary))
+        self.anchors.append((event, boundary))
+        self.anchored.add(_message_key(event))
+
+    def _lose_pending(self) -> None:
+        if self.pending is not None:
+            self._lose(self.pending)
+            self.pending = None
+
+    def finish(self) -> None:
+        self._lose_pending()
+
+    def _lose(self, event: Mapping[str, Any]) -> None:
+        at = float(event["at"])
+        if self.lost is None or at > self.lost:
+            self.lost = at
+
+
+def _scan_key(event: Mapping[str, Any]) -> tuple[object, ...]:
+    """The read's own dedupe key, whose kind is the scan's word for it, not the event's."""
+    kind = "instruction" if event.get("kind") == "steer" else "agent"
+    return (kind, event["at"], event["title"], str(event.get("record_id") or ""))
 
 
 def press_message_events(
@@ -782,7 +863,10 @@ def press_message_events(
     outgrows before its first turn: measured on a 1.82 MB transcript the tail began four minutes
     after the Goal, so what the agent said it had done was outside it. This reads backward under
     the press bounds (`direction_scan_max_*`) and stops at `PRESS_OLDER_RUN` records older than the
-    window, or when it holds `MAX_PROJECT_EVENTS` messages, which is all the project cap can keep.
+    window. It keeps the newest `MAX_PROJECT_EVENTS` messages, which is all the project cap can
+    keep, and goes on reading for the closing agent message of each earlier turn, the oldest
+    `PRESS_ANCHORS` of them: stopping at the cap read only the newest messages and never reached the
+    first turns an early Goal rests on. What it saw and did not keep is `MessageReach.lost`.
     Enlarging `tail_bytes` instead is a recorded rejection: docs/design-session-record-pages.md,
     "Rejected alternatives".
 
@@ -809,18 +893,21 @@ def press_message_events(
         return None
     # A region skipped after the last visited line never reached `stop`.
     read.stop(scan.skipped)
+    read.finish()
     if read.gap:
         stopped_by = "skipped"
     elif read.at_window:
         stopped_by = "window"
-    elif read.full:
-        stopped_by = "count"
     else:
         stopped_by = scan.bound or "start"
     reached = stopped_by in {"window", "start"}
-    read.found.reverse()
+    kept = [event for pair in read.anchors for event in pair if event is not None]
+    # Oldest first, and file order among equal times, as the tail reads give them.
+    events = sorted([*reversed(kept), *reversed(read.found)], key=lambda event: float(event["at"]))
     return PressMessages(
-        read.found, MessageReach(reached, read.earliest if reached else read.begun, stopped_by)
+        events,
+        MessageReach(reached, read.earliest if reached else read.begun, stopped_by, read.lost),
+        frozenset(read.anchored & {_message_key(event) for event in events}),
     )
 
 
@@ -5901,13 +5988,16 @@ def _dedupe_project_events(
 
 
 def _project_timeline(
-    events: list[dict[str, Any]], focus: tuple[str, str] | None
+    events: list[dict[str, Any]],
+    focus: tuple[str, str] | None,
+    anchored: frozenset[tuple[object, ...]] = frozenset(),
 ) -> list[dict[str, Any]]:
     # The agent's messages are reserved last in each scope. A long session says far more than
     # its reader types or its checks record, and a cap filled newest first would let that
     # evict the checks and the reader's messages a reading rests on.
     said = [event for event in events if event.get("kind") == _AGENT_SAY]
     rest = [event for event in events if event.get("kind") != _AGENT_SAY]
+    own_anchor: list[dict[str, Any]] = []
     if focus is None:
         groups: tuple[list[dict[str, Any]], ...] = (rest, said)
     else:
@@ -5923,12 +6013,23 @@ def _project_timeline(
                 own_other.append(event)
         own_said = [event for event in said if (event.get("harness"), event.get("sid")) == focus]
         their_said = [event for event in said if (event.get("harness"), event.get("sid")) != focus]
+        # A press's turn-closing messages come after the reader's own and before the rest of the
+        # agent's, oldest first: they are what the newest-first cap would drop for a long session.
+        own_anchor = sorted(
+            (event for event in own_said if _message_key(event) in anchored),
+            key=lambda event: float(event["at"]),
+        )
+        held = {id(event) for event in own_anchor}
+        own_said = [event for event in own_said if id(event) not in held]
         # A later semantic focus filter cannot restore a check removed by the
         # project cap. Reserve its own evidence before the busy neighbours' rows.
-        groups = (own_checks, own_other, own_said, surrounding, their_said)
+        groups = (own_checks, own_other, own_anchor, own_said, surrounding, their_said)
     selected: list[dict[str, Any]] = []
     for group in groups:
-        selected.extend(_dedupe_project_events(group, limit=MAX_PROJECT_EVENTS - len(selected)))
+        room = MAX_PROJECT_EVENTS - len(selected)
+        if group is own_anchor:
+            group = group[:room]  # noqa: PLW2901 - the earliest turns are the ones short of evidence
+        selected.extend(_dedupe_project_events(group, limit=room))
         if len(selected) == MAX_PROJECT_EVENTS:
             break
     return sorted(selected, key=lambda event: float(event["at"]), reverse=True)
@@ -7924,14 +8025,23 @@ def _kept_message_reach(
         for event in reached.events
         if event.get("kind") in _MESSAGE_KINDS and _message_key(event) not in kept_keys
     ]
-    if dropped:
-        # The record is whole only after the newest message the cap lost. The cap keeps a
-        # session's own reader messages ahead of the agent's, so the oldest message kept is usually
-        # the Goal's own prompt at the window start, and reporting that would call a partial record
-        # complete.
-        lost = max(float(event["at"]) for event in dropped)
+    lost_at = [float(event["at"]) for event in dropped]
+    if reached.reach.lost is not None:
+        lost_at.append(reached.reach.lost)
+    if lost_at:
+        # The record is whole only after the newest message the read or the cap lost. The cap keeps
+        # a session's own reader messages ahead of the agent's, so the oldest message kept is
+        # usually the Goal's own prompt at the window start, and reporting that would call a
+        # partial record complete. Kept turn-closing messages older than this are extra evidence,
+        # not a contiguous record, so they never move the start.
+        lost = max(lost_at)
         later = (float(event["at"]) for event in kept if float(event["at"]) > lost)
-        return {"tail_truncated": True, "tail_start": min(later, default=lost)}
+        start = min(later, default=lost)
+        if not reached.reach.reached and reached.reach.earliest is not None:
+            # A byte or clock stop, or a region the scan could not read, puts the whole record's
+            # start where the contiguous read began if that is later than what the cap left.
+            start = max(start, reached.reach.earliest)
+        return {"tail_truncated": True, "tail_start": start}
     return {"tail_truncated": not reached.reach.reached, "tail_start": reached.reach.earliest}
 
 
@@ -8075,7 +8185,7 @@ def collect(  # noqa: PLR0913 - the press's window rides beside the focus it bel
         semantic_history.read(config, state, history_project),
     )
 
-    timeline = _project_timeline(events, focus)
+    timeline = _project_timeline(events, focus, reached.anchors if reached else frozenset())
     history_timeline = _dedupe_project_events(history_events)
     gate_count, steer_count, work_count = _timeline_counts(timeline)
     semantic = _semantic_model(timeline, observers, now=now)

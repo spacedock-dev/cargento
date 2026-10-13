@@ -828,6 +828,8 @@ WORDS_SHARE_DIVISOR = 2
 # `project_context` writes them in, on an agent message only.
 AGENT_WORDS_FIELD = "agent_words"
 AGENT_WORDS_SHARE_DIVISOR = 4
+# The part of the prompt the agent messages that closed a turn may take before the newest ones do.
+ANCHOR_SHARE_DIVISOR = 8
 # An agent message's type: what the agent said, as `project_context` publishes it on Claude Code.
 AGENT_MESSAGE_TYPE = "agent_message"
 # How much of the cutoff sentence the store keeps. It was the annotation text
@@ -2099,6 +2101,14 @@ def cutoff_text(
         if partial
         else ""
     )
+    early = sum(
+        1 for row in selected if row["type"] == AGENT_MESSAGE_TYPE and row["at"] < tail_start
+    )
+    if partial and early:
+        tail_note += (
+            f" {early} agent message{'s' if early != 1 else ''} that closed an earlier turn "
+            f"{'were' if early != 1 else 'was'} kept."
+        )
     opening = (
         f"Read {len(selected)} entries. " + tail_note
         if partial
@@ -2256,6 +2266,40 @@ def _priority(entry: LedgerEntry) -> int:
     if entry["type"] == AGENT_MESSAGE_TYPE:
         return 6
     return 5
+
+
+def _turn_closings(ledger: Sequence[LedgerEntry]) -> frozenset[int]:
+    """The positions of the agent messages that closed a turn: the last one before a reader's
+    message, or the last of all. `ledger` is oldest first, as `build_ledger` returns it."""
+    closing: set[int] = set()
+    after: int | None = None
+    for index in range(len(ledger) - 1, -1, -1):
+        entry = ledger[index]
+        if entry["author"] == AUTHOR_PERSON:
+            after = None
+        elif entry["type"] == AGENT_MESSAGE_TYPE and after is None:
+            closing.add(index)
+            after = index
+    return frozenset(closing)
+
+
+def _anchored(ledger: Sequence[LedgerEntry], sizes: Sequence[int], share: int) -> frozenset[int]:
+    """The turn-closing messages the prompt reserves, oldest first, up to `share` bytes.
+
+    A long session's newest messages fill the agent rank, and what the agent said it had done in
+    its first turns is then the first thing a reading loses. Only the agent rank is reordered, so a
+    reader's message, a check or a write is never displaced, and a prompt everything fits in is
+    selected exactly as before. One that does not fit loses the messages between the closings and
+    the newest, and `cutoff_text` says how many were not read.
+    """
+    held: set[int] = set()
+    used = 0
+    for index in sorted(_turn_closings(ledger)):
+        if used + sizes[index] > share:
+            break
+        used += sizes[index]
+        held.add(index)
+    return frozenset(held)
 
 
 def _row_body(row: LedgerEntry) -> str:
@@ -2618,8 +2662,15 @@ def build_prompt(
     # index it could print under, so renumbering after selection never grows it.
     width = len(str(len(citable)))
     sizes = [len(row_text(10**width - 1, row).encode("utf-8", "replace")) for row in citable]
+    anchors = _anchored(citable, sizes, budget // ANCHOR_SHARE_DIVISOR)
     order = sorted(
-        range(len(citable)), key=lambda i: (_priority(citable[i]), -citable[i]["at"], -i)
+        range(len(citable)),
+        key=lambda i: (
+            _priority(citable[i]),
+            i not in anchors,
+            citable[i]["at"] if i in anchors else -citable[i]["at"],
+            -i,
+        ),
     )
     used = head_size
     chosen: list[int] = []
