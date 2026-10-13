@@ -5,7 +5,7 @@ name: Release
 #
 #     git tag v0.2.0 && git push origin v0.2.0
 #
-# Six jobs, split by what each may hold:
+# Seven jobs, split by what each may hold:
 #
 #   resolve          read-only token, no Node, no key. Fixes ONE commit (the target)
 #                    before anything runs: for a fresh release the main tip, captured
@@ -36,6 +36,11 @@ name: Release
 #   attach-cli       the write token, no deploy key. Downloads the four archives the
 #                    build jobs made and attaches them, with `checksums.txt`, to the
 #                    release by running scripts/publish-cli.sh.
+#   marketplace      read-only repository token and the marketplace deploy key, a different
+#                    credential from the release key that reaches only
+#                    spacedock-dev/marketplace. Runs after `release`, so `stable` already
+#                    serves the version it stamps onto the listing, and runs no dependency
+#                    code: git, ssh and the Python standard library.
 #
 # The binary embeds the interpreter and the runtime package and carries no manifest, so
 # building the target (before the bump) and building the bump commit produce the same
@@ -45,6 +50,11 @@ name: Release
 # key, and attaches the four archives and `checksums.txt` by running scripts/publish-cli.sh,
 # which refuses anything but exactly those four. It is a separate job so that no artifact,
 # which a third-party build dependency could have shaped, reaches the job that holds the key.
+# The marketplace listing tracks `stable`, so a release reaches installs without `marketplace`;
+# that job keeps the displayed version, which an installed copy compares against to notice an
+# update, in step. It follows `release` only, so a failed archive attach does not hold the
+# listing back, and a failure there leaves the published release in place: re-run just that job,
+# which is safe because the stamp never moves the version backwards.
 # The price is that releases/latest has no archives for the minute attach-cli takes; the
 # installer reports a missing archive and installs the rest. If this repository ever turns
 # on immutable releases, assets must go up with the release instead. A resume of a release
@@ -75,10 +85,12 @@ name: Release
 # Humans cannot delete or move release tags at all.
 #
 # Security model:
-#   - The key exists in one job, and the write token in two: `release`, and `attach-cli`,
-#     which has no key and runs no dependency code. Every job that runs dependency
-#     code has `contents: read` and a checkout with persist-credentials: false;
-#     tests pin that boundary (compass/skills/compass/tests/test_release_workflow.py).
+#   - The release key exists in one job, and the write token in two: `release`, and
+#     `attach-cli`, which has no key and runs no dependency code. The marketplace key
+#     exists in one other job, `marketplace`, which has `contents: read` and cannot touch
+#     this repository. Every job that runs dependency code has `contents: read` and a
+#     checkout with persist-credentials: false; tests pin that boundary
+#     (compass/skills/compass/tests/test_release_workflow.py).
 #   - Tag names reach shell only through env: and are validated against a strict
 #     regex by release_transition.py before any use.
 #   - Every action is pinned to an immutable SHA; toolchain pins match quality-gate.yml.
@@ -583,3 +595,38 @@ jobs:
           set -euo pipefail
           # --clobber inside the script makes a re-run of an interrupted release safe.
           scripts/publish-cli.sh "$TAG" "$RUNNER_TEMP/cli"
+
+  marketplace:
+    name: Stamp the marketplace listing
+    needs: [resolve, release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The marketplace key and a read-only token. The key is a deploy key on
+    # spacedock-dev/marketplace alone, so it cannot push to main here or move a tag. The
+    # job runs one shell script from the verified target and no dependency code.
+    permissions:
+      contents: read
+    env:
+      TARGET: ${{ needs.resolve.outputs.target }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+    steps:
+      - name: Checkout exactly the target, without credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.resolve.outputs.target }}
+          persist-credentials: false
+
+      - name: Confirm the checkout is the target
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          python3 scripts/release_transition.py assert-head --expected "$TARGET"
+
+      - name: Stamp the released version onto the marketplace listing
+        timeout-minutes: 5
+        env:
+          MARKETPLACE_DEPLOY_KEY: ${{ secrets.MARKETPLACE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          # An unchanged or newer listing is a no-op, so a re-run of this job is safe.
+          scripts/publish-marketplace.sh "$VERSION"

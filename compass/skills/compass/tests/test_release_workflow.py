@@ -62,9 +62,20 @@ def serialized(value: Any) -> str:
 class JobGraphTest(unittest.TestCase):
     def test_the_release_is_resolve_then_verify_and_build_then_publish_then_attach(self) -> None:
         self.assertEqual(
-            {"resolve", "verify-frontend", "verify-tree", "build-cli", "release", "attach-cli"},
+            {
+                "resolve",
+                "verify-frontend",
+                "verify-tree",
+                "build-cli",
+                "release",
+                "attach-cli",
+                "marketplace",
+            },
             set(jobs()),
         )
+        # The listing follows the release alone: it must see `stable` already advanced, and a
+        # failed archive attach is no reason to hold it back.
+        self.assertEqual({"resolve", "release"}, set(jobs()["marketplace"]["needs"]))
         self.assertEqual("resolve", jobs()["verify-frontend"]["needs"])
         self.assertEqual("resolve", jobs()["verify-tree"]["needs"])
         self.assertEqual("resolve", jobs()["build-cli"]["needs"])
@@ -112,7 +123,15 @@ class CredentialBoundaryTest(unittest.TestCase):
             with self.subTest(job=name):
                 if name == "release":
                     self.assertIn("RELEASE_DEPLOY_KEY", text)
+                    self.assertNotIn("MARKETPLACE_DEPLOY_KEY", text)
                     self.assertEqual({"contents": "write"}, job["permissions"])
+                elif name == "marketplace":
+                    # A different key, on a different repository. It never stands in for the
+                    # release key, and it comes with no write access to this repository.
+                    self.assertIn("MARKETPLACE_DEPLOY_KEY", text)
+                    self.assertNotIn("RELEASE_DEPLOY_KEY", text)
+                    self.assertNotIn("ssh-key", text)
+                    self.assertEqual({"contents": "read"}, job["permissions"])
                 else:
                     self.assertNotIn("secrets.", text)
                     self.assertNotIn("ssh-key", text)
@@ -131,11 +150,23 @@ class CredentialBoundaryTest(unittest.TestCase):
                     self.assertNotIn("GH_TOKEN", text)
                     self.assertEqual({"contents": "read"}, job["permissions"])
 
-    def test_the_secret_is_named_once_in_the_whole_workflow(self) -> None:
-        self.assertEqual(1, RELEASE.read_text().count("secrets.RELEASE_DEPLOY_KEY"))
+    def test_each_secret_is_named_once_in_the_whole_workflow(self) -> None:
+        text = RELEASE.read_text()
+        self.assertEqual(1, text.count("secrets.RELEASE_DEPLOY_KEY"))
+        self.assertEqual(1, text.count("secrets.MARKETPLACE_DEPLOY_KEY"))
+        self.assertEqual(2, len(re.findall(r"secrets\.", text)), "no third secret")
 
     def test_credential_free_jobs_never_persist_credentials(self) -> None:
-        for name in ("resolve", "verify-frontend", "verify-tree", "build-cli", "attach-cli"):
+        # The marketplace job is on the list: its key authenticates a different repository
+        # by environment variable, so nothing here needs the checkout's own credentials.
+        for name in (
+            "resolve",
+            "verify-frontend",
+            "verify-tree",
+            "build-cli",
+            "attach-cli",
+            "marketplace",
+        ):
             checkouts = uses(name, "actions/checkout")
             self.assertEqual(1, len(checkouts), name)
             self.assertIs(False, checkouts[0]["with"]["persist-credentials"], name)
@@ -578,6 +609,48 @@ class BuildCliJobTest(unittest.TestCase):
             s for s in job["steps"] if s.get("uses", "").startswith("actions/setup-python@")
         )
         self.assertEqual("3.12", python["with"]["python-version"])
+
+
+class MarketplaceJobTest(unittest.TestCase):
+    """The listing is stamped by a job that holds a key to another repository."""
+
+    def test_it_checks_out_exactly_the_target_before_anything_runs(self) -> None:
+        (checkout,) = uses("marketplace", "actions/checkout")
+        self.assertEqual("${{ needs.resolve.outputs.target }}", checkout["with"]["ref"])
+        self.assertEqual(checkout, steps("marketplace")[0], "nothing may run before the checkout")
+        self.assertIn("assert-head", commands("marketplace")[0])
+
+    def test_the_key_is_bound_at_the_one_step_that_runs_the_script(self) -> None:
+        holders = [s for s in steps("marketplace") if "env" in s]
+        self.assertEqual(1, len(holders))
+        self.assertEqual(
+            {"MARKETPLACE_DEPLOY_KEY": "${{ secrets.MARKETPLACE_DEPLOY_KEY }}"}, holders[0]["env"]
+        )
+        script = [line for line in code(holders[0]["run"]).splitlines() if "publish" in line]
+        self.assertEqual(['scripts/publish-marketplace.sh "$VERSION"'], script)
+        self.assertEqual(
+            {
+                "TARGET": "${{ needs.resolve.outputs.target }}",
+                "VERSION": "${{ needs.resolve.outputs.version }}",
+            },
+            jobs()["marketplace"]["env"],
+        )
+
+    def test_it_runs_no_dependency_code_beside_the_key(self) -> None:
+        for step in steps("marketplace"):
+            for tool in (*FRONTEND_TOOLS, "setup-python", "download-artifact"):
+                self.assertNotIn(tool, step.get("uses", ""))
+        for command in commands("marketplace"):
+            body = code(command)
+            with self.subTest(command=body[:60]):
+                self.assertIsNone(NODE_COMMAND.search(body))
+                self.assertNotRegex(body, r"\bpip\b|git\s+(-\S+\s+)*push|\bgh\b|\bcurl\b")
+
+    def test_the_script_it_runs_cannot_reach_this_repository_or_move_a_release(self) -> None:
+        text = (ROOT / "scripts/publish-marketplace.sh").read_text(encoding="utf-8")
+        self.assertIn("spacedock-dev/marketplace.git", text)
+        for hazard in ("GITHUB_TOKEN", "GH_TOKEN", "RELEASE_DEPLOY_KEY", "--force", "git tag"):
+            self.assertNotIn(hazard, text)
 
 
 class GateParityTest(unittest.TestCase):
