@@ -1,7 +1,7 @@
 # Compass
 
-[![Validate](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml/badge.svg)](https://github.com/spacedock-dev/cargento/actions/workflows/validate.yml)
-[![Quality Gate](https://github.com/spacedock-dev/cargento/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/spacedock-dev/cargento/actions/workflows/quality-gate.yml)
+[![Validate](https://github.com/spacedock-dev/compass/actions/workflows/validate.yml/badge.svg)](https://github.com/spacedock-dev/compass/actions/workflows/validate.yml)
+[![Quality Gate](https://github.com/spacedock-dev/compass/actions/workflows/quality-gate.yml/badge.svg)](https://github.com/spacedock-dev/compass/actions/workflows/quality-gate.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 

@@ -7,8 +7,8 @@
     "email": "dev@reccehq.com",
     "url": "https://github.com/DataRecce"
   },
-  "homepage": "https://github.com/spacedock-dev/cargento/tree/main/cargento",
-  "repository": "https://github.com/spacedock-dev/cargento",
+  "homepage": "https://github.com/spacedock-dev/compass/tree/main/compass",
+  "repository": "https://github.com/spacedock-dev/compass",
   "keywords": [
     "compass",
     "agents",
@@ -32,6 +32,6 @@
       "Open the live agent cartography dashboard.",
       "Show my coding-agent sessions and their progress."
     ],
-    "websiteURL": "https://github.com/spacedock-dev/cargento"
+    "websiteURL": "https://github.com/spacedock-dev/compass"
   }
 }

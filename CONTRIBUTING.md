@@ -18,7 +18,7 @@ while lint, types and the coverage threshold run on 3.12), `git`, the Node 26 ve
 validation. See [COMPATIBILITY.md](COMPATIBILITY.md) for why 3.11 is the floor.
 
 ```bash
-git clone https://github.com/spacedock-dev/cargento.git compass
+git clone https://github.com/spacedock-dev/compass.git compass
 cd compass
 # PyYAML for the contract validator; ruff, mypy and coverage for the quality gate.
 python3 -m pip install -r requirements-validation.txt -r requirements-dev.txt
@@ -634,7 +634,7 @@ archive proof `scripts/verify_release_archive.py`, in full.
 
 ## Reporting bugs and requesting features
 
-Use the [issue templates](https://github.com/spacedock-dev/cargento/issues/new/choose). For security concerns, see [SECURITY.md](SECURITY.md), and please don't open public issues for those.
+Use the [issue templates](https://github.com/spacedock-dev/compass/issues/new/choose). For security concerns, see [SECURITY.md](SECURITY.md), and please don't open public issues for those.
 
 ## Code of conduct
 

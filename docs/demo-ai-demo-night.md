@@ -72,7 +72,7 @@ The title card carries the things that are retained by being **read**, not said:
 
 ```
 Compass
-github.com/spacedock-dev/cargento
+github.com/spacedock-dev/compass
 Apache-2.0 · stdlib Python, no dependencies · runs entirely on your machine
 ```
 

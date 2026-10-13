@@ -5,10 +5,10 @@ It starts two backend ports in sequence and publishes only a healthy backend.
 
 The server owns a clean checkout of `clkao/proto/operator-cockpit`.
 It fetches this branch and accepts only a fast-forward update.
-The imported branch in `spacedock-dev/cargento` has the same name. To follow it, pass
-`--remote-url https://github.com/spacedock-dev/cargento.git --branch proto/operator-cockpit`
+The imported branch in `spacedock-dev/compass` has the same name. To follow it, pass
+`--remote-url https://github.com/spacedock-dev/compass.git --branch proto/operator-cockpit`
 to the commands below; the default remote remains the original fork.
-The server does not write to `spacedock-dev/cargento`.
+The server does not write to `spacedock-dev/compass`.
 
 ## Start a review checkpoint
 
