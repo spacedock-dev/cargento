@@ -3,7 +3,7 @@ import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { outcomeLineSource } from '../intent/annotation';
 import type { WorkEntry } from '../intent/work';
 import { genAnnotation, genAssessment, genEntries, mulberry32, pick } from './generate.test.helper';
-import { loadLegacyDrift } from './legacy.test.helper';
+import { loadLegacyDrift, withoutKey } from './legacy.test.helper';
 import { lineRequestFloors, readingShape } from './shape';
 import { seedSample } from '../../test/legacy_goldens';
 
@@ -110,7 +110,9 @@ describe('the reading shape contract holds as the legacy producer holds it', () 
       const own = theirs.malformed
         ? Object.fromEntries(Object.keys(theirs).map((key) => [key, (mine as never)[key]]))
         : mine;
-      const found = firstDifference(canonical(theirs), canonical(own));
+      /* `unloaded` is this page's own count of cited ids it holds no entry for; the retired page had no such
+         field (docs/design-frontend-migration.md#held-to-recorded-answers). */
+      const found = firstDifference(canonical(theirs), canonical(withoutKey(own, 'unloaded')));
       if (found) failures.push(`seed ${String(seed)}: ${found}`);
     }
     expect(failures).toEqual([]);

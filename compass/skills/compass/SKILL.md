@@ -505,7 +505,9 @@ each departure's own account under a departure, otherwise a failed check after y
 "Can't tell", "Not reached at this stop", or "Nothing found against what it read". Coverage beside it names a measured partial
 message tail, unlisted passes or writes, checks that did not fit and an adopted-source fallback.
 An older reading says coverage was not recorded. A tail starting inside the intent window tags
-every intent row "may be in the part not read"; claims stay independent. General scope and the
+every intent row "may be in the part not read"; claims stay independent. On Claude Code an Analyze
+press reads the session's messages back to the window start where it can, and says where it stopped
+when it cannot. General scope and the
 count-by-kind cutoff remain under What it read. Coverage holds only counts, time and closed state
 tokens and changes no verdict. Each line reads "Departs; evidence #n", "Consistent with
 #n, as the tool reported; not inspected", "Consistent with what the agent said at #n; not a

@@ -115,6 +115,9 @@ class _Scan:
     bound: str | None = None
     entries: dict[str, dict[str, Any]] = field(default_factory=dict)
     skipped: bool = False
+    # Asked after each visited line, with whether a region has been skipped so far. A press that
+    # knows when it has read enough ends the scan; one that cannot trust a gap learns of it here.
+    stop: Callable[[bool], bool] | None = None
 
 
 def _take_lines(
@@ -142,6 +145,8 @@ def _take_lines(
         elif visit is not None:
             if raw:
                 visit(raw)
+                if scan.stop is not None and scan.stop(scan.skipped):
+                    return pending, True
         else:
             fact = _fact(config, raw, harness, sid) if raw else None
             if fact is not None:
@@ -225,8 +230,12 @@ def scan_source(
     deadline: float,
     end: int | None = None,
     expected_stamp: tuple[int, int, int, int] | None = None,
+    stop: Callable[[bool], bool] | None = None,
 ) -> SourceScan:
     """Share page boundaries and chunk reads, but require an unchanged file.
+
+    `stop` is asked after each visited line, with whether a region has been skipped so far, and
+    ends the scan early; the caller owns why, since the scan reports only its own bounds.
 
     Directions inspect the whole allowance after a match, so another copy of
     the identity in that coverage can still refuse it. No cursor or cache.
@@ -246,7 +255,7 @@ def scan_source(
                 source.seek(position - 1)
                 discard = source.read(1) != b"\n"
                 boundary_bytes = 1
-            scan = _Scan(position, position, discard, scanned=boundary_bytes)
+            scan = _Scan(position, position, discard, scanned=boundary_bytes, stop=stop)
             bounded = replace(config, record_page_max_bytes=max_bytes)
             _scan(bounded, source, scan, "", "", 0, visit, deadline)
             after = os.stat(path)

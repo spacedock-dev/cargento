@@ -2,8 +2,11 @@ import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
+import { contextKey } from '../api/identity';
+import { useDisplayed } from '../shell/context';
 import { useFocusKey } from '../controls';
 import { ActionButton } from '../intent/ActionButton';
+import { entryWindow, olderEntriesRemain } from '../intent/work';
 import { markNotAccurate } from './actions';
 import { useDrift } from './context';
 import { EvidenceList } from './Evidence';
@@ -36,6 +39,7 @@ import {
   RESULT_NOT_ACCURATE,
   RESULT_NOTHING_FOUND,
   SCOPE,
+  unloadedCites,
 } from './sentences';
 import type { SteerSlot } from './ReadingControl';
 import { isOutcomeLine, type Criterion, type Shape } from './shape';
@@ -106,8 +110,14 @@ function ResultItem({
   readonly byId: EntryIndex;
   readonly tag: 'li' | 'div';
 }) {
+  const { model } = useDrift();
+  const record = useDisplayed((snapshot) =>
+    snapshot.records.get(contextKey(model.projectKey, model.identity)),
+  );
   const status = resultStatus(row, numbers, byId, true);
   const full = resultStatus(row, numbers, byId);
+  const unloaded =
+    row.unloaded > 0 && olderEntriesRemain(record, entryWindow(model.session, model.payload));
   const Tag = tag;
   return (
     <Tag
@@ -128,6 +138,11 @@ function ResultItem({
           <Account row={row} showClause={false} />
         ) : null}
         {row.coverage ? <span className="next-cockpit-reading-why">{row.coverage}</span> : null}
+        {unloaded ? (
+          <span className="next-cockpit-reading-why" data-next-unloaded>
+            {unloadedCites(row.unloaded)}
+          </span>
+        ) : null}
         <Why name={`result-evidence:${row.key}`} summary="Evidence">
           <span className="next-cockpit-reading-name">{row.label}</span>
           {full === status ? null : <span className="next-cockpit-reading-evidence">{full}</span>}

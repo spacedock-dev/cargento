@@ -589,6 +589,17 @@ read" where the legacy page, which reads only the focused session's record, says
 panel here reads both, and neither sentence is an empty record. Dismissal has no legacy web surface (nothing in
 the web assets calls the dismiss route), so none was built.
 
+Two departures from the recorded answers, 2026-10-13. The coverage line's adopted-source sentence said
+"Analyze read up to 1,000 characters" for every adopted source whatever the prompt's length, so it read as
+a limit that had bitten. The cap is real (a reading takes the head of a prompt's words) and the sentence now
+says only that: "Analyze reads at most the first 1,000 characters of any prompt." `result.differential.test.ts`
+swaps the retired sentence for the new one before comparing, and no other recorded text changes. And a
+reading that cites an entry the page holds none for, while older entries remain to load, adds one sentence
+naming the count and pointing at Show more. The criterion carries that count as `unloaded`; the retired page
+had no such field, so both differentials drop it before a recorded answer's key is computed
+(`withoutKey` in `legacy.test.helper.ts`). The page still loads no record page by itself
+([reader state](design-reader-state.md#the-inventory)).
+
 DEC-27 row 3 removes Analyze again from a current result; the count, disclosure and cap stay.
 A stale result keeps one run control in its reason callout, and a direction question replaces it.
 Finding buttons jump by stored fact id to the current activity rows, reveal cited rows outside

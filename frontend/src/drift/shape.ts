@@ -227,6 +227,14 @@ function citations(raw: Row | null | undefined, entries: readonly WorkEntry[]): 
     );
 }
 
+/* The cited ids no entry the page holds carries. Counted from the stored row, before any window or limit
+   filter, because the question is only whether the page has the entry, not whether it counts. */
+function countUnloaded(raw: Row | null | undefined, entries: readonly WorkEntry[]): number {
+  const held = new Set(entries.map((entry) => String(entry.id || '')));
+  const cited = Array.isArray(raw?.['cites']) ? (raw['cites'] as unknown[]) : [];
+  return new Set(cited.map(String).filter((id) => !held.has(id))).size;
+}
+
 export interface Criterion {
   readonly key: string;
   readonly label: string;
@@ -243,6 +251,9 @@ export interface Criterion {
   readonly limit: string;
   readonly evidence: readonly string[];
   readonly citedIds: readonly string[];
+  /* Cited ids the page holds no entry for. A press can read further back than the board's own record, so
+     this is what a reader's Show more may resolve; it is a count, never a reason to change the result. */
+  readonly unloaded: number;
   readonly coverage?: string;
 }
 
@@ -469,6 +480,7 @@ export function criterion(
     /* The ids behind `evidence`, after every filter above, so the activity list flags exactly what this row
        still rests on. */
     citedIds: limitText ? [] : cited.map((entry) => String(entry.id || '')),
+    unloaded: countUnloaded(raw, entries),
   };
 }
 

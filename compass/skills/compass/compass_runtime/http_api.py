@@ -321,8 +321,16 @@ class CompassHTTPServer(ThreadingHTTPServer):
         self.server_port = int(bound[1])
 
 
-def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
-    """One session's project context, without refreshing anything."""
+def _session_context(
+    application: Any,
+    row: dict[str, Any],
+    reach: runtime_project_context.PressWindow | None = None,
+) -> dict[str, Any]:
+    """One session's project context, without refreshing anything.
+
+    `reach` is an Analyze press's own request to read the session's messages back to its window
+    start; every other caller leaves it unset and reads the 400,000-byte tail as before.
+    """
     context = runtime_project_context.collect(
         application.config,
         application.state,
@@ -332,6 +340,7 @@ def _session_context(application: Any, row: dict[str, Any]) -> dict[str, Any]:
         refresh=False,
         focus=(str(row.get("harness")), str(row.get("sid"))),
         model_consent=False,
+        message_reach=reach,
     )
     return copied_corrections.mark(context, [row]) if isinstance(context, dict) else {}
 
@@ -3052,14 +3061,28 @@ class _RequestHandler(BaseHTTPRequestHandler):
             or ""
         )
         press_stamp = runtime_project_context.transcript_stamp(transcript)
-        context = _session_context(application, row)
+        # The window of the revision being read, not the previous reading's: a first press has no
+        # stored one, and an edited Goal has moved it.
+        revisions = entry["revisions"]
+        reach = (
+            runtime_project_context.PressWindow(
+                runtime_reading.window_start(revisions[-1]), press_stamp
+            )
+            if revisions and press_stamp is not None
+            else None
+        )
+        context = _session_context(application, row, reach)
+        # What the press read back and the project cap kept, where it read back; else the tail's.
+        reached = (context.get("sources") or {}).get("message_reach")
         return runtime_reading.produce(
             application.config,
             row,
             entry["revisions"],
             _facts_of(context),
             record_coverage_lookup=lambda: (
-                runtime_project_context.transcript_tail_coverage(
+                dict(reached)
+                if reached
+                else runtime_project_context.transcript_tail_coverage(
                     application.config,
                     transcript,
                     expected_stamp=press_stamp,

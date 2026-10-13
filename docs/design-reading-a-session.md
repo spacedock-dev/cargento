@@ -244,6 +244,9 @@ reader was looking at, and is clamped to now so a forged value cannot disable th
 the entries and cannot be counted, so on a long session the suppression can release because the
 evidence aged out rather than because the question was answered. The block states what it read
 rather than implying it read everything.
+A reader's press on Claude Code reads past the tail
+([2026-10-13](#amended-2026-10-13-a-press-reads-the-message-record-back-to-the-window-start)); the
+suppression here still reads the board's own, tail-bound record.
 
 ## DEC-17: the shape contract
 
@@ -4060,6 +4063,60 @@ It changes no model prompt. A found adopted source already equal to the saved go
 even though no expansion was needed. A missing or unroomed source is named beside the answer; only
 a found source that was read gets the up-to-1,000-character promise. Drafts promise a lookup
 attempt. Absent legacy measurements stay unknown, never measured zero.
+
+#### Amended 2026-10-13: a press reads the message record back to the window start
+
+A reader pressed Analyze on a Claude Code session whose Goal was its first prompt and read "Can't
+tell ... may be in the part not read". The transcript was 1.82 MB and the 400,000-byte tail began
+four minutes after the prompt, so the agent's own account of that first turn, the evidence a
+reader most needs for an early Goal, was outside the reading. Only the agent's messages are lost
+that way. The person's older messages come back from the history store and the window-words lookup,
+and checks and writes read backward under their own 8 MiB budget. The history store never keeps an
+agent message, so the tail was its only source.
+
+A press now reads the focused Claude Code session's person and agent messages backward from the end
+of the file (`project_context.press_message_events`) until it has read sixteen timestamped records in
+a row older than the window, or holds more than 100 messages, which is more than the project cap can
+keep. One older record does not stop it, because a resumed transcript can rewrite earlier records
+after newer ones. It runs under the press bounds the adopted-source lookup already uses (the newest
+64 MiB under one two-second clock) and refuses a file that moved. It does not read a message whose
+text is longer than 256 Ki characters: redaction is not linear in the worst case, the clock is only
+asked between records, and a message worth reading is a few kilobytes. Such a message, like a line the
+scan skips whole, is an unread region. The text is measured, not the record, because a pasted
+screenshot makes a user record several megabytes of image data around a short question. The window is the one of the revision being read,
+not the previous reading's: a first press has no stored one and an edited Goal has moved it.
+Ordinary collection, every poll, and every other harness keep the tail. Enlarging `tail_bytes` stays
+rejected ([session record pages](design-session-record-pages.md#rejected-alternatives)): it taxes every
+collection and cannot cover a long session.
+
+Coverage keeps its five keys and the page's wording. For a press that read back the two message keys
+describe what was kept, not what was scanned. `tail_truncated` is true when the read stopped before the
+window start (bytes, clock, count or a moved file), when an unread region lies inside the window, or when
+the project cap dropped any in-window message of the session. `tail_start` is where the record is whole
+from: the oldest in-window time before the first unread region, or, after the cap, the oldest message
+kept that is newer than the newest one lost. It is not the oldest message kept, because the cap keeps
+the session's own reader messages ahead of the agent's, so that one is usually the Goal's own prompt at
+the window start, and the page would then call a partial record complete. A record older than the
+window never lowers it, so one replayed record cannot pull a partial read back to itself. A read that
+reached the window start while the cap dropped its oldest messages would otherwise say the window was
+covered, which reports a fact about the read as though it were one about the record. A truncated read
+with no start to name says so in the cutoff, as the page already did. A reading stored before
+this keeps the old meaning, the oldest time in a 400,000-byte tail and a size above it, and nothing
+distinguishes old from new.
+
+Not changed: the 16 KiB prompt and the selection order. Agent messages rank last, newest first, so a
+window of more than about 40 to 60 agent messages still loses its oldest to the budget, and the
+cutoff's "Read N of M" says so. Reserving the window's first-turn messages would change the selection
+rules the shape contract binds, and is left for its own change.
+
+The page holds the board's own record, which is tail-bound, so it cannot resolve a citation to an
+entry only the press read, and it demotes an unresolved citation to "can't tell, uncited". A row now
+counts the cited ids it holds no entry for and, once a record page has loaded and older entries remain,
+says that Show more may load them. "May", because the entry could also be newer than the last poll or
+not a message the record pages return. The page still loads nothing by itself
+([reader state](design-reader-state.md#the-inventory)); making it load them is a ruling on that line,
+not a fix to this one. Rejected: the focused context reaching back to the stored window, because the
+page polls that context and it would repeat the tail enlargement for one session on every poll.
 
 This also amends DEC-24 item 6: an otherwise blank unverifiable row citing entries says "Can't
 tell: what was read does not settle this". An uncited blank keeps the recorded-absence sentence.

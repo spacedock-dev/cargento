@@ -234,6 +234,29 @@ export function entryWindow(session: Row, payload: Row): number | null {
   return opened !== null && opened > 0 ? opened : null;
 }
 
+/* Where Show more stops: the record already holds an entry from before the intent's window opened, so
+   everything since it opened is listed. */
+export function recordPastWindow(record: RecordEntry | undefined, opened: number | null): boolean {
+  return (
+    opened !== null &&
+    (record?.entries ?? []).some((entry) => {
+      const at = nextNumber(entry.at);
+      return at !== null && at > 0 && at < opened;
+    })
+  );
+}
+
+/* Whether a reader's Show more can still bring in older entries, said only once a page has loaded: before
+   that the entry a reading cites may simply be on the first page, and the sentence would come and go. A
+   reading cites what its press read, which can reach past the 400 KB the board holds; the page never loads
+   those by itself (the reader's own request is what loads a page), so this says when asking would help. */
+export function olderEntriesRemain(
+  record: RecordEntry | undefined,
+  opened: number | null,
+): boolean {
+  return record?.status === 'loaded' && !record.reachedStart && !recordPastWindow(record, opened);
+}
+
 export interface EntryNumbering {
   readonly all: readonly WorkEntry[];
   readonly opened: number | null;

@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1719455,
+    "bytes": 1720443,
     "file": "react.html",
-    "sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83"
+    "sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a"
   },
   "format": 1,
   "frontend": "react",
@@ -555,7 +555,7 @@
       },
       {
         "file": "frontend/src/drift/ReadingResult.tsx",
-        "sha256": "806f331c2a1714cffaa12d3f8288114428ae27c88a91794234e8fd50fc5aa8ee"
+        "sha256": "346ab8ec42f0b029588d3a4982c1b1551d9a271aa2981d84729fbce454534b9e"
       },
       {
         "file": "frontend/src/drift/ShowMore.tsx",
@@ -571,7 +571,7 @@
       },
       {
         "file": "frontend/src/drift/WorkListView.tsx",
-        "sha256": "62975652291634789e3a832e3b64bd4ed74190ef45003d4d8a6729c6e766da11"
+        "sha256": "110e35888a1095221940fee024b3754258e5975f1a730051507a29c22c3fa603"
       },
       {
         "file": "frontend/src/drift/actions.ts",
@@ -623,7 +623,7 @@
       },
       {
         "file": "frontend/src/drift/result.ts",
-        "sha256": "023ecb66f998e5697f2c15e149914c30119174a7f8973bdf917329ff82c9e5c7"
+        "sha256": "ed902b0346d8bc02b93afd099904cbeacffe89b3dda931340f26535875cc1c62"
       },
       {
         "file": "frontend/src/drift/route.ts",
@@ -631,11 +631,11 @@
       },
       {
         "file": "frontend/src/drift/sentences.ts",
-        "sha256": "767c2c839c86f6da2997255b2fa1e80fbf3f6ffedf2f012b996c989340db245a"
+        "sha256": "5414fac57f3cff43619d559986425a8eb94ee3331ec0d525d3dc4f155a6a0420"
       },
       {
         "file": "frontend/src/drift/shape.ts",
-        "sha256": "32e1c3fc915f10f50f86497f5270cd1b8e1a3d08b5ddd0e536c37f8d9118aa69"
+        "sha256": "69e64a2f58d2f76bf98d8598e23a75d2f044936ebd422a8c6ebcf3575790f9bb"
       },
       {
         "file": "frontend/src/drift/state.ts",
@@ -795,7 +795,7 @@
       },
       {
         "file": "frontend/src/intent/work.ts",
-        "sha256": "196695b8fbd7fc8707d81d614cd23f1f079f7b66a9b57176630f5d46fd8c46a9"
+        "sha256": "00735a8e5b331db581719af5f769145599645af07f38817da2d8a84af6ea6e4d"
       },
       {
         "file": "frontend/src/lib/utils.ts",

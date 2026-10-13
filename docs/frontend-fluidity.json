@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-13",
-  "candidate_base_commit": "df0b074d982fc8d241f4f3e93574db8c442bf5d9",
+  "candidate_base_commit": "ef356dc873d9d7a8d96ee673f0f8eae083f2d9ec",
   "purpose": "The assembled production React page measured the way the pre-React baseline was measured, against the budgets that receipt fixes.",
   "cohort_sizing": "Controlled synthetic 5/50/250 cohorts. The median label is the middle scenario, not a measured real-user median.",
   "methodology": {
@@ -24,17 +24,17 @@
   ],
   "environment": {
     "candidate": {
-      "node": "v26.10.0",
+      "node": "v26.11.1",
       "platform": "darwin",
       "release": "27.0.0",
       "arch": "arm64",
       "cores": 10,
       "chrome": {
         "protocolVersion": "1.3",
-        "product": "Chrome/156.0.8078.12",
-        "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-        "jsVersion": "15.6.75.8"
+        "product": "HeadlessChrome/153.0.8010.12",
+        "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+        "jsVersion": "15.3.76.4"
       }
     },
     "baseline": {
@@ -53,22 +53,22 @@
     },
     "load_average_at_start": [
       [
-        2.82763671875,
-        3.2939453125,
-        2.97265625
+        4.63134765625,
+        3.58056640625,
+        3.662109375
       ],
       [
-        3.57470703125,
-        3.43359375,
-        3.025390625
+        4.34033203125,
+        3.53759765625,
+        3.646484375
       ],
       [
-        3.4482421875,
-        3.40966796875,
-        3.01904296875
+        3.98681640625,
+        3.48681640625,
+        3.626953125
       ]
     ],
-    "comparability": "Same platform and architecture. Chrome moved from Chrome/156.0.8078.4 to Chrome/156.0.8078.12 (same major) and Node from v26.8.2 to v26.10.0; the baseline's own receipt says its timings are not compared across machines or browsers. The control block is historical and cannot be re-measured after retirement."
+    "comparability": "Same platform and architecture. Chrome moved from Chrome/156.0.8078.4 to HeadlessChrome/153.0.8010.12 (same major) and Node from v26.8.2 to v26.11.1; the baseline's own receipt says its timings are not compared across machines or browsers. The control block is historical and cannot be re-measured after retirement."
   },
   "source_bindings": {
     "driver": {
@@ -96,10 +96,10 @@
     "bytes": 81097
   },
   "page": {
-    "sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-    "bytes": 1719455,
+    "sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+    "bytes": 1720443,
     "legacy_page_bytes": 1453021,
-    "change_vs_legacy_pct": 18.34,
+    "change_vs_legacy_pct": 18.4,
     "max_bytes": 2000000,
     "optional_terminal_bytes": {
       "javascript": 488663,
@@ -133,25 +133,25 @@
         "poll_median_ms": 46.5
       },
       "new_document_samples": [
-        143.69999998807907,
-        143.90000000596046,
-        142.7000000178814
+        144.69999998807907,
+        144.10000002384186,
+        144.59999999403954
       ],
-      "new_document_median_ms": 143.69999998807907,
-      "new_document_worst_ms": 143.90000000596046,
+      "new_document_median_ms": 144.59999999403954,
+      "new_document_worst_ms": 144.69999998807907,
       "poll_samples_ms": [
-        45.5,
-        43.900000005960464,
-        43.10000002384186,
+        46.20000001788139,
+        43.29999998211861,
+        44.599999994039536,
+        45.900000005960464,
+        45.400000005960464,
         44,
-        45.29999998211861,
-        44.5,
-        44.900000005960464,
-        42.599999994039536,
-        44.099999994039536
+        45.79999998211861,
+        42.5,
+        60
       ],
-      "poll_median_ms": 44.099999994039536,
-      "poll_worst_ms": 45.5,
+      "poll_median_ms": 45.400000005960464,
+      "poll_worst_ms": 60,
       "comparison_budget_ms": {
         "new_document": 199.10000014305115,
         "poll_to_render": 119.75
@@ -161,7 +161,7 @@
         2,
         2,
         2,
-        1,
+        2,
         2,
         2,
         2,
@@ -207,25 +207,25 @@
         "poll_median_ms": 47.60000014305115
       },
       "new_document_samples": [
-        93.7999999821186,
-        93.80000001192093,
-        93.80000001192093
+        78.69999998807907,
+        73.59999999403954,
+        75.40000000596046
       ],
-      "new_document_median_ms": 93.80000001192093,
-      "new_document_worst_ms": 93.80000001192093,
+      "new_document_median_ms": 75.40000000596046,
+      "new_document_worst_ms": 78.69999998807907,
       "poll_samples_ms": [
-        47.099999994039536,
+        45.900000005960464,
+        44.69999998807907,
         45,
-        42,
-        47.29999998211861,
-        45,
-        43.099999994039536,
-        46,
-        44.900000005960464,
-        45.10000002384186
+        45.19999998807907,
+        43.19999998807907,
+        59.099999994039536,
+        44.60000002384186,
+        43.400000005960464,
+        59.900000005960464
       ],
       "poll_median_ms": 45,
-      "poll_worst_ms": 47.29999998211861,
+      "poll_worst_ms": 59.900000005960464,
       "comparison_budget_ms": {
         "new_document": 159.5,
         "poll_to_render": 121.40000021457672
@@ -281,25 +281,25 @@
         "poll_median_ms": 64.29999995231628
       },
       "new_document_samples": [
-        129.09999999403954,
-        127.2999999821186,
-        126.10000002384186
+        107.5,
+        107.59999999403954,
+        110
       ],
-      "new_document_median_ms": 127.2999999821186,
-      "new_document_worst_ms": 129.09999999403954,
+      "new_document_median_ms": 107.59999999403954,
+      "new_document_worst_ms": 110,
       "poll_samples_ms": [
-        60.80000001192093,
-        62.80000001192093,
+        62.29999998211861,
+        60,
+        58.099999994039536,
+        62.29999998211861,
+        62,
+        60.70000001788139,
         62.400000005960464,
-        63.099999994039536,
-        59,
-        60.5,
-        62.099999994039536,
-        59.099999994039536,
-        61.89999997615814
+        61.400000005960464,
+        61
       ],
-      "poll_median_ms": 61.89999997615814,
-      "poll_worst_ms": 63.099999994039536,
+      "poll_median_ms": 61.400000005960464,
+      "poll_worst_ms": 62.400000005960464,
       "comparison_budget_ms": {
         "new_document": 192.80000007152557,
         "poll_to_render": 146.44999992847443
@@ -352,7 +352,7 @@
     {
       "budget": "first_render_median",
       "cohort": "small",
-      "measured": 143.69999998807907,
+      "measured": 144.59999999403954,
       "limit": 199.10000014305115,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -361,7 +361,7 @@
     {
       "budget": "poll_to_paint_median",
       "cohort": "small",
-      "measured": 44.099999994039536,
+      "measured": 45.400000005960464,
       "limit": 119.75,
       "pass": true,
       "statistic": "median of 9 background polls",
@@ -378,7 +378,7 @@
     {
       "budget": "first_render_median",
       "cohort": "median",
-      "measured": 93.80000001192093,
+      "measured": 75.40000000596046,
       "limit": 159.5,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -404,7 +404,7 @@
     {
       "budget": "first_render_median",
       "cohort": "large",
-      "measured": 127.2999999821186,
+      "measured": 107.59999999403954,
       "limit": 192.80000007152557,
       "pass": true,
       "statistic": "median of 3 new-document loads",
@@ -413,7 +413,7 @@
     {
       "budget": "poll_to_paint_median",
       "cohort": "large",
-      "measured": 61.89999997615814,
+      "measured": 61.400000005960464,
       "limit": 146.44999992847443,
       "pass": true,
       "statistic": "median of 9 background polls",
@@ -636,7 +636,7 @@
     {
       "budget": "core_html_bytes",
       "cohort": null,
-      "measured": 1719455,
+      "measured": 1720443,
       "limit": 2000000,
       "pass": true
     }
@@ -889,12 +889,12 @@
           "jsEventListeners": {
             "status": "measured",
             "values": [
-              2760,
-              3100,
-              3426,
-              3752,
-              4078,
-              4404
+              2775,
+              3115,
+              3441,
+              3767,
+              4093,
+              4419
             ],
             "growth_per_round": [
               340,
@@ -979,19 +979,19 @@
           "nodes": {
             "status": "measured",
             "values": [
-              9789,
-              10296,
-              10803,
-              11310,
-              11817,
-              12324
+              9791,
+              10299,
+              10807,
+              11315,
+              11823,
+              12331
             ],
             "growth_per_round": [
-              507,
-              507,
-              507,
-              507,
-              507
+              508,
+              508,
+              508,
+              508,
+              508
             ]
           },
           "documents": {
@@ -1017,12 +1017,12 @@
           "jsEventListeners": {
             "status": "measured",
             "values": [
-              2760,
-              3100,
-              3426,
-              3752,
-              4078,
-              4404
+              2777,
+              3117,
+              3443,
+              3769,
+              4095,
+              4421
             ],
             "growth_per_round": [
               340,
@@ -1107,19 +1107,19 @@
           "nodes": {
             "status": "measured",
             "values": [
-              9789,
-              10296,
-              10803,
-              11310,
-              11817,
-              12324
+              9791,
+              10299,
+              10807,
+              11315,
+              11823,
+              12331
             ],
             "growth_per_round": [
-              507,
-              507,
-              507,
-              507,
-              507
+              508,
+              508,
+              508,
+              508,
+              508
             ]
           },
           "documents": {
@@ -1145,12 +1145,12 @@
           "jsEventListeners": {
             "status": "measured",
             "values": [
-              2760,
-              3100,
-              3426,
-              3752,
-              4078,
-              4404
+              2775,
+              3115,
+              3441,
+              3767,
+              4093,
+              4419
             ],
             "growth_per_round": [
               340,
@@ -1235,19 +1235,19 @@
           "nodes": {
             "status": "measured",
             "values": [
-              9789,
-              10296,
-              10803,
-              11310,
-              11817,
-              12324
+              9791,
+              10299,
+              10807,
+              11315,
+              11823,
+              12331
             ],
             "growth_per_round": [
-              507,
-              507,
-              507,
-              507,
-              507
+              508,
+              508,
+              508,
+              508,
+              508
             ]
           },
           "documents": {
@@ -1451,22 +1451,22 @@
     {
       "schema": 1,
       "environment": {
-        "node": "v26.10.0",
+        "node": "v26.11.1",
         "platform": "darwin",
         "release": "27.0.0",
         "arch": "arm64",
         "cores": 10,
         "loadAverageAtStart": [
-          2.82763671875,
-          3.2939453125,
-          2.97265625
+          4.63134765625,
+          3.58056640625,
+          3.662109375
         ],
         "chrome": {
           "protocolVersion": "1.3",
-          "product": "Chrome/156.0.8078.12",
-          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "jsVersion": "15.6.75.8"
+          "product": "HeadlessChrome/153.0.8010.12",
+          "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "jsVersion": "15.3.76.4"
         }
       },
       "options": {
@@ -1498,59 +1498,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 2",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
           },
-          "firstRenderMs": 143.69999998807907,
+          "firstRenderMs": 144.69999998807907,
           "firstGetToPaint": {
             "sequence": 2,
-            "startedMs": 92.59999999403954,
-            "responseMs": 98.90000000596046,
+            "startedMs": 93.59999999403954,
+            "responseMs": 118.69999998807907,
             "payloadBytes": 29634,
             "sessionCount": 5,
             "status": 200,
-            "paintedMs": 143.69999998807907,
+            "paintedMs": 144.69999998807907,
             "getToPaintMs": 51.099999994039536
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 3,
-              "startedMs": 147.69999998807907,
-              "responseMs": 151.90000000596046,
+              "startedMs": 147.7999999821186,
+              "responseMs": 152.2999999821186,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 193.19999998807907,
-              "getToPaintMs": 45.5,
+              "paintedMs": 194,
+              "getToPaintMs": 46.20000001788139,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 4,
-              "startedMs": 233.40000000596046,
-              "responseMs": 238.19999998807907,
+              "startedMs": 234.09999999403954,
+              "responseMs": 239.7999999821186,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 277.30000001192093,
-              "getToPaintMs": 43.900000005960464,
+              "paintedMs": 277.39999997615814,
+              "getToPaintMs": 43.29999998211861,
               "removedNodes": 0,
               "fetchesForSequence": 2
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 5,
-              "startedMs": 316.69999998807907,
-              "responseMs": 321.5,
+              "startedMs": 316.2999999821186,
+              "responseMs": 322.19999998807907,
               "payloadBytes": 29634,
               "sessionCount": 5,
               "status": 200,
-              "paintedMs": 359.80000001192093,
-              "getToPaintMs": 43.10000002384186,
+              "paintedMs": 360.89999997615814,
+              "getToPaintMs": 44.599999994039536,
               "removedNodes": 0,
               "fetchesForSequence": 2
             }
@@ -1561,8 +1561,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 6,
-                "startedMs": 398.59999999403954,
-                "responseMs": 402.80000001192093,
+                "startedMs": 403.2999999821186,
+                "responseMs": 408.69999998807907,
                 "payloadBytes": 4213,
                 "sessionCount": 0,
                 "status": 200
@@ -1578,1676 +1578,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 7,
-                "startedMs": 446.90000000596046,
-                "responseMs": 450.69999998807907,
-                "payloadBytes": 4253,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 4,
-            "nodes": 333,
-            "jsEventListeners": 655,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 1,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        },
-        {
-          "cohort": "median",
-          "fixture": {
-            "ack": true,
-            "cohort": "median",
-            "state": "healthy",
-            "sequence": 8,
-            "session_count": 50,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 8",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
-          },
-          "firstRenderMs": 93.7999999821186,
-          "firstGetToPaint": {
-            "sequence": 8,
-            "startedMs": 43.79999998211861,
-            "responseMs": 60,
-            "payloadBytes": 238513,
-            "sessionCount": 50,
-            "status": 200,
-            "paintedMs": 93.7999999821186,
-            "getToPaintMs": 50
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 9,
-              "startedMs": 97.7999999821186,
-              "responseMs": 108.2999999821186,
-              "payloadBytes": 238513,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 144.89999997615814,
-              "getToPaintMs": 47.099999994039536,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 10,
-              "startedMs": 183.2999999821186,
-              "responseMs": 195.5,
-              "payloadBytes": 238565,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 228.2999999821186,
-              "getToPaintMs": 45,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 11,
-              "startedMs": 268.59999999403954,
-              "responseMs": 281.2999999821186,
-              "payloadBytes": 238565,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 310.59999999403954,
-              "getToPaintMs": 42,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 12,
-                "startedMs": 351.89999997615814,
-                "responseMs": 358.89999997615814,
-                "payloadBytes": 4216,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 13,
-                "startedMs": 398.7999999821186,
-                "responseMs": 404.39999997615814,
-                "payloadBytes": 4256,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 6,
-            "nodes": 2241,
-            "jsEventListeners": 1672,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 0,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        },
-        {
-          "cohort": "large",
-          "fixture": {
-            "ack": true,
-            "cohort": "large",
-            "state": "healthy",
-            "sequence": 14,
-            "session_count": 250,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 14",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
-          },
-          "firstRenderMs": 129.09999999403954,
-          "firstGetToPaint": {
-            "sequence": 14,
-            "startedMs": 46.099999994039536,
-            "responseMs": 86.09999999403954,
-            "payloadBytes": 1166963,
-            "sessionCount": 250,
-            "status": 200,
-            "paintedMs": 129.09999999403954,
-            "getToPaintMs": 83
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 15,
-              "startedMs": 133.69999998807907,
-              "responseMs": 167.09999999403954,
-              "payloadBytes": 1166963,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 194.5,
-              "getToPaintMs": 60.80000001192093,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 16,
-              "startedMs": 231.69999998807907,
-              "responseMs": 266.5,
-              "payloadBytes": 1166963,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 294.5,
-              "getToPaintMs": 62.80000001192093,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 17,
-              "startedMs": 332.09999999403954,
-              "responseMs": 365.7999999821186,
-              "payloadBytes": 1166963,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 394.5,
-              "getToPaintMs": 62.400000005960464,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 18,
-                "startedMs": 433.89999997615814,
-                "responseMs": 443.59999999403954,
-                "payloadBytes": 4215,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 19,
-                "startedMs": 484.39999997615814,
-                "responseMs": 489.09999999403954,
-                "payloadBytes": 4255,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 3,
-            "nodes": 9175,
-            "jsEventListeners": 1591,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 0,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        }
-      ],
-      "editor": {
-        "status": "measured",
-        "trigger": "fallbackPollCallback",
-        "before": {
-          "value": "Implement the synthetic baseline task.Baseline native editor draft",
-          "start": 66,
-          "end": 66,
-          "focused": true,
-          "detailsOpen": true,
-          "selectValue": "Use your prompt"
-        },
-        "after": {
-          "value": "Implement the synthetic baseline task.Baseline native editor draft",
-          "start": 66,
-          "end": 66,
-          "focused": true,
-          "sameNode": true,
-          "sameDetailsNode": true,
-          "detailsStillAttached": true,
-          "detailsOpen": true,
-          "sameSelectNode": true,
-          "selectValue": "Use your prompt"
-        },
-        "draftRetained": true,
-        "focusRetained": true,
-        "selectionRetained": true,
-        "keyboardEndApplied": true,
-        "nativeTypingApplied": true,
-        "nodeRetained": true,
-        "nativeUndo": {
-          "handled": true,
-          "valueBeforeTyping": "Implement the synthetic baseline task.",
-          "valueAfterUndo": "Implement the synthetic baseline task.",
-          "restoredPriorWords": true
-        }
-      },
-      "retention": {
-        "status": "measured",
-        "trigger": "fallbackPollCallback",
-        "removedNodesDuringUpdate": 2,
-        "editedNodeReplacements": 0,
-        "openDisclosureReplacements": 0,
-        "openDisclosureKeptOpen": true,
-        "focusedSelectReplacements": 0,
-        "focusedSelectKeptChoice": true,
-        "choiceBefore": {
-          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
-          "open": "true",
-          "options": [
-            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
-          ],
-          "selected": "fact:3dbb86862e98aa27"
-        },
-        "choiceAfter": {
-          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
-          "open": "true",
-          "sameTrigger": true,
-          "samePopup": true,
-          "options": [
-            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
-          ],
-          "selected": "fact:3dbb86862e98aa27"
-        },
-        "scope": "The typed and focused goal and open disclosure over one fallback poll, then a selected prompt and open popup over thirteen fallback polls until the board paints. Each update changes row titles; the choice must be nonempty."
-      },
-      "navigation": [
-        {
-          "step": 0,
-          "documents": 3,
-          "nodes": 9789,
-          "jsEventListeners": 2760,
-          "removedNodeObservations": 5405,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 1,
-          "documents": 3,
-          "nodes": 10296,
-          "jsEventListeners": 3100,
-          "removedNodeObservations": 5783,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 2,
-          "documents": 3,
-          "nodes": 10803,
-          "jsEventListeners": 3426,
-          "removedNodeObservations": 6094,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 3,
-          "documents": 3,
-          "nodes": 11310,
-          "jsEventListeners": 3752,
-          "removedNodeObservations": 6405,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 4,
-          "documents": 3,
-          "nodes": 11817,
-          "jsEventListeners": 4078,
-          "removedNodeObservations": 6716,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 5,
-          "documents": 3,
-          "nodes": 12324,
-          "jsEventListeners": 4404,
-          "removedNodeObservations": 7027,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        }
-      ],
-      "navigationAfterCollection": [
-        {
-          "step": 0,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7027,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 1,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7338,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 2,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7649,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 3,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7960,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 4,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 8271,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 5,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 8582,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        }
-      ],
-      "leadership": {
-        "leaderAcquired": true
-      },
-      "sources": {
-        "driver": {
-          "sha256": "dbc201099da789d4279ce0b863320ae2eff6b5622ba71d7ec6897b25a4591eee",
-          "bytes": 31874
-        },
-        "fixture": {
-          "sha256": "5b2cb60eab33c5a3bb973e520241542cbc726f56fc59263afcbb8dc743926b36",
-          "bytes": 10222
-        }
-      },
-      "fixture": {
-        "ready": true,
-        "port": 4581,
-        "cohort": "small",
-        "state": "healthy",
-        "sequence": 1,
-        "session_count": 5,
-        "current_session": {
-          "harness": "claude",
-          "sid": "b0000000",
-          "project": "baseline-project"
-        },
-        "marker": "Baseline 1",
-        "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-        "page_bytes": 1719455,
-        "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-        "assembled_page_bytes": 1719455
-      }
-    },
-    {
-      "schema": 1,
-      "environment": {
-        "node": "v26.10.0",
-        "platform": "darwin",
-        "release": "27.0.0",
-        "arch": "arm64",
-        "cores": 10,
-        "loadAverageAtStart": [
-          3.57470703125,
-          3.43359375,
-          3.025390625
-        ],
-        "chrome": {
-          "protocolVersion": "1.3",
-          "product": "Chrome/156.0.8078.12",
-          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "jsVersion": "15.6.75.8"
-        }
-      },
-      "options": {
-        "port": 4581,
-        "samples": 3,
-        "navigations": 5
-      },
-      "methodology": {
-        "paint": "Actual /api/data fetch start to two animation frames after the fixture title is rendered; a frame boundary proxy, not compositor presentation time.",
-        "updateTrigger": "The page's own fallback-poll callback (the 20 s setInterval the live transport registers), captured from setInterval and invoked: the production background-poll path, including its focus/open-choice paint deferrals; no manual refresh bypass. The React page has no global poll function to call as the baseline did.",
-        "browserProfile": "One fresh owned profile per invocation. Each cohort gets one new-document load per invocation; later cohorts share cache with earlier cohorts. Repeat invocations for independent profiles, not independent cold-cache cohorts.",
-        "observers": "Main-window fetch/timer/WebSocket wrappers, primitive MutationObserver counts and long-task observer, identical to the baseline's, plus two declared additions: the setInterval wrapper keeps each callback (to invoke the poll) and an EventSource wrapper counts open streams.",
-        "sockets": "WebSocket instances only; TCP/socket descriptors are unavailable.",
-        "retention": "Removed node observations and CDP DOM counters are trends, not proof of retained detached-node memory.",
-        "statePaint": "Empty/unavailable have no unique sequence marker in production DOM; update-to-paint unavailable."
-      },
-      "cohorts": [
-        {
-          "cohort": "small",
-          "fixture": {
-            "ack": true,
-            "cohort": "small",
-            "state": "healthy",
-            "sequence": 2,
-            "session_count": 5,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 2",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
-          },
-          "firstRenderMs": 143.90000000596046,
-          "firstGetToPaint": {
-            "sequence": 2,
-            "startedMs": 92.7999999821186,
-            "responseMs": 118.2999999821186,
-            "payloadBytes": 29634,
-            "sessionCount": 5,
-            "status": 200,
-            "paintedMs": 143.90000000596046,
-            "getToPaintMs": 51.10000002384186
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 3,
-              "startedMs": 147.2999999821186,
-              "responseMs": 151.40000000596046,
-              "payloadBytes": 29634,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 191.2999999821186,
-              "getToPaintMs": 44,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 4,
-              "startedMs": 231,
-              "responseMs": 238.2999999821186,
-              "payloadBytes": 29634,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 276.2999999821186,
-              "getToPaintMs": 45.29999998211861,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 5,
-              "startedMs": 315.5,
-              "responseMs": 321.5,
-              "payloadBytes": 29634,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 360,
-              "getToPaintMs": 44.5,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 6,
-                "startedMs": 401,
-                "responseMs": 405.40000000596046,
-                "payloadBytes": 4213,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 7,
-                "startedMs": 447.19999998807907,
-                "responseMs": 451.40000000596046,
-                "payloadBytes": 4253,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 4,
-            "nodes": 333,
-            "jsEventListeners": 651,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 1,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        },
-        {
-          "cohort": "median",
-          "fixture": {
-            "ack": true,
-            "cohort": "median",
-            "state": "healthy",
-            "sequence": 8,
-            "session_count": 50,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 8",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
-          },
-          "firstRenderMs": 93.80000001192093,
-          "firstGetToPaint": {
-            "sequence": 8,
-            "startedMs": 45.30000001192093,
-            "responseMs": 62,
-            "payloadBytes": 238513,
-            "sessionCount": 50,
-            "status": 200,
-            "paintedMs": 93.80000001192093,
-            "getToPaintMs": 48.5
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 9,
-              "startedMs": 97.7000000178814,
-              "responseMs": 108.30000001192093,
-              "payloadBytes": 238513,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 145,
-              "getToPaintMs": 47.29999998211861,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 10,
-              "startedMs": 183.40000000596046,
-              "responseMs": 195.7000000178814,
-              "payloadBytes": 238565,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 228.40000000596046,
-              "getToPaintMs": 45,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 11,
-              "startedMs": 268.60000002384186,
-              "responseMs": 281.30000001192093,
-              "payloadBytes": 238565,
-              "sessionCount": 50,
-              "status": 200,
-              "paintedMs": 311.7000000178814,
-              "getToPaintMs": 43.099999994039536,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 12,
-                "startedMs": 352.80000001192093,
-                "responseMs": 359.7000000178814,
-                "payloadBytes": 4216,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 13,
-                "startedMs": 399.5,
-                "responseMs": 404.90000000596046,
-                "payloadBytes": 4256,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 6,
-            "nodes": 2241,
-            "jsEventListeners": 1668,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 0,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        },
-        {
-          "cohort": "large",
-          "fixture": {
-            "ack": true,
-            "cohort": "large",
-            "state": "healthy",
-            "sequence": 14,
-            "session_count": 250,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 14",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
-          },
-          "firstRenderMs": 127.2999999821186,
-          "firstGetToPaint": {
-            "sequence": 14,
-            "startedMs": 46.69999998807907,
-            "responseMs": 87.7999999821186,
-            "payloadBytes": 1166963,
-            "sessionCount": 250,
-            "status": 200,
-            "paintedMs": 127.2999999821186,
-            "getToPaintMs": 80.59999999403954
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 15,
-              "startedMs": 130.7999999821186,
-              "responseMs": 164.69999998807907,
-              "payloadBytes": 1166963,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 193.89999997615814,
-              "getToPaintMs": 63.099999994039536,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 16,
-              "startedMs": 234,
-              "responseMs": 269.59999999403954,
-              "payloadBytes": 1166963,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 293,
-              "getToPaintMs": 59,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 17,
-              "startedMs": 332.7999999821186,
-              "responseMs": 366.09999999403954,
-              "payloadBytes": 1166963,
-              "sessionCount": 250,
-              "status": 200,
-              "paintedMs": 393.2999999821186,
-              "getToPaintMs": 60.5,
-              "removedNodes": 0,
-              "fetchesForSequence": 1
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 18,
-                "startedMs": 433.69999998807907,
-                "responseMs": 443.09999999403954,
-                "payloadBytes": 4215,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 19,
-                "startedMs": 482.19999998807907,
-                "responseMs": 486.89999997615814,
-                "payloadBytes": 4255,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            }
-          ],
-          "footprint": {
-            "documents": 3,
-            "nodes": 9175,
-            "jsEventListeners": 1591,
-            "removedNodeObservations": 5,
-            "activeMainWindowTimeouts": 0,
-            "activeMainWindowIntervals": 2,
-            "activeWebSockets": 0,
-            "tcpSockets": {
-              "status": "unavailable",
-              "reason": "CDP does not expose process TCP descriptors"
-            },
-            "eventSourceConnections": {
-              "status": "measured",
-              "open": 0,
-              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-            },
-            "retainedDetachedNodes": {
-              "status": "unavailable",
-              "reason": "DOM counters do not identify detached-node retention"
-            },
-            "longTasks": [],
-            "captureError": null
-          }
-        }
-      ],
-      "editor": {
-        "status": "measured",
-        "trigger": "fallbackPollCallback",
-        "before": {
-          "value": "Implement the synthetic baseline task.Baseline native editor draft",
-          "start": 66,
-          "end": 66,
-          "focused": true,
-          "detailsOpen": true,
-          "selectValue": "Use your prompt"
-        },
-        "after": {
-          "value": "Implement the synthetic baseline task.Baseline native editor draft",
-          "start": 66,
-          "end": 66,
-          "focused": true,
-          "sameNode": true,
-          "sameDetailsNode": true,
-          "detailsStillAttached": true,
-          "detailsOpen": true,
-          "sameSelectNode": true,
-          "selectValue": "Use your prompt"
-        },
-        "draftRetained": true,
-        "focusRetained": true,
-        "selectionRetained": true,
-        "keyboardEndApplied": true,
-        "nativeTypingApplied": true,
-        "nodeRetained": true,
-        "nativeUndo": {
-          "handled": true,
-          "valueBeforeTyping": "Implement the synthetic baseline task.",
-          "valueAfterUndo": "Implement the synthetic baseline task.",
-          "restoredPriorWords": true
-        }
-      },
-      "retention": {
-        "status": "measured",
-        "trigger": "fallbackPollCallback",
-        "removedNodesDuringUpdate": 2,
-        "editedNodeReplacements": 0,
-        "openDisclosureReplacements": 0,
-        "openDisclosureKeptOpen": true,
-        "focusedSelectReplacements": 0,
-        "focusedSelectKeptChoice": true,
-        "choiceBefore": {
-          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
-          "open": "true",
-          "options": [
-            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
-          ],
-          "selected": "fact:3dbb86862e98aa27"
-        },
-        "choiceAfter": {
-          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
-          "open": "true",
-          "sameTrigger": true,
-          "samePopup": true,
-          "options": [
-            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
-          ],
-          "selected": "fact:3dbb86862e98aa27"
-        },
-        "scope": "The typed and focused goal and open disclosure over one fallback poll, then a selected prompt and open popup over thirteen fallback polls until the board paints. Each update changes row titles; the choice must be nonempty."
-      },
-      "navigation": [
-        {
-          "step": 0,
-          "documents": 3,
-          "nodes": 9789,
-          "jsEventListeners": 2760,
-          "removedNodeObservations": 5405,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 1,
-          "documents": 3,
-          "nodes": 10296,
-          "jsEventListeners": 3100,
-          "removedNodeObservations": 5783,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 2,
-          "documents": 3,
-          "nodes": 10803,
-          "jsEventListeners": 3426,
-          "removedNodeObservations": 6094,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 3,
-          "documents": 3,
-          "nodes": 11310,
-          "jsEventListeners": 3752,
-          "removedNodeObservations": 6405,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 4,
-          "documents": 3,
-          "nodes": 11817,
-          "jsEventListeners": 4078,
-          "removedNodeObservations": 6716,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 5,
-          "documents": 3,
-          "nodes": 12324,
-          "jsEventListeners": 4404,
-          "removedNodeObservations": 7027,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        }
-      ],
-      "navigationAfterCollection": [
-        {
-          "step": 0,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7027,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 1,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7338,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 2,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7649,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 3,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 7960,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 4,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 8271,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        },
-        {
-          "step": 5,
-          "documents": 1,
-          "nodes": 317,
-          "jsEventListeners": 742,
-          "removedNodeObservations": 8582,
-          "activeMainWindowTimeouts": 0,
-          "activeMainWindowIntervals": 2,
-          "activeWebSockets": 0,
-          "tcpSockets": {
-            "status": "unavailable",
-            "reason": "CDP does not expose process TCP descriptors"
-          },
-          "eventSourceConnections": {
-            "status": "measured",
-            "open": 1,
-            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
-          },
-          "retainedDetachedNodes": {
-            "status": "unavailable",
-            "reason": "DOM counters do not identify detached-node retention"
-          },
-          "longTasks": [],
-          "captureError": null
-        }
-      ],
-      "leadership": {
-        "leaderAcquired": true
-      },
-      "sources": {
-        "driver": {
-          "sha256": "dbc201099da789d4279ce0b863320ae2eff6b5622ba71d7ec6897b25a4591eee",
-          "bytes": 31874
-        },
-        "fixture": {
-          "sha256": "5b2cb60eab33c5a3bb973e520241542cbc726f56fc59263afcbb8dc743926b36",
-          "bytes": 10222
-        }
-      },
-      "fixture": {
-        "ready": true,
-        "port": 4581,
-        "cohort": "small",
-        "state": "healthy",
-        "sequence": 1,
-        "session_count": 5,
-        "current_session": {
-          "harness": "claude",
-          "sid": "b0000000",
-          "project": "baseline-project"
-        },
-        "marker": "Baseline 1",
-        "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-        "page_bytes": 1719455,
-        "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-        "assembled_page_bytes": 1719455
-      }
-    },
-    {
-      "schema": 1,
-      "environment": {
-        "node": "v26.10.0",
-        "platform": "darwin",
-        "release": "27.0.0",
-        "arch": "arm64",
-        "cores": 10,
-        "loadAverageAtStart": [
-          3.4482421875,
-          3.40966796875,
-          3.01904296875
-        ],
-        "chrome": {
-          "protocolVersion": "1.3",
-          "product": "Chrome/156.0.8078.12",
-          "revision": "@634b046faf2137b83af71c87baf362b533af9104",
-          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "jsVersion": "15.6.75.8"
-        }
-      },
-      "options": {
-        "port": 4581,
-        "samples": 3,
-        "navigations": 5
-      },
-      "methodology": {
-        "paint": "Actual /api/data fetch start to two animation frames after the fixture title is rendered; a frame boundary proxy, not compositor presentation time.",
-        "updateTrigger": "The page's own fallback-poll callback (the 20 s setInterval the live transport registers), captured from setInterval and invoked: the production background-poll path, including its focus/open-choice paint deferrals; no manual refresh bypass. The React page has no global poll function to call as the baseline did.",
-        "browserProfile": "One fresh owned profile per invocation. Each cohort gets one new-document load per invocation; later cohorts share cache with earlier cohorts. Repeat invocations for independent profiles, not independent cold-cache cohorts.",
-        "observers": "Main-window fetch/timer/WebSocket wrappers, primitive MutationObserver counts and long-task observer, identical to the baseline's, plus two declared additions: the setInterval wrapper keeps each callback (to invoke the poll) and an EventSource wrapper counts open streams.",
-        "sockets": "WebSocket instances only; TCP/socket descriptors are unavailable.",
-        "retention": "Removed node observations and CDP DOM counters are trends, not proof of retained detached-node memory.",
-        "statePaint": "Empty/unavailable have no unique sequence marker in production DOM; update-to-paint unavailable."
-      },
-      "cohorts": [
-        {
-          "cohort": "small",
-          "fixture": {
-            "ack": true,
-            "cohort": "small",
-            "state": "healthy",
-            "sequence": 2,
-            "session_count": 5,
-            "current_session": {
-              "harness": "claude",
-              "sid": "b0000000",
-              "project": "baseline-project"
-            },
-            "marker": "Baseline 2",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
-          },
-          "firstRenderMs": 142.7000000178814,
-          "firstGetToPaint": {
-            "sequence": 2,
-            "startedMs": 94.10000002384186,
-            "responseMs": 117.60000002384186,
-            "payloadBytes": 29634,
-            "sessionCount": 5,
-            "status": 200,
-            "paintedMs": 142.7000000178814,
-            "getToPaintMs": 48.599999994039536
-          },
-          "updates": [
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 3,
-              "startedMs": 147,
-              "responseMs": 151.40000000596046,
-              "payloadBytes": 29634,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 191.90000000596046,
-              "getToPaintMs": 44.900000005960464,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 4,
-              "startedMs": 232.60000002384186,
-              "responseMs": 237.60000002384186,
-              "payloadBytes": 29634,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 275.2000000178814,
-              "getToPaintMs": 42.599999994039536,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            },
-            {
-              "trigger": "fallbackPollCallback",
-              "sequence": 5,
-              "startedMs": 314.7000000178814,
-              "responseMs": 319.5,
-              "payloadBytes": 29634,
-              "sessionCount": 5,
-              "status": 200,
-              "paintedMs": 358.80000001192093,
-              "getToPaintMs": 44.099999994039536,
-              "removedNodes": 0,
-              "fetchesForSequence": 2
-            }
-          ],
-          "states": [
-            {
-              "state": "empty",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 6,
-                "startedMs": 398.2000000178814,
-                "responseMs": 402.30000001192093,
-                "payloadBytes": 4213,
-                "sessionCount": 0,
-                "status": 200
-              },
-              "updateToPaint": {
-                "status": "unavailable",
-                "reason": "No unique sequence marker rendered for this state"
-              },
-              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
-            },
-            {
-              "state": "unavailable",
-              "trigger": "fallbackPollCallback",
-              "request": {
-                "sequence": 7,
-                "startedMs": 446.7000000178814,
-                "responseMs": 450.5,
+                "startedMs": 449.5,
+                "responseMs": 454.59999999403954,
                 "payloadBytes": 4253,
                 "sessionCount": 0,
                 "status": 200
@@ -3298,59 +1630,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 8",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
           },
-          "firstRenderMs": 93.80000001192093,
+          "firstRenderMs": 78.69999998807907,
           "firstGetToPaint": {
             "sequence": 8,
-            "startedMs": 46.599999994039536,
-            "responseMs": 63.69999998807907,
+            "startedMs": 29.69999998807907,
+            "responseMs": 54.099999994039536,
             "payloadBytes": 238513,
             "sessionCount": 50,
             "status": 200,
-            "paintedMs": 93.80000001192093,
-            "getToPaintMs": 47.20000001788139
+            "paintedMs": 78.69999998807907,
+            "getToPaintMs": 49
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 9,
-              "startedMs": 97.69999998807907,
-              "responseMs": 108.09999999403954,
+              "startedMs": 81.5,
+              "responseMs": 92.69999998807907,
               "payloadBytes": 238513,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 143.69999998807907,
-              "getToPaintMs": 46,
+              "paintedMs": 127.40000000596046,
+              "getToPaintMs": 45.900000005960464,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 10,
-              "startedMs": 182.5,
-              "responseMs": 194.69999998807907,
+              "startedMs": 167.30000001192093,
+              "responseMs": 179.80000001192093,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 227.40000000596046,
-              "getToPaintMs": 44.900000005960464,
+              "paintedMs": 212,
+              "getToPaintMs": 44.69999998807907,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 11,
-              "startedMs": 265.19999998807907,
-              "responseMs": 278.69999998807907,
+              "startedMs": 250,
+              "responseMs": 263.19999998807907,
               "payloadBytes": 238565,
               "sessionCount": 50,
               "status": 200,
-              "paintedMs": 310.30000001192093,
-              "getToPaintMs": 45.10000002384186,
+              "paintedMs": 295,
+              "getToPaintMs": 45,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -3361,8 +1693,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 12,
-                "startedMs": 352.69999998807907,
-                "responseMs": 359.80000001192093,
+                "startedMs": 335.09999999403954,
+                "responseMs": 342.80000001192093,
                 "payloadBytes": 4216,
                 "sessionCount": 0,
                 "status": 200
@@ -3378,8 +1710,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 13,
-                "startedMs": 398.19999998807907,
-                "responseMs": 403.30000001192093,
+                "startedMs": 382.59999999403954,
+                "responseMs": 388.19999998807907,
                 "payloadBytes": 4256,
                 "sessionCount": 0,
                 "status": 200
@@ -3393,7 +1725,7 @@
           ],
           "footprint": {
             "documents": 6,
-            "nodes": 2241,
+            "nodes": 2242,
             "jsEventListeners": 1670,
             "removedNodeObservations": 5,
             "activeMainWindowTimeouts": 0,
@@ -3430,59 +1762,59 @@
               "project": "baseline-project"
             },
             "marker": "Baseline 14",
-            "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "page_bytes": 1719455,
-            "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-            "assembled_page_bytes": 1719455
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
           },
-          "firstRenderMs": 126.10000002384186,
+          "firstRenderMs": 107.5,
           "firstGetToPaint": {
             "sequence": 14,
-            "startedMs": 44.5,
-            "responseMs": 87.5,
+            "startedMs": 28.700000017881393,
+            "responseMs": 72,
             "payloadBytes": 1166963,
             "sessionCount": 250,
             "status": 200,
-            "paintedMs": 126.10000002384186,
-            "getToPaintMs": 81.60000002384186
+            "paintedMs": 107.5,
+            "getToPaintMs": 78.7999999821186
           },
           "updates": [
             {
               "trigger": "fallbackPollCallback",
               "sequence": 15,
-              "startedMs": 130.30000001192093,
-              "responseMs": 164,
+              "startedMs": 111.7000000178814,
+              "responseMs": 147.59999999403954,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 192.40000000596046,
-              "getToPaintMs": 62.099999994039536,
+              "paintedMs": 174,
+              "getToPaintMs": 62.29999998211861,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 16,
-              "startedMs": 231.90000000596046,
-              "responseMs": 268.10000002384186,
+              "startedMs": 214.59999999403954,
+              "responseMs": 253,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 291,
-              "getToPaintMs": 59.099999994039536,
+              "paintedMs": 274.59999999403954,
+              "getToPaintMs": 60,
               "removedNodes": 0,
               "fetchesForSequence": 1
             },
             {
               "trigger": "fallbackPollCallback",
               "sequence": 17,
-              "startedMs": 330.60000002384186,
-              "responseMs": 363.30000001192093,
+              "startedMs": 316.40000000596046,
+              "responseMs": 349.2000000178814,
               "payloadBytes": 1166963,
               "sessionCount": 250,
               "status": 200,
-              "paintedMs": 392.5,
-              "getToPaintMs": 61.89999997615814,
+              "paintedMs": 374.5,
+              "getToPaintMs": 58.099999994039536,
               "removedNodes": 0,
               "fetchesForSequence": 1
             }
@@ -3493,8 +1825,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 18,
-                "startedMs": 432.60000002384186,
-                "responseMs": 441.80000001192093,
+                "startedMs": 415.40000000596046,
+                "responseMs": 425.80000001192093,
                 "payloadBytes": 4215,
                 "sessionCount": 0,
                 "status": 200
@@ -3510,8 +1842,8 @@
               "trigger": "fallbackPollCallback",
               "request": {
                 "sequence": 19,
-                "startedMs": 478.10000002384186,
-                "responseMs": 482.7000000178814,
+                "startedMs": 462.5,
+                "responseMs": 468.2000000178814,
                 "payloadBytes": 4255,
                 "sessionCount": 0,
                 "status": 200
@@ -3618,9 +1950,9 @@
         {
           "step": 0,
           "documents": 3,
-          "nodes": 9789,
-          "jsEventListeners": 2760,
-          "removedNodeObservations": 5405,
+          "nodes": 9791,
+          "jsEventListeners": 2775,
+          "removedNodeObservations": 5406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3643,9 +1975,9 @@
         {
           "step": 1,
           "documents": 3,
-          "nodes": 10296,
-          "jsEventListeners": 3100,
-          "removedNodeObservations": 5783,
+          "nodes": 10299,
+          "jsEventListeners": 3115,
+          "removedNodeObservations": 5784,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3668,9 +2000,9 @@
         {
           "step": 2,
           "documents": 3,
-          "nodes": 10803,
-          "jsEventListeners": 3426,
-          "removedNodeObservations": 6094,
+          "nodes": 10807,
+          "jsEventListeners": 3441,
+          "removedNodeObservations": 6095,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3693,9 +2025,9 @@
         {
           "step": 3,
           "documents": 3,
-          "nodes": 11310,
-          "jsEventListeners": 3752,
-          "removedNodeObservations": 6405,
+          "nodes": 11315,
+          "jsEventListeners": 3767,
+          "removedNodeObservations": 6406,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3718,9 +2050,9 @@
         {
           "step": 4,
           "documents": 3,
-          "nodes": 11817,
-          "jsEventListeners": 4078,
-          "removedNodeObservations": 6716,
+          "nodes": 11823,
+          "jsEventListeners": 4093,
+          "removedNodeObservations": 6717,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3743,9 +2075,9 @@
         {
           "step": 5,
           "documents": 3,
-          "nodes": 12324,
-          "jsEventListeners": 4404,
-          "removedNodeObservations": 7027,
+          "nodes": 12331,
+          "jsEventListeners": 4419,
+          "removedNodeObservations": 7028,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3772,7 +2104,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7027,
+          "removedNodeObservations": 7028,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3797,7 +2129,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7338,
+          "removedNodeObservations": 7339,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3822,7 +2154,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7649,
+          "removedNodeObservations": 7650,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3847,7 +2179,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 7960,
+          "removedNodeObservations": 7961,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3872,7 +2204,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 8271,
+          "removedNodeObservations": 8272,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3897,7 +2229,7 @@
           "documents": 1,
           "nodes": 317,
           "jsEventListeners": 742,
-          "removedNodeObservations": 8582,
+          "removedNodeObservations": 8583,
           "activeMainWindowTimeouts": 0,
           "activeMainWindowIntervals": 2,
           "activeWebSockets": 0,
@@ -3944,10 +2276,1678 @@
           "project": "baseline-project"
         },
         "marker": "Baseline 1",
-        "page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-        "page_bytes": 1719455,
-        "assembled_page_sha256": "c0d2e13345ba7e7e27a25920dfebbe4418bbc5d2554040b6f07ec4c16aadbe83",
-        "assembled_page_bytes": 1719455
+        "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+        "page_bytes": 1720443,
+        "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+        "assembled_page_bytes": 1720443
+      }
+    },
+    {
+      "schema": 1,
+      "environment": {
+        "node": "v26.11.1",
+        "platform": "darwin",
+        "release": "27.0.0",
+        "arch": "arm64",
+        "cores": 10,
+        "loadAverageAtStart": [
+          4.34033203125,
+          3.53759765625,
+          3.646484375
+        ],
+        "chrome": {
+          "protocolVersion": "1.3",
+          "product": "HeadlessChrome/153.0.8010.12",
+          "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "jsVersion": "15.3.76.4"
+        }
+      },
+      "options": {
+        "port": 4581,
+        "samples": 3,
+        "navigations": 5
+      },
+      "methodology": {
+        "paint": "Actual /api/data fetch start to two animation frames after the fixture title is rendered; a frame boundary proxy, not compositor presentation time.",
+        "updateTrigger": "The page's own fallback-poll callback (the 20 s setInterval the live transport registers), captured from setInterval and invoked: the production background-poll path, including its focus/open-choice paint deferrals; no manual refresh bypass. The React page has no global poll function to call as the baseline did.",
+        "browserProfile": "One fresh owned profile per invocation. Each cohort gets one new-document load per invocation; later cohorts share cache with earlier cohorts. Repeat invocations for independent profiles, not independent cold-cache cohorts.",
+        "observers": "Main-window fetch/timer/WebSocket wrappers, primitive MutationObserver counts and long-task observer, identical to the baseline's, plus two declared additions: the setInterval wrapper keeps each callback (to invoke the poll) and an EventSource wrapper counts open streams.",
+        "sockets": "WebSocket instances only; TCP/socket descriptors are unavailable.",
+        "retention": "Removed node observations and CDP DOM counters are trends, not proof of retained detached-node memory.",
+        "statePaint": "Empty/unavailable have no unique sequence marker in production DOM; update-to-paint unavailable."
+      },
+      "cohorts": [
+        {
+          "cohort": "small",
+          "fixture": {
+            "ack": true,
+            "cohort": "small",
+            "state": "healthy",
+            "sequence": 2,
+            "session_count": 5,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 2",
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
+          },
+          "firstRenderMs": 144.10000002384186,
+          "firstGetToPaint": {
+            "sequence": 2,
+            "startedMs": 93.2000000178814,
+            "responseMs": 101,
+            "payloadBytes": 29634,
+            "sessionCount": 5,
+            "status": 200,
+            "paintedMs": 144.10000002384186,
+            "getToPaintMs": 50.900000005960464
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 3,
+              "startedMs": 147.2000000178814,
+              "responseMs": 151.30000001192093,
+              "payloadBytes": 29634,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 193.10000002384186,
+              "getToPaintMs": 45.900000005960464,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 4,
+              "startedMs": 230.80000001192093,
+              "responseMs": 235,
+              "payloadBytes": 29634,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 276.2000000178814,
+              "getToPaintMs": 45.400000005960464,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 5,
+              "startedMs": 316.10000002384186,
+              "responseMs": 322,
+              "payloadBytes": 29634,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 360.10000002384186,
+              "getToPaintMs": 44,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 6,
+                "startedMs": 401.30000001192093,
+                "responseMs": 406.80000001192093,
+                "payloadBytes": 4213,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 7,
+                "startedMs": 448.2000000178814,
+                "responseMs": 453.10000002384186,
+                "payloadBytes": 4253,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 4,
+            "nodes": 333,
+            "jsEventListeners": 655,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 1,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        },
+        {
+          "cohort": "median",
+          "fixture": {
+            "ack": true,
+            "cohort": "median",
+            "state": "healthy",
+            "sequence": 8,
+            "session_count": 50,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 8",
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
+          },
+          "firstRenderMs": 73.59999999403954,
+          "firstGetToPaint": {
+            "sequence": 8,
+            "startedMs": 28.400000005960464,
+            "responseMs": 46.400000005960464,
+            "payloadBytes": 238513,
+            "sessionCount": 50,
+            "status": 200,
+            "paintedMs": 73.59999999403954,
+            "getToPaintMs": 45.19999998807907
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 9,
+              "startedMs": 77.80000001192093,
+              "responseMs": 88.90000000596046,
+              "payloadBytes": 238513,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 123,
+              "getToPaintMs": 45.19999998807907,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 10,
+              "startedMs": 163.30000001192093,
+              "responseMs": 175.40000000596046,
+              "payloadBytes": 238565,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 206.5,
+              "getToPaintMs": 43.19999998807907,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 11,
+              "startedMs": 247,
+              "responseMs": 260.69999998807907,
+              "payloadBytes": 238565,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 306.09999999403954,
+              "getToPaintMs": 59.099999994039536,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 12,
+                "startedMs": 346.90000000596046,
+                "responseMs": 354.69999998807907,
+                "payloadBytes": 4216,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 13,
+                "startedMs": 394.5,
+                "responseMs": 400.40000000596046,
+                "payloadBytes": 4256,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 6,
+            "nodes": 2242,
+            "jsEventListeners": 1672,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 0,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        },
+        {
+          "cohort": "large",
+          "fixture": {
+            "ack": true,
+            "cohort": "large",
+            "state": "healthy",
+            "sequence": 14,
+            "session_count": 250,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 14",
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
+          },
+          "firstRenderMs": 107.59999999403954,
+          "firstGetToPaint": {
+            "sequence": 14,
+            "startedMs": 28.19999998807907,
+            "responseMs": 70.90000000596046,
+            "payloadBytes": 1166963,
+            "sessionCount": 250,
+            "status": 200,
+            "paintedMs": 107.59999999403954,
+            "getToPaintMs": 79.40000000596046
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 15,
+              "startedMs": 112.90000000596046,
+              "responseMs": 148.19999998807907,
+              "payloadBytes": 1166963,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 175.19999998807907,
+              "getToPaintMs": 62.29999998211861,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 16,
+              "startedMs": 213.59999999403954,
+              "responseMs": 249.5,
+              "payloadBytes": 1166963,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 275.59999999403954,
+              "getToPaintMs": 62,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 17,
+              "startedMs": 313.7999999821186,
+              "responseMs": 348.7999999821186,
+              "payloadBytes": 1166963,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 374.5,
+              "getToPaintMs": 60.70000001788139,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 18,
+                "startedMs": 414.40000000596046,
+                "responseMs": 424.69999998807907,
+                "payloadBytes": 4215,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 19,
+                "startedMs": 461.59999999403954,
+                "responseMs": 466.69999998807907,
+                "payloadBytes": 4255,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 3,
+            "nodes": 9175,
+            "jsEventListeners": 1591,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 0,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        }
+      ],
+      "editor": {
+        "status": "measured",
+        "trigger": "fallbackPollCallback",
+        "before": {
+          "value": "Implement the synthetic baseline task.Baseline native editor draft",
+          "start": 66,
+          "end": 66,
+          "focused": true,
+          "detailsOpen": true,
+          "selectValue": "Use your prompt"
+        },
+        "after": {
+          "value": "Implement the synthetic baseline task.Baseline native editor draft",
+          "start": 66,
+          "end": 66,
+          "focused": true,
+          "sameNode": true,
+          "sameDetailsNode": true,
+          "detailsStillAttached": true,
+          "detailsOpen": true,
+          "sameSelectNode": true,
+          "selectValue": "Use your prompt"
+        },
+        "draftRetained": true,
+        "focusRetained": true,
+        "selectionRetained": true,
+        "keyboardEndApplied": true,
+        "nativeTypingApplied": true,
+        "nodeRetained": true,
+        "nativeUndo": {
+          "handled": true,
+          "valueBeforeTyping": "Implement the synthetic baseline task.",
+          "valueAfterUndo": "Implement the synthetic baseline task.",
+          "restoredPriorWords": true
+        }
+      },
+      "retention": {
+        "status": "measured",
+        "trigger": "fallbackPollCallback",
+        "removedNodesDuringUpdate": 2,
+        "editedNodeReplacements": 0,
+        "openDisclosureReplacements": 0,
+        "openDisclosureKeptOpen": true,
+        "focusedSelectReplacements": 0,
+        "focusedSelectKeptChoice": true,
+        "choiceBefore": {
+          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
+          "open": "true",
+          "options": [
+            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
+          ],
+          "selected": "fact:3dbb86862e98aa27"
+        },
+        "choiceAfter": {
+          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
+          "open": "true",
+          "sameTrigger": true,
+          "samePopup": true,
+          "options": [
+            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
+          ],
+          "selected": "fact:3dbb86862e98aa27"
+        },
+        "scope": "The typed and focused goal and open disclosure over one fallback poll, then a selected prompt and open popup over thirteen fallback polls until the board paints. Each update changes row titles; the choice must be nonempty."
+      },
+      "navigation": [
+        {
+          "step": 0,
+          "documents": 3,
+          "nodes": 9791,
+          "jsEventListeners": 2777,
+          "removedNodeObservations": 5406,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 1,
+          "documents": 3,
+          "nodes": 10299,
+          "jsEventListeners": 3117,
+          "removedNodeObservations": 5784,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 2,
+          "documents": 3,
+          "nodes": 10807,
+          "jsEventListeners": 3443,
+          "removedNodeObservations": 6095,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 3,
+          "documents": 3,
+          "nodes": 11315,
+          "jsEventListeners": 3769,
+          "removedNodeObservations": 6406,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 4,
+          "documents": 3,
+          "nodes": 11823,
+          "jsEventListeners": 4095,
+          "removedNodeObservations": 6717,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 5,
+          "documents": 3,
+          "nodes": 12331,
+          "jsEventListeners": 4421,
+          "removedNodeObservations": 7028,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        }
+      ],
+      "navigationAfterCollection": [
+        {
+          "step": 0,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7028,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 1,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7339,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 2,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7650,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 3,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7961,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 4,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 8272,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 5,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 8583,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        }
+      ],
+      "leadership": {
+        "leaderAcquired": true
+      },
+      "sources": {
+        "driver": {
+          "sha256": "dbc201099da789d4279ce0b863320ae2eff6b5622ba71d7ec6897b25a4591eee",
+          "bytes": 31874
+        },
+        "fixture": {
+          "sha256": "5b2cb60eab33c5a3bb973e520241542cbc726f56fc59263afcbb8dc743926b36",
+          "bytes": 10222
+        }
+      },
+      "fixture": {
+        "ready": true,
+        "port": 4581,
+        "cohort": "small",
+        "state": "healthy",
+        "sequence": 1,
+        "session_count": 5,
+        "current_session": {
+          "harness": "claude",
+          "sid": "b0000000",
+          "project": "baseline-project"
+        },
+        "marker": "Baseline 1",
+        "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+        "page_bytes": 1720443,
+        "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+        "assembled_page_bytes": 1720443
+      }
+    },
+    {
+      "schema": 1,
+      "environment": {
+        "node": "v26.11.1",
+        "platform": "darwin",
+        "release": "27.0.0",
+        "arch": "arm64",
+        "cores": 10,
+        "loadAverageAtStart": [
+          3.98681640625,
+          3.48681640625,
+          3.626953125
+        ],
+        "chrome": {
+          "protocolVersion": "1.3",
+          "product": "HeadlessChrome/153.0.8010.12",
+          "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+          "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+          "jsVersion": "15.3.76.4"
+        }
+      },
+      "options": {
+        "port": 4581,
+        "samples": 3,
+        "navigations": 5
+      },
+      "methodology": {
+        "paint": "Actual /api/data fetch start to two animation frames after the fixture title is rendered; a frame boundary proxy, not compositor presentation time.",
+        "updateTrigger": "The page's own fallback-poll callback (the 20 s setInterval the live transport registers), captured from setInterval and invoked: the production background-poll path, including its focus/open-choice paint deferrals; no manual refresh bypass. The React page has no global poll function to call as the baseline did.",
+        "browserProfile": "One fresh owned profile per invocation. Each cohort gets one new-document load per invocation; later cohorts share cache with earlier cohorts. Repeat invocations for independent profiles, not independent cold-cache cohorts.",
+        "observers": "Main-window fetch/timer/WebSocket wrappers, primitive MutationObserver counts and long-task observer, identical to the baseline's, plus two declared additions: the setInterval wrapper keeps each callback (to invoke the poll) and an EventSource wrapper counts open streams.",
+        "sockets": "WebSocket instances only; TCP/socket descriptors are unavailable.",
+        "retention": "Removed node observations and CDP DOM counters are trends, not proof of retained detached-node memory.",
+        "statePaint": "Empty/unavailable have no unique sequence marker in production DOM; update-to-paint unavailable."
+      },
+      "cohorts": [
+        {
+          "cohort": "small",
+          "fixture": {
+            "ack": true,
+            "cohort": "small",
+            "state": "healthy",
+            "sequence": 2,
+            "session_count": 5,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 2",
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
+          },
+          "firstRenderMs": 144.59999999403954,
+          "firstGetToPaint": {
+            "sequence": 2,
+            "startedMs": 94.90000000596046,
+            "responseMs": 101.19999998807907,
+            "payloadBytes": 29634,
+            "sessionCount": 5,
+            "status": 200,
+            "paintedMs": 144.59999999403954,
+            "getToPaintMs": 49.69999998807907
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 3,
+              "startedMs": 147.90000000596046,
+              "responseMs": 152.90000000596046,
+              "payloadBytes": 29634,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 193.69999998807907,
+              "getToPaintMs": 45.79999998211861,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 4,
+              "startedMs": 234.19999998807907,
+              "responseMs": 239.69999998807907,
+              "payloadBytes": 29634,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 276.69999998807907,
+              "getToPaintMs": 42.5,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 5,
+              "startedMs": 317,
+              "responseMs": 324.40000000596046,
+              "payloadBytes": 29634,
+              "sessionCount": 5,
+              "status": 200,
+              "paintedMs": 377,
+              "getToPaintMs": 60,
+              "removedNodes": 0,
+              "fetchesForSequence": 2
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 6,
+                "startedMs": 420.69999998807907,
+                "responseMs": 426.40000000596046,
+                "payloadBytes": 4213,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 7,
+                "startedMs": 465.7999999821186,
+                "responseMs": 470.69999998807907,
+                "payloadBytes": 4253,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 4,
+            "nodes": 333,
+            "jsEventListeners": 655,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 1,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        },
+        {
+          "cohort": "median",
+          "fixture": {
+            "ack": true,
+            "cohort": "median",
+            "state": "healthy",
+            "sequence": 8,
+            "session_count": 50,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 8",
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
+          },
+          "firstRenderMs": 75.40000000596046,
+          "firstGetToPaint": {
+            "sequence": 8,
+            "startedMs": 27,
+            "responseMs": 44.099999994039536,
+            "payloadBytes": 238513,
+            "sessionCount": 50,
+            "status": 200,
+            "paintedMs": 75.40000000596046,
+            "getToPaintMs": 48.400000005960464
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 9,
+              "startedMs": 80.7999999821186,
+              "responseMs": 91.7999999821186,
+              "payloadBytes": 238513,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 125.40000000596046,
+              "getToPaintMs": 44.60000002384186,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 10,
+              "startedMs": 165.19999998807907,
+              "responseMs": 178.5,
+              "payloadBytes": 238565,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 208.59999999403954,
+              "getToPaintMs": 43.400000005960464,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 11,
+              "startedMs": 248.7999999821186,
+              "responseMs": 263.59999999403954,
+              "payloadBytes": 238565,
+              "sessionCount": 50,
+              "status": 200,
+              "paintedMs": 308.69999998807907,
+              "getToPaintMs": 59.900000005960464,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 12,
+                "startedMs": 349.90000000596046,
+                "responseMs": 356.19999998807907,
+                "payloadBytes": 4216,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 13,
+                "startedMs": 398.09999999403954,
+                "responseMs": 402.69999998807907,
+                "payloadBytes": 4256,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 6,
+            "nodes": 2242,
+            "jsEventListeners": 1672,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 0,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        },
+        {
+          "cohort": "large",
+          "fixture": {
+            "ack": true,
+            "cohort": "large",
+            "state": "healthy",
+            "sequence": 14,
+            "session_count": 250,
+            "current_session": {
+              "harness": "claude",
+              "sid": "b0000000",
+              "project": "baseline-project"
+            },
+            "marker": "Baseline 14",
+            "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "page_bytes": 1720443,
+            "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+            "assembled_page_bytes": 1720443
+          },
+          "firstRenderMs": 110,
+          "firstGetToPaint": {
+            "sequence": 14,
+            "startedMs": 23,
+            "responseMs": 65.80000001192093,
+            "payloadBytes": 1166963,
+            "sessionCount": 250,
+            "status": 200,
+            "paintedMs": 110,
+            "getToPaintMs": 87
+          },
+          "updates": [
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 15,
+              "startedMs": 113.19999998807907,
+              "responseMs": 148.5,
+              "payloadBytes": 1166963,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 175.59999999403954,
+              "getToPaintMs": 62.400000005960464,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 16,
+              "startedMs": 214.5,
+              "responseMs": 249.5,
+              "payloadBytes": 1166963,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 275.90000000596046,
+              "getToPaintMs": 61.400000005960464,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            },
+            {
+              "trigger": "fallbackPollCallback",
+              "sequence": 17,
+              "startedMs": 315.40000000596046,
+              "responseMs": 347.5,
+              "payloadBytes": 1166963,
+              "sessionCount": 250,
+              "status": 200,
+              "paintedMs": 376.40000000596046,
+              "getToPaintMs": 61,
+              "removedNodes": 0,
+              "fetchesForSequence": 1
+            }
+          ],
+          "states": [
+            {
+              "state": "empty",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 18,
+                "startedMs": 413.09999999403954,
+                "responseMs": 422.09999999403954,
+                "payloadBytes": 4215,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            },
+            {
+              "state": "unavailable",
+              "trigger": "fallbackPollCallback",
+              "request": {
+                "sequence": 19,
+                "startedMs": 462.5,
+                "responseMs": 466.80000001192093,
+                "payloadBytes": 4255,
+                "sessionCount": 0,
+                "status": 200
+              },
+              "updateToPaint": {
+                "status": "unavailable",
+                "reason": "No unique sequence marker rendered for this state"
+              },
+              "bodyText": "Sessions\nProjects\nAttention\nIntent log\n\u25cf 0 running \u00b7 0 subagents observed\nSession operations\n\nOpen a session to see what it is doing and where it stands.\n\nHow Intent and drift works\nClaude Code: Harness source could not be read; its sessions are missing here, not absent.\nACTIVE NOW\n0\n0 recently observed\nWORKING\n0\n0 waiting on you\nActive now\n\nworking, waiting on you, an exact request, or recorded drift\n\nNo exact session has active evidence right now.\n\nRecent history\nWhat recent means\n\nNo recent-history rows in this payload.\n\nAttention updated: 0 need you, 0 at risk"
+            }
+          ],
+          "footprint": {
+            "documents": 3,
+            "nodes": 9175,
+            "jsEventListeners": 1591,
+            "removedNodeObservations": 5,
+            "activeMainWindowTimeouts": 0,
+            "activeMainWindowIntervals": 2,
+            "activeWebSockets": 0,
+            "tcpSockets": {
+              "status": "unavailable",
+              "reason": "CDP does not expose process TCP descriptors"
+            },
+            "eventSourceConnections": {
+              "status": "measured",
+              "open": 0,
+              "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+            },
+            "retainedDetachedNodes": {
+              "status": "unavailable",
+              "reason": "DOM counters do not identify detached-node retention"
+            },
+            "longTasks": [],
+            "captureError": null
+          }
+        }
+      ],
+      "editor": {
+        "status": "measured",
+        "trigger": "fallbackPollCallback",
+        "before": {
+          "value": "Implement the synthetic baseline task.Baseline native editor draft",
+          "start": 66,
+          "end": 66,
+          "focused": true,
+          "detailsOpen": true,
+          "selectValue": "Use your prompt"
+        },
+        "after": {
+          "value": "Implement the synthetic baseline task.Baseline native editor draft",
+          "start": 66,
+          "end": 66,
+          "focused": true,
+          "sameNode": true,
+          "sameDetailsNode": true,
+          "detailsStillAttached": true,
+          "detailsOpen": true,
+          "sameSelectNode": true,
+          "selectValue": "Use your prompt"
+        },
+        "draftRetained": true,
+        "focusRetained": true,
+        "selectionRetained": true,
+        "keyboardEndApplied": true,
+        "nativeTypingApplied": true,
+        "nodeRetained": true,
+        "nativeUndo": {
+          "handled": true,
+          "valueBeforeTyping": "Implement the synthetic baseline task.",
+          "valueAfterUndo": "Implement the synthetic baseline task.",
+          "restoredPriorWords": true
+        }
+      },
+      "retention": {
+        "status": "measured",
+        "trigger": "fallbackPollCallback",
+        "removedNodesDuringUpdate": 2,
+        "editedNodeReplacements": 0,
+        "openDisclosureReplacements": 0,
+        "openDisclosureKeptOpen": true,
+        "focusedSelectReplacements": 0,
+        "focusedSelectKeptChoice": true,
+        "choiceBefore": {
+          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
+          "open": "true",
+          "options": [
+            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
+          ],
+          "selected": "fact:3dbb86862e98aa27"
+        },
+        "choiceAfter": {
+          "value": "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task.",
+          "open": "true",
+          "sameTrigger": true,
+          "samePopup": true,
+          "options": [
+            "First prompt \u00b7 01:45 \u2014 Implement the synthetic baseline task."
+          ],
+          "selected": "fact:3dbb86862e98aa27"
+        },
+        "scope": "The typed and focused goal and open disclosure over one fallback poll, then a selected prompt and open popup over thirteen fallback polls until the board paints. Each update changes row titles; the choice must be nonempty."
+      },
+      "navigation": [
+        {
+          "step": 0,
+          "documents": 3,
+          "nodes": 9791,
+          "jsEventListeners": 2775,
+          "removedNodeObservations": 5406,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 1,
+          "documents": 3,
+          "nodes": 10299,
+          "jsEventListeners": 3115,
+          "removedNodeObservations": 5784,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 2,
+          "documents": 3,
+          "nodes": 10807,
+          "jsEventListeners": 3441,
+          "removedNodeObservations": 6095,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 3,
+          "documents": 3,
+          "nodes": 11315,
+          "jsEventListeners": 3767,
+          "removedNodeObservations": 6406,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 4,
+          "documents": 3,
+          "nodes": 11823,
+          "jsEventListeners": 4093,
+          "removedNodeObservations": 6717,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 5,
+          "documents": 3,
+          "nodes": 12331,
+          "jsEventListeners": 4419,
+          "removedNodeObservations": 7028,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        }
+      ],
+      "navigationAfterCollection": [
+        {
+          "step": 0,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7028,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 1,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7339,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 2,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7650,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 3,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 7961,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 4,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 8272,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        },
+        {
+          "step": 5,
+          "documents": 1,
+          "nodes": 317,
+          "jsEventListeners": 742,
+          "removedNodeObservations": 8583,
+          "activeMainWindowTimeouts": 0,
+          "activeMainWindowIntervals": 2,
+          "activeWebSockets": 0,
+          "tcpSockets": {
+            "status": "unavailable",
+            "reason": "CDP does not expose process TCP descriptors"
+          },
+          "eventSourceConnections": {
+            "status": "measured",
+            "open": 1,
+            "reason": "Main-window EventSource wrapper; added over the pre-React baseline, which did not observe EventSource."
+          },
+          "retainedDetachedNodes": {
+            "status": "unavailable",
+            "reason": "DOM counters do not identify detached-node retention"
+          },
+          "longTasks": [],
+          "captureError": null
+        }
+      ],
+      "leadership": {
+        "leaderAcquired": true
+      },
+      "sources": {
+        "driver": {
+          "sha256": "dbc201099da789d4279ce0b863320ae2eff6b5622ba71d7ec6897b25a4591eee",
+          "bytes": 31874
+        },
+        "fixture": {
+          "sha256": "5b2cb60eab33c5a3bb973e520241542cbc726f56fc59263afcbb8dc743926b36",
+          "bytes": 10222
+        }
+      },
+      "fixture": {
+        "ready": true,
+        "port": 4581,
+        "cohort": "small",
+        "state": "healthy",
+        "sequence": 1,
+        "session_count": 5,
+        "current_session": {
+          "harness": "claude",
+          "sid": "b0000000",
+          "project": "baseline-project"
+        },
+        "marker": "Baseline 1",
+        "page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+        "page_bytes": 1720443,
+        "assembled_page_sha256": "b66438220bad6ed797b5ac67834bc9cf5b02559b27938741b3db6029becc922a",
+        "assembled_page_bytes": 1720443
       }
     }
   ],
