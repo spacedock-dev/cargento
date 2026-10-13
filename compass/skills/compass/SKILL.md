@@ -672,7 +672,7 @@ Sessions shows the elapsed wait without publishing the prompt's title or answer.
 Stock project trust and prompts before persistence are outside coverage. A missing
 adapter, disabled event lane, or expired reading leaves block state unavailable;
 restarting the dashboard does not recover a standing prompt.
-Follow [Pi setup](https://github.com/spacedock-dev/cargento/blob/main/HOW_TO_USE.md#report-pi-extension-prompts)
+Follow [Pi setup](https://github.com/spacedock-dev/compass/blob/main/HOW_TO_USE.md#report-pi-extension-prompts)
 to install the adapter.
 
 ### Copilot

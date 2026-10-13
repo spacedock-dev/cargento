@@ -287,7 +287,7 @@ lookups were unproven. That draft remains blocked before spending: it needs genu
 proof for those kinds, fresh independent marks and rubric review. Mechanical recovery tests
 do not establish complete-final empirical coverage or turn an earlier failure into a pass.
 
-A model-free audit after the [source identity repair](https://github.com/spacedock-dev/cargento/pull/504)
+A model-free audit after the [source identity repair](https://github.com/spacedock-dev/compass/pull/504)
 on 2026-10-06 recovered all five newest selected final replies from the exact bounded historical
 cuts using their canonical filenames. All 53 selected identity and time joins matched. Four
 prompts stayed unchanged because their excerpts were already whole; one restored a
