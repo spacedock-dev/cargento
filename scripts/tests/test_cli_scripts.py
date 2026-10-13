@@ -150,8 +150,13 @@ class PublishCliTest(unittest.TestCase):
         self.archives = self.root / "archives"
         self.archives.mkdir()
         self.calls = self.root / "gh-calls"
+        self.cwd = self.root / "gh-cwd"
         bin_dir = self.root / "bin"
-        write_program(bin_dir / "gh", f"printf '%s\\n' \"$*\" >> '{self.calls}'")
+        # The stand-in records its arguments and the directory it ran in: the real gh finds the
+        # repository from that directory, which has to be a checkout and not the archives.
+        write_program(
+            bin_dir / "gh", f"printf '%s\\n' \"$*\" >> '{self.calls}'; pwd >> '{self.cwd}'"
+        )
         self.env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
 
     def fill(self, version: str = "1.2.3", targets: tuple[str, ...] = TARGETS) -> None:
@@ -167,10 +172,24 @@ class PublishCliTest(unittest.TestCase):
         result = self.publish("v1.2.3", str(self.archives))
 
         self.assertEqual(0, result.returncode, result.stderr)
-        names = [f"compass_1.2.3_{target}.tar.gz" for target in TARGETS]
+        paths = [f"{self.archives}/compass_1.2.3_{target}.tar.gz" for target in TARGETS]
         self.assertEqual(
-            [f"release upload v1.2.3 {' '.join(names)} checksums.txt --clobber"],
+            [f"release upload v1.2.3 {' '.join(paths)} {self.archives}/checksums.txt --clobber"],
             self.calls.read_text(encoding="utf-8").splitlines(),
+        )
+
+    def test_it_runs_gh_from_where_it_was_started_and_not_inside_the_archives(self) -> None:
+        # gh learns the repository from its working directory. Inside the archive directory it
+        # failed with "not a git repository", which is how the first release attached nothing.
+        self.fill()
+        start = self.root / "checkout"
+        start.mkdir()
+
+        result = run([str(PUBLISH), "v1.2.3", str(self.archives)], env=self.env, cwd=start)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(
+            [str(start.resolve())], self.cwd.read_text(encoding="utf-8").strip().splitlines()
         )
 
     def test_the_checksums_are_the_lines_the_installer_reads(self) -> None:
