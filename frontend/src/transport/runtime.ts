@@ -194,6 +194,10 @@ export function createBoardRuntime(options: RuntimeOptions) {
       owned?.record.open(scope) ?? (() => undefined),
     readMoreRecord: (scope: RecordScope): Promise<void> =>
       owned?.record.more(scope) ?? Promise.resolve(),
+    /* The newest page again, once per change of the session's published activity, so what it writes while the
+       page is open is held here and never depends on the board's tail-bound context. */
+    refreshRecord: (scope: RecordScope, stamp: number): Promise<void> =>
+      owned?.record.refresh(scope, stamp) ?? Promise.resolve(),
     /* The one read the page makes for the reader: the older pages a reading their own press finished cites.
        It ends on the test, the record's start, a page that moved nothing, or RESOLVE_MAX_PAGES. */
     resolveRecord: (

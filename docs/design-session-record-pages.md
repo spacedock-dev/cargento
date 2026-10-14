@@ -133,6 +133,24 @@ or change what Analyze drift reads. Project context's history merge, workflow
 joins and semantic projections still consume that bounded store; the paged list
 does not depend on it.
 
+## Reading the newest end again
+
+The first page is a snapshot of the record's newest fifty message entries, and the board's own context
+carries only what lies in the newest 400,000 bytes of the transcript, plus a bounded number of agent
+messages. A page left open on a working session therefore saw a message arrive through the context and
+then lose it when large tool output moved the tail past it, though the record still held it. Measured on
+2026-10-14: the list rose from 66 to 74 entries and fell back to 66, eight entries lost, all of them
+absent from the opening snapshot and from the context's facts and present in the record, which grew
+from 96 to 105 messages.
+
+The page now asks for the newest page again when the session's published activity changes. The route
+and its cursors are unchanged and the server retains nothing: the byte cursor already binds a snapshot
+end, so an append never shifts an older page, and a request without `before` is the newest page. The
+page merges what comes back by `fact_id`, leaves the older cursor and paging state alone, and never
+drops an entry it holds. When more than one page arrived since the last read it follows older pages
+until the newest page meets an entry it already holds, up to 20 pages, and past that starts again from
+the newest entries and says so. [Reader state](design-reader-state.md#the-inventory) owns the rule.
+
 ## Reading for a finished press
 
 A reading cites what its press read, and a press reads further back than the board's tail-bound

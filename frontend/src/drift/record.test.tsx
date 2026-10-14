@@ -366,3 +366,128 @@ describe('a reader paging a session record', () => {
     expect(rows()).toHaveLength(0);
   });
 });
+
+/* A page left open while its session keeps writing. The board's context reaches back over the newest 400 KB
+   of the transcript only, so what it carries for a busy session is a moving tail, and an entry that arrives
+   after the page opened and then leaves that tail is in no loaded page. Measured on a working session: the list
+   rose from 66 to 74 entries and fell back to 66, eight entries lost, every number above them shifted. */
+describe('a reader leaving a session page open while it writes', () => {
+  const message = (n: number) =>
+    fact(`m${String(n)}`, 1000 + n, {
+      type: 'agent_message',
+      by: 'agent',
+      summary: `Message ${String(n)}`,
+    });
+  const world = (count: number) => ({
+    record: Array.from({ length: count }, (_, n) => message(n)),
+    tail: 3,
+  });
+  const mountLive = (live: ReturnType<typeof world>) =>
+    mountDrift({
+      session: { ...session, last_activity: 1000 },
+      routes: {
+        [path]: () =>
+          json(
+            pageBody({
+              entries: [...live.record].reverse(),
+              next: null,
+              reached_start: true,
+            }),
+          ),
+        '/api/project-context': () =>
+          json({
+            semantic: { facts: live.record.slice(-live.tail) },
+            sources: { work: { tool_reports: [] } },
+          }),
+      },
+    });
+  const board = (page: ReturnType<typeof mountLive>, stamp: number) => {
+    const data = page.state.data as { sessions: Record<string, unknown>[] };
+    return {
+      ...data,
+      generated: 1100 + stamp,
+      sessions: [{ ...data.sessions[0], last_activity: 1000 + stamp }],
+    };
+  };
+  const numbers = () =>
+    Object.fromEntries(rows().map((row) => [row.dataset['nextEntryId'], row.dataset['nextEntry']]));
+
+  it('keeps every entry it showed when the board tail moves past them, and no number moves', async () => {
+    const live = world(10);
+    const page = mountLive(live);
+    await page.settle();
+    expect(rows()).toHaveLength(10);
+    live.tail = 5;
+    for (let n = 10; n < 15; n += 1) live.record.push(message(n));
+    await page.poll(board(page, 1));
+    await page.settle();
+    expect(rows()).toHaveLength(15);
+    const before = numbers();
+    live.tail = 1;
+    await page.poll(board(page, 2));
+    await page.settle();
+    expect(rows()).toHaveLength(15);
+    expect(numbers()).toEqual(before);
+    expect(before['m12']).toBe('13');
+  });
+
+  it('bridges a burst of more than a page through the list and leaves Show more where it was', async () => {
+    // A record of 60 messages, then 120 more arrive between two polls. Pages are cut from the newest end, and a
+    // cursor names how many entries lie before its page, so an append never moves an older page.
+    const all = Array.from({ length: 60 }, (_, n) => message(n));
+    const served = (r: { url: string }) => {
+      const before = new URL(r.url, 'http://x').searchParams.get('before');
+      const end = before === null ? all.length : Number(before);
+      const start = Math.max(0, end - 50);
+      return json(
+        pageBody({
+          entries: all.slice(start, end).reverse(),
+          next: start === 0 ? null : String(start),
+          reached_start: start === 0,
+        }),
+      );
+    };
+    const page = mountDrift({
+      session: { ...session, last_activity: 1000 },
+      routes: {
+        [path]: served,
+        '/api/project-context': () =>
+          json({ semantic: { facts: [] }, sources: { work: { tool_reports: [] } } }),
+      },
+    });
+    await page.settle();
+    expect(rows()).toHaveLength(50);
+    for (let n = 60; n < 180; n += 1) all.push(message(n));
+    const data = page.state.data as { sessions: Record<string, unknown>[] };
+    await page.poll({
+      ...data,
+      generated: 1101,
+      sessions: [{ ...data.sessions[0], last_activity: 1001 }],
+    });
+    await page.settle();
+    expect(rows()).toHaveLength(170);
+    expect(rows()[0]?.dataset['nextEntryId']).toBe('m179');
+    expect(rows().at(-1)?.dataset['nextEntryId']).toBe('m10');
+    await press(more());
+    expect(rows()).toHaveLength(180);
+    expect(page.state.requests.filter((r) => r.path === path).at(-1)?.url).toContain('before=10');
+  });
+
+  it('reads the newest page when the session wrote and not when it did not', async () => {
+    const live = world(10);
+    const page = mountLive(live);
+    await page.settle();
+    expect(page.gets(path)).toBe(1);
+    await page.poll(board(page, 0));
+    await page.settle();
+    expect(page.gets(path)).toBe(1);
+    live.record.push(message(10));
+    await page.poll(board(page, 1));
+    await page.settle();
+    expect(page.gets(path)).toBe(2);
+    await page.poll(board(page, 1));
+    await page.settle();
+    expect(page.gets(path)).toBe(2);
+    expect(rows()[0]?.dataset['nextEntryId']).toBe('m10');
+  });
+});

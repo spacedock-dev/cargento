@@ -294,3 +294,159 @@ export const ReadingNamesEntriesItHasNotLoaded: Story = {
     await waitFor(() => expect(canvasElement.querySelector('[data-next-unloaded]')).toBeNull());
   },
 };
+
+/* A page left open while its session writes. The board's context reaches back over the newest 400 KB of the
+   transcript only, so an entry that arrives after the page opened and then leaves that tail used to drop off
+   the list, and every number above it moved. The page now reads the newest page again when the session's
+   activity changes, so what it showed stays. */
+interface GrowingWorld {
+  messages: number;
+  tail: number;
+  activity: number;
+  contextReads: number;
+  shell: ReturnType<typeof createShell> | null;
+  clock: ReturnType<typeof createFakeClock> | null;
+}
+const growing: GrowingWorld = {
+  messages: 0,
+  tail: 0,
+  activity: 0,
+  contextReads: 0,
+  shell: null,
+  clock: null,
+};
+const resetGrowing = () => {
+  growing.messages = 10;
+  growing.tail = 3;
+  growing.activity = 0;
+  growing.contextReads = 0;
+};
+const growingMessage = (n: number) => ({
+  fact_id: `m${String(n)}`,
+  at: 1900000000 - 1000 + n,
+  type: 'agent_message',
+  by: 'agent',
+  source_session: { harness: 'claude', sid: 's1' },
+  summary: `Synthetic message ${String(n)}`,
+  evidence: { source: 'transcript', confidence: 'exact' },
+});
+
+function GrowingRecordExample() {
+  const [shell] = useState(() => {
+    const history = fakeRouterEnvironment('#n=session:demo:claude:s1');
+    const clock = createFakeClock();
+    const made = createShell({
+      env: createFakeEnvironment({ clock }),
+      router: createRouter(history.env),
+      provider: () => fakeBackend(),
+      events: { addEventListener: () => undefined, removeEventListener: () => undefined },
+      search: '',
+      doc: null,
+      reducedMotion: () => true,
+      fetch: (url) => {
+        const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+        const all = Array.from({ length: growing.messages }, (_, n) => growingMessage(n));
+        if (url.startsWith('/api/data'))
+          return Promise.resolve(
+            json({
+              generated: 1900000000 + growing.activity,
+              annotate: true,
+              sessions: [
+                {
+                  harness: 'claude',
+                  sid: 's1',
+                  project: 'demo',
+                  project_key: '/demo',
+                  title: 'Synthetic growing record',
+                  state: 'working',
+                  started_at: 1900000000 - 3600,
+                  last_activity: 1900000000 + growing.activity,
+                  annotation_goal: 'Synthetic goal',
+                  annotation_revision: 1,
+                  annotation_at: 1900000000 - 1100,
+                  annotation_goal_saved_at: 1900000000 - 1100,
+                  annotation_window_start: 1900000000 - 1100,
+                },
+              ],
+            }),
+          );
+        if (url.startsWith('/api/session-record'))
+          return Promise.resolve(
+            json({
+              state: 'ok',
+              session: { harness: 'claude', sid: 's1' },
+              entries: [...all].reverse(),
+              next: null,
+              reached_start: true,
+              bound: null,
+              scanned_bytes: 65536,
+              kinds: ['user_message', 'agent_message'],
+            }),
+          );
+        if (url.startsWith('/api/project-context')) {
+          growing.contextReads += 1;
+          return Promise.resolve(
+            json({
+              semantic: { facts: all.slice(-growing.tail) },
+              sources: { work: { tool_reports: [] } },
+            }),
+          );
+        }
+        return Promise.resolve(json({}));
+      },
+    });
+    growing.shell = made;
+    growing.clock = clock;
+    return made;
+  });
+  useEffect(
+    () => () => {
+      shell.runtime.dispose();
+      shell.display.dispose();
+    },
+    [shell],
+  );
+  return <App shell={shell} />;
+}
+export const OpenPageKeepsWhatItShowed: Story = {
+  render: () => {
+    resetGrowing();
+    return <GrowingRecordExample />;
+  },
+  play: async ({ canvasElement }) => {
+    const rows = () => canvasElement.querySelectorAll('[data-next-entry-id]');
+    const numbers = () =>
+      Object.fromEntries(
+        [...rows()].map((row) => [
+          row.getAttribute('data-next-entry-id'),
+          row.getAttribute('data-next-entry'),
+        ]),
+      );
+    const poll = async () => {
+      const read = growing.shell?.runtime.refresh();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      growing.clock?.advance(500);
+      await read;
+    };
+    await waitFor(() => expect(rows()).toHaveLength(10));
+    // Five messages arrive, all still inside the board's tail, so the list rises.
+    growing.messages = 15;
+    growing.tail = 5;
+    growing.activity += 1;
+    await poll();
+    await waitFor(() => expect(rows()).toHaveLength(15));
+    const shown = numbers();
+    // Large tool output then pushes all but the newest message out of the tail. The page keeps them.
+    growing.tail = 1;
+    growing.activity += 1;
+    const reads = growing.contextReads;
+    await poll();
+    await waitFor(() => expect(growing.contextReads).toBeGreaterThan(reads));
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    await expect(rows()).toHaveLength(15);
+    await expect(numbers()).toEqual(shown);
+    await expect(shown['m12']).toBe('13');
+  },
+};

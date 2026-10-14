@@ -989,9 +989,11 @@ answer, which is unchanged. The list is ordered by time over every kind of entry
 the agent wrote sits between the prompts either side of it. Where the rows look grouped, the record read
 for the session holds no entry of the other kind in that stretch: the agent's messages come from the record pages, within the harness limits in the [page contract](design-session-record-pages.md#route-contract).
 
-Opening a session reads its newest fifty message entries once through `/api/session-record`.
-Show more alone requests each older page, up to fifty entries; no poll, manual refresh or idle
-control prefetches one. The page merges context and record facts by `fact_id`, with the record
+Opening a session reads its newest fifty message entries through `/api/session-record`, and reads
+the newest page again whenever the session's published activity changes, merging it by `fact_id`
+so an entry that arrives while the page is open is never lost when the board's tail-bound context
+moves past it. Show more alone requests each older page, up to fifty entries; no poll, manual
+refresh or idle control prefetches one. The page merges context and record facts by `fact_id`, with the record
 winning a conflict; checks and workflow facts still come from context. An unsaved direction
 opened from a record page keeps its words in the existing intent store across leaving and
 returning. Discarding record pages does not prove that its older source entry is gone; reconciliation
@@ -1007,8 +1009,8 @@ chosen by the reader wins. The paging control states loading, failure and retry,
 record start, unsupported harness and a stale restart. A stale response drops held pages and
 restarts once; another stale response waits for the reader. Once the oldest loaded record entry
 predates the intent window, the control is replaced by "Everything since your intent's window
-opened is listed." The [reader-state row](design-reader-state.md#the-inventory) owns the opening-only
-lifetime and abort on leave. `frontend/src/drift/record.test.tsx` and
+opened is listed." The [reader-state row](design-reader-state.md#the-inventory) owns the record's lifetime, its
+newest-end refresh and the abort on leave. `frontend/src/drift/record.test.tsx` and
 `frontend/src/transport/record.test.ts` hold paging and survival; `frontend/stories/RecordPages.stories.tsx`
 asserts each control state and scroll and focus during an append in Chromium.
 

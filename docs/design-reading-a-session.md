@@ -3780,8 +3780,10 @@ calls below on the issue; the rest follow the analysis.
   predicate the conflict block narrows to the unsettled ones, so the two cannot disagree. It stays
   flagged once settled, because settling says the baseline still applies, not that the direction was
   never given. It is never called drift (DEC-16).
-- The readability bound was retired on 2026-10-12. Opening reads the newest fifty message entries;
-  Show more alone reads each older page. Every loaded timed entry in the window is listed, and every
+- The readability bound was retired on 2026-10-12. Opening reads the newest fifty message entries and
+  the newest page is read again when the session's activity changes, so a message that arrives while the
+  page is open stays listed after the board's 400,000-byte tail moves past it; Show more alone reads each
+  older page. Every loaded timed entry in the window is listed, and every
   check and file in the window. A check or file from before the window is counted with the earlier
   entries and not drawn, where every listed one used to be. When nothing is numbered but the record
   holds earlier or untimed entries, the list says no entry is from after the window opened (or that

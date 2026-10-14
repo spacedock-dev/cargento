@@ -35,10 +35,13 @@ const ASSESSMENT = {
     },
   },
 };
+/* A real row always publishes its activity, and the page reads the newest record page again only when it
+   changes, so a poll that brings the same activity reads nothing. */
 const session = {
   annotation_assessment: ASSESSMENT,
   annotation_window_start: 100,
   annotation_reading_count: 1,
+  last_activity: 1000,
 };
 const FACTS = [check('c2', 600, 'passed')];
 const recordBody = (extra: Record<string, unknown> = {}) => ({
