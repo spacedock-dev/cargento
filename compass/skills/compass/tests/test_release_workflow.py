@@ -116,6 +116,59 @@ class JobGraphTest(unittest.TestCase):
         self.assertEqual({"contents": "read"}, load(RELEASE)["permissions"])
 
 
+class CiLimitsTest(unittest.TestCase):
+    """A release step that runs a command CI runs gets the limit CI gives it.
+
+    The first release run to use the shared frontend suite timed out at 3 minutes on a suite that
+    had passed, because the gate gave the same command 6. Nothing ties the two files together,
+    so a limit raised in one is forgotten in the other: this does.
+    """
+
+    @staticmethod
+    def command(step: dict[str, Any]) -> str:
+        return " ".join(code(step["run"]).split())
+
+    def ci_limits(self) -> dict[str, set[int]]:
+        found: dict[str, set[int]] = {}
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            if path == RELEASE:
+                continue
+            for job in (load(path).get("jobs") or {}).values():
+                for step in job.get("steps", []):
+                    if "run" in step and "timeout-minutes" in step:
+                        found.setdefault(self.command(step), set()).add(step["timeout-minutes"])
+        return found
+
+    def test_a_release_step_has_the_limit_ci_gives_the_same_command(self) -> None:
+        ci = self.ci_limits()
+        shared = 0
+        for name, job in jobs().items():
+            for step in job["steps"]:
+                if "run" not in step or "timeout-minutes" not in step:
+                    continue
+                twin = ci.get(self.command(step))
+                if not twin:
+                    continue
+                shared += 1
+                with self.subTest(job=name, step=step.get("name")):
+                    self.assertEqual(
+                        max(twin),
+                        step["timeout-minutes"],
+                        f"release.yml gives '{step.get('name')}' {step['timeout-minutes']} "
+                        f"minutes and CI gives the same command {max(twin)}. Keep them equal: "
+                        "when a limit rises in one workflow, raise it in the other.",
+                    )
+        # A guard on the guard: the frontend suite is shared, so some steps must match.
+        self.assertGreaterEqual(shared, 5)
+
+    def test_the_shared_frontend_suite_is_among_the_steps_held_equal(self) -> None:
+        ci = self.ci_limits()
+        self.assertIn("pnpm test", ci)
+        suite = [s for s in steps("verify-frontend") if s.get("run") == "pnpm test"]
+        self.assertEqual(1, len(suite))
+        self.assertEqual(max(ci["pnpm test"]), suite[0]["timeout-minutes"])
+
+
 class CredentialBoundaryTest(unittest.TestCase):
     def test_the_deploy_key_belongs_to_the_publishing_job_alone(self) -> None:
         for name, job in jobs().items():
