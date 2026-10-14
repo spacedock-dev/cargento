@@ -659,6 +659,12 @@ its worktree scratch copy. `JOURNEY_MUTATION=confirm-step` adds a confirmation b
 it must fail the three-click draft ceiling at four clicks. Production shard a carries the
 proof once, with shard membership pinned by `test_frontend_quality_gate.py`.
 
+The other end of the journey, from a stored reading to a copied correction, is held by a unit
+test in the pre-PR suite, `frontend/src/drift/CopiedCorrectionPresses.test.tsx`. It starts on the
+Sessions list and counts activations the same way: the row's goal link, Steer back, Copy, three
+in all, with no model request and no post besides composing the correction and recording the
+copy. Making Copy need a second press fails it on the clipboard assertion.
+
 ## Project views, steering and the Console
 
 Deviations (2026-10-12): The recovery strip uses Where this project stands, Current task,
