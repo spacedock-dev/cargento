@@ -2129,7 +2129,8 @@ qualifies the producer against it.
    others, as SECURITY.md says. A substituted command is shown as `$(…)` and a trailing comment is
    dropped. Clipped to 120 characters; the last 180 characters of
    output, the existing ledger cap, with redaction run over the whole read window first; a
-   written path relative to the working directory; and, for a segment that is neither a check nor
+   written path relative to the session's working directory, the folder it began in, which a later
+   `cd` does not move; and, for a segment that is neither a check nor
    on the read-only list, its time only, never its text, used on this machine. No file content is read as a field, and never an
    Edit or Write result body; the output tail is whatever the runner printed.
 6. Where it lives: the observed record only, as a new fact type the reading counts as work. It is
@@ -2523,7 +2524,7 @@ and item 3's measured note that a written path comes only from a file-write tool
    check or another unplaced run. Checks in a known directory still share their existing identity;
    no guessed folder is published.
 2. A file redirect on a check segment is a recorded write by its call, its target read from the
-   directory that segment ran in. A target inside the working directory is published as a written
+   directory that segment ran in. A target inside the session's working directory is published as a written
    path, as a file-write tool's path is, through the same redaction. A target outside it, or one the
    shell decides when it runs (a `$` expansion, a substitution, `~`, a withheld word), is counted in
    `outside_paths` and never published. So is a target that masking would change, or that holds
@@ -2596,8 +2597,14 @@ the measured note that DEC-23 reads the root session's calls alone.
    `before_last_change`, `changed_after` and `last_changing_command_at` exactly as the parent's
    do. A parent write after a subagent's pass ages it the same way, and one subagent's write ages
    another's pass. A subagent working in another checkout still ages the parent's passes, as a write
-   outside the working directory always has, and its written paths are relative to its own working
-   directory.
+   outside the working directory always has. Its written paths are read from the session's working
+   directory like the parent's, so two checkouts under it that each write `src/main.py` publish two
+   distinct paths and count as two files, and a checkout outside it is counted and never published
+   (DRC-4755). The session's directory is the first one its transcript records, because a `cd` moves
+   the `cwd` of every later record: reading a path from the record's own `cwd` published a bare
+   filename for a session that had changed folder, and "Where the work went" then read "The working
+   directory" (DRC-4884). A relative path is still placed where the tool ran it, in that record's
+   `cwd`.
 5. One order across all of them. Each transcript keeps its own order, and the transcripts are
    merged by call time, the parent's first at a tie. The result time decides which run of a check
    is latest, across parent and subagent alike, as item 4 of the 2026-09-27 amendment set it; every

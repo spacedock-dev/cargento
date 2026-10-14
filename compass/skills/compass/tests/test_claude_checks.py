@@ -520,6 +520,57 @@ class WhatAReaderSeesOfTheFilesASessionWrote(ClaudeChecksTestCase):
         self.assertEqual([], events)
         self.assertEqual(1, scan["outside_paths"])
 
+    def enter(self, folder: str) -> str:
+        """The agent ran `cd`: every later record carries the folder as its cwd,
+        while the first record still names the folder the session began in."""
+        moved = self.cwd / folder
+        moved.mkdir(parents=True, exist_ok=True)
+        self.session.cwd = str(moved)
+        return str(moved)
+
+    def test_a_write_after_a_cd_reads_relative_to_the_session_directory(self) -> None:
+        self.session.bash("true", "", is_error=False)
+        moved = self.enter("web/src")
+        self.session.edit(self.file("web/src/Consent.tsx"))
+        self.session.edit(str(Path(moved) / "Consent.test.tsx"))
+        events, scan = self.read()
+        self.assertEqual(
+            ["web/src/Consent.test.tsx", "web/src/Consent.tsx"],
+            sorted(event["title"] for event in events),
+        )
+        self.assertEqual(2, scan["written_paths"])
+        self.assertEqual(0, scan["outside_paths"])
+
+    def test_a_relative_write_after_a_cd_is_placed_where_the_tool_ran_it(self) -> None:
+        self.enter("web/src")
+        call_id = self.session.call("Edit", {"file_path": "Consent.tsx", "old_string": "a"})
+        self.session.result(call_id, "updated")
+        events, _scan = self.read()
+        self.assertEqual(["web/src/Consent.tsx"], [event["title"] for event in events])
+
+    def test_a_redirect_after_a_cd_reads_relative_to_the_session_directory(self) -> None:
+        self.enter("web")
+        self.session.bash("pytest > out.txt", "", is_error=False)
+        events, scan = self.read()
+        self.assertEqual(["web/out.txt"], [e["title"] for e in events if e["subject"] == "write"])
+        self.assertEqual(0, scan["outside_paths"])
+
+    def test_a_write_outside_the_session_directory_after_a_cd_is_counted_not_listed(self) -> None:
+        self.enter("web/src")
+        self.session.write(str(self.root / "elsewhere" / "notes.md"))
+        self.session.write("../../../../elsewhere.md")
+        events, scan = self.read()
+        self.assertEqual([], events)
+        self.assertEqual(2, scan["outside_paths"])
+        self.assertEqual(0, scan["written_paths"])
+
+    def test_a_cd_above_the_session_directory_does_not_publish_a_parent_relative_path(self) -> None:
+        self.session.cwd = str(self.root / "work")
+        self.session.write(str(self.root / "work" / "other" / "x.py"))
+        events, scan = self.read()
+        self.assertEqual([], events)
+        self.assertEqual(1, scan["outside_paths"])
+
     def test_a_reader_never_sees_what_a_file_said(self) -> None:
         self.session.write(self.file("src/retry.py"), content="WRITTEN_BODY_SENTINEL")
         self.session.edit(self.file("src/retry.py"), old="OLD_SENTINEL", new="NEW_SENTINEL")

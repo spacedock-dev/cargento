@@ -120,6 +120,29 @@ class TheLiveEstimateTest(_Replay):
         self.assertEqual(failing[0]["fact_id"], high["rose_at"])
         self.assertIn(levels.REASON_FAILED_CHECK, high["reasons"])
 
+    def test_a_session_that_changed_folder_reads_its_writes_from_where_it_began(self) -> None:
+        # The record's cwd follows a `cd`, so a write read from it was a bare `a.py`, under
+        # none of the folders the intent names (DRC-4884).
+        began = self.root / "work" / "billing"
+        (began / "src").mkdir()
+        self.session.cwd = str(began / "src")
+        self.session.write(self.session.cwd + "/a.py")
+        seen: list[levels.Evidence] = []
+        live_level = levels.live_level
+
+        def spy(evidence: levels.Evidence, intent: levels.Intent) -> levels.Level:
+            seen.append(evidence)
+            return live_level(evidence, intent)
+
+        with mock.patch.object(levels, "live_level", spy):
+            self.estimate()
+        self.assertTrue(seen)
+        for evidence in seen:
+            self.assertEqual(str(began), evidence.cwd)
+        self.assertEqual(
+            ["src/a.py"], [f["summary"] for f in seen[-1].facts if f.get("subject") == "write"]
+        )
+
     def test_it_reads_not_enough_recorded_yet_with_too_little_recorded(self) -> None:
         # Only a prompt and a write: no check whose latest run passed.
         self.session.rows = self.session.rows[:1]
