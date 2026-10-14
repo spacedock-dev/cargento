@@ -1,3 +1,4 @@
+import { SampleBeside, SampleMark } from '../sample/SampleMark';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import type { ReactNode } from 'react';
@@ -167,16 +168,18 @@ function FindingJump({ row }: { readonly row: Criterion }) {
         ? `Expected outcome line ${row.key === 'output' ? '1' : row.key.slice(5)}`
         : 'What the agent claimed';
   return (
-    <Button
-      type="button"
-      variant="bare"
-      data-next-cockpit-action="finding-jump"
-      data-next-finding={row.key}
-      aria-label={`Show cited entries in Session activity for ${constraint}: ${row.clause}`}
-      onClick={() => chooseFinding(row.key)}
-    >
-      Show cited entries
-    </Button>
+    <SampleBeside id={row.key === 'goal' ? 'cited' : ''}>
+      <Button
+        type="button"
+        variant="bare"
+        data-next-cockpit-action="finding-jump"
+        data-next-finding={row.key}
+        aria-label={`Show cited entries in Session activity for ${constraint}: ${row.clause}`}
+        onClick={() => chooseFinding(row.key)}
+      >
+        Show cited entries
+      </Button>
+    </SampleBeside>
   );
 }
 
@@ -220,6 +223,7 @@ function ResultAnswer({
           {lead}
           <span>{RESULT_DEPARTS}</span>
           <span className="next-cockpit-result-count">{count}</span>
+          <SampleMark id="analysis" />
         </h3>
         {primary}
         {answer.departures.map((row) => (

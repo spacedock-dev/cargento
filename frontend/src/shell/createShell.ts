@@ -8,13 +8,15 @@ import {
   type BrowserRuntimeOptions,
 } from '../transport/browser';
 import type { Environment, EventSourceLike } from '../transport/ports';
-import { createAnnouncer } from './announcer';
+import { createAnnouncer, type Announcer } from './announcer';
 import type { Shell, ShellHost } from './context';
 
 export interface ShellOptions
   extends Pick<BrowserRuntimeOptions, 'fetch' | 'provider' | 'events' | 'search' | 'doc'> {
   readonly env?: Environment;
   readonly router?: Router;
+  /** A second shell (the sample session's) speaks through the page's own live regions. */
+  readonly announcer?: Announcer;
   readonly host?: Partial<ShellHost>;
   readonly clipboard?: ControlsDeps['clipboard'];
   readonly reducedMotion?: () => boolean;
@@ -56,7 +58,7 @@ export function createShell(options: ShellOptions = {}): Shell {
       now: () => Date.now(),
     });
   const reducedMotion = options.reducedMotion ?? prefersReducedMotion;
-  const announcer = createAnnouncer();
+  const announcer = options.announcer ?? createAnnouncer();
   const display = createDisplayGate({
     clock: env.clock,
     reducedMotion,

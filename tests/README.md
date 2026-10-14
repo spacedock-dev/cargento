@@ -16,6 +16,11 @@ tests/annotated_sessions/<session_id>/
 
 ## What is committed, and what is not
 
+One session is the recorded exception: the anonymized example behind the Sample session (view only) is
+committed in full, with the owner's approval on 2026-10-14, because the sample is only worth having
+if a reader can see the real record behind it. It lives in [sample-session/](../sample-session/README.md),
+not here, and the rule below still holds for everything under `tests/`.
+
 The full session log stays on the machine that made it. Teammates are not comfortable having
 session transcripts in a public repository, even sanitized, so `.gitignore` excludes every
 `*.jsonl` under both directories. Only what each annotation needs is committed:

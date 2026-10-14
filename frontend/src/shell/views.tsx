@@ -1,3 +1,4 @@
+import { SampleInvite } from '../sample/SampleInvite';
 import { buttonVariants } from '../ui/button';
 import { payloadSessions } from '../api/bootstrap';
 import { compatSessKey } from '../api/identity';
@@ -15,6 +16,8 @@ import { RouteLink } from './RouteLink';
 import { useDisplayed } from './context';
 import { AttentionView } from '../attention';
 import { IntentLog } from '../intent';
+import { SampleSession } from '../sample/SampleSession';
+import { isSampleRoute } from '../sample/ids';
 import { SessionDetail, SessionsView } from '../sessions';
 import { PROJECT_SLOTS, ProjectDetail, ProjectsView } from '../project';
 import type { Row } from '../observed';
@@ -90,7 +93,13 @@ function ProjectsBranch() {
 }
 
 function TopLevelView({ route }: { readonly route: TopLevelRoute }) {
-  if (route.view === 'sessions') return <SessionsBranch />;
+  if (route.view === 'sessions')
+    return (
+      <>
+        <SampleInvite />
+        <SessionsBranch />
+      </>
+    );
   if (route.view === 'projects') return <ProjectsBranch />;
   /* The Intent log states its own absences (annotations off, store unreadable, still reading), so it
      draws before the first payload as well: it names what it is waiting for rather than a blank. */
@@ -214,7 +223,14 @@ function ProjectView({ route }: { readonly route: ProjectRoute }) {
 export function RoutedView({ route }: { readonly route: Route }) {
   switch (route.view) {
     case 'session':
-      return <SessionView route={route} />;
+      /* The sample reads its own shell, so it never depends on, or touches, the board this page is polling. */
+      return isSampleRoute(route) ? (
+        <SampleSession>
+          <SessionView route={route} />
+        </SampleSession>
+      ) : (
+        <SessionView route={route} />
+      );
     case 'project':
       return <ProjectView route={route} />;
     default:
