@@ -99,7 +99,7 @@ shipped skill body, lives in the `sync-docs` skill at `.claude/skills/sync-docs/
 | `docs/development-tracking.md` | **Canonical** development taxonomy: promise IDs, journey labels, board columns, moves and tracker copies. It links to the public promise map without putting tracker provenance into that map. |
 | `docs/design-runtime-architecture.md` | **Canonical** module map: what each runtime file owns, which way dependencies run, and how config/state/application are held. |
 | `docs/design-reader-state.md` | **Canonical** rule for what survives a board refresh: one row per thing a reader can leave in the page, which React owner keeps it, and — for the two it does not manage — why. The code cites it instead of repeating it. |
-| `docs/design-frontend-migration.md` | The React frontend: its boundaries, the recorded answers it is held to, its deviations from the retired page and why, and the measurement method. `scripts/frontend-migration.json` maps the retired page's parts, surfaces, routes, reader state and browser storage to owners and proofs; `scripts/frontend_inventory.py` checks that each row is owned and names proofs that exist. |
+| `docs/design-frontend-migration.md` | The React frontend: its boundaries, the recorded answers it is held to, its deviations from the retired page and why, and the retired measurement method and its recorded figures. `scripts/frontend-migration.json` maps the retired page's parts, surfaces, routes, reader state and browser storage to owners and proofs; `scripts/frontend_inventory.py` checks that each row is owned and names proofs that exist. |
 | `docs/design-reading-a-session.md` | **Canonical** record of the four rulings that govern what Compass may say about a session against the words a reader typed: the evidence floor and the reader-requested model overlay, whether an assessment may be stored, that Compass never writes into a session, and the seven-rule shape contract a reading must satisfy. The runtime cites its headings, because three of those rules are built into the producer rather than checked after it. |
 | [docs/design-adapter-packaging.md](docs/design-adapter-packaging.md) | **Canonical** adapter admission and packaging contract: identity normalizers, hook-shaped mappings, and implementation-language boundaries. |
 | `docs/design-*.md` | Durable design rationale, including alternatives that were tried and rejected. Each links to the architecture owner rather than repeating its module map. |
@@ -341,9 +341,7 @@ the build reads (a source file, `page.py`'s font table, the font rows of `styles
 produce a conflict where **each side is correct for a tree that no longer exists**, so a textual
 resolution ships an artifact that matches neither. Resolve the sources, then rebuild with `pnpm build`
 and check with `pnpm build:check`, which fails when the tracked files differ from a clean build of the
-tree. Do not choose a side of the generated files. A page that changes also changes the digest the
-fluidity receipt binds, so `python3 scripts/frontend_cutover.py check --final` says when the page needs
-measuring again.
+tree. Do not choose a side of the generated files.
 
 **The recorded answers are the opposite case.** `frontend/test/golden/` holds what the retired page
 said, and the page that produced it no longer exists, so it cannot be regenerated. A conflict or a diff

@@ -11,8 +11,9 @@ Adopted with the reader-state contracts intact. The last measured page stayed in
 the layer records below describe the browser proofs and platform checks that were run. The original go
 decision required repeated Linux production drift checks for the disclosure and popover layers after the
 spike crashed Chromium's renderer. Those layers record their qualification separately from the spike
-findings. Each change to the page still requires fresh fluidity measurements and a recomposed receipt,
-because the Python suite checks its final form on every pull request. The work was larger than installing
+findings. While the receipt existed, each change to the page required fresh fluidity measurements and a
+recomposed receipt, because the Python suite checked its final form on every pull request. The tooling and
+the receipt were retired on 2026-10-14, so those measurements are the last ones. The work was larger than installing
 a package: ten things broke or silently misbehaved under a naive install, each listed below.
 
 The ten, in the order they are met:
@@ -270,9 +271,9 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
 
 ### What the gates already require, and what broke
 
-- `scripts/tests/test_frontend_cutover.py` runs `frontend_cutover.py check --final` against the committed
-  receipts, in the Python suite, on every pull request. Any change to the page therefore turns the Python
-  jobs red until the fluidity receipt is re-measured and composed again. The earlier assumption that only the
+- `scripts/tests/test_frontend_cutover.py` ran `frontend_cutover.py check --final` against the committed
+  receipts, in the Python suite, on every pull request, until both were retired on 2026-10-14. Any change to
+  the page therefore turned the Python jobs red until the fluidity receipt was re-measured and composed again. The earlier assumption that only the
   release hold reads the final form was wrong. Every layer re-measures three times (about 45 seconds on this
   machine) and recomposes; `compose` does not carry the embedded legacy control block over, so the layer
   restores it, and this should be one command.
@@ -309,10 +310,10 @@ vitest suite (1,432 tests at the time). The full proof set was not run on the br
 ## Rules every layer follows
 
 1. One stack. Component layers change `react.html`, so they land in dependency order from one stack, each rebuilt
-   from a clean `node_modules`. Every layer changing the page re-measures fluidity three times and recomposes the receipt, because
-   the Python suite checks the final form on every pull request, so each layer's page is release-qualified when
-   it merges. The release hold stays. A merged layer that regresses is reverted by its own pull request and its
-   receipts reconciled.
+   from a clean `node_modules`. Every layer changing the page re-measured fluidity three times and recomposed the receipt, because
+   the Python suite checked the final form on every pull request, so each layer's page was release-qualified when
+   it merged. The release hold stayed until 1.0.0. A merged layer that regressed was reverted by its own pull
+   request and its receipts reconciled.
 2. Keep public APIs: `Disclosure`, `ActionButton` and `HeldTextarea` keep their props.
 3. Own the code. A component is vendored into `frontend/src/ui/` in the layer that first uses it, tuned to
    Compass's scale, with a header naming the upstream component, the CLI version, the registry source and a
@@ -395,8 +396,8 @@ Measured on 2026-10-10: the page grows from 1,376,448 to 1,376,752 bytes, an inc
 stays byte for byte at 701,374 bytes; CSS grows by 229 bytes for layers and bridged variables, with no
 utility rules and no imports in the built CSS. Three fresh fluidity runs pass every budget, retain
 native editor state and settle resource counts after collection. The historical legacy control is
-preserved by `python3 scripts/frontend_cutover.py remeasure`, which first checks the clean build and
-leaves the previous receipt untouched if measurement fails.
+preserved by the cutover tooling's `remeasure` command (since retired), which first checked the clean build and
+left the previous receipt untouched if measurement failed.
 
 All development and production proofs pass on macOS, including the owned development worker and
 terminal's first asset load. Both CSS bundle modes keep the exception inventory unchanged across

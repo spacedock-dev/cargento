@@ -76,7 +76,6 @@ MODULE_COST: dict[str, float] = {
     "test_qualification_semantic_measurement": 137.0,
     "test_release_transition": 130.0,
     "test_claude_route_verification": 58.0,
-    "test_frontend_cutover": 57.0,
 }
 DEFAULT_COST = 2.0
 

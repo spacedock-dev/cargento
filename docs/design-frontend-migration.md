@@ -33,8 +33,7 @@ Live observations, assertion shapes,
 case counts and all golden bytes remain unchanged. These are test projections, with no
 runtime fallback for old stores, storage keys or environment variables.
 The same mechanical rename changes literals in the retained retired-page script parts;
-their earlier source bindings require renewed evidence. Recorded measurement receipts
-remain untouched and cannot certify these renamed source bytes.
+their earlier source bindings require renewed evidence.
 The Python tests use `tests/recorded_name.py` to restore only the three name
 spellings before comparing retained study source and final reading headers with their
 historical byte pins. Every original size and digest remains unchanged, and all other
@@ -515,7 +514,7 @@ The controls proof measures popup node, position, value and options across held 
 it open across manual refresh and the twelve-poll cap. The fluidity driver measures a nonempty
 chosen prompt and open popup over thirteen fallback polls, separately from native editor focus
 and undo. A synthetic transcript for its current session supplies the real prompt endpoint;
-cohort rows retain the baseline shape. The coordinator owns the fresh fluidity runs and receipt. Removing the native prompt-wrapper rule lowers hand-written CSS by 100 bytes to 123,040; its coverage key is retired with the rule.
+cohort rows retain the baseline shape. Removing the native prompt-wrapper rule lowers hand-written CSS by 100 bytes to 123,040; its coverage key is retired with the rule.
 
 DEC-27 trims the first view: one optional outcome line, its Add and Remove controls after use,
 Undo after a goal edit or prompt choice, and six groups in the session-scoped More disclosure. Saved reads-from and
@@ -764,41 +763,47 @@ baseline medians with a documented noise margin; bundle growth has its own expli
 Edited or open nodes must not be replaced by unrelated updates. Resource counts must settle rather
 than grow with navigation. A fast component test is not a browser performance measurement.
 
-[The pre-React receipt](frontend-baseline.json) records three complete runs: three first-render
-observations and nine poll observations per cohort. It is historical: the probe and the fixture that
-produced it were removed with the legacy page, so the baseline cannot be re-measured, and the file is
-kept as it was taken. Its budgets and medians derive from the runs it embeds, and the React receipt binds
-it by digest. The 5/50/250 cohorts are controlled scenarios, not a measured distribution of real users.
-Each run started a fresh browser profile; later cohorts shared that profile and may reuse browser/font
+Retired on 2026-10-14. The tooling that composed and checked these measurements
+(`scripts/frontend_cutover.py`, the fluidity driver and its fixture) and the three receipts it read
+(`docs/frontend-baseline.json`, `docs/frontend-fluidity.json` and `docs/frontend-cutover-receipt.json`) were
+removed once the default had flipped to React and the legacy page was gone. The baseline they compared
+against could not be re-measured, and the Python suite checked the fluidity receipt against the digest of the
+built page, so every change to the page turned the suite red until someone re-measured in Chrome and
+recomposed the receipt. What follows is the record of what was measured and ruled. The files are in git
+history at `16591221` and earlier. Nothing now re-measures these budgets, so a change that could move first
+render, poll-to-paint or retained listeners is measured by hand, the way the method above describes.
+
+The pre-React baseline recorded three complete runs: three first-render observations and nine poll
+observations per cohort. The probe and the fixture that produced it were removed with the legacy page, so it
+could not be re-measured. Its budgets and medians derived from the runs it embedded. The 5/50/250 cohorts
+are controlled scenarios, not a measured distribution of real users. Each run started a fresh browser profile; later cohorts shared that profile and may reuse browser/font
 caches. Update samples invoked the actual `nextRefreshPoll` path, not a manual refresh that bypasses its
 open-select hold. The metric ends two animation frames after the title marker appears, so it is a
 frame-boundary proxy rather than proof of compositor presentation.
 
-The baseline receipt bound the runtime page and both measurement scripts by digest. On the same recorded
+The baseline bound the runtime page and both measurement scripts by digest. On the same recorded
 machine/browser/method, the timing budget is the baseline median multiplied by 1.5 plus 50 ms.
 The historical core HTML budget allowed 25% growth; packaging accounts separately for the optional terminal. These are
 comparison budgets, not cross-platform CI deadlines. Native goal typing kept words, caret and
 focus in every run, while its node was replaced. Correction undo and composition remain separate
 browser obligations. TCP, EventSource resource counts and retained detached nodes were not measured.
 
-[The React receipt](frontend-fluidity.json) holds three complete runs of `scripts/frontend_fluidity.mjs`
-against the assembled React page, on the same platform, fixtures, browser family and method as the
-baseline, composed and judged by `scripts/frontend_cutover.py`. The driver began as the baseline driver and
-differs from it in seven ways, listed in the receipt. The React page has no global poll function, so the update
+The React measurement held three complete runs of the fluidity driver against the assembled React page, on
+the same platform, fixtures, browser family and method as the baseline. The driver began as the baseline
+driver and differed from it in seven ways. The React page has no global poll function, so the update
 trigger is the page's own 20 second fallback-poll callback, captured from `setInterval` and invoked: the
 background-poll path with its open-select and motion deferrals, not a manual refresh. The runs also count
 open streams and removed nodes per update, hold an opened disclosure and the prompt select beside the typed
-goal, check that native undo survives, and read a second navigation series after a forced collection. A
-test pins the digest of the shared instrumentation, which was held line by line to the baseline's own
-text, apart from the additions it declares, while the baseline probe existed. A control block, taken on
-the day of the runs, re-ran the unchanged baseline driver and page with the same Chrome, so machine drift
-was visible: its medians sit within noise of the recorded baseline. It is embedded as it was taken and
-cannot be taken again.
+goal, check that native undo survives, and read a second navigation series after a forced collection. The
+shared instrumentation was held line by line to the baseline's own text, apart from the additions it
+declared, while the baseline probe existed. A control block, taken on the day of the runs, re-ran the
+unchanged baseline driver and page with the same Chrome, so machine drift was visible: its medians sat
+within noise of the recorded baseline.
 
-The retirement figures below are historical. Later layers refresh the receipt's runs and record their
-measurements in [the adoption record](design-shadcn-adoption.md#toolchain-layer).
+The figures below are historical. Later layers recorded their measurements in
+[the adoption record](design-shadcn-adoption.md#toolchain-layer).
 
-At retirement on 2026-10-10 (Chrome 156.0.8078.12 against the baseline's 156.0.8078.4, a load average near 4 on ten
+At the legacy page's retirement on 2026-10-10 (Chrome 156.0.8078.12 against the baseline's 156.0.8078.4, a load average near 4 on ten
 cores, measured against the final shipped page after the last rebuild) every timing budget passed by a wide
 margin. First-render medians were 124.3, 95.0 and 128.5 ms against budgets of 199.1, 159.5 and 192.8;
 poll-to-paint medians were 46.8, 47.0 and 63.5 ms against 119.8, 121.4 and 146.4; no run recorded a long
@@ -812,11 +817,10 @@ were. The typed goal, an opened disclosure and the focused prompt select kept th
 that changed every row title, and the draft, caret, focus and native undo survived, where the baseline
 replaced the goal node on every poll. The cohort polls removed no node; the editor update removed two.
 
-The ceiling is no longer the baseline's. On 2026-10-10 the owner re-based it to a fixed 2,000,000 bytes
-(`CORE_HTML_CEILING_BYTES` in `scripts/frontend_cutover.py`, recorded in the receipt's `budget_policy`) because the
-page is served from the reader's machine and the time budgets measure the cost the size stood in for. The
-baseline's own record keeps its figure and its digest. A layer that needs more raises the constant in its own
-pull request with its measured times; see [the adoption record](design-shadcn-adoption.md).
+The ceiling stopped being the baseline's. On 2026-10-10 the owner re-based it to a fixed 2,000,000 bytes
+because the page is served from the reader's machine and the time budgets measure the cost the size stood in
+for. The baseline's own record kept its figure and its digest. A layer that needed more raised the ceiling in
+its own pull request with its measured times; see [the adoption record](design-shadcn-adoption.md).
 
 Read the baseline's way, with no collection forced, the page's JavaScript event listeners grow by 37 per
 navigation round (1,815 to 2,000 across five rounds through Projects, Attention and Sessions) where the
@@ -826,59 +830,35 @@ collection before each reading, listeners, nodes and documents are exactly const
 three runs, so the raw growth is detached nodes the browser had not yet collected, not retained ones. The rule
 is that resource counts must settle rather than grow with navigation, and retained growth is what matters, so
 the settle criterion is evaluated after a forced collection: every counter must be exactly constant across
-the five rounds, and a mutation that leaves a count higher after collection fails it. The uncollected series
-stays in the receipt as `gc_pending`, round by round beside the legacy page's own, informational and not a
+the five rounds, and a mutation that left a count higher after collection failed it. The uncollected series
+was kept in the receipt as `gc_pending`, round by round beside the legacy page's own, informational and not a
 budget. The forced-collection criterion was ruled by the migration lead at cutover review on 2026-10-09,
 under the owner's standing delegation; the owner has not reviewed it. The first composition judged the
 raw listener series and recorded it as a failed budget, and that receipt was recomposed from its own runs
 under the ruling. A later rebuild changed the page, and the runs recorded here were taken against that final
 page and judged under the ruling from the start.
 
-```bash
-python3 scripts/frontend_cutover.py remeasure --chrome "$COMPASS_FLUIDITY_CHROME"
-python3 scripts/frontend_cutover.py check --final
-```
-
-The first command verifies that the tracked bundle matches a clean build, runs the driver three times
-in an owned temporary directory, recomposes only after every budget passes, and preserves the embedded
-historical `legacy_control` block. It does not require a committed tree; the build check prevents stale
-source provenance from being measured. The driver owns its browser, backend and ports
-(4581 to 4586, 4594, 4595 and 4597 to 4599) and refuses a busy one. Its fixture
-(`scripts/frontend_fluidity_fixture.py`) serves the baseline's cohorts, rows and states behind the React
-page and no longer depends on a baseline script. `check` re-derives every figure and verdict from the
-embedded runs, so an edited verdict fails. It checks two sets of source digests that mean different
-things. `source_bindings` is what the runs were taken with: every run records it of itself, and it can no
-longer match the tree, because the baseline fixture the measurement was taken with no longer exists and
-the driver and fixture were edited when it was removed. `current_sources` is what the tree held when the
-receipt was last composed, and a later edit to either script fails until the receipt is composed again.
-`baseline_status` says in the receipt that the baseline is historical. `--final` also fails on any gap
-or failed budget and requires the receipt to be bound to the page that ships: any later rebuild of the
-React page changes its digest and needs measuring again.
-
 ## The cutover receipt
 
-[The mapped receipt](frontend-cutover-receipt.json) maps every row of the ownership map (20 parts, 39
-surfaces, 17 routes, 49 reader-state rows and 12 storage families) to the React-side proof that stands for
-it: a vitest file and test title, a browser proof and its step, a Python test for server code both pages
-share, or a fluidity verdict. A row is proven, proven with a recorded deviation (the entry links the
-paragraph that records it), deferred to a named owner, or an explicit gap. `python3
-scripts/frontend_cutover.py check` fails when a row has no mapping, when a mapped file, title or step no
-longer exists or matches more than one step, and when a deviation links a heading that is not there. A
-test runs it, so a new surface cannot ship without a mapping and a renamed proof cannot leave a row
-quietly unproven. It proves that the named proof exists, not that it is adequate: each mapping was chosen
-against the row's contract text, and a reviewer owns that judgement.
+Retired on 2026-10-14 with the fluidity tooling. The mapped receipt mapped every row of the ownership map
+(20 parts, 39 surfaces, 17 routes, 49 reader-state rows and 12 storage families) to the React-side proof that
+stood for it: a vitest file and test title, a browser proof and its step, a Python test for server code both
+pages share, or a fluidity verdict. A row was proven, proven with a recorded deviation, deferred to a named
+owner, or an explicit gap, and a Python test checked that every named file, title and step still existed, so a
+renamed proof could not leave a row quietly unproven. It proved that the named proof existed, not that it was
+adequate: each mapping was chosen against the row's contract text, and a reviewer owned that judgement. A
+second block recorded, for each surface class, the proof for keyboard operation, 320 and 375 CSS px, 200% zoom
+and native editor continuity. It held no gaps.
 
-A second block lists, for each surface class, the proof for keyboard operation, 320 and 375 CSS px, 200%
-zoom (640 CSS px, or the reader's text at 200%) and native editor continuity (undo and composition), says
-why a cell does not apply, or records a gap. The receipt holds none: the terminal's Open, Jump to live and
-Close controls, the Attention controls and the capacity window rows and consent buttons each have a browser
-step that operates them by key.
+What checks the map now is `python3 scripts/frontend_inventory.py` (see [the ownership map](#the-ownership-map)):
+every row has an owner, a contract and oracles that exist as files. It does not check test titles or browser
+step names, so renaming a proof is no longer caught by a check of its own. The proof either still runs or its
+own suite fails.
 
 Every parity proof can run against the shipped `react.html` rather than the development server:
 `COMPASS_E2E_BUNDLE=production` makes the Python backend serve the minified page, `pnpm
 test:production:browser` runs all twelve, and CI runs them as the `Frontend production bundle` job in two
-shards. The receipt's `production_artifact` block names that runner and job, and `check` fails if either
-goes missing from the package scripts or the workflow's steps. The limits it states are these. The controls
+shards. The limits of that run are these. The controls
 proof mounts the controls gallery, a combination of shared controls no one page draws together, so in the
 shipped composition those controls are proven through the shell, sessions, project, intent, drift and
 attention proofs and not by the gallery's own cases. The storage proof's React side is the storage codec
@@ -918,8 +898,8 @@ can serve, assemble, select or roll back to the legacy page:
   1.0.0 without changing a byte, so every digest the study bound still holds. Deleting them has to
   rebind the study.
 - What replaced the removed oracles is a behavioural or build-integrity check for each: the recorded
-  vitest and browser differentials above, the React-side behaviour and browser proofs in
-  [the cutover receipt](frontend-cutover-receipt.json), the hostile-literal parser proof, the installed
+  vitest and browser differentials above, the React-side behaviour and browser proofs the
+  inventory names, the hostile-literal parser proof, the installed
   smoke proof and `pnpm build:check`. The inventory rows that named a deleted Python test now name those.
 
 Candidate parity runs against the shipped bytes as well as the development server. Setting
@@ -930,7 +910,7 @@ the production build has no double effect. A proof that serves a scratch copy of
 entry, the controls gallery or a deliberate mutation) has that copy packaged with the same `packageFrontend`
 the tracked artifact comes from, so it is served a production build too. Measured on a desktop, all twelve
 parity proofs passed in production mode with no behavioural difference from development; the harness-hosted
-proofs differ from the shipped page in composition, which the receipt's `production_artifact.limits` states.
+proofs differ from the shipped page in composition, which the limits above state.
 `pnpm test:production:browser` runs them, and CI runs two shards of it as `Frontend production bundle`.
 The two native `frontend` legs share their proofs with a second job, `Frontend proofs`, so no leg runs
 every proof in one sitting.

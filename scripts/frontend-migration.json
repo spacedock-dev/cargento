@@ -208,8 +208,7 @@
         "compass/skills/compass/tests/test_stream.py",
         "frontend/src/transport/live.test.ts",
         "frontend/src/transport/runtime.test.ts",
-        "frontend/e2e/sessions-parity.mjs",
-        "docs/frontend-fluidity.json"
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "One lease-elected live connection per board namespace, SSE revision wakeups, fallback polling and bounded teardown."
     }
@@ -327,8 +326,7 @@
       "owner": "DRC-4825",
       "oracles": [
         "frontend/src/intent/IntentEditor.test.tsx",
-        "frontend/e2e/intent-parity.mjs",
-        "docs/frontend-fluidity.json"
+        "frontend/e2e/intent-parity.mjs"
       ],
       "contract": "Goal and outcome drafts, counters, save/undo and stale revision refusals preserve typed words, caret and native editing continuity."
     },
@@ -591,8 +589,7 @@
       "oracles": [
         "frontend/src/transport/live.test.ts",
         "frontend/src/transport/runtime.test.ts",
-        "frontend/e2e/sessions-parity.mjs",
-        "docs/frontend-fluidity.json"
+        "frontend/e2e/sessions-parity.mjs"
       ],
       "contract": "SSE, leader election, wakeup and poll fallback preserve monotonic freshness and a single in-flight revision read."
     },
@@ -603,7 +600,6 @@
         "frontend/src/controls/Disclosure.test.tsx",
         "frontend/src/controls/displayGate.test.ts",
         "frontend/e2e/controls-continuity.mjs",
-        "docs/frontend-fluidity.json",
         "frontend/e2e/popover-continuity.mjs"
       ],
       "contract": "Disclosure open state, popover position, focus, IME, Base UI Select popup lifetime and input drafts survive source refresh; actual browser checks supplement VM assertions."
@@ -773,7 +769,6 @@
         "frontend/src/controls/Disclosure.test.tsx",
         "frontend/src/controls/focusLane.test.tsx",
         "frontend/e2e/controls-continuity.mjs",
-        "docs/frontend-fluidity.json",
         "frontend/e2e/popover-continuity.mjs"
       ],
       "contract": "Controlled Accordion and Collapsible derive value/open from the subscribed keyed store. Independent siblings remain open together; trigger focus and the 220 ms motion hold survive polls. hiddenUntilFound publishes beforematch revelation; hashes are reapplied after panel mount for fresh-load targets. Controlled Popover derives open from the same store and mounts inside the app root with automatic focus disabled. Only native menus retain toggle version precedence; remounts replay no opening motion.",

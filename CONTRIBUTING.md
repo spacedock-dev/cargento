@@ -169,16 +169,12 @@ the retired page measured in pixels is compared through a distance that does not
 recordings are replayed on other operating systems. The recordings are committed and small (browser proofs under
 3 MB in total, unit differentials under 4 MB); do not commit a raw session or a payload from a real store.
 
-Two receipts record what the default flip stands on, and `python3 scripts/frontend_cutover.py check` verifies
-both without starting a browser: `docs/frontend-fluidity.json` (the React page measured against the
-pre-React budgets) and `docs/frontend-cutover-receipt.json` (every row of the migration inventory mapped to
-a named React-side proof, with a keyboard, narrow, zoom and editor column per surface class). Adding a row
-to `scripts/frontend-migration.json` fails the check until the receipt maps it, and renaming a proof it names
-fails it too. Measure again after any change to the React page with
-`python3 scripts/frontend_cutover.py remeasure` (checks the clean build, measures three runs and
-keeps the historical legacy control; pass `--chrome` with the browser executable). Details are in the
-[migration contract](docs/design-frontend-migration.md#fluidity-measurements). Use `check --final` for
-the final verification.
+`python3 scripts/frontend_inventory.py` checks that every row of the migration inventory
+(`scripts/frontend-migration.json`) has an owner, a contract and proofs that exist as files. Nothing
+measures the page's fluidity any more, and a change to the React page needs no re-measuring to merge: the
+measurement tooling and its receipts were retired once the default had flipped to React, and the
+[migration contract](docs/design-frontend-migration.md#fluidity-measurements) keeps the method and the
+figures that were recorded.
 
 #### Adding a shadcn component
 
