@@ -99,22 +99,20 @@ export function correctionFit(
   return { value: edit.head + run + edit.tail, caret: edit.head.length + run.length };
 }
 
-/* The parts with "#n" filled from the list's own numbers: the first number drawn reads "(#n in Compass)",
-   the rest "(#n)", and an entry the list does not number keeps only its time, which the server already
-   wrote. The server counts every placeholder at its widest, so the text stays within the cap. */
+/* The parts with "#n" filled from the list's own numbers: every number drawn reads "(entry #n in Compass's
+   activity list)", and an entry the list does not number keeps only its time, which the server already
+   wrote. The server counts every placeholder at its widest, so the text stays within the cap. The first
+   number alone used to carry "in Compass" and the rest were a bare "(#n)", which an agent that had never seen
+   Compass could not place (owner, 2026-10-14). */
 export function correctionText(
   parts: readonly CorrectionPart[] | null | undefined,
   numbers: ReadonlyMap<string, number>,
 ): string {
-  let first = true;
   return (parts || [])
     .map((part) => {
       if (typeof part === 'string') return part;
       const n = numbers.get(String(part?.entry || ''));
-      if (n === undefined) return '';
-      const said = first ? ` (#${String(n)} in Compass)` : ` (#${String(n)})`;
-      first = false;
-      return said;
+      return n === undefined ? '' : ` (entry #${String(n)} in Compass's activity list)`;
     })
     .join('');
 }

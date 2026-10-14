@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import type { WorkEntry } from '../intent/work';
 import { genAnnotation, genAssessment, genEntries, mulberry32, pick } from './generate.test.helper';
-import { loadLegacyDrift, withoutKey } from './legacy.test.helper';
+import { loadLegacyDrift, retiredWording, withoutKey } from './legacy.test.helper';
 import {
   arrivedLine,
   claimsDrawn,
@@ -286,7 +286,7 @@ describe('the result stage says what the legacy page says', () => {
    it holds no entry for; the retired page had no such field and its recorded answers are keyed by their
    arguments, so it is dropped here (docs/design-frontend-migration.md#held-to-recorded-answers). */
 function legacyShape2(shape: unknown): unknown {
-  return withoutKey(shape, 'unloaded');
+  return retiredWording(withoutKey(shape, 'unloaded'));
 }
 
 /* A named departure from the retired page. Its goal-source sentence said "Analyze read up to 1,000

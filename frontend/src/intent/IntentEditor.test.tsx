@@ -156,6 +156,36 @@ describe('Save intent', () => {
     expect(inert(control('held-save'))).toBe(true);
   });
 
+  it.each([
+    ['an ended session says what the words cannot do beside the confirmation', 999, true],
+    ['a live session says only that it saved', null, false],
+  ])('on %s', async (_name, endedAt, caveat) => {
+    const page = mountSession({
+      ...(endedAt === null ? {} : { session: { ended_at: endedAt } }),
+      routes: {
+        '/api/annotate': (request) => {
+          page.state.data = board(endedAt === null ? {} : { ended_at: endedAt }, {
+            goal: request.body?.['goal'] as string,
+            revision: 1,
+            goal_source: '',
+          });
+          return stored(1);
+        },
+      },
+    });
+    await settle(page);
+    type(goalBox(), 'Land the worker behind a flag');
+    await act(async () => {
+      fireEvent.click(control('held-save') as Element);
+    });
+    await settle(page);
+    expect(footerCue()).toBe(
+      caveat
+        ? 'Saved as a new revision. This session has ended, so words you save now cannot be read against it.'
+        : 'Saved as a new revision.',
+    );
+  });
+
   it('sends nothing from an inert control and nothing twice', async () => {
     const page = mountSession({ store: { goal: 'Saved', revision: 1 } });
     await settle(page);

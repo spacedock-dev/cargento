@@ -472,7 +472,8 @@ with no model call. It says where it last rose ("Rose from Medium at #12"), reco
 never stored, adds a nudge to analyze only for a cited High signal after your last message, and shows the level in the page header beside the
 entry count. An older failure blocks None or low and keeps its name and age; a failure followed
 by file writes reads Medium at most until a re-run. Recorded signals show the cited entries and
-their event times; Limits of this estimate names gaps such as an intent that names no folder.
+their event times; its line says it reads checks and file paths, not what your intent says, and that files written by
+shell commands, such as a build, are not weighed. Limits of this estimate names gaps such as an intent that names no folder.
 At Not enough recorded yet, the reasons sit once under Why not None or low, while that folder
 limit stays visible. A broader explicit passing run can retire a
 covered failure in the same directory and execution context. A folder counts only when it exists
@@ -532,8 +533,8 @@ naming nothing after the tool but flags or `.`; the working directory is not rec
 contradicted claim reads Medium. An unshown claim blocks None or low without raising Medium.
 Neither is counted as a departure from your intent or held back by an unsettled later direction.
 A withdrawn claim draws no row. A claim alone offers Steer back as a secondary evidence request:
-`Can you show evidence for "<its first sentence>" at 14:02 (#12 in Compass)?`, or, contradicted,
-`You said "<its first sentence>" at 14:02 (#12 in Compass); the record shows otherwise at 14:05 (#13).`
+`Can you show evidence for "<its first sentence>" at 14:02 (entry #12 in Compass's activity list)?`, or, contradicted,
+`You said "<its first sentence>" at 14:02 (entry #12 in Compass's activity list); the record shows otherwise at 14:05 (entry #13 in Compass's activity list).`
 Short titles and bare URLs are not quoted in the correction. "Where the work went" groups the written files by folder. A
 current result offers no second run control. When your intent changed after it or new work arrived
 since, the result gives that reason with one "Analyze again". The request count and daily cap stay

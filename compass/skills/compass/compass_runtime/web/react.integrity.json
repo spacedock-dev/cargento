@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1721839,
+    "bytes": 1722763,
     "file": "react.html",
-    "sha256": "b401c37ee1da7345917925b7c0abaf16f01e68260f66f7b7a44fdbccc01d8810"
+    "sha256": "92bcba3c0921e1b15028cc27cd7d1493a0a6684c181256b764fae62f3d250903"
   },
   "format": 1,
   "frontend": "react",
@@ -587,7 +587,7 @@
       },
       {
         "file": "frontend/src/drift/correction.ts",
-        "sha256": "aad50fc6476d160cbad8623a11b395382e43cb4e15dae55eac96e4cea5315800"
+        "sha256": "d59ae297e8c47bdc37ed18c200e9d4a90088aa4b1e8a2530ab187cf090b50c3a"
       },
       {
         "file": "frontend/src/drift/drift.css",
@@ -635,7 +635,7 @@
       },
       {
         "file": "frontend/src/drift/sentences.ts",
-        "sha256": "5842f70ab537f5c569650b3060f028fded2fbf581423c46b5425b7c39b28b99c"
+        "sha256": "3659e40835f34352462e32f652dd42cf6e18db2299325551edc7b65d901786b8"
       },
       {
         "file": "frontend/src/drift/shape.ts",
@@ -687,7 +687,7 @@
       },
       {
         "file": "frontend/src/intent/HowTo.tsx",
-        "sha256": "f589975218483324f9cd5df3cd40b3e94b1b40189512bda425f6c60dc6ab5422"
+        "sha256": "bed7b83507515d6ff4b0f467ba42091bcd4c65d470ba236e6b28ceaaf5593255"
       },
       {
         "file": "frontend/src/intent/IntentLog.tsx",
@@ -699,7 +699,7 @@
       },
       {
         "file": "frontend/src/intent/IntentSection.tsx",
-        "sha256": "f56febf364be776b91d6c7db92631f0a1266b72a50c7d8bb44d6e53ebcef0a9c"
+        "sha256": "0f6fa14021a12d84b291cc9368b20e8e231e9bded3334517956d94a79a45bd9f"
       },
       {
         "file": "frontend/src/intent/LiveMonitorSwitch.tsx",
@@ -787,7 +787,7 @@
       },
       {
         "file": "frontend/src/intent/sentences.ts",
-        "sha256": "1dc112e71eef4c9d0a02af9ce9901937260a880f313a61132fe6be6117c20998"
+        "sha256": "868197dc10eb172e2233607140e47d88f5561dc29a993d06a4f881733f176755"
       },
       {
         "file": "frontend/src/intent/testing.tsx",

@@ -44,11 +44,12 @@ TOO_LONG = "This correction would be longer than 2,000 characters. Shorten a lin
 REASON_NOTHING = "nothing"
 REASON_TOO_LONG = "too-long"
 
-# What a placeholder can become on the page: " (#n in Compass)" for the first number drawn and
-# " (#n)" after it. Counted at six digits, so the page's text never passes the cap whatever it
-# numbers; a correction within a few characters of 2,000 is refused slightly early instead.
-FIRST_NUMBER_MAX_CHARS = len(" (#999999 in Compass)")
-NUMBER_MAX_CHARS = len(" (#999999)")
+# What a placeholder can become on the page: " (entry #n in Compass's activity list)", on every
+# number drawn (owner, 2026-10-14; it was "(#n in Compass)" on the first and "(#n)" after). A
+# bare "#n" or "#n in Compass" is a reference an agent that has never seen Compass cannot place.
+# Counted at six digits, so the page's text never passes the cap whatever it numbers; a
+# correction within a few characters of 2,000 is refused slightly early instead.
+NUMBER_MAX_CHARS = len(" (entry #999999 in Compass's activity list)")
 
 _DEPARTED = "departed"
 _CONSISTENT = "consistent"
@@ -370,7 +371,7 @@ def _width(parts: list[Part]) -> int:
     text = sum(len(part) for part in parts if isinstance(part, str))
     if not placeholders:
         return text
-    return text + FIRST_NUMBER_MAX_CHARS + NUMBER_MAX_CHARS * (placeholders - 1)
+    return text + NUMBER_MAX_CHARS * placeholders
 
 
 def _joined(lines: list[list[Part]]) -> list[Part]:

@@ -630,7 +630,8 @@ the intent, so an unsettled later direction demotes the intent's rows and never 
 (reversing the first build on review). Steer back adds one line for such a claim, in the
 owner-approved template's style: `You said "<claim>" at 14:02 (#12 in Compass); the record does not
 show it.` for an unshown claim, and `…; the record shows otherwise at 14:05 (#13).` for a
-contradicted one (the arbiter's wording, under the owner's delegation). Steer back is offered for
+contradicted one (numbered since 2026-10-14 as "(entry #12 in Compass's activity list)", [DEC-24's
+amendment](#amended-2026-10-14-owner-the-correction-names-the-entry)) (the arbiter's wording, under the owner's delegation). Steer back is offered for
 the claim from the claims row itself, so it never offers "Update intent instead" for one. The claim
 is the message's published title, its first sentence, which the activity list already shows, and
 never the words a reading read; that is the one place the correction reads a summary.
@@ -1574,6 +1575,23 @@ item 1 of the 2026-09-23 amendment and leaves items 2 and 3 as they apply once t
 `resolve` still reads each gate before it looks for that provider's CLI, so setting the constant
 back to `not-run` closes the producer with no other change, and the "not qualified on this build"
 sentences remain for that state.
+
+### Amended 2026-10-14 (owner): the page says the Claude reader's accuracy check has not passed
+
+The acceptance above opened the Claude Code route without a pass, and the page said nothing of it.
+The README, the promise map and HOW_TO_USE promise a comparison with the goal and the reading's
+limits, not accuracy, while SECURITY.md and the [abstention record](abstention/README.md) carry the
+failed qualification. The owner ruled on 2026-10-14 that the "How Intent and drift works" popup and
+one line of the README's limits say it, in these words: "The Claude reader's accuracy check has not
+passed, and its latest correction is unmeasured, so read a level as an account of the evidence, not a
+measurement."
+
+The sentence adds a true limit and no claim. It changes no gate:
+`annotations.CLAUDE_ABSTENTION_CHECK` stays `accepted`, and the [acceptance record](abstention/claude-acceptance.json)
+still reads `qualification: failed` over ten scored runs, the last of which read 73 of 102 questions
+correctly with 4 false reassurances. `ClaudeReaderLimitIsSaidInTwoPlacesTest` in
+`test_documentation.py` holds the README and the popup to the same words. No abstention record or
+qualification tool changes.
 
 ### Amended 2026-10-02 (owner): the Allow is bound to where the words go
 
@@ -2695,6 +2713,39 @@ The row outlives the flag, as an Allow's does: starting again without it does no
 A grant that should end with the run would need a store entry that records how it was written, which
 was not built.
 
+### Amended 2026-10-14 (owner): a write outside a named folder does not settle a line
+
+Item 8 says absence supports neither a departure nor a consistent, and a recorded write is not a
+check. The owner ruled on 2026-10-14 that a recorded write outside a folder the intent names does not
+settle a scope line, and that a live Medium which rests on written paths alone does not offer Steer
+back or Update intent instead. The folder signal stays what
+[DEC-26](#dec-26-four-drift-levels-and-a-live-estimate-after-every-turn) items 1 and 2 made it: an
+input to the live level, shown with the entries it cites, and nothing more. The model analysis keeps
+reading "Can't tell" on a line only a write could speak to, because on Claude Code a verdict on a
+line rests on a check.
+
+Found on a walk of 2026-10-14: a session whose goal named a folder wrote three files outside it. The
+free live estimate read Medium and cited the write, and the analysis read "Can't tell" on both lines.
+That pair is the intended behaviour, and the how-to now says which lines a reading can settle
+([DEC-27's amendment](#amended-2026-10-14-what-the-how-to-the-live-line-and-a-late-save-say)).
+
+Not done:
+
+- A per-line verdict from recorded writes, so that a line naming a folder departs when files were
+  written outside it.
+- Steer back, or Update intent instead, for a Medium that rests on written paths alone.
+
+Why. Item 8 already rules that the absence of a failing or passing check supports neither verdict,
+and a write is evidence that a file changed, not that a line was met or missed. The folder signal has
+measured false alarms from two sources, intent words read as folders and worktree sessions: with the
+folders the reader never named dropped, the no-drift sessions that read High or Extreme fell from 29
+to 19 (the 2026-10-04 findings file, `docs/plans/2026-10-04-analyze-drift-handoff/findings.json`,
+a local record that is not committed). Nineteen is not zero, which is enough for a level and not for
+a verdict a reader pastes back into a session. And the Claude reader's accuracy check has not passed
+([the DEC-21 amendment](#amended-2026-10-14-owner-the-page-says-the-claude-readers-accuracy-check-has-not-passed)),
+so Compass does not add a second, weaker route to a correction. DEC-24 item 7's list of triggers
+stays as it is: a surviving model departure, a contradicted or unshown claim, a failed check.
+
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 
 Amended 2026-10-11 by [DEC-27](#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result): item 3's Expected outcome is one optional empty line by default, and the Direction question's summary shrinks to one line while Keep keeps its two presses.
@@ -2811,6 +2862,10 @@ the later-direction floor (item 9).
    (DRC-4698). Since
    [2026-10-04](#amended-2026-10-04-owner-what-the-agent-claims-is-its-own-constraint) it also
    quotes one agent message's published title, for a claim the record contradicts or does not show.
+   Amended 2026-10-14 (owner): each entry the page numbers reads "(entry #n in Compass's activity
+   list)" ([the wording](#amended-2026-10-14-owner-the-correction-names-the-entry)), and a write
+   outside a named folder is not a trigger
+   ([the ruling](#amended-2026-10-14-owner-a-write-outside-a-named-folder-does-not-settle-a-line)).
 8. Update intent instead. It opens Intent for editing and offers the later direction as a new
    outcome line under item 4's rules. It never replaces the goal.
 9. A copied correction coming back. The server records a digest of the exact text the reader
@@ -4221,7 +4276,9 @@ saved-line labels. The calls the rulings left open:
   composition reads the record, and a per-session field would compose on every collection for a
   box few readers open. A part is text or `{"entry": fact_id}`. The page writes the first number
   it draws as "(#n in Compass)" and the rest as "(#n)", as the template shows them, and an entry
-  it does not number keeps only its time, which the server already wrote.
+  it does not number keeps only its time, which the server already wrote. Since 2026-10-14 every
+  number reads "(entry #n in Compass's activity list)"
+  ([the amendment](#amended-2026-10-14-owner-the-correction-names-the-entry)).
 - Each line's state is the stored reading's, re-derived against the record as it is now with the
   page's rules for whether a verdict survives: a reading of an older revision lends no state, an
   unsettled later direction demotes a departure, a citation must resolve inside the reading's
@@ -4333,6 +4390,31 @@ analysis level and from correction composition. Independent recorded facts may s
 correction, and the live estimate still reads them. The reading and mark remain stored; clearing
 the mark restores the reading. [SECURITY.md](../SECURITY.md#analyze-drift-cancel-and-copied-corrections)
 owns the token and its exposure.
+
+### Amended 2026-10-14 (owner): the correction names the entry
+
+Item 7's template wrote the first entry the page numbered as "(#n in Compass)" and every later one as
+"(#n)". An agent that has never seen Compass could not place either: given a pasted correction with
+"08:51 (#36 in Compass)", it answered that it could not tell what the reference meant. The owner
+approved new exact text on 2026-10-14: every entry the page numbers reads
+" (entry #n in Compass's activity list)", in the goal line, the claim line, a departed or consistent
+outcome line and the failed-check sentence alike. For example:
+
+- `You said "<its first sentence>" at 14:02 (entry #12 in Compass's activity list); the record shows otherwise at 14:05 (entry #13 in Compass's activity list).`
+- `A check failed at 14:05 (entry #13 in Compass's activity list).`
+
+The fields do not change. The correction is still the goal, each outcome line with its state, and
+cited entry numbers and times, with no command, tool output or model prose; a failed-check sentence
+carries only its time and entry. Only the words around a number change, and the number is still
+recomputed on the page from its own list and never stored (item 11). A placeholder is now counted at
+43 characters instead of 21 for the first and 10 for the rest, still at six digits, so a correction
+that sits within a few characters of the 2,000 cap is refused slightly earlier than before. The page
+(`correctionText`) and the server (`correction.NUMBER_MAX_CHARS`) count it the same way, and the
+frontend's differential against the recorded answers goes through one named projection back to the
+old numbering ([the recorded departure](design-frontend-migration.md#held-to-recorded-answers)).
+
+The triggers in item 7 are unchanged. The [DEC-23 amendment of the same day](#amended-2026-10-14-owner-a-write-outside-a-named-folder-does-not-settle-a-line)
+records that a recorded write outside a named folder is not one of them, and why.
 
 ### What the result build decided, 2026-09-28
 
@@ -4853,8 +4935,8 @@ The owner's 2026-10-06 request for plain explanations and evidence times superse
 215 words outside field values. The canonical partial-departure fixture keeps its coverage
 limits visible and has a 295-word ceiling, replacing its earlier 270. The unchanged
 nondeparture fixtures retain 175. DEC-27 moves the idle explanation to the how-to popup;
-its opened body has a 150-word ceiling, including the board-derived limit line, replacing the
-85-word idle explanation ceiling. HowTo.test.tsx and popover-continuity.mjs assert it. The historical ceilings above record
+its opened body has a 150-word ceiling (170 since [2026-10-14](#amended-2026-10-14-what-the-how-to-the-live-line-and-a-late-save-say)),
+including the board-derived limit line, replacing the 85-word idle explanation ceiling. HowTo.test.tsx and popover-continuity.mjs assert it. The historical ceilings above record
 what was agreed then; this amendment does not rewrite them. These are regression ceilings for
 those two canonical examples, not universal reading budgets or runtime citation limits. A
 valid reading with two or more citations keeps every surviving support and its recorded times,
@@ -4906,6 +4988,29 @@ with the panel first, so the goal stays in the first view on a phone. The count 
 and the page chrome. The activity column's own disclosures (About this record, Session facts and the
 reports line) now also show beside it at 1280 by 800, and are held by the complete inventory of 14.
 
+### Amended 2026-10-14: what the how-to, the live line and a late save say
+
+Four sentences, each at the place a reader relies on it. None adds a control.
+
+- The how-to popup says which lines a reading can settle and which it cannot. A command whose latest
+  run, not piped into another command, fails settles a departure, and one that passes with nothing
+  written after it settles a consistent. A statement about the whole tree, such as a folder limit, is
+  not settled by a reading; the live estimate weighs it instead. The popup also carries the Claude
+  reader's limit
+  ([the DEC-21 amendment](#amended-2026-10-14-owner-the-page-says-the-claude-readers-accuracy-check-has-not-passed)).
+  The opened body's ceiling, 150 words above, is now 170; the bodies measure up to 165.
+- The reason for "Can't tell" stays inside Evidence, as this design keeps evidence one click away
+  (owner, 2026-10-14). Its sentence for `check-does-not-show-it` no longer says "The check it cited":
+  the producer empties a reading's published cites whenever it withdraws a verdict, so the page
+  cannot tell a check that does not show the line from a write, or nothing, that was cited. It reads
+  "What it cited does not show this: a departure needs its latest run failing, and a consistent its
+  latest run passing with no change after it, both after the words you saved."
+- The live estimate's line keeps "Reads checks and file paths, not what your intent says" (DEC-26
+  item 1 quotes that clause) and adds that files written by shell commands, such as a build, are not
+  weighed. A file a shell command changes is not seen, as item 1 already records.
+- Row 5: on an ended session, a confirmed save repeats the caveat beside "Saved as a new revision.",
+  and only there. The goal box still carries it before the reader types.
+
 ### The Sessions screen
 
 Keep the "running" and "waiting on you" counters; move the "exact requests" and "reported blocks"
@@ -4951,7 +5056,7 @@ model-request count and daily cap stay beside Analyze. The goal and primary fit 
 The count-only Direction summary quotes no whole text, so even a sole short direction needs the
 opening press before the settlement press. The first-view browser proof injects one extra button
 and rejects it. The idle drafted fixture's visible panel text, excluding field values and closed
-bodies, has a 90-word ceiling. The opened how-to retains its separate 150-word ceiling.
+bodies, has a 90-word ceiling. The opened how-to retains its separate ceiling, 170 words since 2026-10-14.
 
 The fresh Claude Code fixture inventory below includes the session's project link and the Sessions
 breadcrumb. Before: 19 controls across the page, 13 in the 1280 by 800 viewport. After: 14 across

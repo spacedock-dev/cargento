@@ -98,6 +98,36 @@ describe('a stored reading', () => {
     expect(document.querySelector('[data-next-finding-entry]')).toBeNull();
   });
 
+  it.each([
+    ['cited nothing, which a withdrawn verdict leaves behind', []],
+    ['cited a file write, which is not a check', ['w1']],
+  ])('never says a check was cited when the reading %s', async (_name, cites) => {
+    const withdrawn = {
+      ...ASSESSMENT,
+      criteria: {
+        goal: {
+          result: 'not verifiable from available evidence',
+          cites,
+          detail: '',
+          clause: 'Ship the queue',
+          why: 'check-does-not-show-it',
+        },
+      },
+    };
+    const page = mountDrift({
+      session: stored({ annotation_assessment: withdrawn }),
+      facts: [...FACTS, check('w1', 550, '', { subject: 'write', summary: 'src/queue.ts' })],
+    });
+    await page.settle();
+    await page.settle();
+    expect(textOf('.next-cockpit-result-line')).toBe("Can't tell");
+    const why = document.querySelector('[data-next-result-goal] .next-cockpit-reading-why');
+    expect(why?.textContent).toBe(
+      'What it cited does not show this: a departure needs its latest run failing, and a consistent its latest run passing with no change after it, both after the words you saved.',
+    );
+    expect(document.body.textContent).not.toContain('The check it cited does not show this');
+  });
+
   it('refuses a reading carrying a field this build does not know, and draws no verdict', async () => {
     const page = mountDrift({
       session: stored({ annotation_assessment: { ...ASSESSMENT, surprise: true } }),

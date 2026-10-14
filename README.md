@@ -13,7 +13,9 @@ machine that you cannot switch off.
 
 Use Intent and drift to compare a session's recorded work with your goal. Open a session, set a
 goal and press `Analyze drift`. The `How Intent and drift works` button explains the steps, the
-reading's limits and why an expected outcome line is needed for a drift level.
+reading's limits and why an expected outcome line is needed for a drift level. The Claude reader's
+accuracy check has not passed, and its latest correction is unmeasured, so read a level as an
+account of the evidence, not a measurement.
 
 It answers five questions, in the order a working day hits them. Which of my agents are running.
 What is each one doing, and when should I come back. Is anything waiting on me. Will I hit the quota

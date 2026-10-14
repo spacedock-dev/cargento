@@ -2,7 +2,7 @@ import { Card } from '../ui/card';
 import { compatSessKey } from '../api/identity';
 import { nextNumber } from '../api/bootstrap';
 import { Disclosure, disclosureKey, useFocusKey } from '../controls';
-import { clock } from '../observed';
+import { clock, endedAt } from '../observed';
 import { useDisplayed } from '../shell/context';
 import { ActionButton } from './ActionButton';
 import { discardStamp, revisionLine, storeUnreadable } from './annotation';
@@ -18,6 +18,7 @@ import { undoChanges } from './edit';
 import { GoalField } from './GoalField';
 import { OutcomeLines, AddOutcomeLine } from './OutcomeLines';
 import { saveIntent } from './save';
+import { ENDED_SAVED_CAVEAT } from './sentences';
 import { usePanel } from './useIntent';
 import { HowTo } from './HowTo';
 
@@ -41,7 +42,13 @@ function Footer() {
   /* Not while the save is still busy: the outcome is drawn and said together, when the button settles, and a
      redraw in between drew "Saved" beside "Saving…". */
   const saving = useDisplayed((snapshot) => snapshot.pending.includes(`${key}:save`));
-  const cue = saving ? '' : heldSentence(ctx.held.kind(key), null);
+  const kind = saving ? '' : ctx.held.kind(key);
+  const cue = [
+    heldSentence(kind, null),
+    kind === 'saved' && endedAt(session) !== null ? ENDED_SAVED_CAVEAT : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
   const question = directionLinesQuestion(ctx.held, session);
   /* Undo is inert while its save is in flight: reverting the box would leave the words being sent unseen. */
   return (

@@ -876,23 +876,37 @@ try {
       await react.page.locator('[data-next-cockpit-action="steer-back"]').click();
       await react.page.waitForSelector('#next-cockpit-correction');
       const recordedBox = golden.observe('steer: the box');
-      const recordedText = golden.observe('steer: the correction text');
+      const retiredText = golden.observe('steer: the correction text');
+      // A named departure (owner, 2026-10-14): a number reads "(entry #n in Compass's activity list)", where
+      // the recording says "(#n in Compass)". Only that wording is restated; docs/design-frontend-migration.md
+      // owns the record of it.
+      const recordedText = retiredText.replace(
+        '(#1 in Compass)',
+        "(entry #1 in Compass's activity list)",
+      );
       // The box shows its character count. The recorded page counted the retired name, one letter longer
       // than Compass, so only that number is restated, from the recorded text itself.
-      const retiredCount = recordedText.length + (recordedText.split('Compass').length - 1);
+      const retiredCount = retiredText.length + (retiredText.split('Compass').length - 1);
       const old = {
         ...recordedBox,
-        text: recordedBox.text.replace(`${retiredCount}/2000`, `${recordedText.length}/2000`),
+        text: recordedBox.text
+          .replace(`${retiredCount}/2000`, `${recordedText.length}/2000`)
+          .replace(retiredText, recordedText),
       };
       const mine = norm(await read(react));
       assert.deepEqual(mine, old, 'the steer box differs from the recorded box');
       const text = await react.page.locator('#next-cockpit-correction').inputValue();
       assert.equal(text, recordedText);
-      assert.match(text, /Your last check failed \(#1 in Compass\)\. Fix it, then say so\./);
+      assert.match(
+        text,
+        /Your last check failed \(entry #1 in Compass's activity list\)\. Fix it, then say so\./,
+      );
       await react.page.locator('[data-next-cockpit-action="correction-copy"]').click();
       await sleep(patience(300));
       const copied = await react.page.evaluate(() => globalThis.__copied);
-      const recordedCopied = golden.observe('steer: what the legacy page copied');
+      const recordedCopied = golden
+        .observe('steer: what the legacy page copied')
+        .map((value) => value.replace('(#1 in Compass)', "(entry #1 in Compass's activity list)"));
       assert.deepEqual(copied, recordedCopied);
       assert.equal(recordedCopied.length, 1);
       const recordedRequests = golden.observe('steer: copy requests the legacy page sent');
@@ -936,7 +950,15 @@ try {
       return read(o);
     };
     const mine = norm(await arm(react));
-    const old = golden.observe('live estimate and pill');
+    const recorded = golden.observe('live estimate and pill');
+    // A named departure (owner, 2026-10-14): the line also says shell-written files are not weighed.
+    const old = {
+      ...recorded,
+      text: recorded.text.replace(
+        'Reads checks and file paths, not what your intent says.',
+        'Reads checks and file paths, not what your intent says. Files written by shell commands, such as a build, are not weighed.',
+      ),
+    };
     assert.deepEqual(mine, old, 'the live estimate differs from the recording');
     assert.match(old.pill, /Drift: High/);
     assert.match(old.text, /Live estimate/);

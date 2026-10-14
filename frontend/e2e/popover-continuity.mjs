@@ -560,7 +560,7 @@ try {
       const panel = page.getByRole('dialog', { name, exact: true });
       assert.match(await panel.innerText(), /Compass never writes into sessions/);
       assert.match(await panel.innerText(), /Not enough recorded yet/);
-      assert.ok((await panel.innerText()).split(/\s+/).length <= 150, 'how-to word ceiling');
+      assert.ok((await panel.innerText()).split(/\s+/).length <= 170, 'how-to word ceiling');
       const box = await panel.boundingBox();
       assert.ok(
         box.x >= 0 && box.x + box.width <= 320 && box.y >= 0 && box.y + box.height <= 700,
