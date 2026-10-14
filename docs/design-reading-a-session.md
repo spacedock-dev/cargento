@@ -3883,6 +3883,14 @@ person-message parser, copied-correction exclusions, direction floor, redaction,
 `record_pages.scan_source`, the page reader's chunk and line-boundary machinery,
 from the newest end. It compares device, inode, size and modification time before
 and after the read and refuses any change, including an append during the request.
+A refused scan starts over, up to three whole scans, each against a file that did not move
+while it ran, so the ruling stands and only the number of tries changed. A working session
+writes to its record every few seconds, and a lookup that fails on the first write is refused
+at random: measured on 2026-10-14, a Keep pressed from a browser failed five times in five on a
+live session, because Claude Code wrote the click's own tool result half a second into a scan
+that took 1.4 seconds, while the same request from a script, which returned before the write,
+succeeded seven times in seven. A file that moved under every try answers `changed`, with
+"The session wrote to its record while Compass was reading it. Press again."
 A conservative byte prefilter avoids decoding tool-result-only records; escaped
 keys still reach the authoritative JSON parser. Lines larger than 16 MiB are
 skipped to their delimiter and count as incomplete coverage. A local filesystem
@@ -3894,7 +3902,7 @@ is beyond the 2,000-character review crop. Copies outside the byte
 or clock allowance cannot be checked; this is a bounded source verification,
 not a claim that the entire transcript contains no conflicting copy. A direction
 that is not found before an unfinished search answers `out_of_reach`. A complete
-search with no match, a changed or ambiguous source, or a known request that is
+search with no match, an ambiguous source, or a known request that is
 not later than the intent answers `not_found`. Both remain an HTTP 200 body;
 unknown sessions use the latter body too. Older pages can read the `why` sentence
 without understanding the new tokens. No fallback substitutes a listed summary.

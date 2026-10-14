@@ -21,9 +21,11 @@ export function directionFailure(action: 'goal' | 'add' | 'keep', reason?: strin
   const source =
     reason === 'out_of_reach'
       ? 'That direction is beyond the part of the record Compass could search.'
-      : reason === 'not_found'
-        ? 'That direction could not be verified as later than your intent in the current record.'
-        : 'Compass could not open that direction.';
+      : reason === 'changed'
+        ? 'The session wrote to its record while Compass was reading it. Press again.'
+        : reason === 'not_found'
+          ? 'That direction could not be verified as later than your intent in the current record.'
+          : 'Compass could not open that direction.';
   const outcome =
     action === 'goal'
       ? 'Your goal has not changed.'

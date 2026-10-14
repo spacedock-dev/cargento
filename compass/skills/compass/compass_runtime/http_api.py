@@ -540,6 +540,17 @@ def _request_sources(
     )
 
 
+# One sentence per refusal a direction lookup gives, for pages that predate its token.
+_DIRECTION_WHY = {
+    "out_of_reach": "Compass's search stopped before reaching that direction "
+    "in the session's record. Nothing was opened.",
+    "changed": "The session wrote to its record while Compass was reading it. "
+    "Nothing was opened. Press again.",
+    "not_found": "Compass could not find that later direction "
+    "in the session's current record. Nothing was opened.",
+}
+
+
 def _prompt_facts(
     application: Any,
     row: Mapping[str, Any],
@@ -2688,15 +2699,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             answer: dict[str, Any] = {
                 "ok": False,
                 "reason": refusal["reason"],
-                "why": (
-                    "Compass's search stopped before reaching that direction "
-                    "in the session's record. "
-                    "Nothing was opened."
-                    if refusal["reason"] == "out_of_reach"
-                    else "Compass could not find that later direction "
-                    "in the session's current record. "
-                    "Nothing was opened."
-                ),
+                "why": _DIRECTION_WHY.get(refusal["reason"], _DIRECTION_WHY["not_found"]),
             }
         else:
             text, clipped, fits = annotation_store.direction_review(

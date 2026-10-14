@@ -1459,6 +1459,26 @@ class DirectionRouteTest(_ClaudeSession):
         self.assertEqual("out_of_reach", body["reason"])
         self.assertIn("search", body["why"])
 
+    def test_a_reader_is_asked_to_press_again_when_the_session_wrote_during_the_lookup(
+        self,
+    ) -> None:
+        fact_id = str(self.direction()["fact_id"])
+        with (
+            self._serving() as port,
+            mock.patch.object(
+                project_context,
+                "direction_lookup",
+                return_value=project_context.DirectionLookup(
+                    project_context.DirectionText(""), "changed"
+                ),
+            ),
+        ):
+            status, body = self._open(port, fact_id)
+        self.assertEqual(200, status)
+        self.assertFalse(body["ok"])
+        self.assertEqual("changed", body["reason"])
+        self.assertIn("Press again", body["why"])
+
     def test_a_reader_can_open_a_paged_direction_after_it_left_semantic_history(self) -> None:
         fact_id = str(self.direction()["fact_id"])
         with (

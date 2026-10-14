@@ -142,7 +142,7 @@ export interface DirectionReceipt {
   readonly text?: string;
   readonly clipped?: boolean;
   readonly why?: string;
-  readonly reason?: 'not_found' | 'out_of_reach' | 'unavailable';
+  readonly reason?: 'not_found' | 'out_of_reach' | 'changed' | 'unavailable';
 }
 
 export interface DirectionBatchReceipt {

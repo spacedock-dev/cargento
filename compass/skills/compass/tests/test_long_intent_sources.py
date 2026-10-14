@@ -206,8 +206,49 @@ class LongIntentSourcesTest(unittest.TestCase):
             results = project_context.direction_lookups(
                 self.config, self.state, "claude", "long", [fact["fact_id"] for fact in self.facts]
             )
-        self.assertEqual(["not_found"] * 3, [result.reason for result in results])
+        self.assertEqual(["changed"] * 3, [result.reason for result in results])
         self.assertFalse(any(result.words.text for result in results))
+
+    def test_a_reader_gets_the_words_when_a_working_session_writes_once_during_the_scan(
+        self,
+    ) -> None:
+        path = self.root / "one-late-write.jsonl"
+        path.write_text("".join(json.dumps(row) + "\n" for row in self.rows))
+        original = record_pages.scan_source
+        scans = 0
+
+        def write_once(*args: Any, **kwargs: Any) -> record_pages.SourceScan:
+            nonlocal scans
+            scans += 1
+            scan = original(*args, **kwargs)
+            if scans == 1:
+                with path.open("a") as handle:
+                    handle.write("\n")
+            return scan
+
+        with (
+            mock.patch.object(observer, "resolve_transcript", return_value=str(path)),
+            mock.patch.object(record_pages, "scan_source", side_effect=write_once),
+        ):
+            results = project_context.direction_lookups(
+                self.config, self.state, "claude", "long", [fact["fact_id"] for fact in self.facts]
+            )
+        self.assertEqual(2, scans)
+        self.assertEqual([""] * 3, [result.reason for result in results])
+        self.assertTrue(all(result.words.text for result in results))
+
+    def test_a_reader_is_not_told_a_changing_source_is_missing_when_a_direction_is_ambiguous(
+        self,
+    ) -> None:
+        # Ambiguity keeps its old answer; only a file that moved under every try is `changed`.
+        self.assertEqual(
+            "not_found",
+            project_context._direction_result(None, True, True, False, 0).reason,
+        )
+        self.assertEqual(
+            "changed",
+            project_context._direction_result(None, False, False, False, 0, changed=True).reason,
+        )
 
     def test_a_reader_can_choose_recent_prompts_as_well_as_an_adopted_opening_prompt(self) -> None:
         facts = project_context.transcript_user_facts(

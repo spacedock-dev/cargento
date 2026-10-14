@@ -760,6 +760,7 @@ describe('a direction press that cannot finish', () => {
       'That direction could not be verified as later than your intent in the current record.',
     ],
     ['out_of_reach', 'That direction is beyond the part of the record Compass could search.'],
+    ['changed', 'The session wrote to its record while Compass was reading it. Press again.'],
   ] as const) {
     for (const [action, ending] of [
       ['direction-goal', 'Your goal has not changed.'],
