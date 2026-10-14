@@ -1067,7 +1067,14 @@ marked circle in one hand, and its status coverage includes the clock-counter-cl
 checks and caret shapes. These distinctions and MIT licensing made it the choice over Lucide,
 shadcn's default, and the other families in React Icons. The package declares `sideEffects: false`;
 the build retains only imported glyphs and their shared runtime. The final measured build delta
-is recorded below, rather than inferred from the package's installed size.
+is recorded below, rather than inferred from the package's installed size. The info mark (`PiInfo`)
+joined it on 2026-10-14 for the short line a press leaves under its button.
+
+That line is a Popover, not a Tooltip, even though it reads like one. A tooltip does not open on a
+touch screen, and what it holds is the outcome of a press (what was not settled, and that no analysis
+started), so it opens on hover and on a press (Enter or Space from the keyboard). The whole sentence is also in the page,
+visually hidden, as the button's description, and the polite region still announces it, so the popup
+is never the only copy.
 
 The existing hand SVG `DisclosureChevron` stays for the other disclosures, and native title
 tooltips elsewhere stay. The fold alone passes a Phosphor caret to the existing Collapsible trigger.

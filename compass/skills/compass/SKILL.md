@@ -363,9 +363,9 @@ the window and every later direction still to settle, each at its own number, an
 counted and did not list. An entry a departure cites is flagged "Cited" and always listed, and a direction you
 gave after saving is flagged "A later direction you gave", which records no finding. Numbers are
 worked out again on every render. A finding's "Show cited entries in Session activity" button
-scrolls to and marks its resolved entries with its saved words and their current numbers, without
-requesting another analysis. A finding that cites nothing resolvable says so and marks nothing.
-A check that re-runs or a file written again moves the entries
+scrolls to and marks its resolved entries with its saved words and their current numbers, and tints
+each of those rows so it stands apart from the list, without requesting another analysis. A finding that cites nothing resolvable says so and marks nothing.
+On a harness without fixed numbers, a check that re-runs or a file written again moves the entries
 after it. Each entry shows who wrote it, its own type and the source that published it, and the
 list states the limit under it: demonstrated work results are read on Pi, and on
 Claude Code the record also lists the checks a session ran and the files it wrote, each result as

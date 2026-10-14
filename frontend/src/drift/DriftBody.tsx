@@ -12,6 +12,7 @@ import { readingBoard } from './flip';
 import {
   BudgetLine,
   DISCLOSURE_ID,
+  DisclosureParts,
   ReadingControl,
   ReadingCount,
   REFUSED_ID,
@@ -19,7 +20,7 @@ import {
   type SteerSlot,
 } from './ReadingControl';
 import { ReadingResult } from './ReadingResult';
-import { needsAllow, promptReadingRefusal, routeRefusal } from './route';
+import { disclosureParts, needsAllow, promptReadingRefusal, routeRefusal } from './route';
 import { absenceAttr, OFFER, READING_DEFINITION, SCOPE, UNKNOWN_KEY } from './sentences';
 import { SteerBox, SteerButton, UpdateIntentButton } from './SteerBack';
 import { useFollowCorrection } from './useFollowCorrection';
@@ -185,6 +186,7 @@ function QuestionWithAnalysis({
   const owed = needsAllow(payload, route);
   const provider = route?.['provider'] ? String(route['provider']) : '';
   const disclosure = provider && route?.['disclosure'] ? String(route['disclosure']) : '';
+  const receiver = String(route?.['label'] || provider);
   const analyze = !edited && !reason && !job && !owed;
   const request = ctx.intent.held.requests.get(model.key);
   const count = Number(annotation?.['reading_count']) || 0;
@@ -210,9 +212,21 @@ function QuestionWithAnalysis({
             <p className="next-cockpit-reading-why next-cockpit-reading-change">{board.changed}</p>
           ) : null}
           {analyze && disclosure ? (
-            <p className="next-cockpit-reading-why" id={DISCLOSURE_ID}>
-              {disclosure}
-            </p>
+            /* The same "What is sent" popover the idle Analyze button draws, in the same words: this
+               question's Keep runs under an Allow already given, and the whole list stays one click away
+               and describes Keep, instead of standing as a paragraph under the buttons. */
+            <Why
+              name="reading-sent"
+              pop
+              summary={
+                route?.['fallback'] === true ? `What is sent to ${receiver}` : 'What is sent'
+              }
+            >
+              <DisclosureParts
+                parts={disclosureParts(route, provider, disclosure)}
+                id={DISCLOSURE_ID}
+              />
+            </Why>
           ) : null}
           {annotation ? <ReadingCount count={count} /> : null}
           <BudgetLine />

@@ -151,7 +151,7 @@ export function DirectionQuestion({
           <span className="next-visually-hidden">{` ${since}`}</span>.
         </p>
         <WholeList pending={pending} numbers={numbers} />
-        <div className="next-cockpit-reading-ask [&>button]:flex-auto">
+        <div className="next-cockpit-reading-ask items-start [&>button]:flex-auto">
           <DirectionActionButton
             feedbackKey={`direction-keep:${key}`}
             weight={primary ? 'primary' : 'secondary'}

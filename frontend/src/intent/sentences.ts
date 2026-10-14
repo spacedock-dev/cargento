@@ -135,5 +135,38 @@ export const KEEP_UNOPENED =
 export const KEEP_UNCONFIRMED =
   'Could not confirm the press. Refresh to check whether your intent was kept before pressing again.';
 
+/* The short line a press's answer leaves under its button, with the whole sentence behind an info mark. The
+   long answers used to print under the button and move every control around it; the words are the same,
+   said once, in a hover and focus popover and to a screen reader, and the polite region still announces
+   the whole sentence. A message with no entry here keeps its first sentence, cut at a word. */
+const FEEDBACK_SHORT: readonly (readonly [RegExp, string])[] = [
+  [/^That direction is beyond the part of the record/, 'Direction out of reach'],
+  [/^The session wrote to its record while Compass/, 'Record changed, press again'],
+  [/^That direction could not be verified/, 'Direction unverified'],
+  [/^Compass could not open that direction/, 'Could not open direction'],
+  [/^Could not open that direction/, 'Could not open direction'],
+  /* Only the bare settlement is "Intent kept". The same sentence with a reason after it (the reader changed,
+     the daily limit, a store that could not be reached) says the reading did not start, and the line says so. */
+  [
+    /^Kept your intent and settled (?:the direction|all \d+ directions)\.(?: No analysis was started\.| Press Allow and analyze to send it for a reading\.)$/,
+    'Intent kept',
+  ],
+  [/^Kept your intent/, 'Kept, not analyzed'],
+  [/^Nothing was settled yet/, 'Read each direction, then press again'],
+  [/^Keep can open up to/, 'Too many directions to keep at once'],
+  [/^Nothing was settled/, 'Nothing was settled'],
+  [/^Could not confirm the press/, 'Press not confirmed'],
+];
+const FEEDBACK_SHORT_MAX = 44;
+
+export function feedbackSummary(message: string): string {
+  for (const [pattern, short] of FEEDBACK_SHORT) if (pattern.test(message)) return short;
+  const first = message.split(/(?<=[.!?])\s/)[0] ?? message;
+  if (first.length <= FEEDBACK_SHORT_MAX) return first;
+  const head = first.slice(0, FEEDBACK_SHORT_MAX);
+  const cut = first[FEEDBACK_SHORT_MAX] === ' ' ? head : head.replace(/\s+\S*$/, '');
+  return `${cut}…`;
+}
+
 export const DRIFT_SUBTITLE = 'How far the session has moved from the goal';
 export const LIVE_MONITOR = 'Live monitor';

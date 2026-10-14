@@ -3839,6 +3839,32 @@ the position and the page draws it.
   seconds for a generated 63 MB transcript, and later requests read only what the transcript
   gained. [The paging record](design-session-record-pages.md#fixed-positions) owns the index.
 
+#### Amended 2026-10-14 (owner): a press says it in one line, what is sent reads as a list, a cited entry is tinted
+
+Three things on the Session page's Drift card read badly with real data, and each was fixed without
+removing a word a reader is owed.
+
+- The answer to a press (Keep, Add it to my intent, Use this as my goal) printed under its button as
+  a whole sentence, which moved every control beside it and wrapped to seven lines in the narrow
+  column. It is now one short line with an info mark ("Direction unverified", "Direction out of
+  reach", "Record changed, press again", "Intent kept"). The rest of the sentence opens from the
+  mark on hover and on a press (Enter or Space from the keyboard). The whole sentence stays in the page for a screen reader as
+  the button's description and in the polite region, so the popup is never the only copy. It is a
+  popover and not a tooltip because the sentence is an outcome and a tooltip does not open on touch.
+  An answer with no short form keeps its first sentence, cut at a word.
+- Where Keep may analyze under an Allow already given, the direction question printed the whole
+  disclosure as one paragraph: the form the owner called long and arduous on 2026-10-02, kept in
+  that one place. It now uses the "What is sent" popover the idle Analyze button already has, with
+  the server's parts unchanged and in order. The consent step still shows every part, before "Allow
+  and analyze". In every place the list is drawn, an item that opens with its own label ("Sent:", "To:",
+  "Tool output, only after you allow it:") sets the label in weight, so it reads as a short form.
+- "Show cited entries" marked the cited entries with a line of text inside each row, which was hard
+  to find in a long list. Each cited row is also tinted across and edged in the accent colour.
+
+Rejected: a tooltip for the press answer (unreachable on touch), and folding the consent step's list
+behind a disclosure (its ruling is that the whole disclosure is in view before the press that is the
+consent).
+
 ### What the direction-adoption server build decided, 2026-09-27
 
 #### Amended 2026-10-04: owner, any listed direction may be selected
