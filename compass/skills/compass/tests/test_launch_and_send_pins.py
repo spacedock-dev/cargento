@@ -3,14 +3,17 @@
 [SECURITY.md](SECURITY.md#what-launches-and-what-sends) tables each outbound or launch path,
 the switch that stops it and the test that fails when it leaks. These are the pins that table
 named as missing, and each was run against a local break of the behaviour it guards before it
-was kept (the break is recorded in the pull request that added them):
+was kept:
 
 - the page and its stylesheet make no absolute request;
 - a press under either spelling of the model refusal starts no process and opens no socket;
-- the runtime writes nothing into a harness store, over a whole press-to-copy journey.
+- the runtime writes nothing into the watched harness directories over a press-to-copy journey;
+- `--no-spacedock` starts no discovery command;
+- the table's own citations resolve, its switches are present, every runtime module that starts
+  a program or makes a request has a row, and the POST routes are the listed ones.
 
-The fourth, that the live monitor starts no Claude reading model, extends
-`test_live_estimate.ALiveEstimateStartsNoModelTest` where it already lived.
+The live monitor's check, that it starts no Claude reading model, extends
+`test_live_estimate.TheLiveEstimateTest` where it already lived.
 """
 
 from __future__ import annotations
@@ -72,7 +75,7 @@ ABSOLUTE = re.compile(
 URL = re.compile(rb"(?:https?|wss?)://[^\s\"'<>)\\]+", re.IGNORECASE)
 
 # The vendored terminal is served at `/assets/xterm.js` and `/assets/xterm.css` beside the
-# page, from bytes pinned by `react.integrity.json`. It names four absolute URLs and none is
+# page, from bytes pinned by `react.integrity.json`. It names five absolute URLs and none is
 # ever requested: two are XML namespace identifiers handed to `createElementNS`, one sits in
 # an error string about secure contexts, and two are provenance links in the stylesheet's
 # licence comments. The set is closed rather than prefix-matched, so a vendored upgrade that
@@ -213,6 +216,9 @@ def snapshot(*roots: Path) -> dict[str, tuple[Any, ...]]:
     """Every entry under `roots`: kind, size, modified time and content hash."""
     found: dict[str, tuple[Any, ...]] = {}
     for root in roots:
+        if not root.exists():
+            found[str(root)] = ("absent",)
+            continue
         for path in sorted([root, *root.rglob("*")]):
             info = path.lstat()
             digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
@@ -311,17 +317,32 @@ class _Journey(_App):
 class TheJourneyWritesNothingIntoAHarnessStoreTest(_Journey):
     """The invariant is read-only against harness stores, and nothing but absence held it.
 
-    Two checks run over one journey, because each is blind where the other sees: a snapshot of
-    the store before and after catches any write whatever made it, a subprocess included, and
-    a write that restores what it changed; the guard names the call that did it. The journey is
-    every route the Intent and drift page uses on a session: the board, the project context,
-    the end-of-session observation, the typed goal, a press for a reading, Steer back's
-    correction, the copy of it, a dismissal, and the Intent log.
+    Two checks run over one journey of nine routes, and they watch four directories: the
+    transcript store, the Claude and Codex configuration directories under the fixture's HOME,
+    and the directory the session ran in. The snapshot compares each entry's size, modified
+    time and content hash before and after, so it sees a change whatever made it, a subprocess
+    included. The guard records `open`, `os.open` and the `os` and `shutil` calls that change a
+    path, and names the caller. It does not see a SQLite write or a child process, which is
+    why the snapshot is the other half. Nothing outside the four directories is covered.
     """
 
+    def setUp(self) -> None:
+        super().setUp()
+        # The fixture's HOME is `self.root`, so these are the directories a real run would
+        # resolve to: the harnesses' own configuration, beside the transcript store.
+        for name, config in ((".claude", "settings.json"), (".codex", "config.toml")):
+            (self.root / name).mkdir()
+            (self.root / name / config).write_text("{}\n", encoding="utf-8")
+
     def roots(self) -> tuple[Path, ...]:
-        # The transcript store, and the directory the session ran in.
-        return (self.root / "claude", self.root / "work")
+        # The transcript store, the Claude and Codex configuration directories under the
+        # fixture's HOME, and the directory the session ran in.
+        return (
+            self.root / "claude",
+            self.root / ".claude",
+            self.root / ".codex",
+            self.root / "work",
+        )
 
     def walk(self, port: int) -> list[tuple[str, int]]:
         sid = f"claude:{SHORT}"
@@ -418,7 +439,7 @@ class TheJourneyWritesNothingIntoAHarnessStoreTest(_Journey):
             handle.write("{}\n")
         self.assertEqual(1, len(writes))
         self.assertNotEqual(before, snapshot(*self.roots()))
-        # And a write that puts the bytes back is still named, which the snapshot alone cannot.
+        # The guard names a write that puts the same bytes back, too.
         original = self.path.read_bytes()
         with write_guard(self.roots()) as writes:
             self.path.write_bytes(original)
@@ -518,6 +539,15 @@ class APressUnderTheModelRefusalLaunchesNothingTest(_Journey):
     def press_with(self, config: Any, provider: str) -> int:
         self.config = config
         self.state.config = config
+        # Consent stored first, through the same store with the refusal lifted, so a refused
+        # press is refused by the switch and not for want of an answer: with no consent the
+        # route would answer 403 and the tripwires below would guard nothing.
+        reading_policy.set_consent(
+            dataclasses.replace(config, model_calls_disabled=False),
+            True,
+            now=NOW,
+            provider=provider,
+        )
         with (
             self.machine(self.PROVIDERS[provider]),
             self.serving() as port,
@@ -544,8 +574,8 @@ class APressUnderTheModelRefusalLaunchesNothingTest(_Journey):
                 with self.subTest(refusal=label, provider=provider):
                     self.assertTrue(config.model_calls_disabled)
                     status = self.press_with(config, provider)
-                    self.assertEqual(503, status)
                     self.assertEqual((0, []), (self.launched, self.dialled))
+                    self.assertEqual(503, status)
 
     def test_with_the_gate_open_the_same_press_does_reach_the_process_patch(self) -> None:
         reading_policy.set_consent(self.config, True, now=NOW, provider="claude")
@@ -557,12 +587,78 @@ class APressUnderTheModelRefusalLaunchesNothingTest(_Journey):
                 self.assertGreaterEqual(self.launched, 1)
 
 
+# What starts a program or makes a request, as `module.member`. A module that merely names
+# `subprocess.TimeoutExpired` or `socket.SOL_SOCKET` is not listed: only the members that act.
+ACTING = (
+    "subprocess.run",
+    "subprocess.Popen",
+    "subprocess.call",
+    "subprocess.check_call",
+    "subprocess.check_output",
+    "subprocess.getoutput",
+    "subprocess.getstatusoutput",
+    "socket.create_connection",
+    "socket.socket",
+    "http.client.HTTPConnection",
+    "http.client.HTTPSConnection",
+    "urllib.request.urlopen",
+    "urllib.request.build_opener",
+    "urllib.request.install_opener",
+    "webbrowser",
+    "os.system",
+    "os.popen",
+    "os.posix_spawn",
+    "os.posix_spawnp",
+    "os.startfile",
+    "os.execv",
+    "os.execve",
+    "os.execvp",
+    "os.execvpe",
+    "os.spawnv",
+    "os.spawnl",
+)
+
+
+def acting_calls(source: str) -> set[str]:
+    """The `ACTING` members a module reaches, however it imported them.
+
+    `import subprocess as _sp`, `from subprocess import run` and `import http.client` all
+    resolve to the dotted name they stand for, so a rename cannot hide a launch from the table
+    test. It reads names, not behaviour: `getattr(subprocess, name)` and `importlib` are not
+    followed, and the table says nothing about what a module does with a program it started.
+    """
+    tree = ast.parse(source)
+    bound: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                if item.asname:
+                    bound[item.asname] = item.name
+                else:
+                    bound[item.name.split(".")[0]] = item.name.split(".")[0]
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for item in node.names:
+                bound[item.asname or item.name] = f"{node.module}.{item.name}"
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Attribute, ast.Name)):
+            head, _, rest = ast.unparse(node).partition(".")
+            if head in bound:
+                full = bound[head] + (f".{rest}" if rest else "")
+                found.update(
+                    member for member in ACTING if full == member or full.startswith(f"{member}.")
+                )
+    return found
+
+
 class TheLaunchAndSendTableNamesRealTestsTest(unittest.TestCase):
     """The table in SECURITY.md cites tests by name, so a rename cannot leave it citing nothing.
 
     Three things are held: every cited `module.Class.method` resolves, every switch that stops
-    a launch or a send appears, and every runtime module that starts a program or makes a
-    request is accounted for by a row. The last is the one that finds a path nobody tabled.
+    a launch or a send appears, and every runtime module whose source reaches `ACTING` (by name,
+    through any import spelling) is accounted for by a row. The last is the one that finds a
+    path nobody tabled. It reads names in the source, so it cannot see a program started
+    through `getattr` or `importlib`.
     """
 
     HEADING = "## What launches and what sends\n"
@@ -584,6 +680,7 @@ class TheLaunchAndSendTableNamesRealTestsTest(unittest.TestCase):
         "--allow-tool-output",
         "COMPASS_ALLOW_TOOL_OUTPUT=1",
         "--interaction-origin-session",
+        "--frontend-dev-manifest",
         "--daemon",
     )
     # Runtime module -> text of the row that accounts for what it starts or requests.
@@ -598,21 +695,8 @@ class TheLaunchAndSendTableNamesRealTestsTest(unittest.TestCase):
         "lifecycle": "The daemon",
         "project_context": "The Spacedock workflow discovery",
         "interaction_prototype": "The optional read-only terminal",
+        "frontend_dev": "The development frontend probe",
     }
-    WATCHED = frozenset(
-        {
-            "subprocess.run",
-            "subprocess.Popen",
-            "subprocess.check_output",
-            "subprocess.call",
-            "urllib.request.urlopen",
-            "urllib.request.build_opener",
-            "socket.create_connection",
-            "os.system",
-            "os.execv",
-            "os.execvp",
-        }
-    )
 
     @classmethod
     def section(cls) -> str:
@@ -648,16 +732,11 @@ class TheLaunchAndSendTableNamesRealTestsTest(unittest.TestCase):
         self.assertIn("ALaunchTimeToolOutputGrantTest", section)
 
     def test_every_runtime_module_that_launches_or_requests_has_a_row(self) -> None:
-        found: dict[str, set[str]] = {}
-        for path in [*self.RUNTIME.glob("*.py"), *self.RUNTIME.glob("collectors/*.py")]:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            used = {
-                ast.unparse(node)
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Attribute) and ast.unparse(node) in self.WATCHED
-            }
-            if used:
-                found[path.stem] = used
+        found = {
+            path.stem: calls
+            for path in [*self.RUNTIME.glob("*.py"), *self.RUNTIME.glob("collectors/*.py")]
+            if (calls := acting_calls(path.read_text(encoding="utf-8")))
+        }
         self.assertEqual(
             sorted(self.LAUNCHERS),
             sorted(found),
@@ -668,6 +747,72 @@ class TheLaunchAndSendTableNamesRealTestsTest(unittest.TestCase):
         self.assertEqual(
             [], [row for row in set(self.LAUNCHERS.values()) if f"| {row}" not in section]
         )
+
+    def test_the_scan_sees_each_way_a_launch_can_be_spelled(self) -> None:
+        for source in (
+            "import subprocess\nsubprocess.run(['x'])",
+            "import subprocess as _sp\n_sp.Popen(['x'])",
+            "from subprocess import run\nrun(['x'])",
+            "from subprocess import check_output as out\nout(['x'])",
+            "import http.client\nhttp.client.HTTPConnection('h')",
+            "from http.client import HTTPSConnection\nHTTPSConnection('h')",
+            "import urllib.request\nurllib.request.urlopen('u')",
+            "import socket as s\ns.create_connection(('h', 1))",
+            "import webbrowser\nwebbrowser.open('u')",
+            "import os\nos.system('x')",
+        ):
+            with self.subTest(source=source):
+                self.assertTrue(acting_calls(source))
+        self.assertEqual(set(), acting_calls("import subprocess\nx: subprocess.TimeoutExpired"))
+
+
+class ThePostRoutesAreTheListedOnesTest(unittest.TestCase):
+    """Adding a POST route fails here until the route is listed, which is the review point.
+
+    The journey test calls nine fixed routes and cannot see a tenth. A route is where a send
+    path into a session would first appear, so the set `do_POST` dispatches is pinned exactly,
+    and SECURITY.md's "What launches and what sends" is the table to reread when it changes.
+    The two prefixes are matched ahead of the exact-match dictionary.
+    """
+
+    EXPECTED = frozenset(
+        {
+            "/api/annotate",
+            "/api/answer",
+            "/api/ask",
+            "/api/ask/withdraw",
+            "/api/correction",
+            "/api/correction/copied",
+            "/api/direction",
+            "/api/dismiss",
+            "/api/events/",
+            "/api/focus",
+            "/api/interaction/",
+            "/api/lane",
+            "/api/notify",
+            "/api/reading",
+            "/api/reading/cancel",
+            "/api/shutdown",
+            "/api/tripwire",
+            "/api/usage",
+        }
+    )
+
+    def test_do_post_dispatches_exactly_these_routes(self) -> None:
+        tree = ast.parse(Path(http_api.__file__).read_text(encoding="utf-8"))
+        (handler,) = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "do_POST"
+        ]
+        routes = {
+            node.value
+            for node in ast.walk(handler)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value.startswith("/api/")
+        }
+        self.assertEqual(self.EXPECTED, routes)
 
 
 if __name__ == "__main__":

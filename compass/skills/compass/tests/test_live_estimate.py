@@ -32,6 +32,7 @@ from compass_runtime import (
     observer,
     project_context,
     reading,
+    supervise,
 )
 
 from .support import make_server, serve_until_closed
@@ -223,6 +224,11 @@ class TheLiveEstimateTest(_Replay):
             mock.patch.object(
                 reading.ClaudeReadingModel, "__call__", side_effect=AssertionError("a model")
             ),
+            # The two functions every CLI launch passes through. Without them the Claude class
+            # above passes on a machine with no `claude` on PATH, where its lookup returns
+            # before anything is started.
+            mock.patch.object(observer, "claude_exec", side_effect=AssertionError("a model")),
+            mock.patch.object(supervise, "run", side_effect=AssertionError("a process")),
         ):
             answer = live_estimate.for_session(
                 self.config, saved_row(), str(self.path), [], floor=None, now=1.0

@@ -898,6 +898,9 @@ class ALaunchGrantThatWasNotRecordedIsNotClaimed(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.dict(os.environ, {"COMPASS_HOME": tmp}),
+            # The environment variable grants too, so a machine that exports it would make
+            # the no-flag case a grant case. Only the flag under test may.
+            mock.patch.dict(os.environ, {cli.TOOL_OUTPUT_ENV: ""}),
             mock.patch.object(
                 sys, "argv", ["server.py", "--port", str(port), "--no-events", *flags]
             ),
