@@ -1840,7 +1840,8 @@ characters). It returns nothing for a message that is not a person's message in 
 own record, one not later than the words it would join, or one beyond the bounded source search.
 Every refusal is an HTTP 200 body. `not_found` covers an unverified source or a
 request not later than the intent, including unknown sessions; `out_of_reach` says
-the search ended before reaching the record's start. The budget token describes search coverage, not whether the requested direction
+the search ended before reaching the record's start; `changed` says the session wrote to
+its record during each of three whole scans, and the press can be repeated. The budget token describes search coverage, not whether the requested direction
 exists. Session identities remain the same loopback data already published by
 `/api/data`; unknown sessions have no separate HTTP status. The [long-session lookup](docs/design-reading-a-session.md#long-session-direction-and-prompt-reads)
 owns its 64 MiB and two-second limits and the bounded ambiguity guarantee.

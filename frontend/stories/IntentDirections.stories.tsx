@@ -13,7 +13,7 @@ function DirectionsExample({
   count = 2,
   partial = false,
 }: {
-  readonly reason?: 'not_found' | 'out_of_reach';
+  readonly reason?: 'not_found' | 'out_of_reach' | 'changed';
   readonly count?: number;
   readonly partial?: boolean;
 }) {
@@ -162,6 +162,20 @@ export const OutsideSearch: Story = {
     const row = canvasElement.querySelector('[data-next-entry-id="f2"]') as HTMLElement;
     await failedPress(row, 'direction-add', `${prefix} No outcome line was added.`);
     await expect(canvas.getByRole('textbox', { name: 'Goal' })).toHaveValue('Ship synthetic work');
+  },
+};
+
+/* The reader pressed while the agent was writing to its record, so the lookup saw the file move on every try.
+   The sentence says so and asks for another press, where it used to say the direction was not verified. */
+export const SessionWriting: Story = {
+  args: { reason: 'changed' },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByRole('button', { name: 'Keep my intent' });
+    await failedPress(
+      canvasElement,
+      'direction-keep',
+      'The session wrote to its record while Compass was reading it. Press again. Nothing was settled and no analysis was started.',
+    );
   },
 };
 

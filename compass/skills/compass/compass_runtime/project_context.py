@@ -5679,6 +5679,12 @@ def instruction_events(
     return events
 
 
+# Whole scans a direction lookup tries before it answers `changed`. Three is two retries after the
+# first, which at the measured 0.2 to 1.4 s a scan keeps the worst case near the 2 s per-scan clock
+# times three.
+DIRECTION_SCAN_ATTEMPTS = 3
+
+
 class DirectionText(NamedTuple):
     """A direction's text for review, and whether the record reader cut it short.
 
@@ -5732,7 +5738,11 @@ def _direction_result(
     stable: bool,
     bounded: bool,
     scanned: int,
+    *,
+    changed: bool = False,
 ) -> DirectionLookup:
+    if changed:
+        return DirectionLookup(DirectionText(""), "changed", scanned)
     if not stable or ambiguous:
         return DirectionLookup(DirectionText(""), "not_found", scanned)
     if match is not None:
@@ -5741,26 +5751,53 @@ def _direction_result(
     return DirectionLookup(DirectionText(""), "out_of_reach" if bounded else "not_found", scanned)
 
 
-def direction_lookups(
-    config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_ids: list[str]
-) -> list[DirectionLookup]:
-    """Verify every requested identity in one scan, retaining request order.
+def _direction_scan_once(
+    config: RuntimeConfig,
+    path: str,
+    harness: str,
+    stamp: tuple[int, int, int, int],
+    visit: Callable[[bytes], None],
+) -> tuple[int, bool, bool, bool] | None:
+    """One whole scan: bytes scanned, whether coverage is bounded, stable, and moved.
 
-    docs/design-reading-a-session.md#long-session-direction-and-prompt-reads
-    owns the bounded ambiguity guarantee and the unsearched-source limit.
+    `moved` is true only when the file changed under the scan, the one outcome a retry can fix.
+    None is a source that could not be read at all.
     """
     from . import record_pages  # noqa: PLC0415 - shared reader imports the fact builders
 
-    path = observer.resolve_transcript(config, state, harness, sid) or observer.resolve_directions(
-        config, state, harness, sid
-    )
-    stamp = transcript_stamp(path) if path else None
-    if not path or stamp is None:
-        return [DirectionLookup(DirectionText("")) for _ in fact_ids]
-    wanted = set(fact_ids)
-    matches: dict[str, tuple[bytes, DirectionText, dict[str, Any]]] = {}
-    ambiguous: set[str] = set()
+    if harness in record_pages.HARNESSES:
+        scan = record_pages.scan_source(
+            config,
+            path,
+            visit,
+            max_bytes=config.direction_scan_max_bytes,
+            deadline=time.monotonic() + config.direction_scan_max_seconds,
+            expected_stamp=stamp,
+        )
+        return (
+            scan.scanned_bytes,
+            not scan.reached_start or scan.skipped,
+            scan.state == "ok",
+            scan.state == "stale",
+        )
+    try:
+        for line in runtime_io.read_tail(
+            config, path, follow_links=harness not in observer.DIRECTION_HARNESSES
+        ):
+            visit(line.encode())
+    except OSError:
+        return None
+    return 0, False, True, False
 
+
+def _direction_visitor(
+    config: RuntimeConfig,
+    harness: str,
+    sid: str,
+    wanted: set[str],
+    matches: dict[str, tuple[bytes, DirectionText, dict[str, Any]]],
+    ambiguous: set[str],
+) -> Callable[[bytes], None]:
     def visit(raw: bytes) -> None:
         for record, fact, _ in _instruction_facts(config, raw, harness, sid):
             fact_id = str(fact["fact_id"])
@@ -5773,30 +5810,54 @@ def direction_lookups(
             elif previous is None:
                 matches[fact_id] = (signature, _direction_words(config, record, harness), fact)
 
-    if harness in record_pages.HARNESSES:
-        scan = record_pages.scan_source(
-            config,
-            path,
-            visit,
-            max_bytes=config.direction_scan_max_bytes,
-            deadline=time.monotonic() + config.direction_scan_max_seconds,
-            expected_stamp=stamp,
-        )
-        scanned = scan.scanned_bytes
-        bounded = not scan.reached_start or scan.skipped
-        stable = scan.state == "ok"
-    else:
-        try:
-            for line in runtime_io.read_tail(
-                config, path, follow_links=harness not in observer.DIRECTION_HARNESSES
-            ):
-                visit(line.encode())
-        except OSError:
+    return visit
+
+
+def direction_lookups(
+    config: RuntimeConfig, state: RuntimeState, harness: str, sid: str, fact_ids: list[str]
+) -> list[DirectionLookup]:
+    """Verify every requested identity in one scan, retaining request order.
+
+    docs/design-reading-a-session.md#long-session-direction-and-prompt-reads
+    owns the bounded ambiguity guarantee and the unsearched-source limit.
+    """
+    path = observer.resolve_transcript(config, state, harness, sid) or observer.resolve_directions(
+        config, state, harness, sid
+    )
+    wanted = set(fact_ids)
+    matches: dict[str, tuple[bytes, DirectionText, dict[str, Any]]] = {}
+    ambiguous: set[str] = set()
+
+    visit = _direction_visitor(config, harness, sid, wanted, matches, ambiguous)
+
+    # A working session appends to its record every few seconds, and a press that lands while
+    # the agent writes would otherwise be refused at random. Each attempt is a whole scan of an
+    # unchanged file, so the ruling that an append refuses the read holds; only the number of
+    # tries is new. Measured 2026-10-14: the page's Keep failed five times in five on a live
+    # session because the tool result was written 0.5 s into a 1.4 s scan.
+    for _ in range(DIRECTION_SCAN_ATTEMPTS):
+        stamp = transcript_stamp(path) if path else None
+        if not path or stamp is None:
             return [DirectionLookup(DirectionText("")) for _ in fact_ids]
-        scanned, bounded, stable = 0, False, True
-    stable = stable and transcript_stamp(path) == stamp
+        matches.clear()
+        ambiguous.clear()
+        outcome = _direction_scan_once(config, path, harness, stamp, visit)
+        if outcome is None:
+            return [DirectionLookup(DirectionText("")) for _ in fact_ids]
+        scanned, bounded, stable, moved = outcome
+        if stable and transcript_stamp(path) != stamp:
+            stable, moved = False, True
+        if not moved:
+            break
     return [
-        _direction_result(matches.get(fact_id), fact_id in ambiguous, stable, bounded, scanned)
+        _direction_result(
+            matches.get(fact_id),
+            fact_id in ambiguous,
+            stable,
+            bounded,
+            scanned,
+            changed=moved,
+        )
         for fact_id in fact_ids
     ]
 
