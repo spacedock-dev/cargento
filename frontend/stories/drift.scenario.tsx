@@ -1,0 +1,249 @@
+import { useEffect, useState } from 'react';
+import { App } from '../src/App';
+import { createShell } from '../src/shell/createShell';
+import { createRouter } from '../src/router/router';
+import { fakeRouterEnvironment } from '../src/router/testing';
+import { createFakeClock, createFakeEnvironment } from '../src/transport/testing';
+import { fakeBackend } from '../test/storage_backends';
+
+/* One whole page over a scripted backend, for the stories that hold the Intent and drift card by stage, by
+   harness and by route. The real provider, router and Drift card run; only the network is a double, and a
+   path nobody scripted answers `{}`, so a request nobody meant to make cannot reach a model or a session.
+   Not a story file, so Storybook lists nothing from it and the route-reason guard can import its table. */
+
+export const HARNESSES = ['claude', 'pi', 'codex', 'antigravity'] as const;
+export type Harness = (typeof HARNESSES)[number];
+
+/* A route as the server publishes it (`reading_route.Route`), so a story edits only what it is about. */
+export interface RouteFields {
+  readonly provider: string;
+  readonly label: string;
+  readonly reason: string;
+  readonly note: string;
+  readonly fallback: boolean;
+}
+
+export function routeOf(harness: string, fields: RouteFields): Record<string, unknown> {
+  const reads = fields.provider !== '';
+  const claude = fields.provider === 'claude';
+  const parts = reads
+    ? [fields.note, `This sends the session to ${fields.label}.`, 'Your saved words.']
+    : [];
+  return {
+    harness,
+    provider: fields.provider,
+    label: fields.label,
+    vendor: '',
+    model: reads ? 'm' : '',
+    reason: fields.reason,
+    note: fields.note,
+    disclosure: parts.join(' '),
+    disclosure_parts: parts,
+    fallback: fields.fallback,
+    destination: claude ? 'api' : '',
+    tool_output: claude ? 'Tool output goes to the api.' : '',
+    words_destination: reads ? 'api' : '',
+  };
+}
+
+/* Every harness has a reader on a healthy machine: Claude Code reads its own, Codex reads its own, and Pi and
+   Antigravity have no producer of their own, so Codex reads them. */
+export function healthyRoute(harness: Harness): Record<string, unknown> {
+  if (harness === 'claude') {
+    return routeOf(harness, {
+      provider: 'claude',
+      label: 'Claude Code',
+      reason: 'own-harness',
+      note: "This session's own harness reads it.",
+      fallback: false,
+    });
+  }
+  return harness === 'codex'
+    ? routeOf(harness, {
+        provider: 'codex',
+        label: 'Codex',
+        reason: 'own-harness',
+        note: "This session's own harness reads it.",
+        fallback: false,
+      })
+    : routeOf(harness, {
+        provider: 'codex',
+        label: 'Codex',
+        reason: 'no-own-producer',
+        note: 'This harness has no reading producer of its own, so Codex reads this session.',
+        fallback: false,
+      });
+}
+
+export interface Scenario {
+  readonly harness?: Harness;
+  /** What the board publishes for this session, over the saved intent below. */
+  readonly session?: Record<string, unknown>;
+  /** A session with no saved words: the first prompt is drafted into the goal box and nothing is stored. */
+  readonly unsaved?: boolean;
+  readonly payload?: Record<string, unknown>;
+  readonly facts?: readonly unknown[];
+  readonly work?: Record<string, unknown>;
+  /** The route for this harness, where a story is about a machine that is not the healthy one. */
+  readonly route?: Record<string, unknown>;
+}
+
+export const fact = (
+  id: string,
+  at: number,
+  extra: Record<string, unknown> = {},
+  harness: string = 'claude',
+) => ({
+  fact_id: id,
+  type: 'tool_report',
+  by: 'agent',
+  summary: `Entry ${id}`,
+  at,
+  source_session: { harness, sid: 's1' },
+  evidence: { source: 'transcript', confidence: 'exact' },
+  ...extra,
+});
+
+/* Two different commands, so a later pass of one does not stand over the failure of the other. */
+export const failedCheck = (id: string, at: number, harness = 'claude') =>
+  fact(
+    id,
+    at,
+    { subject: 'check', result: 'failed', result_source: 'failed flag', summary: 'pytest -q' },
+    harness,
+  );
+export const passedCheck = (id: string, at: number, harness = 'claude') =>
+  fact(
+    id,
+    at,
+    { subject: 'check', result: 'passed', result_source: 'passed flag', summary: 'ruff check .' },
+    harness,
+  );
+export const written = (id: string, at: number, path: string, harness = 'claude') =>
+  fact(id, at, { subject: 'write', summary: path }, harness);
+
+/* The saved words every stage but the first reads against. */
+export const SAVED = {
+  annotation_goal: 'Ship the queue',
+  annotation_line_1: 'Tests pass',
+  annotation_revision: 3,
+  annotation_revision_count: 1,
+  annotation_at: 990,
+  annotation_goal_saved_at: 990,
+  annotation_window_start: 100,
+};
+
+const POLICY = {
+  providers: { claude: true, codex: true },
+  words: { claude: true, codex: true },
+  tool_output: { claude: ['api'] },
+  used: 1,
+  limit: 10,
+};
+
+function DriftScenario({ scenario }: { readonly scenario: Scenario }) {
+  const [shell] = useState(() => {
+    const harness = scenario.harness ?? 'claude';
+    const clock = createFakeClock();
+    const history = fakeRouterEnvironment(`#n=session:demo:${harness}:s1`);
+    let generation = 1000;
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+    return createShell({
+      env: createFakeEnvironment({ clock }),
+      router: createRouter(history.env),
+      provider: () => fakeBackend(),
+      events: { addEventListener: () => undefined, removeEventListener: () => undefined },
+      search: '',
+      doc: null,
+      reducedMotion: () => true,
+      fetch: async (url) => {
+        if (url.startsWith('/api/data'))
+          return json({
+            generated: generation++,
+            annotate: true,
+            annotate_cap: 240,
+            reading_check: 'passed',
+            reading: POLICY,
+            reading_routes: { [harness]: scenario.route ?? healthyRoute(harness) },
+            ...(scenario.payload ?? {}),
+            sessions: [
+              {
+                harness,
+                sid: 's1',
+                project: 'demo',
+                project_key: '/demo',
+                title: 'Synthetic session',
+                state: 'idle',
+                first_prompt: 'Ship the queue worker',
+                first_prompt_at: 100,
+                turn_end_at: 990,
+                ...(scenario.unsaved ? {} : SAVED),
+                ...(scenario.session ?? {}),
+              },
+            ],
+          });
+        if (url.startsWith('/api/project-context'))
+          return json({
+            semantic: { facts: scenario.facts ?? [] },
+            sources: { work: { tool_reports: [], ...(scenario.work ?? {}) } },
+          });
+        if (url.startsWith('/api/session-record'))
+          return json({ state: 'ok', entries: [], next: null, reached_start: true });
+        if (url.startsWith('/api/annotations'))
+          return json({ annotations: [], intent_revision: 'r1' });
+        return json({});
+      },
+    });
+  });
+  useEffect(
+    () => () => {
+      shell.runtime.dispose();
+      shell.display.dispose();
+    },
+    [shell],
+  );
+  return <App shell={shell} />;
+}
+
+export { DriftScenario };
+
+/* A stored reading of `Ship the queue`: the goal departs on a failed check, the one outcome line is
+   consistent on a passing one. Read at 1000 against revision 3. */
+export const DEPARTURE_READING = {
+  revision_read: 3,
+  revision_read_at: 990,
+  window_start: 100,
+  read_at: 1000,
+  evidence_through: 1000,
+  goal_source: 'typed',
+  scope: 'last-turn',
+  scope_text: 'Read up to its last turn.',
+  stamp: 'model · m',
+  cutoff: 'Evidence read to its end.',
+  coverage: {
+    tail_truncated: false,
+    tail_start: null,
+    unlisted: 0,
+    unread_checks: 0,
+    goal_source: 'typed',
+  },
+  criteria: {
+    goal: {
+      result: 'departure',
+      cites: ['c1'],
+      detail: 'It stopped running the tests.',
+      clause: 'Ship the queue',
+    },
+    line_1: {
+      result: 'consistent with the evidence read',
+      cites: ['c2'],
+      detail: '',
+      clause: 'Tests pass',
+    },
+  },
+};
+
+export const STORED_READING = {
+  annotation_assessment: DEPARTURE_READING,
+  annotation_reading_count: 1,
+};
