@@ -431,6 +431,48 @@ describe('a reader leaving a session page open while it writes', () => {
     expect(before['m12']).toBe('13');
   });
 
+  it('bridges a burst of more than a page through the list and leaves Show more where it was', async () => {
+    // A record of 60 messages, then 120 more arrive between two polls. Pages are cut from the newest end, and a
+    // cursor names how many entries lie before its page, so an append never moves an older page.
+    const all = Array.from({ length: 60 }, (_, n) => message(n));
+    const served = (r: { url: string }) => {
+      const before = new URL(r.url, 'http://x').searchParams.get('before');
+      const end = before === null ? all.length : Number(before);
+      const start = Math.max(0, end - 50);
+      return json(
+        pageBody({
+          entries: all.slice(start, end).reverse(),
+          next: start === 0 ? null : String(start),
+          reached_start: start === 0,
+        }),
+      );
+    };
+    const page = mountDrift({
+      session: { ...session, last_activity: 1000 },
+      routes: {
+        [path]: served,
+        '/api/project-context': () =>
+          json({ semantic: { facts: [] }, sources: { work: { tool_reports: [] } } }),
+      },
+    });
+    await page.settle();
+    expect(rows()).toHaveLength(50);
+    for (let n = 60; n < 180; n += 1) all.push(message(n));
+    const data = page.state.data as { sessions: Record<string, unknown>[] };
+    await page.poll({
+      ...data,
+      generated: 1101,
+      sessions: [{ ...data.sessions[0], last_activity: 1001 }],
+    });
+    await page.settle();
+    expect(rows()).toHaveLength(170);
+    expect(rows()[0]?.dataset['nextEntryId']).toBe('m179');
+    expect(rows().at(-1)?.dataset['nextEntryId']).toBe('m10');
+    await press(more());
+    expect(rows()).toHaveLength(180);
+    expect(page.state.requests.filter((r) => r.path === path).at(-1)?.url).toContain('before=10');
+  });
+
   it('reads the newest page when the session wrote and not when it did not', async () => {
     const live = world(10);
     const page = mountLive(live);

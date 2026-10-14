@@ -181,13 +181,31 @@ function liveRecord(initial: number, pageSize = 2) {
     onAsk: null as null | ((count: number) => void),
     holdOlder: null as null | string,
     releaseOlder: null as null | (() => void),
+    stale: false,
+    signals: [] as (AbortSignal | null | undefined)[],
   };
   const client = createApiClient({
-    fetch: (url) => {
+    fetch: (url, init) => {
       const before = new URLSearchParams(url.split('?')[1]).get('before');
       asked.push(before);
+      state.signals.push(init?.signal);
       state.onAsk?.(asked.length);
       if (state.fail) return Promise.resolve(new Response('{}', { status: 500 }));
+      if (state.stale)
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              session: { harness: 'claude', sid: 'same' },
+              entries: [],
+              state: 'stale',
+              next: null,
+              reached_start: false,
+              bound: null,
+              scanned_bytes: 0,
+              kinds: ['user_message', 'agent_message'],
+            }),
+          ),
+        );
       const end = before === null ? entries.length : Number(before);
       const start = Math.max(0, end - pageSize);
       const body = new Response(
@@ -297,6 +315,52 @@ it('a refresh that fails changes nothing, and the next stamp tries again', async
   loader.dispose();
 });
 
+it("a refresh that went unanswered is read again for the same stamp, so a session's last write is not left out", async () => {
+  const { asked, grow, loader, scope, ids, opened, state } = liveRecord(6);
+  await opened();
+  await loader.refresh(scope, 1);
+  grow(1);
+  state.fail = true;
+  await loader.refresh(scope, 2);
+  expect(ids()).toEqual(['m5', 'm4']);
+  state.fail = false;
+  await loader.refresh(scope, 2);
+  expect(ids()).toEqual(['m6', 'm5', 'm4']);
+  const reads = asked.length;
+  await loader.refresh(scope, 2);
+  expect(asked).toHaveLength(reads);
+  loader.dispose();
+});
+
+it('a refresh answered stale changes nothing and is read again for the same stamp', async () => {
+  const { grow, loader, scope, record, ids, opened, state } = liveRecord(6);
+  await opened();
+  await loader.refresh(scope, 1);
+  grow(1);
+  state.stale = true;
+  await loader.refresh(scope, 2);
+  expect(ids()).toEqual(['m5', 'm4']);
+  expect(record()?.status).toBe('loaded');
+  expect(record()?.restarted).toBe(false);
+  state.stale = false;
+  await loader.refresh(scope, 2);
+  expect(ids()).toEqual(['m6', 'm5', 'm4']);
+  loader.dispose();
+});
+
+it('a page replayed by StrictMode takes one baseline and reads nothing extra', async () => {
+  const { asked, loader, scope, opened } = liveRecord(6);
+  const first = await opened();
+  await loader.refresh(scope, 1);
+  first();
+  const second = loader.open(scope);
+  await loader.refresh(scope, 1);
+  await Promise.resolve();
+  expect(asked).toEqual([null]);
+  second();
+  loader.dispose();
+});
+
 it('a refresh asked while the opening page is loading waits for it, then reads the newest page once', async () => {
   const { asked, grow, loader, scope, ids } = liveRecord(6);
   const leave = loader.open(scope);
@@ -319,6 +383,7 @@ it('a reader leaving the session aborts a refresh in flight and no record is wri
   await vi.waitFor(() => expect(asked).toHaveLength(2));
   leave();
   await Promise.resolve();
+  expect(state.signals.at(-1)?.aborted).toBe(true);
   state.hold?.();
   await refreshing;
   expect(store.getSnapshot().records.size).toBe(0);
@@ -350,12 +415,15 @@ it('an entry the record held once is held until the reader leaves, however the r
   await opened();
   await loader.refresh(scope, 1);
   const seen = new Set(ids());
-  for (let stamp = 2; stamp < 12; stamp += 1) {
-    grow(stamp % 3);
+  for (let stamp = 2; stamp < 16; stamp += 1) {
+    // Bursts of zero to six entries against a page of two, with the reader paging back between some of them.
+    grow((stamp * 5) % 7);
+    if (stamp % 4 === 0) await loader.more(scope);
     await loader.refresh(scope, stamp);
     for (const id of seen) expect(ids()).toContain(id);
     for (const id of ids() ?? []) seen.add(id);
   }
+  expect(seen.size).toBeGreaterThan(20);
   loader.dispose();
 });
 

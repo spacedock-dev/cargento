@@ -52,6 +52,8 @@ export function createRecordLoader({
     /* The newest-end refresh: the last activity stamp it has seen (the first one is the baseline the opening
        read already covers), the run in flight, whether another stamp arrived while it ran, and its request. */
     stamp: number | undefined;
+    /* The last refresh went unanswered, so the same stamp is read again on the next call. */
+    retry: boolean;
     refreshing: Promise<void> | null;
     refreshAgain: boolean;
     refreshRequest: AbortController | null;
@@ -154,13 +156,14 @@ export function createRecordLoader({
      reader loaded stays and an entry once held is held until they leave. A burst of more than a page since the
      last read is bridged by following older pages until the newest page meets what is held; one that cannot be
      bridged in `REFRESH_MAX_PAGES` starts the record again from the newest entries and says so. A refresh that
-     does not answer changes nothing, and the next change of stamp tries again. */
-  async function refreshOnce(scope: RecordScope, opening: Opening): Promise<void> {
+     does not answer changes nothing, and the next call tries it again even for the same stamp, so
+     a transient failure on a session's last write is not left standing. */
+  async function refreshOnce(scope: RecordScope, opening: Opening): Promise<boolean> {
     const key = contextKey(scope.projectKey, scope.focus);
     const current = () => !disposed && openings.get(key) === opening;
     // The opening read, or an older page the reader asked for, settles before the newest end is read again.
     if (opening.pending) await opening.pending;
-    if (!current() || !mergeable(store.getSnapshot().records.get(key))) return;
+    if (!current() || !mergeable(store.getSnapshot().records.get(key))) return true;
     const owned = new AbortController();
     opening.refreshRequest = owned;
     const fresh = new Map<string, SemanticFact>();
@@ -175,7 +178,9 @@ export function createRecordLoader({
         ...(before ? { before } : {}),
         signal: owned.signal,
       });
-      if (!current() || owned.signal.aborted || result.kind !== 'ok') return;
+      if (!current() || owned.signal.aborted || result.kind === 'aborted') return true;
+      // An answer that is not a page changes nothing, and the same stamp is read again next time.
+      if (result.kind !== 'ok') return false;
       const body = result.body;
       if (
         body.state !== 'ok' ||
@@ -183,11 +188,11 @@ export function createRecordLoader({
         body.session?.harness !== scope.focus.harness ||
         body.session.sid !== scope.focus.sid
       )
-        return;
+        return false;
       for (const fact of body.entries) fresh.set(fact.fact_id, fact);
       last = body;
       const held = store.getSnapshot().records.get(key);
-      if (!mergeable(held)) return;
+      if (!mergeable(held)) return true;
       const heldIds = new Set(held.entries.map((fact) => fact.fact_id));
       met =
         held.entries.length === 0 ||
@@ -197,7 +202,7 @@ export function createRecordLoader({
       before = body.next;
     }
     const held = store.getSnapshot().records.get(key);
-    if (!current() || !mergeable(held) || !last) return;
+    if (!current() || !mergeable(held) || !last) return true;
     if (!met) {
       // An older page in flight was asked for with a cursor that no longer joins this record.
       opening.request?.abort();
@@ -212,7 +217,7 @@ export function createRecordLoader({
         pages: 1,
         restarted: true,
       });
-      return;
+      return true;
     }
     const merged = new Map(held.entries.map((fact) => [fact.fact_id, fact]));
     for (const [id, fact] of fresh) merged.set(id, fact);
@@ -228,6 +233,7 @@ export function createRecordLoader({
           }
         : {}),
     });
+    return true;
   }
 
   function refresh(scope: RecordScope, stamp: number, opening: Opening): Promise<void> {
@@ -237,21 +243,24 @@ export function createRecordLoader({
       opening.stamp = stamp;
       return Promise.resolve();
     }
-    if (opening.stamp === stamp) return opening.refreshing ?? Promise.resolve();
+    if (opening.stamp === stamp && !opening.retry) return opening.refreshing ?? Promise.resolve();
     opening.stamp = stamp;
     if (opening.refreshing) {
       opening.refreshAgain = true;
       return opening.refreshing;
     }
+    // The clearing is inside the run, so a call that lands as the loop ends starts a new one.
     opening.refreshing = (async () => {
-      do {
-        opening.refreshAgain = false;
-        await refreshOnce(scope, opening);
-      } while (opening.refreshAgain && !disposed && openings.get(key) === opening);
-    })().finally(() => {
-      opening.refreshing = null;
-      opening.refreshRequest = null;
-    });
+      try {
+        do {
+          opening.refreshAgain = false;
+          opening.retry = !(await refreshOnce(scope, opening));
+        } while (opening.refreshAgain && !disposed && openings.get(key) === opening);
+      } finally {
+        opening.refreshing = null;
+        opening.refreshRequest = null;
+      }
+    })();
     return opening.refreshing;
   }
 
@@ -308,6 +317,7 @@ export function createRecordLoader({
           pending: null,
           resolution: null,
           stamp: undefined,
+          retry: false,
           refreshing: null,
           refreshAgain: false,
           refreshRequest: null,
