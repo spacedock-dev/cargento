@@ -11,8 +11,7 @@ import { fakeBackend } from '../test/storage_backends';
    path nobody scripted answers `{}`, so a request nobody meant to make cannot reach a model or a session.
    Not a story file, so Storybook lists nothing from it and the route-reason guard can import its table. */
 
-export const HARNESSES = ['claude', 'pi', 'codex', 'antigravity'] as const;
-export type Harness = (typeof HARNESSES)[number];
+export type Harness = 'claude' | 'pi' | 'codex' | 'antigravity';
 
 /* A route as the server publishes it (`reading_route.Route`), so a story edits only what it is about. */
 export interface RouteFields {
@@ -48,7 +47,7 @@ export function routeOf(harness: string, fields: RouteFields): Record<string, un
 
 /* Every harness has a reader on a healthy machine: Claude Code reads its own, Codex reads its own, and Pi and
    Antigravity have no producer of their own, so Codex reads them. */
-export function healthyRoute(harness: Harness): Record<string, unknown> {
+function healthyRoute(harness: Harness): Record<string, unknown> {
   if (harness === 'claude') {
     return routeOf(harness, {
       provider: 'claude',
@@ -123,7 +122,7 @@ export const written = (id: string, at: number, path: string, harness = 'claude'
   fact(id, at, { subject: 'write', summary: path }, harness);
 
 /* The saved words every stage but the first reads against. */
-export const SAVED = {
+const SAVED = {
   annotation_goal: 'Ship the queue',
   annotation_line_1: 'Tests pass',
   annotation_revision: 3,
@@ -132,6 +131,12 @@ export const SAVED = {
   annotation_goal_saved_at: 990,
   annotation_window_start: 100,
 };
+
+/* What the server publishes on every row while annotations are on (`reading.press_eligibility`). Each story
+   mounts a running session, which every harness may be read while it runs, so the press is open and a story
+   that asserts Analyze is asserting what the server would let the reader press. A withheld press is the
+   board's own refusal and is not what these stories are about. */
+const ELIGIBLE = { ok: true, reason: null, until: null, sentence: null };
 
 const POLICY = {
   providers: { claude: true, codex: true },
@@ -173,10 +178,10 @@ function DriftScenario({ scenario }: { readonly scenario: Scenario }) {
                 project: 'demo',
                 project_key: '/demo',
                 title: 'Synthetic session',
-                state: 'idle',
+                state: 'working',
                 first_prompt: 'Ship the queue worker',
                 first_prompt_at: 100,
-                turn_end_at: 990,
+                reading_eligibility: ELIGIBLE,
                 ...(scenario.unsaved ? {} : SAVED),
                 ...(scenario.session ?? {}),
               },
@@ -247,3 +252,34 @@ export const STORED_READING = {
   annotation_assessment: DEPARTURE_READING,
   annotation_reading_count: 1,
 };
+
+/* A running reading as `reading.published_jobs` publishes it: the three phases in the order they happen, worded
+   by `reading.PHASE_TEXT` with the receiver's label filled in. `drift.reasons.test.ts` reads both from the
+   producer, so a reworded or renamed phase fails there before a story passes over a step that is gone. */
+export const JOB_STEPS = [
+  { phase: 'preparing', text: 'Preparing what is sent' },
+  { phase: 'waiting', text: 'Waiting for Claude Code' },
+  { phase: 'checking', text: 'Checking the reply' },
+];
+export const JOB = {
+  id: 'j1',
+  phase: 'waiting',
+  phase_at: 995,
+  started_at: 990,
+  provider: 'claude',
+  cancelling: false,
+  steps: JOB_STEPS,
+};
+
+/* The analysis level the server derives from the stored reading and publishes beside it
+   (`http_api._analysis_levels`): it is the level the card draws over a result. */
+export const analysisRow = (harness: Harness, level = 'high') => ({
+  harness,
+  sid: 's1',
+  revision_read: 3,
+  read_at: 1000,
+  computed_at: 1000,
+  level,
+  reasons: ['failed-check'],
+  cites: ['c1'],
+});
