@@ -12,7 +12,7 @@ import { directionLinesQuestion, goalBaseline, goalKey, intentDraft, type Draft 
 import { answerLines } from './directions';
 import { HeldTextarea } from './HeldTextarea';
 import { PromptSelect } from './PromptSelect';
-import { EXCERPT_READ_WHOLE } from './sentences';
+import { ENDED_CAVEAT, EXCERPT_READ_WHOLE } from './sentences';
 import { usePanel } from './useIntent';
 
 /* Where the goal came from, and that an excerpt is one. Drawn while the box holds the draft; the first edit
@@ -110,8 +110,7 @@ export function GoalField() {
       </div>
       {endedAt(session) !== null ? (
         <p className="next-cockpit-held-absent" data-next-ended-goal>
-          This session has ended. Words you save now cannot be read against it; your saved intent
-          and the goal drafted from your prompt still can.
+          {ENDED_CAVEAT}
         </p>
       ) : null}
       <HeldTextarea

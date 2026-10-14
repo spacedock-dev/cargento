@@ -473,7 +473,7 @@ never stored, adds a nudge to analyze only for a cited High signal after your la
 entry count. An older failure blocks None or low and keeps its name and age; a failure followed
 by file writes reads Medium at most until a re-run. Recorded signals show the cited entries and
 their event times; its line says it reads checks and file paths, not what your intent says, and that files written by
-shell commands, such as a build, are not weighed. Limits of this estimate names gaps such as an intent that names no folder.
+shell commands, such as a build, are not seen. Limits of this estimate names gaps such as an intent that names no folder.
 At Not enough recorded yet, the reasons sit once under Why not None or low, while that folder
 limit stays visible. A broader explicit passing run can retire a
 covered failure in the same directory and execution context. A folder counts only when it exists

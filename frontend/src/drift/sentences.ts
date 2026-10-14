@@ -211,7 +211,7 @@ export const LIVE_LEVEL_NAMES: Readonly<Record<string, string>> = {
 };
 export const LEVEL_SCALE: readonly string[] = ['none_or_low', 'medium', 'high', 'extreme'];
 export const LIVE_LINE =
-  'Reads checks and file paths, not what your intent says. Files written by shell commands, such as a build, are not weighed.';
+  'Reads checks and file paths, not what your intent says. Files written by shell commands, such as a build, are not seen.';
 export const LIVE_HINT =
   'Shows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.';
 export const LIVE_SAVE = 'Save your intent to see a live estimate.';

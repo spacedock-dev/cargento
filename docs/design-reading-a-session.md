@@ -630,8 +630,9 @@ the intent, so an unsettled later direction demotes the intent's rows and never 
 (reversing the first build on review). Steer back adds one line for such a claim, in the
 owner-approved template's style: `You said "<claim>" at 14:02 (#12 in Compass); the record does not
 show it.` for an unshown claim, and `…; the record shows otherwise at 14:05 (#13).` for a
-contradicted one (numbered since 2026-10-14 as "(entry #12 in Compass's activity list)", [DEC-24's
-amendment](#amended-2026-10-14-owner-the-correction-names-the-entry)) (the arbiter's wording, under the owner's delegation). Steer back is offered for
+contradicted one (the arbiter's wording, under the owner's delegation; since 2026-10-14 both clauses
+number an entry as "(entry #12 in Compass's activity list)", [DEC-24's
+amendment](#amended-2026-10-14-owner-the-correction-names-the-entry)). Steer back is offered for
 the claim from the claims row itself, so it never offers "Update intent instead" for one. The claim
 is the message's published title, its first sentence, which the activity list already shows, and
 never the words a reading read; that is the one place the correction reads a summary.
@@ -1589,7 +1590,8 @@ measurement."
 The sentence adds a true limit and no claim. It changes no gate:
 `annotations.CLAUDE_ABSTENTION_CHECK` stays `accepted`, and the [acceptance record](abstention/claude-acceptance.json)
 still reads `qualification: failed` over ten scored runs, the last of which read 73 of 102 questions
-correctly with 4 false reassurances. `ClaudeReaderLimitIsSaidInTwoPlacesTest` in
+correctly with 4 false reassurances. The ruling named the README and the popup only, so
+`docs/promise-map.md` is unchanged. `ClaudeReaderLimitIsSaidInTwoPlacesTest` in
 `test_documentation.py` holds the README and the popup to the same words. No abstention record or
 qualification tool changes.
 
@@ -2168,6 +2170,8 @@ qualifies the producer against it.
    window may support a departure. A `consistent` on Expected Output needs the latest run of a
    relevant check passing inside the window with no later write, and is labelled as reported by the
    tool, not inspected. Absence supports neither. DEC-24 item 13 sets the evidence window.
+   Amended 2026-10-14 (owner): a recorded write outside a named folder is not a check and does not
+   settle a line ([the ruling](#amended-2026-10-14-owner-a-write-outside-a-named-folder-does-not-settle-a-line)).
 9. Tool output is quoted into the reading's prompt as untrusted data, never into an instruction
    Compass writes.
 10. The unasked lane never receives tool outcomes until DEC-18's rubric thresholds exist.
@@ -2737,11 +2741,11 @@ Not done:
 
 Why. Item 8 already rules that the absence of a failing or passing check supports neither verdict,
 and a write is evidence that a file changed, not that a line was met or missed. The folder signal has
-measured false alarms from two sources, intent words read as folders and worktree sessions: with the
-folders the reader never named dropped, the no-drift sessions that read High or Extreme fell from 29
-to 19 (the 2026-10-04 findings file, `docs/plans/2026-10-04-analyze-drift-handoff/findings.json`,
-a local record that is not committed). Nineteen is not zero, which is enough for a level and not for
-a verdict a reader pastes back into a session. And the Claude reader's accuracy check has not passed
+measured false alarms from two sources, intent words read as folders and worktree sessions. A replay
+of 99 recorded cuts found 18 folders the reader never named; dropping them took the no-drift sessions
+that read High or Extreme from 29 to 19. The replay's findings are kept locally and are not
+committed. Nineteen is not zero, which is enough for a level and not for a verdict a reader pastes
+back into a session. And the Claude reader's accuracy check has not passed
 ([the DEC-21 amendment](#amended-2026-10-14-owner-the-page-says-the-claude-readers-accuracy-check-has-not-passed)),
 so Compass does not add a second, weaker route to a correction. DEC-24 item 7's list of triggers
 stays as it is: a surviving model departure, a contradicted or unshown claim, a failed check.
@@ -4935,8 +4939,7 @@ The owner's 2026-10-06 request for plain explanations and evidence times superse
 215 words outside field values. The canonical partial-departure fixture keeps its coverage
 limits visible and has a 295-word ceiling, replacing its earlier 270. The unchanged
 nondeparture fixtures retain 175. DEC-27 moves the idle explanation to the how-to popup;
-its opened body has a 150-word ceiling (170 since [2026-10-14](#amended-2026-10-14-what-the-how-to-the-live-line-and-a-late-save-say)),
-including the board-derived limit line, replacing the 85-word idle explanation ceiling. HowTo.test.tsx and popover-continuity.mjs assert it. The historical ceilings above record
+its opened body has a 150-word ceiling, including the board-derived limit line, replacing the 85-word idle explanation ceiling. HowTo.test.tsx and popover-continuity.mjs assert it. The historical ceilings above record
 what was agreed then; this amendment does not rewrite them. These are regression ceilings for
 those two canonical examples, not universal reading budgets or runtime citation limits. A
 valid reading with two or more citations keeps every surviving support and its recorded times,
@@ -4967,7 +4970,7 @@ sentence about work the page cannot see stay reachable.
 | 2 | The resume command after the Copy buttons go | It lives on Attention, the waiting panel and the project rail only, not on the session page. | The promise map's P2 "way back" clause and its line beside departures, NUI-5, NUI-8 |
 | 3 | "Analyze again" | One run control per state. A second press appears only when new work was recorded or the intent changed after the result, and it names which. | The 2026-10-01 amendment "the result takes the button's place" (Q3) |
 | 4 | The Direction question | Its summary shrinks to one line with the count. Keep still draws every direction whole before settling, so it keeps its two presses. | Nothing; the 2026-09-28 ruling stands and is part of the click budget |
-| 5 | A typed goal on an ended session | The goal box says before the reader types that words saved now cannot be read against an ended session; intent saved before the end and the goal drafted from their prompt remain eligible. | The 2026-10-01 note on what a press says beside the button |
+| 5 | A typed goal on an ended session | The goal box says before the reader types that words saved now cannot be read against an ended session; intent saved before the end and the goal drafted from their prompt remain eligible. Amended 2026-10-14: a confirmed save repeats the same caveat beside "Saved as a new revision." | The 2026-10-01 note on what a press says beside the button |
 | 6a | Use your prompt | Stays visible beside the goal. It is the only way to choose a different goal on an ended session. | Nothing |
 | 6b | Live monitor | Moves into More. It is off by default and needs no model. | DEC-26 item 4 (placement only) |
 | 6c | Discard everything | Moves into More and stays reachable. | Nothing; SECURITY.md still describes it |
@@ -4998,7 +5001,8 @@ Four sentences, each at the place a reader relies on it. None adds a control.
   not settled by a reading; the live estimate weighs it instead. The popup also carries the Claude
   reader's limit
   ([the DEC-21 amendment](#amended-2026-10-14-owner-the-page-says-the-claude-readers-accuracy-check-has-not-passed)).
-  The opened body's ceiling, 150 words above, is now 170; the bodies measure up to 165.
+  The 150-word ceiling above holds: the opened body now measures 146 words on Claude Code and Pi and
+  150 on a harness with no reader, and the two additions were written to fit it.
 - The reason for "Can't tell" stays inside Evidence, as this design keeps evidence one click away
   (owner, 2026-10-14). Its sentence for `check-does-not-show-it` no longer says "The check it cited":
   the producer empties a reading's published cites whenever it withdraws a verdict, so the page
@@ -5007,9 +5011,12 @@ Four sentences, each at the place a reader relies on it. None adds a control.
   latest run passing with no change after it, both after the words you saved."
 - The live estimate's line keeps "Reads checks and file paths, not what your intent says" (DEC-26
   item 1 quotes that clause) and adds that files written by shell commands, such as a build, are not
-  weighed. A file a shell command changes is not seen, as item 1 already records.
-- Row 5: on an ended session, a confirmed save repeats the caveat beside "Saved as a new revision.",
-  and only there. The goal box still carries it before the reader types.
+  seen. That is item 1's own record ("a file a shell command changes is not seen"); the command itself
+  is not ignored, because a shell command that is neither a check nor read-only, run after a passing
+  check, still blocks None or low.
+- Signed-table row 5: on an ended session, a confirmed save repeats the goal box's caveat, in the same
+  words, beside "Saved as a new revision.", and only there. The goal box still carries it before the
+  reader types.
 
 ### The Sessions screen
 
@@ -5056,7 +5063,7 @@ model-request count and daily cap stay beside Analyze. The goal and primary fit 
 The count-only Direction summary quotes no whole text, so even a sole short direction needs the
 opening press before the settlement press. The first-view browser proof injects one extra button
 and rejects it. The idle drafted fixture's visible panel text, excluding field values and closed
-bodies, has a 90-word ceiling. The opened how-to retains its separate ceiling, 170 words since 2026-10-14.
+bodies, has a 90-word ceiling. The opened how-to retains its separate 150-word ceiling.
 
 The fresh Claude Code fixture inventory below includes the session's project link and the Sessions
 breadcrumb. Before: 19 controls across the page, 13 in the 1280 by 800 viewport. After: 14 across

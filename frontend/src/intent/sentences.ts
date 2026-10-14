@@ -44,9 +44,10 @@ export const EXCERPT_READ_WHOLE = 'Excerpt. Analyze looks up the source when pre
 
 /* The ended-session caveat the goal box already carries, repeated where the save is confirmed: a reader who
    saved late read "Saved as a new revision." and had no sign that Analyze would still read the drafted goal
-   instead. Said only beside a confirmed save on an ended session. */
-export const ENDED_SAVED_CAVEAT =
-  'This session has ended, so words you save now cannot be read against it.';
+   instead. Said only beside a confirmed save on an ended session. The goal box shows the same sentence, so
+   the short form, which reads as "nothing can be read", is not used. */
+export const ENDED_CAVEAT =
+  'This session has ended. Words you save now cannot be read against it; your saved intent and the goal drafted from your prompt still can.';
 
 /* What the last save attempt is still worth saying. `persisted:false` is its own cue and not a success: the
    annotation is then held only in this process, and the next collection reloads the store from disk and

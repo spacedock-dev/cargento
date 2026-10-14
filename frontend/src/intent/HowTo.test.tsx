@@ -56,7 +56,7 @@ describe('the Intent how-to', () => {
       fireEvent.click(button);
       await page.settle();
       const popup = screen.getByRole('dialog', { name: 'How Intent and drift works' });
-      expect((popup.textContent ?? '').split(/\s+/).length).toBeLessThanOrEqual(170);
+      expect((popup.textContent ?? '').split(/\s+/).length).toBeLessThanOrEqual(150);
       expect(popup.textContent).toContain('1. Give the goal.');
       expect(popup.textContent).toContain('2. Press Analyze drift.');
       expect(popup.textContent).toContain('3. Read where the work left your goal.');
@@ -71,8 +71,8 @@ describe('the Intent how-to', () => {
       );
       expect(popup.textContent).toContain('Compass never writes into sessions.');
       expect(popup.textContent).toContain('Not enough recorded yet');
-      expect(popup.querySelector('[data-next-intent-howto-settle]')?.textContent).toMatch(
-        /latest run, not piped, failed or passed with\s+nothing written after it.*whole tree, such as a folder\s+limit/,
+      expect(popup.querySelector('[data-next-intent-howto-settle]')?.textContent).toBe(
+        "Readings settle a command's latest unpiped run, failed or passed with nothing written after it. They cannot settle a folder limit; the live estimate weighs that.",
       );
       expect(popup.querySelector('[data-next-intent-howto-accuracy]')?.textContent).toBe(
         "The Claude reader's accuracy check has not passed, and its latest correction is unmeasured, so read a level as an account of the evidence, not a measurement.",

@@ -227,10 +227,10 @@ export const HowToSaysWhatAReadingCanSettleAndHowFarToTrustIt: Story = {
       name: 'How Intent and drift works',
     });
     const settle = popup.querySelector('[data-next-intent-howto-settle]') as HTMLElement;
-    await expect(settle).toHaveTextContent('A reading can settle a line about a command');
+    await expect(settle).toHaveTextContent("Readings settle a command's latest unpiped run");
     await expect(settle).toHaveTextContent('nothing written after it');
-    await expect(settle).toHaveTextContent('cannot settle a statement about the whole tree');
-    await expect(settle).toHaveTextContent('folder limit');
+    await expect(settle).toHaveTextContent('cannot settle a folder limit');
+    await expect(settle).toHaveTextContent('the live estimate weighs that');
     await expect(popup.querySelector('[data-next-intent-howto-accuracy]')).toHaveTextContent(
       "The Claude reader's accuracy check has not passed, and its latest correction is unmeasured, so read a level as an account of the evidence, not a measurement.",
     );
@@ -253,7 +253,7 @@ export const SavingOnAnEndedSessionRepeatsTheCaveat: Story = {
   play: async ({ canvasElement }) => {
     const footer = await saveTyped(canvasElement);
     await expect(footer.querySelector('.next-cockpit-held-cue')).toHaveTextContent(
-      'Saved as a new revision. This session has ended, so words you save now cannot be read against it.',
+      'Saved as a new revision. This session has ended. Words you save now cannot be read against it; your saved intent and the goal drafted from your prompt still can.',
     );
   },
 };

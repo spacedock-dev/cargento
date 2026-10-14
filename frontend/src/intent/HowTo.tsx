@@ -63,9 +63,8 @@ export function IntentHowTo({
       >{`Drift level: ${WORK_HARNESSES.map(label).join(' and ')} sessions only. Analyze drift here: ${reader}${reader.endsWith('.') ? '' : '.'} Steer back: ${steer}. Compass never writes into sessions.`}</p>
       <p>“Not enough recorded yet” is normal until you add an expected outcome line.</p>
       <p data-next-intent-howto-settle>
-        A reading can settle a line about a command: its latest run, not piped, failed or passed
-        with nothing written after it. It cannot settle a statement about the whole tree, such as a
-        folder limit; the live estimate weighs that.
+        Readings settle a command's latest unpiped run, failed or passed with nothing written after
+        it. They cannot settle a folder limit; the live estimate weighs that.
       </p>
       <p data-next-intent-howto-accuracy>{CLAUDE_READER_LIMIT}</p>
       {children}

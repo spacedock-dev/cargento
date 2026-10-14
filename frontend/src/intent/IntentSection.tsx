@@ -18,7 +18,7 @@ import { undoChanges } from './edit';
 import { GoalField } from './GoalField';
 import { OutcomeLines, AddOutcomeLine } from './OutcomeLines';
 import { saveIntent } from './save';
-import { ENDED_SAVED_CAVEAT } from './sentences';
+import { ENDED_CAVEAT } from './sentences';
 import { usePanel } from './useIntent';
 import { HowTo } from './HowTo';
 
@@ -45,7 +45,7 @@ function Footer() {
   const kind = saving ? '' : ctx.held.kind(key);
   const cue = [
     heldSentence(kind, null),
-    kind === 'saved' && endedAt(session) !== null ? ENDED_SAVED_CAVEAT : '',
+    kind === 'saved' && endedAt(session) !== null ? ENDED_CAVEAT : '',
   ]
     .filter(Boolean)
     .join(' ');

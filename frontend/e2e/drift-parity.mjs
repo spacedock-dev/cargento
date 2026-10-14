@@ -951,12 +951,12 @@ try {
     };
     const mine = norm(await arm(react));
     const recorded = golden.observe('live estimate and pill');
-    // A named departure (owner, 2026-10-14): the line also says shell-written files are not weighed.
+    // A named departure (owner, 2026-10-14): the line also says shell-written files are not seen.
     const old = {
       ...recorded,
       text: recorded.text.replace(
         'Reads checks and file paths, not what your intent says.',
-        'Reads checks and file paths, not what your intent says. Files written by shell commands, such as a build, are not weighed.',
+        'Reads checks and file paths, not what your intent says. Files written by shell commands, such as a build, are not seen.',
       ),
     };
     assert.deepEqual(mine, old, 'the live estimate differs from the recording');

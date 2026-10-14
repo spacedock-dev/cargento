@@ -143,7 +143,7 @@ it cited does not show this" and now begins "What it cited does not show this", 
 tell a check from a write, or nothing, among cites the producer has emptied. A correction's entry
 numbers read "(entry #n in Compass's activity list)" on every number, where the page said "(#n in
 Compass)" on the first and "(#n)" after. The live estimate's line adds that files written by shell
-commands are not weighed. `retiredWording` in `frontend/src/drift/legacy.test.helper.ts` projects the
+commands are not seen. `retiredWording` in `frontend/src/drift/legacy.test.helper.ts` projects the
 first back for the shape and result differentials, `recordedNumbering` in
 `frontend/src/drift/correction.differential.test.ts` projects the second for the correction text, and
 the drift browser proof restates the second and the third in the recorded steer box and live estimate.

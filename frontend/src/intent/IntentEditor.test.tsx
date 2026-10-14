@@ -181,8 +181,25 @@ describe('Save intent', () => {
     await settle(page);
     expect(footerCue()).toBe(
       caveat
-        ? 'Saved as a new revision. This session has ended, so words you save now cannot be read against it.'
+        ? 'Saved as a new revision. This session has ended. Words you save now cannot be read against it; your saved intent and the goal drafted from your prompt still can.'
         : 'Saved as a new revision.',
+    );
+  });
+
+  it('does not repeat the ended-session caveat beside a refused save', async () => {
+    const page = mountSession({
+      session: { ended_at: 999 },
+      store: { goal: 'Saved', revision: 1 },
+      routes: { '/api/annotate': () => json({ ok: true, outcome: 'refused', persisted: false }) },
+    });
+    await settle(page);
+    type(goalBox(), 'Edited words');
+    await act(async () => {
+      fireEvent.click(control('held-save') as Element);
+    });
+    await settle(page);
+    expect(footerCue()).toBe(
+      'Not saved. The server refused the write, and your words are still in the box.',
     );
   });
 
