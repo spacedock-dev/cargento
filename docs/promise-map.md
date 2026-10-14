@@ -78,8 +78,9 @@ shows its level, each outcome line against the recorded work and what the agent 
 source, where files were written, and why a result is stale. Recorded checks and file paths include subagent work, labelled
 as such.
 Reader-requested readings are capped at twelve attempts per rolling twenty-four hours. With no saved
-goal, a check can adopt your latest Claude Code or Codex prompt; the goal field also offers your
-first prompt. Adopted words are marked, and missing source times refuse adoption.
+goal, a check adopts the goal drafted from your first Claude Code or Codex prompt (your latest
+where no first one with a time is published); the goal field also offers your latest prompt.
+Adopted words are marked, and missing source times refuse adoption.
 Claude Code and Codex hooks also report matched destructive command shapes; a match does not
 prove success. Compass saves a stage you choose for a Spacedock workflow and alerts once when
 it observes an entity enter that stage; gaps and unavailable sources are stated, and a
