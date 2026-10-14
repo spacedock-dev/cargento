@@ -1,3 +1,4 @@
+import { SampleBeside } from '../sample/SampleMark';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useEffect, type ReactNode } from 'react';
@@ -467,7 +468,7 @@ export function ReadingControl({
       {changeLine}
       {inert ? null : counted}
       {accounts}
-      {sent}
+      <SampleBeside id="sent">{sent}</SampleBeside>
       {budget}
     </>
   );

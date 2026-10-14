@@ -1,3 +1,4 @@
+import { SampleMark } from '../sample/SampleMark';
 import { Card } from '../ui/card';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
@@ -32,20 +33,23 @@ export function SteerButton({ primary }: { readonly primary: boolean }) {
   const held = ctx.drift.corrections.get(model.key);
   const { identity } = model;
   return (
-    <Button
-      ref={ref}
-      type="button"
-      variant={primary ? 'primary' : 'default'}
-      data-next-cockpit-action="steer-back"
-      aria-expanded={Boolean(held?.open)}
-      data-next-focus={`steer-back:${model.key}`}
-      onClick={(event) => {
-        event.preventDefault();
-        if (identity) void steerBack(ctx, identity);
-      }}
-    >
-      Steer back
-    </Button>
+    <>
+      <Button
+        ref={ref}
+        type="button"
+        variant={primary ? 'primary' : 'default'}
+        data-next-cockpit-action="steer-back"
+        aria-expanded={Boolean(held?.open)}
+        data-next-focus={`steer-back:${model.key}`}
+        onClick={(event) => {
+          event.preventDefault();
+          if (identity) void steerBack(ctx, identity);
+        }}
+      >
+        Steer back
+      </Button>
+      <SampleMark id="steer" />
+    </>
   );
 }
 

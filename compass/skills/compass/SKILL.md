@@ -9,6 +9,9 @@ license: Apache-2.0 AND OFL-1.1
 Use Intent and drift to compare a session's recorded work with your goal. Open a session, set a
 goal and press `Analyze drift`. The `How Intent and drift works` button explains the steps, the
 reading's limits and why an expected outcome line is needed for a drift level.
+New to it? `See a sample session (view only)`, above the Sessions list, opens an anonymized session
+that drifted, with its stored reading, the correction Compass composed and numbered (i) marks that
+explain each part. It is static page data: nothing in it is saved, sent or run.
 
 Compass is an agnostic agent cartography and visualization tool: a local web dashboard mapping live coding-agent activity across **ten harnesses** on this machine — Claude Code, Codex, Pi, Gemini CLI, Antigravity CLI, GitHub Copilot CLI, OpenCode, Cursor CLI, Goose, Factory Droid — each row badged with its harness. A "Discovered harnesses" strip at the top shows all supported harnesses; ones with local session data are green/enabled, others gray/disabled. A harness's sessions only appear if its data is discovered. Transcript-backed sessions appear even if they never called TaskCreate; Claude task files may also surface a task-only session when its transcript is unavailable. Per session: a live state badge, what it's doing right now, running subagents (named pills), a current-turn elapsed/ETA estimate with progress bar, a ⚠️ warning (with tooltip) when a request runs or is estimated ≥15 min, one row per tracked task, and the recent token output rate. Fires desktop notifications when a session is blocked waiting on the human — Claude, Codex, Copilot, Cursor, OpenCode and Pi can report waits, within their stated coverage — and when any session registers a question through the ask lane. Sessions, Projects and Attention render the same data three ways — see Dashboard views below.
 

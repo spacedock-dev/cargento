@@ -198,6 +198,11 @@ A session opens under the tab you opened it from, and `Escape` returns there; a 
 under Sessions. Every other view's `Escape` returns to Sessions. The route lives in the URL fragment
 so a reload or a pasted link comes back to the same view.
 
+New to Intent and drift? Open "See a sample session (view only)" above the Sessions list: an
+anonymized session that drifted, with its stored reading, the correction Compass composed and numbered
+(i) marks that explain each part. Nothing in it is saved, sent or run.
+[The design record](docs/design-sample-session.md) says how it works.
+
 See [compass/skills/compass/SKILL.md](compass/skills/compass/SKILL.md) for data sources, session states, options, and troubleshooting.
 
 ## 4. Validation

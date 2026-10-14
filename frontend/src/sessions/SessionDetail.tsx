@@ -1,3 +1,4 @@
+import { SampleMark } from '../sample/SampleMark';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
 import { useMemo, type ReactNode } from 'react';
@@ -326,7 +327,10 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
             {observed.isNeeds || observed.askKnown ? (
               <SessionMetadata session={session} labels={labels} generated={generated} />
             ) : null}
-            <h2 className="next-session-activity-heading">Session activity</h2>
+            <h2 className="next-session-activity-heading">
+              Session activity
+              <SampleMark id="activity" />
+            </h2>
             <CommandSurface session={session} observed={observed} generated={generated} />
             {/* The numbered record every "#<n>" on this page names, right after CURRENT ACTIVITY. */}
             <WorkListView />

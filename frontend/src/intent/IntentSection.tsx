@@ -1,3 +1,4 @@
+import { SampleMark } from '../sample/SampleMark';
 import { Card } from '../ui/card';
 import { compatSessKey } from '../api/identity';
 import { nextNumber } from '../api/bootstrap';
@@ -135,6 +136,7 @@ export function IntentSection() {
         >
           Intent
         </h2>
+        <SampleMark id="intent" />
         <HowTo />
       </header>
       {/* Under the heading rather than in its header, so the revision line keeps the sentence tier. */}

@@ -64,3 +64,7 @@ node_modules/
 /.pnpm-store/
 *.tsbuildinfo
 /.storybook-build/
+
+# The sample session's mapping holds the original names and paths it replaced: never commit one.
+sample-session/*mapping*.json
+sample-session/*.table.json

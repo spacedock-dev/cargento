@@ -290,6 +290,18 @@ paths are tabled here.
 | The answer to an ask | The option you chose, returned to the session that asked, which wrote the options. This is the only path by which what you do in Compass reaches a running session. | `--no-ask` | `test_http_api.AskEndpointTest.test_the_rollback_switch_answers_503_on_all_four_routes`; an answer outside the asker's options is refused: `test_asks.AskRegistryTest.test_answer_refuses_an_out_of_range_index` |
 | The hand-off request | Not built. [Hand-off requests](#hand-off-requests-one-verb-into-a-session) states the one shape it may take. | Not applicable | None for the verb itself, because no code sends it. `test_launch_and_send_pins.ThePostRoutesAreTheListedOnesTest` pins the exact set of POST routes, so adding one fails a test and sends its author here. The journey test above adds a check for a Unix-domain socket connection, the path a hand-off would take, on the routes it calls only. |
 
+### The sample session
+
+The page ships one example session, an anonymized Claude Code session with a stored reading, so a new
+reader can see what the Session page shows. It is static data bundled in the page and drawn over a
+second shell with an in-memory server: it opens no connection, reads no session store, runs no model
+and writes nothing, and its own fetch refuses every write with a 403. A press that would edit, save,
+allow or run is held in the page before it reaches a handler. The transcript behind it is committed
+under `sample-session/`, an exception to the policy against committed transcripts that the owner made
+for this one session. It was anonymized by a script, checked for every original value, and reviewed
+by readers who held only the anonymized file; the mapping that holds the originals is never committed
+and `.gitignore` refuses a mapping file kept in `sample-session/`. [The design record](docs/design-sample-session.md) owns the decisions.
+
 ### What the tests do not see, and what a live capture would add
 
 Every pin above runs against Compass's own code, with the call that would leave patched or watched.
