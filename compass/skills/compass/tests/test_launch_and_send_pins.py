@@ -300,14 +300,40 @@ class _Journey(_App):
 
     @contextlib.contextmanager
     def machine(self, installed: tuple[str, ...] = ("claude", "codex")) -> Iterator[None]:
-        """Both CLIs on PATH, and no destination the real machine's settings could name."""
+        """Exactly the named CLIs installed, and no destination this machine's settings name.
+
+        Two seams, because the route and the model look the binary up separately. The route
+        resolves through `shutil.which` when the press arrives. The model classes bind
+        `shutil.which` as a default argument when they are defined, so patching it later
+        misses them: on a machine with no `claude` or `codex` the route would say usable and
+        the model would then say unavailable, and a press would never reach a launch. The
+        subclasses below hand the model the same resolver.
+        """
+
+        def which(name: str) -> str | None:
+            return f"/usr/local/bin/{name}" if name in installed else None
+
+        def resolving(real: type) -> type:
+            class Resolving(real):  # type: ignore[misc]
+                def __init__(self, config: Any, **kwargs: Any) -> None:
+                    kwargs.setdefault("binary_resolver", which)
+                    super().__init__(config, **kwargs)
+
+            return Resolving
+
         # A fresh open runner: a `serve` run earlier in this worker closes the shared one.
         with (
             mock.patch.object(runtime_supervise, "_SHUTDOWN", threading.Event()),
+            mock.patch.object(shutil, "which", which),
             mock.patch.object(
-                shutil,
-                "which",
-                lambda name: f"/usr/local/bin/{name}" if name in installed else None,
+                runtime_reading,
+                "ClaudeReadingModel",
+                resolving(runtime_reading.ClaudeReadingModel),
+            ),
+            mock.patch.object(
+                runtime_reading,
+                "CodexReadingModel",
+                resolving(runtime_reading.CodexReadingModel),
             ),
             mock.patch.object(reading_route, "destination", lambda *_a, **_k: ""),
         ):
@@ -553,6 +579,9 @@ class APressUnderTheModelRefusalLaunchesNothingTest(_Journey):
             self.serving() as port,
             self.tripwires(port) as (popen, dialled),
         ):
+            # What the route would pick on this simulated machine, asked before the press: a
+            # 503 from a route with no reader at all looks the same as a 503 from the switch.
+            self.reader = reading_route.resolve("claude", config=config)["provider"]
             status, _ = self.call(port, "POST", "/api/reading", self.press(provider=provider))
             self.settle()
         self.launched = popen.call_count
@@ -576,6 +605,8 @@ class APressUnderTheModelRefusalLaunchesNothingTest(_Journey):
                     status = self.press_with(config, provider)
                     self.assertEqual((0, []), (self.launched, self.dialled))
                     self.assertEqual(503, status)
+                    # Refused by the switch, and not for want of a CLI or an answer.
+                    self.assertEqual(provider, self.reader)
 
     def test_with_the_gate_open_the_same_press_does_reach_the_process_patch(self) -> None:
         reading_policy.set_consent(self.config, True, now=NOW, provider="claude")
