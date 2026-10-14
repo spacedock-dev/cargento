@@ -2674,8 +2674,12 @@ starts the dashboard may pass `--allow-tool-output`, or set `COMPASS_ALLOW_TOOL_
 the bind Compass writes the grant for each provider whose destination it can name
 (`reading_policy.grant_tool_output`). It writes no words Allow, so no reading runs on it alone, and
 the disclosure says tool output was allowed when the dashboard started instead of "only after you
-allow it". `--no-observer-model` refuses it, "Turn off readings" and `--forget` clear it, and the
-Windows respawn forwards it.
+allow it", but only while the row exists: when the permission store cannot take the write, the start
+prints one line and drops the flag for the run, so the card asks as usual. The server was safe
+either way, since a press without the row is refused `403 tool-output-consent-required`; the page
+was the part that overstated, and it was reading the flag where it should have read the outcome.
+`--no-observer-model` refuses it, "Turn off readings" and `--forget` clear it, and the Windows
+respawn forwards it.
 
 Why a launch flag. A reader who found on a first walk that most lines read "Can't tell" had tool
 output already granted: one press of "Allow and analyze" writes both. A default needs a reader who

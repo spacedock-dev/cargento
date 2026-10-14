@@ -15,6 +15,7 @@ import contextlib
 import dataclasses
 import http.client
 import json
+import socket
 import statistics
 import subprocess
 import sys
@@ -24,7 +25,14 @@ from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 from compass_runtime import annotations as annotation_store
-from compass_runtime import http_api, levels, live_estimate, observer, project_context
+from compass_runtime import (
+    http_api,
+    levels,
+    live_estimate,
+    observer,
+    project_context,
+    reading,
+)
 
 from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START
@@ -202,8 +210,18 @@ class TheLiveEstimateTest(_Replay):
         with (
             mock.patch.object(subprocess, "Popen", side_effect=AssertionError("a process")),
             mock.patch.object(subprocess, "run", side_effect=AssertionError("a process")),
+            mock.patch.object(socket, "create_connection", side_effect=AssertionError("a socket")),
+            # Every model class the runtime can start: the goal summary and both reading
+            # producers. Only the first was patched, so a Claude reading started from the
+            # live path would have passed here while Popen was the sole guard.
             mock.patch.object(
                 observer.CodexGoalModel, "__call__", side_effect=AssertionError("a model")
+            ),
+            mock.patch.object(
+                reading.CodexReadingModel, "__call__", side_effect=AssertionError("a model")
+            ),
+            mock.patch.object(
+                reading.ClaudeReadingModel, "__call__", side_effect=AssertionError("a model")
             ),
         ):
             answer = live_estimate.for_session(

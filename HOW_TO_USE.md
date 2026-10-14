@@ -438,7 +438,7 @@ already grants tool output, which is a check's command, its result and the last 
 output, and the paths the session wrote, for the destination the disclosure names. To grant it when
 the dashboard starts, so the card asks only for the words, start it with `--allow-tool-output`, or set
 `COMPASS_ALLOW_TOOL_OUTPUT=1`. It grants nothing else and no reading runs until you allow the words.
-`--no-observer-model` refuses it, and Turn off readings and `--forget` clear it.
+`--no-observer-model` refuses it, and Turn off readings and `--forget` clear it. If the permission store cannot take the grant, the start prints a line saying so and the card asks as usual.
 
 `--forget` also clears reading permission without resetting its rolling spend budget. It deletes the local history store and the session-end store, removes the records of any
 session you discarded everything for, and exits. It belongs with `--status` and `--stop` rather
