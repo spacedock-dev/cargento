@@ -15,6 +15,7 @@ import contextlib
 import dataclasses
 import http.client
 import json
+import socket
 import statistics
 import subprocess
 import sys
@@ -24,7 +25,15 @@ from typing import TYPE_CHECKING, Any
 from unittest import mock
 
 from compass_runtime import annotations as annotation_store
-from compass_runtime import http_api, levels, live_estimate, observer, project_context
+from compass_runtime import (
+    http_api,
+    levels,
+    live_estimate,
+    observer,
+    project_context,
+    reading,
+    supervise,
+)
 
 from .support import make_server, serve_until_closed
 from .test_claude_checks import SHORT, START
@@ -120,6 +129,54 @@ class TheLiveEstimateTest(_Replay):
         self.assertEqual(failing[0]["fact_id"], high["rose_at"])
         self.assertIn(levels.REASON_FAILED_CHECK, high["reasons"])
 
+    def test_a_session_that_changed_folder_reads_its_writes_from_where_it_began(self) -> None:
+        # The record's cwd follows a `cd`, so a write read from it was a bare `a.py`, under
+        # none of the folders the intent names (DRC-4884).
+        began = self.root / "work" / "billing"
+        (began / "src").mkdir()
+        self.session.cwd = str(began / "src")
+        self.session.write(self.session.cwd + "/a.py")
+        seen: list[levels.Evidence] = []
+        live_level = levels.live_level
+
+        def spy(evidence: levels.Evidence, intent: levels.Intent) -> levels.Level:
+            seen.append(evidence)
+            return live_level(evidence, intent)
+
+        with mock.patch.object(levels, "live_level", spy):
+            self.estimate()
+        self.assertTrue(seen)
+        for evidence in seen:
+            self.assertEqual(str(began), evidence.cwd)
+        self.assertEqual(
+            ["src/a.py"], [f["summary"] for f in seen[-1].facts if f.get("subject") == "write"]
+        )
+
+    def test_the_second_estimate_of_a_session_that_then_changed_folder_keeps_its_directory(
+        self,
+    ) -> None:
+        # The second estimate resumes from a checkpoint of the first tally, which is built
+        # without the scan: it has to carry the session directory itself.
+        self.session.write(self.session.cwd + "/src/b.py")
+        self.estimate()
+        began = self.root / "work" / "billing"
+        (began / "src").mkdir(exist_ok=True)
+        self.session.cwd = str(began / "src")
+        self.session.write(self.session.cwd + "/a.py")
+        seen: list[levels.Evidence] = []
+        live_level = levels.live_level
+
+        def spy(evidence: levels.Evidence, intent: levels.Intent) -> levels.Level:
+            seen.append(evidence)
+            return live_level(evidence, intent)
+
+        with mock.patch.object(levels, "live_level", spy):
+            self.estimate()
+        self.assertEqual(
+            ["src/a.py", "src/b.py"],
+            sorted(f["summary"] for f in seen[-1].facts if f.get("subject") == "write"),
+        )
+
     def test_it_reads_not_enough_recorded_yet_with_too_little_recorded(self) -> None:
         # Only a prompt and a write: no check whose latest run passed.
         self.session.rows = self.session.rows[:1]
@@ -202,9 +259,24 @@ class TheLiveEstimateTest(_Replay):
         with (
             mock.patch.object(subprocess, "Popen", side_effect=AssertionError("a process")),
             mock.patch.object(subprocess, "run", side_effect=AssertionError("a process")),
+            mock.patch.object(socket, "create_connection", side_effect=AssertionError("a socket")),
+            # Every model class the runtime can start: the goal summary and both reading
+            # producers. Only the first was patched, so a Claude reading started from the
+            # live path would have passed here while Popen was the sole guard.
             mock.patch.object(
                 observer.CodexGoalModel, "__call__", side_effect=AssertionError("a model")
             ),
+            mock.patch.object(
+                reading.CodexReadingModel, "__call__", side_effect=AssertionError("a model")
+            ),
+            mock.patch.object(
+                reading.ClaudeReadingModel, "__call__", side_effect=AssertionError("a model")
+            ),
+            # The two functions every CLI launch passes through. Without them the Claude class
+            # above passes on a machine with no `claude` on PATH, where its lookup returns
+            # before anything is started.
+            mock.patch.object(observer, "claude_exec", side_effect=AssertionError("a model")),
+            mock.patch.object(supervise, "run", side_effect=AssertionError("a process")),
         ):
             answer = live_estimate.for_session(
                 self.config, saved_row(), str(self.path), [], floor=None, now=1.0

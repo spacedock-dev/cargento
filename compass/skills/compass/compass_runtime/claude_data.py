@@ -497,6 +497,33 @@ def analyze_transcript(config: RuntimeConfig, state: RuntimeState, path: str) ->
     return info
 
 
+def head_cwd(config: RuntimeConfig, path: str) -> str:
+    """The first working directory a transcript's opening records carry, ``""`` if none.
+
+    Uncached, for a reader that holds no state. A `cd` moves every later record's
+    `cwd`, so this is the one place the directory the session began in survives.
+    """
+    try:
+        lines = runtime_io.iter_bounded_text_lines(
+            path,
+            max_lines=config.claude_cwd_scan_lines,
+            per_line_bytes=config.claude_cwd_line_bytes,
+        )
+        for line in lines:
+            if '"cwd"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            value = d.get("cwd") if isinstance(d, dict) else None
+            if isinstance(value, str) and value:
+                return value
+    except OSError:  # pragma: no cover - iterator handles filesystem failures
+        return ""
+    return ""
+
+
 def session_cwd(config: RuntimeConfig, state: RuntimeState, path: str) -> str:
     """Working directory recorded on the transcript head, ``""`` if absent.
 
@@ -513,26 +540,7 @@ def session_cwd(config: RuntimeConfig, state: RuntimeState, path: str) -> str:
         hit = state.cwd_cache.get(path)
     if hit is not None:
         return hit
-    cwd = ""
-    try:
-        lines = runtime_io.iter_bounded_text_lines(
-            path,
-            max_lines=config.claude_cwd_scan_lines,
-            per_line_bytes=config.claude_cwd_line_bytes,
-        )
-        for line in lines:
-            if '"cwd"' not in line:
-                continue
-            try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            value = d.get("cwd") if isinstance(d, dict) else None
-            if isinstance(value, str) and value:
-                cwd = value
-                break
-    except OSError:  # pragma: no cover - iterator handles filesystem failures
-        return ""
+    cwd = head_cwd(config, path)
     if cwd:
         with state.cache_lock:
             runtime_state.bounded_put(state.cwd_cache, path, cwd, limit=config.max_cache_entries)

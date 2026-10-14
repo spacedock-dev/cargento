@@ -38,7 +38,7 @@ class RiseFactResolutionTest(unittest.TestCase):
         self.assertEqual("write", found["rose_at"])
 
     def test_a_shifted_head_repeated_later_requires_fresh_listing_order(self) -> None:
-        tally = project_context._ToolReportTally({})
+        tally = project_context._ToolReportTally({}, "/repo")
         tally.runs = {
             "A": [{"seq": 1}, {"seq": 3}],
             "B": [{"seq": 2}],
@@ -49,7 +49,8 @@ class RiseFactResolutionTest(unittest.TestCase):
 
     def test_a_redirected_pass_is_not_a_removable_head(self) -> None:
         tally = project_context._ToolReportTally(
-            {"one": project_context._Result({"content": "5 passed", "is_error": False}, 2.0)}
+            {"one": project_context._Result({"content": "5 passed", "is_error": False}, 2.0)},
+            "/repo",
         )
         before = live_estimate._head_state(tally)
         tally.add(2.0, "/repo", "one", "Bash", {"command": "pytest > src/log.txt"})

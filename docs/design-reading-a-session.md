@@ -2149,7 +2149,8 @@ qualifies the producer against it.
    others, as SECURITY.md says. A substituted command is shown as `$(…)` and a trailing comment is
    dropped. Clipped to 120 characters; the last 180 characters of
    output, the existing ledger cap, with redaction run over the whole read window first; a
-   written path relative to the working directory; and, for a segment that is neither a check nor
+   written path relative to the session's working directory, the folder it began in, which a later
+   `cd` does not move; and, for a segment that is neither a check nor
    on the read-only list, its time only, never its text, used on this machine. No file content is read as a field, and never an
    Edit or Write result body; the output tail is whatever the runner printed.
 6. Where it lives: the observed record only, as a new fact type the reading counts as work. It is
@@ -2545,7 +2546,7 @@ and item 3's measured note that a written path comes only from a file-write tool
    check or another unplaced run. Checks in a known directory still share their existing identity;
    no guessed folder is published.
 2. A file redirect on a check segment is a recorded write by its call, its target read from the
-   directory that segment ran in. A target inside the working directory is published as a written
+   directory that segment ran in. A target inside the session's working directory is published as a written
    path, as a file-write tool's path is, through the same redaction. A target outside it, or one the
    shell decides when it runs (a `$` expansion, a substitution, `~`, a withheld word), is counted in
    `outside_paths` and never published. So is a target that masking would change, or that holds
@@ -2619,7 +2620,7 @@ the measured note that DEC-23 reads the root session's calls alone.
    do. A parent write after a subagent's pass ages it the same way, and one subagent's write ages
    another's pass. A subagent working in another checkout still ages the parent's passes, as a write
    outside the working directory always has, and its written paths are relative to its own working
-   directory.
+   directory. Amended 2026-10-14: the last clause no longer holds, see below.
 5. One order across all of them. Each transcript keeps its own order, and the transcripts are
    merged by call time, the parent's first at a tie. The result time decides which run of a check
    is latest, across parent and subagent alike, as item 4 of the 2026-09-27 amendment set it; every
@@ -2696,8 +2697,14 @@ starts the dashboard may pass `--allow-tool-output`, or set `COMPASS_ALLOW_TOOL_
 the bind Compass writes the grant for each provider whose destination it can name
 (`reading_policy.grant_tool_output`). It writes no words Allow, so no reading runs on it alone, and
 the disclosure says tool output was allowed when the dashboard started instead of "only after you
-allow it". `--no-observer-model` refuses it, "Turn off readings" and `--forget` clear it, and the
-Windows respawn forwards it.
+allow it". When the permission store cannot take the write, the start
+prints one line and drops the flag for the run, so the card asks as usual. The server was safe
+either way, since a press without the row is refused `403 tool-output-consent-required`; the page
+was the part that overstated, and it was reading the flag where it should have read the outcome.
+The wording still follows the flag afterwards: Turn off readings and `--forget` delete the row while
+the flag stays set until a restart, so the card can keep saying it after a withdrawal.
+`--no-observer-model` refuses it, "Turn off readings" and `--forget` clear it, and the Windows
+respawn forwards it.
 
 Why a launch flag. A reader who found on a first walk that most lines read "Can't tell" had tool
 output already granted: one press of "Allow and analyze" writes both. A default needs a reader who
@@ -2716,6 +2723,30 @@ reader having accepted a disclosure that names them:
 The row outlives the flag, as an Allow's does: starting again without it does not withdraw the grant.
 A grant that should end with the run would need a store entry that records how it was written, which
 was not built.
+
+### Amended 2026-10-14: a written path is read from the session's directory
+
+Item 5 says a written path is relative to the working directory, and item 4 of the 2026-09-28
+amendment said a subagent's was relative to its own. Both now read from the session's directory.
+
+What was wrong. Each path was read relative to the `cwd` of the record that carried it. A `cd`
+moves the `cwd` of every later record, so a session that had changed folder published a bare
+filename and "Where the work went" read "The working directory". The live folder signal saw the same
+bare path, under no folder the intent names. Two subagents that each wrote `src/main.py` in their
+own checkouts also published one path, so the count and a file row disappeared.
+
+What stands. A relative path is still placed where the tool ran it, in that record's `cwd`. The
+result is then read relative to the session's directory, so a write outside it is counted in
+`outside_paths` and never published, as before. The session's directory is the first `cwd` at the
+head of the parent transcript, because a clipped read of the tail can begin after a `cd`. Where the
+head holds none, it is the first record read.
+
+Consequence, stated plainly. A subagent in an isolation worktree under the session directory, for
+example `.claude/worktrees/<name>/src/m.py`, now publishes with that prefix. The live estimate's
+folder share counts it as outside a named folder such as `src`, since the path no longer starts with
+`src`. That follows from keeping distinct checkouts distinct: two worktrees writing `src/m.py` are
+two files. A checkout outside the session directory is counted and not published, as any write
+outside it is. The share is not adjusted for worktrees here.
 
 ### Amended 2026-10-14 (owner): a write outside a named folder does not settle a line
 
