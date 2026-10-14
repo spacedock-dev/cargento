@@ -352,6 +352,43 @@ class ASubagentsCheckIsTheParents(SubagentChecksTestCase):
 
 
 class ASubagentsWritesAreTheParents(SubagentChecksTestCase):
+    def worker_in(self, folder: Path, agent_id: str) -> Subagent:
+        """A subagent whose own records carry `folder`, as a worktree checkout does."""
+        folder.mkdir(parents=True, exist_ok=True)
+        sub = self.delegate(agent_id)
+        sub.cwd = str(folder)
+        return sub
+
+    def test_two_subagents_writing_one_relative_path_in_their_own_folders_stay_two(self) -> None:
+        for name in ("a1b2c3d4e5f60718", "b1c2d3e4f5a60718"):
+            sub = self.worker_in(self.cwd / "checkouts" / name[:2], name)
+            call_id = sub.call("Edit", {"file_path": "src/main.py", "old_string": "a"})
+            sub.result(call_id, "updated")
+            self.returns(sub)
+        events, scan = self.read()
+        self.assertEqual(
+            ["checkouts/a1/src/main.py", "checkouts/b1/src/main.py"],
+            sorted(e["title"] for e in events if e["subject"] == "write"),
+        )
+        self.assertEqual(2, scan["written_paths"])
+
+    def test_two_subagents_writing_one_absolute_path_keep_one_file(self) -> None:
+        for name in ("a1b2c3d4e5f60718", "b1c2d3e4f5a60718"):
+            self.worker_in(self.cwd / "checkouts" / name[:2], name).edit(self.file("src/main.py"))
+        events, scan = self.read()
+        self.assertEqual(["src/main.py"], [e["title"] for e in events if e["subject"] == "write"])
+        self.assertEqual(1, scan["written_paths"])
+
+    def test_a_subagent_checkout_outside_the_session_directory_is_counted_not_listed(self) -> None:
+        for name in ("a1b2c3d4e5f60718", "b1c2d3e4f5a60718"):
+            sub = self.worker_in(self.root / "elsewhere" / name[:2], name)
+            call_id = sub.call("Edit", {"file_path": "src/main.py", "old_string": "a"})
+            sub.result(call_id, "updated")
+        events, scan = self.read()
+        self.assertEqual([], [e for e in events if e["subject"] == "write"])
+        self.assertEqual(2, scan["outside_paths"])
+        self.assertEqual(0, scan["written_paths"])
+
     def test_a_subagent_write_after_a_parent_pass_ages_the_pass(self) -> None:
         self.session.bash("pytest", "5 passed", is_error=False)
         sub = self.delegate()

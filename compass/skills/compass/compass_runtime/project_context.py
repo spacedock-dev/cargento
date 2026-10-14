@@ -3331,12 +3331,26 @@ def _scrubbed_tail(text: str, values: Iterable[str]) -> str:
     return records.redact_secrets(text)[-TOOL_REPORT_TAIL_CHARS:]
 
 
-def _written_path(raw: object, cwd: str) -> str | None:
-    """A written path relative to the working directory, or None outside it."""
-    if not isinstance(raw, str) or not raw.strip() or not cwd:
+def _written_path(raw: object, cwd: str, session_dir: str = "") -> str | None:
+    """A written path relative to the session's directory, or None outside it.
+
+    A relative `raw` is placed where the tool ran it, the record's own `cwd`;
+    the result is read from the directory the session began in, because a `cd`
+    moves every later record's `cwd` and the documented path is the session's
+    ([DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
+    item 5, DRC-4884). Reading it from `cwd` published a bare filename for a
+    session that had changed folder, and gave two subagents' `src/main.py` one
+    identity (DRC-4755). Without a session directory it reads from `cwd`.
+    """
+    base = os.path.normpath(session_dir or cwd) if session_dir or cwd else ""
+    if (
+        not isinstance(raw, str)
+        or not raw.strip()
+        or not base
+        or (not os.path.isabs(raw) and not cwd)
+    ):
         return None
-    base = os.path.normpath(cwd)
-    target = os.path.normpath(raw if os.path.isabs(raw) else os.path.join(base, raw))
+    target = os.path.normpath(raw if os.path.isabs(raw) else os.path.join(cwd, raw))
     try:
         relative = os.path.relpath(target, base)
     except ValueError:
@@ -3472,8 +3486,8 @@ class _ShellCall:
                 current, known, cdpath = entered.pop()
         return found, placed
 
-    def written_path(self, target: str, at: int, cwd: str) -> str | None:
-        """A check's redirect target relative to the working directory, or
+    def written_path(self, target: str, at: int, cwd: str, session_dir: str = "") -> str | None:
+        """A check's redirect target relative to the session's directory, or
         None where it is not published: outside it, decided by the shell,
         under an unknown directory, or holding a value the line masks."""
         if (
@@ -3483,7 +3497,7 @@ class _ShellCall:
             or (not os.path.isabs(target) and not self.placed[at])
         ):
             return None
-        return _written_path(os.path.join(self.directories[at] or "/", target), cwd)
+        return _written_path(os.path.join(self.directories[at] or "/", target), cwd, session_dir)
 
     def joiners(self) -> list[str]:
         return [part.joiner for part in self.parts]
@@ -3531,8 +3545,10 @@ class _ShellCall:
 class _ToolReportTally:
     """The full scan of one transcript's calls, and the entries chosen from it."""
 
-    def __init__(self, results: dict[str, _Result]) -> None:
+    def __init__(self, results: dict[str, _Result], session_dir: str) -> None:
         self.results = results
+        # Where a written path is read from: not a record's `cwd`, which a `cd` moves.
+        self.session_dir = session_dir
         self.runs: dict[str, list[dict[str, Any]]] = {}
         self.launches: dict[str, dict[str, Any]] = {}
         self.last_turn_floor = 0.0
@@ -3641,7 +3657,11 @@ class _ToolReportTally:
             at,
             call_id,
             name,
-            _written_path(tool_input.get("file_path") or tool_input.get("notebook_path"), cwd),
+            _written_path(
+                tool_input.get("file_path") or tool_input.get("notebook_path"),
+                cwd,
+                self.session_dir,
+            ),
             worker,
         )
 
@@ -3702,7 +3722,9 @@ class _ToolReportTally:
         for _index, target, start in call.redirect_writes:
             # Owner, 2026-09-27: published only inside the working directory;
             # a target outside it, or one the shell decides, counts as outside.
-            self._record_write(at, call_id, "Bash", call.written_path(target, start, cwd), worker)
+            self._record_write(
+                at, call_id, "Bash", call.written_path(target, start, cwd, self.session_dir), worker
+            )
         foreground = [i for i in call.meaningful if not call.background(i)]
         if foreground and not [i for i in call.checks if i in foreground]:
             self.scan["other_commands"] += 1
@@ -4192,6 +4214,17 @@ def _child_id(path: str) -> str:
     return os.path.basename(path)[len("agent-") : -len(".jsonl")]
 
 
+def _session_directory(
+    config: RuntimeConfig, transcript_path: str, parent: list[dict[str, Any]]
+) -> str:
+    """The directory the session began in: the transcript head's, since a clipped
+    read starts after any `cd`; the first record read stands in when the head
+    carries none."""
+    return claude_data.head_cwd(config, transcript_path) or next(
+        (record["cwd"] for record in parent if isinstance(record.get("cwd"), str)), ""
+    )
+
+
 class _CheckScan(NamedTuple):
     parent: list[dict[str, Any]]
     children: list[list[dict[str, Any]]]
@@ -4202,6 +4235,7 @@ class _CheckScan(NamedTuple):
     orphan_unread: bool
     budget: runtime_io.ReadBudget
     source_reads: tuple[tuple[str, runtime_io.TranscriptRead | None], ...]
+    session_dir: str = ""
 
 
 def _live_check_scan(
@@ -4264,6 +4298,7 @@ def _live_check_scan(
         orphan_unread,
         budget,
         tuple(source_reads),
+        _session_directory(config, transcript_path, parent),
     )
 
 
@@ -4273,6 +4308,7 @@ def _tally_of(
     unread: int,
     reads_from: float | None = None,
     *,
+    session_dir: str,
     named_unread: bool = False,
     parent_failed: bool = False,
     orphan_unread: bool = False,
@@ -4291,7 +4327,7 @@ def _tally_of(
     unavailable child makes every held pass incomplete without inventing a
     timestamp. A measured failure remains a failure.
     """
-    tally = _ToolReportTally(_merged_check_results(parent, subagents))
+    tally = _ToolReportTally(_merged_check_results(parent, subagents), session_dir)
     tally.reads_from = reads_from
     tally.scan["last_user_at"] = _last_person_at(parent)
     tally.named_unread = named_unread
@@ -4363,6 +4399,7 @@ def _claude_tally(
         named_unread=scan.named_unread,
         parent_failed=scan.parent_failed,
         orphan_unread=scan.orphan_unread,
+        session_dir=scan.session_dir,
     )
 
 
@@ -4731,6 +4768,7 @@ def _frozen_check_scan(config: RuntimeConfig, transcript_path: str, until: float
         False,
         budget,
         tuple(source_reads),
+        _session_directory(config, transcript_path, parent),
     )
 
 
@@ -4755,6 +4793,7 @@ def frozen_claude_checks(
         scan.horizon,
         named_unread=scan.named_unread,
         parent_failed=scan.parent_failed,
+        session_dir=scan.session_dir,
     )
     facts = [
         _semantic_fact_from_event(row, str(row["kind"]), _SEMANTIC_FACT_TYPES[row["kind"]], "")
