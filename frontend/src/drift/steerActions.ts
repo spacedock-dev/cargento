@@ -55,7 +55,7 @@ function sourceFor(ctx: DriftCtx, session: Row) {
 export function correctionDraft(
   held: HeldCorrection,
   source: ReturnType<typeof workSource>,
-  numbersOf: () => ReadonlyMap<string, number>,
+  numbersOf: () => ReadonlyMap<string, string>,
 ): string {
   if (typeof held.text === 'string') return held.text;
   if (held.recomposing && typeof held.recomposeText === 'string') return held.recomposeText;

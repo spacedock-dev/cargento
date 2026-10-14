@@ -256,7 +256,12 @@ export function WorkListView() {
         ) : list.unnumbered ? null : (
           <p className="next-cockpit-work-absent">{list.absent}</p>
         )}
-        <ShowMore {...(record ? { record } : {})} pastWindow={pastWindow} onMore={readMore} />
+        <ShowMore
+          {...(record ? { record } : {})}
+          pastWindow={pastWindow}
+          ordinals={list.ordinals}
+          onMore={readMore}
+        />
         {list.reads ? (
           <p className="next-cockpit-work-limit next-cockpit-work-reported">{WORK_AS_REPORTED}</p>
         ) : (

@@ -61,6 +61,10 @@ class RuntimeState:
     metadata_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
     claude_title_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
     claude_user_event_cache: dict[str, tuple[int, int, str | None]] = field(default_factory=dict)
+    # One message index per transcript (`entry_numbers.MessageIndex`), keyed by its path, harness
+    # and session. Typed `Any` because `state` imports no module that could name it without a cycle.
+    entry_indexes: dict[str, Any] = field(default_factory=dict)
+    entry_index_lock: LockType = field(default_factory=threading.Lock)
     transcript_user_cache: dict[
         tuple[str, str, str], tuple[tuple[int, int, int, int], list[dict[str, Any]]]
     ] = field(default_factory=dict)

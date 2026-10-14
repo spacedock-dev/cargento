@@ -129,12 +129,39 @@ const ASSESSMENT = {
   },
 };
 
+/* The server's fixed numbers: the newest page holds messages 51 to 100 and the older one 1 to 50, and the
+   context holds a failed check that follows message 100 as 100.1. */
+const orderedMessage = (n: number) => ({
+  fact_id: `e${String(n)}`,
+  at: 1900000000 - 100 + n,
+  type: 'user_message',
+  by: 'person:reader',
+  source_session: { harness: 'claude', sid: 's1' },
+  summary: `Synthetic entry ${String(n)}`,
+  evidence: { source: 'transcript', confidence: 'exact' },
+  ordinal: n,
+});
+const orderedCheck = {
+  fact_id: 'check:npm test',
+  at: 1900000000 + 1,
+  type: 'tool_report',
+  by: 'agent',
+  source_session: { harness: 'claude', sid: 's1' },
+  summary: 'npm test',
+  result: 'failed',
+  evidence: { source: 'transcript', confidence: 'exact' },
+  ordinal: 100,
+  ordinal_sub: 1,
+};
+
 function SessionRecordExample({
   intent = false,
   reading = false,
+  ordinals = false,
 }: {
   readonly intent?: boolean;
   readonly reading?: boolean;
+  readonly ordinals?: boolean;
 }) {
   const [shell] = useState(() => {
     const history = fakeRouterEnvironment('#n=session:demo:claude:s1');
@@ -179,6 +206,28 @@ function SessionRecordExample({
           return Promise.resolve(
             json({ ok: true, text: 'Synthetic older direction', clipped: false }),
           );
+        if (ordinals && url.startsWith('/api/project-context'))
+          return Promise.resolve(
+            json({
+              semantic: { facts: [orderedMessage(100), orderedMessage(99), orderedCheck] },
+              sources: { work: { tool_reports: [] } },
+            }),
+          );
+        if (ordinals && url.startsWith('/api/session-record')) {
+          const older = url.includes('before=');
+          return Promise.resolve(
+            json({
+              state: 'ok',
+              session: { harness: 'claude', sid: 's1' },
+              entries: Array.from({ length: 50 }, (_, i) => orderedMessage((older ? 50 : 100) - i)),
+              next: older ? null : 'older',
+              reached_start: older,
+              bound: null,
+              scanned_bytes: 65536,
+              kinds: ['user_message', 'agent_message'],
+            }),
+          );
+        }
         if (url.startsWith('/api/session-record')) {
           const older = url.includes('before=');
           return Promise.resolve(
@@ -247,6 +296,30 @@ export const ReaderAppendsOlderEntries: Story = {
       '100',
     );
     window.scrollTo({ top: 0, behavior: 'instant' });
+  },
+};
+
+/* A number is the entry's place in the session, so loading older entries adds rows below and renumbers
+   nothing: the same entry reads the same number before and after, and a check keeps the number of the
+   message it follows. */
+export const NumbersStayWhenOlderEntriesLoad: Story = {
+  render: () => <SessionRecordExample intent ordinals />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const number = (id: string) =>
+      canvasElement.querySelector(`[data-next-entry-id="${id}"]`)?.getAttribute('data-next-entry');
+    const button = await canvas.findByRole('button', { name: 'Show 50 older entries' });
+    await waitFor(() => expect(number('e100')).toBe('100'));
+    await expect(number('e60')).toBe('60');
+    await expect(number('check:npm test')).toBe('100.1');
+    await expect(canvas.queryByText('Numbers count from the oldest entry loaded.')).toBeNull();
+    await userEvent.click(button);
+    await waitFor(() => expect(number('e50')).toBe('50'));
+    await expect(number('e1')).toBe('1');
+    await expect(number('e100')).toBe('100');
+    await expect(number('e60')).toBe('60');
+    await expect(number('check:npm test')).toBe('100.1');
+    await expect(canvas.queryByText('Numbers count from the oldest entry loaded.')).toBeNull();
   },
 };
 

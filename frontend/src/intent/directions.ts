@@ -120,7 +120,7 @@ export async function openDirection(
   ctx: Ctx,
   row: Row,
   factId: string,
-  n: number | null,
+  n: string | null,
   later = false,
   action = 'direction-add',
   focusControl?: string,

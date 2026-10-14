@@ -23,6 +23,10 @@ import { seedSample } from '../../test/legacy_goldens';
 /* The result stage's words, run next to the legacy page's over generated readings: the status line of each
    row, the answer over all of them, where the work went, why a reading is stale. */
 const legacy = loadLegacyDrift();
+
+/* The retired page numbered with whole numbers and was recorded that way; the page now reads a label. */
+const labels = (numbers: ReadonlyMap<string, number>): ReadonlyMap<string, string> =>
+  new Map([...numbers].map(([id, n]) => [id, String(n)]));
 legacy.lift([
   'NEXT_READING_DEPARTURE',
   'NEXT_READING_CONSISTENT',
@@ -163,7 +167,7 @@ describe('the result stage says what the legacy page says', () => {
         const theirs = legacyShape.criteria[index];
         for (const short of [false, true]) {
           const a = legacy.call('nextCockpitResultStatus', theirs, numbers, byId, short);
-          const b = resultStatus(row, numbers, byId, short);
+          const b = resultStatus(row, labels(numbers), byId, short);
           const found = firstDifference(canonical(a), canonical(b));
           if (found)
             failures.push(`seed ${String(seed)} status ${row.key}: ${found} (${String(a)} / ${b})`);
@@ -173,7 +177,7 @@ describe('the result stage says what the legacy page says', () => {
         note(`state:${resultState(row)}`);
         const where = (arrived: boolean) => [
           legacy.call('nextCockpitResultWhere', row.restsOnEntry, numbers, arrived),
-          resultWhere(row.restsOnEntry, numbers, arrived),
+          resultWhere(row.restsOnEntry, labels(numbers), arrived),
         ];
         for (const arrived of [false, true]) {
           const [a, b] = where(arrived);
@@ -210,7 +214,12 @@ describe('the result stage says what the legacy page says', () => {
         scan,
         same.windowStart,
       );
-      const work = resultWork(entries as unknown as WorkEntry[], numbers, scan, same.windowStart);
+      const work = resultWork(
+        entries as unknown as WorkEntry[],
+        labels(numbers),
+        scan,
+        same.windowStart,
+      );
       if (Boolean(workHtml) !== Boolean(work)) failures.push(`seed ${String(seed)} work presence`);
       if (workHtml && work) {
         note('work');

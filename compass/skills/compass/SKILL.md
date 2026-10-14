@@ -351,8 +351,11 @@ direction), the reading and the departures on record. Notes about your saved wor
 The agent's current activity leads Session activity below it, and the session's entries follow it,
 numbered. The departures section appears only with `--unasked-readings` on, or once a reading or a
 departure is on record. How it landed follows the session's own facts further down. With saved
-words the list starts at #1, the entry where their evidence window opens; earlier entries are
-counted and not listed, and with nothing saved the whole record is numbered. The measured line
+words the list starts at the entry where their evidence window opens; earlier entries are
+counted and not listed, and with nothing saved the whole record is listed. A Claude Code session's
+numbers are fixed: #1 is its oldest message, a message keeps its number as the session grows, and a
+check or file is numbered by the message it follows and its place after it (#41.2). Other harnesses
+number what the page holds, from the oldest. The measured line
 gives the count, below a blocked session's header in Session activity and otherwise in the header,
 and leaves it out when the record was not read. It lists the twenty most
 recent entries in the window, the ten most recent messages the agent wrote, every check and file in

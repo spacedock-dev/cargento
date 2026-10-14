@@ -1499,6 +1499,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # question and option text it stores. The register route builds the
         # `PendingAsk` and is therefore the one place that bounding can happen.
         "compass_runtime.http_api": {
+            # Each message's fixed number on the record pages and the focused context (DRC-4897).
+            "compass_runtime.entry_numbers",
             "compass_runtime.record_pages",
             # The immutable admitted identity selects stricter dev authority.
             "compass_runtime.frontend_dev",
@@ -1572,6 +1574,8 @@ class RuntimeImportGraphTest(unittest.TestCase):
         # Spacedock, and record readers. The HTTP route is its only caller.
         "compass_runtime.project_context": {
             "compass_runtime.claude_data",
+            # The focused session's message index, for the fixed position of each check and file.
+            "compass_runtime.entry_numbers",
             # Exact parent-source binding shares the canonical collector-key normalizer.
             "compass_runtime.events",
             "compass_runtime.config",
@@ -1584,6 +1588,13 @@ class RuntimeImportGraphTest(unittest.TestCase):
             "compass_runtime.spacedock",
             "compass_runtime.state",
             "compass_runtime.transcripts",
+        },
+        # The message index, a small cache keyed by transcript. It reads messages through the record pages'
+        # own reader, imported locally because that module imports project context, which imports this one.
+        "compass_runtime.entry_numbers": {
+            "compass_runtime.config",
+            "compass_runtime.record_pages",
+            "compass_runtime.state",
         },
         # Project context shares the stateless chunk walker through a local import;
         # pages still reach its fact builders, without an import-time cycle.

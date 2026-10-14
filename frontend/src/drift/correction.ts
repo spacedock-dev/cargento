@@ -106,7 +106,7 @@ export function correctionFit(
    Compass could not place (owner, 2026-10-14). */
 export function correctionText(
   parts: readonly CorrectionPart[] | null | undefined,
-  numbers: ReadonlyMap<string, number>,
+  numbers: ReadonlyMap<string, string>,
 ): string {
   return (parts || [])
     .map((part) => {
@@ -303,7 +303,7 @@ export function steerTrigger(input: {
   readonly shape: Shape | null;
   readonly session: Row;
   readonly entries: readonly WorkEntry[];
-  readonly numbers: ReadonlyMap<string, number>;
+  readonly numbers: ReadonlyMap<string, string>;
   readonly scan: Row | null | undefined;
   readonly generated: number;
 }): string {

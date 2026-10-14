@@ -5,10 +5,13 @@ import { EMPTY_RECORD, type RecordEntry } from '../store/board';
 export function ShowMore({
   record = EMPTY_RECORD,
   pastWindow = false,
+  ordinals = false,
   onMore,
 }: {
   readonly record?: RecordEntry;
   readonly pastWindow?: boolean;
+  /** Numbers are the session's fixed ones, so loading an older page renumbers nothing and says nothing of it. */
+  readonly ordinals?: boolean;
   readonly onMore: () => void;
 }) {
   const loading =
@@ -22,7 +25,7 @@ export function ShowMore({
         : '';
   return (
     <div data-record-pages className="mt-3 text-body text-muted-foreground">
-      {record.pages > 1 ? <p>Numbers count from the oldest entry loaded.</p> : null}
+      {record.pages > 1 && !ordinals ? <p>Numbers count from the oldest entry loaded.</p> : null}
       {record.restarted ? (
         <p role="status">
           {record.status === 'stale' && record.error

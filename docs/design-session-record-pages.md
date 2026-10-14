@@ -27,6 +27,11 @@ Claude pages include user and top-level agent messages. Codex pages include user
 messages; the existing `AGENT_MESSAGE_HARNESSES` builder does not admit Codex
 assistant records. This route does not expand that builder's content contract.
 
+Each message entry also carries `ordinal`, its fixed number: its rank among every message in the
+session, oldest first. It is published only when the message index has read the transcript to its
+end, and an entry the index does not hold carries none. The [fixed positions](#fixed-positions)
+section owns how it is computed.
+
 An `ok` page has a non-null `next` until it consumes the record down to byte zero.
 `reached_start` is measured by consumption, including the oldest line, rather
 than defaulted from an empty result. `bound` is `bytes` or `time` only when the
@@ -144,12 +149,56 @@ absent from the opening snapshot and from the context's facts and present in the
 from 96 to 105 messages.
 
 The page now asks for the newest page again when the session's published activity changes. The route
-and its cursors are unchanged and the server retains nothing: the byte cursor already binds a snapshot
+and its cursors are unchanged and the server retains no records: the byte cursor already binds a snapshot
 end, so an append never shifts an older page, and a request without `before` is the newest page. The
 page merges what comes back by `fact_id`, leaves the older cursor and paging state alone, and never
 drops an entry it holds. When more than one page arrived since the last read it follows older pages
 until the newest page meets an entry it already holds, up to 20 pages, and past that starts again from
 the newest entries and says so. [Reader state](design-reader-state.md#the-inventory) owns the rule.
+
+## Fixed positions
+
+The page used to number what it held, so a number moved when a check displaced another, when a check
+ran again, and when Show more loaded an older page. The owner ruled on 2026-10-14 that an entry keeps
+its place in the session instead. The server publishes it and the page draws it.
+
+`entry_numbers.py` holds one `MessageIndex` per transcript: the time and fact id of every message,
+kept sorted, nothing of what was said. A pass reads forward from the last consumed byte through the
+last whole line, reading each line through `record_pages._fact`, the reader the record pages use, so
+the index and the pages cannot disagree about what a message is. It reads in title-only mode: the
+fact id hashes the 112-character title and never the full text, and masking a 256 KiB single-word
+message took minutes in the first build, which hung the collection that calls the index. A transcript only gains records at
+its end, so the index is extended from the bytes appended since and the pass is paid once. A shrunk
+or replaced file resets it, a last record still missing its newline is numbered as a page reads it and
+read again whole on the next pass, and a line over 16 MiB is skipped to its delimiter. A page parses a line up to its 64 MiB budget,
+but masking a message that size takes minutes and this pass runs on every collection of the
+focused session, so a message on a line between the two is listed by a page without a number and
+no other number depends on it. The pass has its own allowance
+(`entry_index_max_seconds`, 5 seconds, the record page bound), and an index that has not reached the
+end of the file publishes nothing, because a partial rank is a wrong number. The cache holds at most
+`entry_index_limit` (16) transcripts.
+
+A message's number is its rank by `(time, fact id)`. A check or file is `(m, k)`: the number of the
+message it follows (messages at or before its first call) and its place among every check, file and
+launch the transcript read holds with the same anchor, by `(first call, key)`. The tally counts
+candidates whether the listing of twelve keeps them or not, so an eviction leaves a gap and moves
+nothing. A failed check that a later pass covers, and a check that has only run in the background,
+leave the listing and keep their place for the same reason. The first call is the earliest of a check's own runs, a file's first write, or a launch's
+time, which is what keeps a re-run check at its first place. The project context publishes
+`ordinal` and `ordinal_sub` for the focused session only; the record pages and the focused
+context's message facts publish `ordinal`.
+
+Measured on 2026-10-14 with a generated 62,922,526-byte transcript of 2,344 records, 781 messages
+and 40,000-character tool results between them: the first request built the index in 0.18 seconds,
+and the next request, over an unchanged file, in 70 microseconds. A test over a generated 60 MiB
+transcript holds the first pass inside the record page bound.
+
+Known limits. A file rewritten in place to a larger size under the same inode is not noticed as a
+replacement, so its index keeps the old keys until it shrinks or is replaced; a transcript only
+appends in every harness read so far. A message written late with an earlier time takes its place in the middle and moves
+the ones after it. The check tally reads the newest 8 MiB of the parent and subagent transcripts, so
+where an older check lies beyond it the labels of the oldest listed entries can change. A check
+that came from a subagent transcript is anchored by its time among the parent's messages.
 
 ## Reading for a finished press
 
@@ -202,7 +251,14 @@ removed stale-source guard.
 - Enlarging `tail_bytes` increases every ordinary collection's cost and still
   cannot make a finite tail cover a week-long session.
 - Caching server pages retains information after the request and introduces
-  invalidation and memory costs the list does not need.
+  invalidation and memory costs the list does not need. The message index is not
+  this: it holds a time and a hash per message and nothing the reader wrote.
+- Numbering the loaded entries on the page, one integer sequence, moves every number
+  below a change: when the twelve checks reshuffle, when a check runs again and when
+  an older page loads. That was the behaviour before the fixed positions.
+- One integer sequence over messages and checks together cannot hold still, since
+  the checks are chosen by rank and a new one can leave the listing; a check is
+  numbered by the message it follows instead.
 - Paging by timestamp cannot uniquely place equal-time records and cannot hold
   a stable boundary when timestamps arrive out of order. Byte offsets can.
 - Putting checks in pages would mix independently bounded child and workflow

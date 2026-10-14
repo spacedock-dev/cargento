@@ -363,6 +363,11 @@ class RecordPagesTest(unittest.TestCase):
             self.assertEqual(50, len(page["entries"]))
             self.assertTrue(page["entries"][0]["copied"])
             self.assertNotIn("reader_words", json.dumps(page))
+            # Each message carries its fixed number: 60 messages, newest first, so 60 down to 11 here
+            # and the older page picks up at 10 whatever was loaded before it (DRC-4897).
+            self.assertEqual(list(range(60, 10, -1)), [e["ordinal"] for e in page["entries"]])
+            older = request("?project=git:example&session=claude:root&before=" + page["next"])[1]
+            self.assertEqual(list(range(10, 0, -1)), [e["ordinal"] for e in older["entries"]])
             for query in (
                 "",
                 "?project=example",

@@ -2,7 +2,7 @@ import { nextNumber } from '../api/bootstrap';
 import { compatSessKey, contextKey } from '../api/identity';
 import type { Annotation } from '../intent/annotation';
 import type { WorkEntry, WorkSource } from '../intent/work';
-import { entryNumbers } from '../intent/work';
+import { entryNumbers, labelOrder } from '../intent/work';
 import { clock, isRecord, type Row } from '../observed';
 import type { ContextEntry } from '../store/board';
 import { recordedTime } from './result';
@@ -82,7 +82,7 @@ function signalAnchored(row: Row, work: Pick<WorkSource, 'all' | 'entries' | 'sc
    alone when they are one entry, and nothing when the list numbers none of them: "#n", never "turn n". */
 export function driftRange(
   entries: readonly WorkEntry[],
-  numbers: ReadonlyMap<string, number>,
+  numbers: ReadonlyMap<string, string>,
   start: number | null,
   through: number | null,
 ): string {
@@ -97,11 +97,12 @@ export function driftRange(
         ? n
         : null;
     })
-    .filter((n): n is number => n !== null);
-  if (!inside.length) return '';
-  const first = Math.min(...inside);
-  const last = Math.max(...inside);
-  return first === last ? `#${String(first)}` : `#${String(first)} to #${String(last)}`;
+    .filter((n): n is string => n !== null)
+    .sort(labelOrder);
+  const first = inside[0];
+  const last = inside.at(-1);
+  if (first === undefined || last === undefined) return '';
+  return first === last ? `#${first}` : `#${first} to #${last}`;
 }
 
 export interface Reasons {
@@ -118,7 +119,7 @@ export function driftReasons(
   tokens: unknown,
   cites: unknown,
   entries: readonly WorkEntry[],
-  numbers: ReadonlyMap<string, number>,
+  numbers: ReadonlyMap<string, string>,
   departing: ReadonlySet<string>,
   generated: number,
 ): Reasons {
@@ -212,7 +213,7 @@ export interface EvidenceRow {
    check carries the time its result arrived, or says it was not recorded. */
 export function evidenceRows(
   ids: unknown,
-  numbers: ReadonlyMap<string, number>,
+  numbers: ReadonlyMap<string, string>,
   byId: ReadonlyMap<string, WorkEntry>,
 ): EvidenceRow[] {
   const held = [...new Set((Array.isArray(ids) ? (ids as unknown[]) : []).map(String))]
@@ -262,7 +263,7 @@ export interface Signals {
 function recordedSignals(
   row: Row,
   work: Pick<WorkSource, 'all' | 'entries'>,
-  numbers: ReadonlyMap<string, number>,
+  numbers: ReadonlyMap<string, string>,
   generated: number,
 ): Signals | null {
   const entries = work.all || work.entries || [];

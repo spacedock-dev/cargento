@@ -431,7 +431,7 @@ class LengthTest(unittest.TestCase):
     def widest(parts: list[Any]) -> int:
         """The length with every number drawn at its widest."""
         placeholders = [part for part in parts if not isinstance(part, str)]
-        return len(words(parts)) + len(" (entry #999999 in Compass's activity list)") * len(
+        return len(words(parts)) + len(" (entry #999999.9999 in Compass's activity list)") * len(
             placeholders
         )
 
@@ -472,7 +472,7 @@ class LengthTest(unittest.TestCase):
         # The page draws " (entry #n in Compass's activity list)" on every number, so a text that
         # fits only without them is refused rather than let past the cap on the page.
         facts = (check("c-fail", 118, "failed"), fact("d1", 114, "user_message"))
-        allowance = len(" (entry #999999 in Compass's activity list)")
+        allowance = len(" (entry #999999.9999 in Compass's activity list)")
 
         def with_goal(size: int) -> dict[str, Any]:
             row = session_row(

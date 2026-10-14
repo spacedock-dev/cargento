@@ -22,6 +22,13 @@ RECORD_PAGE_MAX_BYTES = 64 * 1024 * 1024
 RECORD_PAGE_MAX_SECONDS = 5.0
 DIRECTION_SCAN_MAX_BYTES = 64 * 1024 * 1024
 DIRECTION_SCAN_MAX_SECONDS = 2.0
+# Building a session's message index is one forward pass over its transcript. Measured 2026-10-14:
+# 0.25 s for a 29 MB, 6,936-line transcript, so five seconds covers well over a hundred megabytes.
+# Past that the build stops, keeps what it read and resumes on the next request, and no position is
+# published until it has reached the end of the file.
+ENTRY_INDEX_MAX_SECONDS = 5.0
+# How many sessions' indexes the runtime keeps. Each holds one time and one id per message.
+ENTRY_INDEX_LIMIT = 16
 
 STORE_ENV_VARS = (
     "CLAUDE_CONFIG_DIR",
@@ -194,6 +201,8 @@ class RuntimeConfig:
     record_page_chunk_bytes: int
     direction_scan_max_bytes: int
     direction_scan_max_seconds: float
+    entry_index_max_seconds: float
+    entry_index_limit: int
     popup_cooldown_sec: float
     global_popup_cooldown_sec: float
     popup_repeat_suppress_sec: float
@@ -764,6 +773,8 @@ def build_runtime_config(
         record_page_chunk_bytes=64 * 1024,
         direction_scan_max_bytes=DIRECTION_SCAN_MAX_BYTES,
         direction_scan_max_seconds=DIRECTION_SCAN_MAX_SECONDS,
+        entry_index_max_seconds=ENTRY_INDEX_MAX_SECONDS,
+        entry_index_limit=ENTRY_INDEX_LIMIT,
         popup_cooldown_sec=60,
         global_popup_cooldown_sec=15,
         popup_repeat_suppress_sec=600,

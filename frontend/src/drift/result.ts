@@ -28,7 +28,7 @@ import {
    and the numbers the words are made of, so the component that draws them cannot say a figure the list did
    not give. The legacy cockpit's `nextCockpitResult*` and `nextDriftAnswer` are the oracle. */
 
-export type Numbers = ReadonlyMap<string, number>;
+export type Numbers = ReadonlyMap<string, string>;
 export type EntryIndex = ReadonlyMap<string, WorkEntry>;
 
 export function indexEntries(entries: readonly WorkEntry[]): Map<string, WorkEntry> {

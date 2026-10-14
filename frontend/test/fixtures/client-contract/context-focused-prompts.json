@@ -86,6 +86,7 @@
             },
             "fact_id": "fact:4aae9c22a7d95d9a",
             "intent_promoted": true,
+            "ordinal": 3,
             "scope": "session",
             "source_kind": "steer",
             "source_session": {
@@ -109,6 +110,7 @@
               "source": "timestamped top-level assistant text record"
             },
             "fact_id": "fact:97096f7eb5b6d42d",
+            "ordinal": 2,
             "scope": "session",
             "source_kind": "agent_say",
             "source_session": {
@@ -128,6 +130,7 @@
             },
             "fact_id": "fact:1b3f7a63986acb47",
             "intent_promoted": true,
+            "ordinal": 1,
             "scope": "session",
             "source_kind": "steer",
             "source_session": {
@@ -323,7 +326,7 @@
     },
     "headers": {
       "Cache-Control": "no-store",
-      "Content-Length": "6127",
+      "Content-Length": "6163",
       "Content-Security-Policy": "frame-ancestors 'none'",
       "Content-Type": "application/json"
     },

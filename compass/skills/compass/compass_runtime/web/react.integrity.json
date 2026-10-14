@@ -1,8 +1,8 @@
 {
   "document": {
-    "bytes": 1725991,
+    "bytes": 1727143,
     "file": "react.html",
-    "sha256": "16bdf74cca3b2a9c44ba81d03da87f69f99fd361762d93808a215f6de53e5a06"
+    "sha256": "25cf90625e876149b75928fd7e581a715aea71115f13ff93ffb2c1e480e89db9"
   },
   "format": 1,
   "frontend": "react",
@@ -559,7 +559,7 @@
       },
       {
         "file": "frontend/src/drift/ShowMore.tsx",
-        "sha256": "adcb64113744cb9a33dfa630e45fb1586654e1aefe8c8f1665f74bd009985890"
+        "sha256": "fda3710d60d0450f8e040038d0671dcc9b75a5cbefb850d9f57a94e490bdf8ee"
       },
       {
         "file": "frontend/src/drift/SteerBack.tsx",
@@ -571,7 +571,7 @@
       },
       {
         "file": "frontend/src/drift/WorkListView.tsx",
-        "sha256": "1b9cca8f93ca94390403583d2d26882fafcebf70c401298879d11f8563e7b9b9"
+        "sha256": "92af9703c5c1396bbe8353a324288252af26ac0d0435f9b0ff993496b5b9c2a2"
       },
       {
         "file": "frontend/src/drift/actions.ts",
@@ -587,11 +587,11 @@
       },
       {
         "file": "frontend/src/drift/correction.ts",
-        "sha256": "d59ae297e8c47bdc37ed18c200e9d4a90088aa4b1e8a2530ab187cf090b50c3a"
+        "sha256": "42d2c0f102feda553b5ead868ca3bf3e645b33930bbfc6eafe3617be88b7b41e"
       },
       {
         "file": "frontend/src/drift/drift.css",
-        "sha256": "f95712f4bfd55fe5f69f0c0af8f18e18ce018525ddb482f661da9a6ece2d86e2"
+        "sha256": "6c1cdb928f67e29953918d6e9b3a5a063370b243d05f4b726f9feeef58df9390"
       },
       {
         "file": "frontend/src/drift/editor.ts",
@@ -615,11 +615,11 @@
       },
       {
         "file": "frontend/src/drift/level.ts",
-        "sha256": "522acf7544edeeb5bc97e472c2a364391da63657e1784a6d06cbe4ee7b9767d7"
+        "sha256": "a128b4133b4a6bf6ee28b7d8ff0e260aedc2707f844e15a71b52a1674cbf15e4"
       },
       {
         "file": "frontend/src/drift/model.ts",
-        "sha256": "55cabdec4bd97e3572632dedfcc5bbc4e1eb55f4770d9ca9f8f65ae7c7195afd"
+        "sha256": "387bd9a02d3b0cb2c8091c8e12f1e533349ae8f78ccb8e9819ba79029a06bfa2"
       },
       {
         "file": "frontend/src/drift/overlay.ts",
@@ -627,7 +627,7 @@
       },
       {
         "file": "frontend/src/drift/result.ts",
-        "sha256": "ed902b0346d8bc02b93afd099904cbeacffe89b3dda931340f26535875cc1c62"
+        "sha256": "7729916e2c27ebb57f059b3fe2a54d02043346b81b8a268c7b78690f874b163d"
       },
       {
         "file": "frontend/src/drift/route.ts",
@@ -647,7 +647,7 @@
       },
       {
         "file": "frontend/src/drift/steerActions.ts",
-        "sha256": "78102f2cc6e6929c62011fb6bcc50f81d845da69b8322c3cfe80ba820ac797d7"
+        "sha256": "3c2088a54eba5be2cd28a73bfb2ec176e5a5a247c98ff101d349ef0e6aacf04c"
       },
       {
         "file": "frontend/src/drift/testing.tsx",
@@ -659,7 +659,7 @@
       },
       {
         "file": "frontend/src/drift/workList.ts",
-        "sha256": "e501ce234867f854d529565567189ad585aca34ccc2141bed12523a1f322e459"
+        "sha256": "88db50d5cfefdefb5904b40682a123a71949b392489376530d744226cf6ebafd"
       },
       {
         "file": "frontend/src/intent/ActionButton.tsx",
@@ -675,7 +675,7 @@
       },
       {
         "file": "frontend/src/intent/DirectionQuestion.tsx",
-        "sha256": "853f5f1b4397008308bebe63dcc0f44a81e99f4bf4c81c0ab2206568d6083edd"
+        "sha256": "96accd0cb35223b44771f68102b9a2fb2c9d8844421f8e4ddfcfb948f13ed17b"
       },
       {
         "file": "frontend/src/intent/GoalField.tsx",
@@ -739,7 +739,7 @@
       },
       {
         "file": "frontend/src/intent/directions.ts",
-        "sha256": "d7e7e5ebf7ae71cfe31ea5e38aa623f715ebb033323bbbc92957aa5f45ea3bea"
+        "sha256": "cc21e405b85fc0b4e1d19a749ac64e50990913c7a7b52ef50d7bc2112e087294"
       },
       {
         "file": "frontend/src/intent/edit.ts",
@@ -747,7 +747,7 @@
       },
       {
         "file": "frontend/src/intent/held.ts",
-        "sha256": "05b7c04797e3887f5f348f060c4819b087f784d7b91d106f8e466ff12dcc5012"
+        "sha256": "76b502cca25f59a980e3341081679a549e909c87c48e062e820fa9537d241a63"
       },
       {
         "file": "frontend/src/intent/index.ts",
@@ -799,7 +799,7 @@
       },
       {
         "file": "frontend/src/intent/work.ts",
-        "sha256": "bfb6ed4b3c81269a5ce41399d1e6c992216211172ce3b0137a4033b6c62362bc"
+        "sha256": "d99f2d89a681abcf76689060de44b11b40d9946f7b27a7383ad277a5a708c4ba"
       },
       {
         "file": "frontend/src/lib/utils.ts",
