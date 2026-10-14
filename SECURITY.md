@@ -55,8 +55,10 @@ The posture rests on two invariants:
    machine. A nudge to an endpoint the operator supplies, described in Off-machine nudges below,
    carries two counts and nothing that names a session. The observer model and reader-requested
    readings implement the second pathway behind their own enablement and consent. Nudges stay off
-   until an endpoint is configured. `--no-harness-usage` refuses model calls, and `--no-reach`
-   disables nudges.
+   until an endpoint is configured. `--no-usage` stops the quota poll, `--no-harness-usage` refuses
+   model calls and `--no-reach` disables nudges, each for its own path and no other.
+   [What launches and what sends](#what-launches-and-what-sends) tables every switch against the
+   test that fails when it leaks.
    Nothing else Compass does reaches the network. One further pathway is written down and reaches
    no network on Compass's own account: the hand-off request in Hand-off requests below writes one
    line to a socket on this machine, and what travels afterwards travels on the receiving session's
@@ -225,6 +227,85 @@ command), or the hook client reaching a non-loopback destination. Those two exce
 whitelist of two scoped clauses and not a general permission to execute: written generally the
 sentence would make documented security bugs of three paths Compass already ships, the native
 notifier's `osascript`, `--daemon`'s respawn of the server, and the quota fetcher's Keychain read.
+
+## What launches and what sends
+
+[Scope](#scope) names the kinds of outbound request. This section is the other direction of the
+same ledger: each way Compass reaches off the machine or starts a program, the switch that stops
+it, and the test that fails if it runs anyway. A path with no such test says "none" and why,
+rather than leaving the cell blank.
+
+The switches are separate, and a run that wants a path closed has to name it. `--no-harness-usage`
+is an alias of `--no-observer-model` and stops model calls only. It does not stop the vendor quota
+poll, which stops under `--no-usage`, or the reach nudge, which stops under `--no-reach`. A run with
+all three still serves its loopback port and still starts the local programs in the second table.
+Anything written as "no outbound connection under `--no-harness-usage`" is wrong, and the rows below
+are why.
+
+Tests are named `module.Class.method`, under `compass/skills/compass/tests/`.
+`test_launch_and_send_pins.TheLaunchAndSendTableNamesRealTestsTest` fails when a name here no
+longer resolves, so a renamed pin cannot leave this table citing nothing.
+
+### Outbound requests and program launches
+
+| Path | What it can carry | Stopped by | Fails if it leaks |
+|---|---|---|---|
+| Vendor quota poll, with the credential read before it | A vendor token out, quota numbers back, no session content. Off until the disclosure is answered. | `--no-usage` | `test_contracts.ApplicationIsolationTest.test_no_usage_leaves_every_network_row_without_a_provider`; pushed quota: `test_http_api.UsageReceiptOptOutTest.test_pushed_quota_is_discarded_when_usage_is_disabled` |
+| Reach nudge | Two counts, to an endpoint you configure. Nothing is sent without one. | `--no-reach` | `test_reach.ReachNudgeTest.test_no_reach_flag_never_attempts_post`, `test_reach.ReachNudgeTest.test_no_reach_switch_disables_url_resolution` |
+| A press for a reading, an unasked check | Session content, through the Claude Code or Codex CLI that Compass starts as a supervised child. This is the one path that can send what you wrote off the machine. | `--no-observer-model` or its alias `--no-harness-usage`, which overrides `--observer-model` and `--unasked-readings` | `test_launch_and_send_pins.APressUnderTheModelRefusalLaunchesNothingTest` (a press starts no process and opens no connection); `test_http_api.ReadingRouteTest.test_every_closed_gate_refuses_before_the_model_is_reached`; `test_unasked.TheSwitchIsTheWholeGateTest.test_the_off_switch_refuses_the_lane`; every caller goes through the one runner: `test_observer.SupervisedModelCallTest.test_every_model_caller_defaults_to_the_supervised_runner` |
+| An optional goal summary | A Codex call, behind its own `--observer-model` and consent. | The same refusal | `test_documentation.LightHarnessUsageContractDocumentationTest.test_the_observer_pathway_is_opt_in_and_has_both_rollback_spellings` checks that the switch reaches the configuration. None runs a goal summary with a process patched to raise, so that half rests on the shared runner above. |
+| The live drift estimate | Nothing. It is computed from checks and file paths, with no model. | No switch needed | `test_live_estimate.TheLiveEstimateTest.test_no_model_is_launched_and_nothing_is_written` patches every model class, process start and connection |
+| The page and its stylesheet | Nothing. The page names no host, and its fonts and the optional terminal are packaged with it. The response carries only `frame-ancestors 'none'` as a policy, so the page's own bytes are what keep it local. | None to switch off | `test_launch_and_send_pins.ThePageMakesNoAbsoluteRequestTest` |
+| The hook forwarders and the MCP server | Loopback only. The Python forwarders and the MCP server refuse a target that is not loopback, ignore proxy settings and refuse redirects. The two JavaScript adapters, `opencode_plugin.js` and `pi_extension.js`, hard-code `127.0.0.1` and have no such check to fail. | Remove the hook, adapter or server from the harness | `test_notifications.NotifyHookTest.test_refuses_to_forward_off_loopback`; `test_events_ingress.AdapterTest.test_the_forwarder_refuses_a_non_loopback_target_without_connecting`; `test_mcp_server.TransportGuardTest.test_a_non_loopback_url_is_refused_before_any_request`. None for the two JavaScript adapters. |
+| The git probe | One bounded `git` command, in a repository you chose. Nothing leaves the machine. | `--no-git` | `test_observation.GitProbeDispatchTest.test_no_git_stops_the_probe_running_at_all` |
+| The Spacedock workflow discovery | `spacedock status --discover`, a fixed read-only command with no shell and a two-second timeout, run in a project root Compass verified. Nothing leaves the machine. [Cockpit dispatch and terminal reads](#cockpit-dispatch-and-terminal-reads) states its bounds. | `--no-spacedock` | `test_launch_and_send_pins.TheSpacedockDiscoveryStartsNothingUnderItsSwitchTest` |
+| The focus command | Local terminal automation. Nothing leaves the machine. | `--no-focus`, and `--no-events` | `test_focus.RouteTest.test_the_feature_being_off_answers_503_before_any_token_is_read`; `test_focus.OffSwitchTest.test_no_events_turns_focus_off_as_well` |
+| A native notification | On macOS, `/usr/bin/osascript` with text Compass composes. Other platforms have no native notifier. Nothing leaves the machine. | `--quiet-hours` holds it back inside a window you name. No switch turns it off outright. | None: the program is meant to launch. `test_notifications.NoNativeNotificationTest` only keeps this repository's own test run from launching one. |
+| The optional read-only terminal | Run against the tmux server of the one collected session you name: `tmux display-message` to resolve its pane and a read-only `tmux -CC attach-session -r`. Compass starts no tmux server of its own on this path. Output flows to the page and no keystroke flows back. [Operator-cockpit prototype](#operator-cockpit-prototype) owns the contract. | Off unless both `--interaction-origin-session` and `--interaction-origin-registration-file` are given | Off by default: `test_interaction_prototype.InteractionPrototypeDisabledTest.test_normal_dashboard_has_no_prototype_routes`. A lone flag is refused: `test_interaction_prototype.CollectedSessionCliBoundaryTest.test_interaction_flags_are_an_exact_pair`. None runs an attach with a process patched to raise, so "nothing starts without both flags" rests on those two. |
+| The development frontend probe | A loopback HTTP request carrying a challenge to the development server, which only `pnpm dev` starts. The run is forced to refuse model calls and vendor usage, and a non-loopback host or `--daemon` is refused. | Not passing `--frontend-dev-manifest` | `test_frontend_dev.FrontendDevelopmentTest.test_cli_dev_requires_a_foreground_loopback_server_and_freezes_safe_services` |
+| The daemon | With `--daemon` the server forks and detaches on POSIX. On Windows, which has no fork, it respawns itself with an argv built from the parsed switches. | Do not pass `--daemon` | `test_lifecycle.EveryOptOutReachesTheWindowsChildTest` (the Windows respawn carries every opt-out) |
+
+### The launch grant for tool output
+
+A Claude Code reading carries a check's command, its result, the last 180 characters of its output
+and the paths it wrote only to a destination Compass can name, and only after an Allow whose
+disclosure said so. [Tool output in a Claude Code reading](#tool-output-in-a-claude-code-reading)
+owns that rule. Starting the dashboard with a grant is a second writer of the same row, so its
+paths are tabled here.
+
+| Path | What it does | Stopped by | Fails if it leaks |
+|---|---|---|---|
+| `--allow-tool-output` | Writes the tool-output row for each provider whose destination Compass names. It writes no words Allow, so the first press still asks for the words. | Leave the flag off | `test_reading_policy.ALaunchTimeToolOutputGrantTest`; the Windows respawn forwards it only when given: `test_lifecycle.EveryOptOutReachesTheWindowsChildTest.test_a_windows_daemon_keeps_the_tool_output_grant_and_only_when_given` |
+| `COMPASS_ALLOW_TOOL_OUTPUT=1` | The same grant, and only the exact value `1`. | Unset it | `test_lifecycle.EveryOptOutReachesTheWindowsChildTest.test_allow_tool_output_reaches_the_config_by_flag_or_environment` |
+| Refused by the model refusal | `--no-observer-model` and `--no-harness-usage` write no grant, whatever else is set. | The refusal itself | `test_reading_policy.ALaunchTimeToolOutputGrantTest.test_it_writes_nothing_without_the_flag_or_under_the_model_refusal`; `test_lifecycle.EveryOptOutReachesTheWindowsChildTest.test_the_model_refusal_outranks_the_tool_output_grant` |
+| Withdrawn | Turn off readings and `--forget` clear every grant, and a restart without the flag leaves one in place, as it leaves an Allow. | Turn off readings, `--forget` | `test_reading_policy.ALaunchTimeToolOutputGrantTest.test_turning_readings_off_or_forgetting_withdraws_it` |
+| What the card says | "Allowed when this dashboard started" is worded from the launch flag, and the start drops the flag when the store refuses the grant, so a grant that was never written is not claimed. It does not follow the row afterwards: Turn off readings and `--forget` delete the row while the flag stays set for the run, so the card keeps that wording until the dashboard restarts, and a press without a row is refused `403 tool-output-consent-required`. | None | `test_reading_route.ALaunchGrantThatWasNotRecordedIsNotClaimed`; the default wording: `test_reading_route.AToolOutputGrantGivenAtLaunchIsDisclosedAsSuch`. None for the state after a withdrawal. |
+
+### What can reach into a session
+
+| Path | What it does | Stopped by | Fails if it leaks |
+|---|---|---|---|
+| A write into a session, its transcript store or its working directory | Nothing does. A correction is composed for you to copy, and the copy is your own action in the browser. Compass keeps a digest of what you copied and none of its words. | No switch: there is no code path to turn off | `test_launch_and_send_pins.TheJourneyWritesNothingIntoAHarnessStoreTest`: over one journey of nine routes (board, observation, goal, press, correction, copy, dismissal, Intent log) it compares the transcript store, the Claude and Codex configuration directories of the fixture's home and the working directory before and after, watches `open`, `os.open` and the `os` and `shutil` calls that change a path, and checks that no Unix-domain socket is connected to. A SQLite write or a child process outside those directories is not covered. |
+| Keystrokes into a terminal | None. The optional terminal is read-only, and `control` and `input` always refuse. | The terminal's own two flags, which leave it off | `test_interaction_prototype.InteractionPrototypeHTTPTest.test_stale_unregistered_spoofed_and_keyboard_paths_are_refused` |
+| The answer to an ask | The option you chose, returned to the session that asked, which wrote the options. This is the only path by which what you do in Compass reaches a running session. | `--no-ask` | `test_http_api.AskEndpointTest.test_the_rollback_switch_answers_503_on_all_four_routes`; an answer outside the asker's options is refused: `test_asks.AskRegistryTest.test_answer_refuses_an_out_of_range_index` |
+| The hand-off request | Not built. [Hand-off requests](#hand-off-requests-one-verb-into-a-session) states the one shape it may take. | Not applicable | None for the verb itself, because no code sends it. `test_launch_and_send_pins.ThePostRoutesAreTheListedOnesTest` pins the exact set of POST routes, so adding one fails a test and sends its author here. The journey test above adds a check for a Unix-domain socket connection, the path a hand-off would take, on the routes it calls only. |
+
+### What the tests do not see, and what a live capture would add
+
+Every pin above runs against Compass's own code, with the call that would leave patched or watched.
+That is the right tool for "this path is gated", and it cannot see what happens past the gate. It
+does not see the Claude Code or Codex CLI once Compass has started one, which opens its own
+connections. It does not see a connection made by a dependency below the patched call, and it
+attributes nothing to a process.
+
+A live capture would add that: a process and socket trace of one real journey on a running build,
+once each for the default run, monitor only, no model, a declined press and a launch-granted run,
+with the clipboard read back and the session transcript diffed before and after. It would show
+whether the connections a run opens match the tables above. It has not run. It needs an observer
+restricted to the dashboard's own process tree that loses no events (one-second sampling missed all
+twenty short connections in a control run, and packet capture and DTrace were refused by the
+machine), and a funded allowance for real Claude Code turns. It will run when both exist, by hand
+and not in CI, and its result replaces this paragraph.
 
 ## Project reads (Spacedock stage strips)
 
@@ -1636,7 +1717,11 @@ tool output was named does not cover it. What is built:
   Allow would, for each provider whose destination `reading_route.destination` names, and for no
   other (`reading_policy.grant_tool_output`). It writes no words Allow, so a press still asks for
   the words and nothing is read on it alone. The disclosure says tool output was allowed when the
-  dashboard started, in place of "only after you allow it". `--no-observer-model` refuses it, the
+  dashboard started, in place of "only after you allow it". If the permission store cannot take the
+  write, the start prints one line saying so and drops the flag for the run, so the card asks as
+  usual instead of promising what a press would refuse (`cli.grant_tool_output_at_launch`). The
+  wording follows the flag and not the row afterwards: Turn off readings and `--forget` delete the
+  row while the flag stays set until the dashboard restarts. `--no-observer-model` refuses it, the
   row is cleared by "Turn off readings" and `--forget`, and starting again without the flag leaves
   it, as it leaves an Allow. The Windows daemon respawn forwards the flag.
 - `reading_route.destination` names the destination as configured, or names nothing. For Claude

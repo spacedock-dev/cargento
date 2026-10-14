@@ -818,6 +818,30 @@ def run_one_shot(
     return None
 
 
+def grant_tool_output_at_launch(
+    config: RuntimeConfig, state: RuntimeState, application: aggregate.Application
+) -> RuntimeConfig:
+    """Write `--allow-tool-output`'s grant, and drop the flag from this run if the store refused.
+
+    The route words the card "allowed when this dashboard started" from the flag, so a grant
+    the store did not take must not leave it set: the card would claim tool output was allowed
+    while a press is refused `tool-output-consent-required`. The server was safe either way;
+    the page was not honest. Returns the config the run keeps holding.
+    """
+    if not config.tool_output_pre_grant:
+        return config
+    if reading_policy.grant_tool_output(config, reading_route.destinations()):
+        return config
+    config = dataclasses.replace(config, tool_output_pre_grant=False)
+    application.config = state.config = config
+    runtime_io.diag(
+        "Compass: --allow-tool-output was not recorded because the reading permission store is "
+        "unavailable, so the card asks for tool output as usual",
+        print,
+    )
+    return config
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse, assemble, and run. Returns an exit code.
 
@@ -912,10 +936,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         runtime_io.diag(http_api.bind_error_message(exc, args.port, args.host), print)
         return 1
 
-    if config.tool_output_pre_grant:
-        # After the bind, so a refused start grants nothing, and before the fork, so the
-        # daemon's first press already finds it.
-        reading_policy.grant_tool_output(config, reading_route.destinations())
+    # After the bind, so a refused start grants nothing, and before the fork, so the
+    # daemon's first press already finds it.
+    config = grant_tool_output_at_launch(config, state, application)
 
     announce_fd: int | None = None
     if args.daemon:
