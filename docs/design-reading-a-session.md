@@ -2597,14 +2597,8 @@ the measured note that DEC-23 reads the root session's calls alone.
    `before_last_change`, `changed_after` and `last_changing_command_at` exactly as the parent's
    do. A parent write after a subagent's pass ages it the same way, and one subagent's write ages
    another's pass. A subagent working in another checkout still ages the parent's passes, as a write
-   outside the working directory always has. Its written paths are read from the session's working
-   directory like the parent's, so two checkouts under it that each write `src/main.py` publish two
-   distinct paths and count as two files, and a checkout outside it is counted and never published
-   (DRC-4755). The session's directory is the first one its transcript records, because a `cd` moves
-   the `cwd` of every later record: reading a path from the record's own `cwd` published a bare
-   filename for a session that had changed folder, and "Where the work went" then read "The working
-   directory" (DRC-4884). A relative path is still placed where the tool ran it, in that record's
-   `cwd`.
+   outside the working directory always has, and its written paths are relative to its own working
+   directory. Amended 2026-10-14: the last clause no longer holds, see below.
 5. One order across all of them. Each transcript keeps its own order, and the transcripts are
    merged by call time, the parent's first at a tie. The result time decides which run of a check
    is latest, across parent and subagent alike, as item 4 of the 2026-09-27 amendment set it; every
@@ -2701,6 +2695,30 @@ reader having accepted a disclosure that names them:
 The row outlives the flag, as an Allow's does: starting again without it does not withdraw the grant.
 A grant that should end with the run would need a store entry that records how it was written, which
 was not built.
+
+### Amended 2026-10-14: a written path is read from the session's directory
+
+Item 5 says a written path is relative to the working directory, and item 4 of the 2026-09-28
+amendment said a subagent's was relative to its own. Both now read from the session's directory.
+
+What was wrong. Each path was read relative to the `cwd` of the record that carried it. A `cd`
+moves the `cwd` of every later record, so a session that had changed folder published a bare
+filename and "Where the work went" read "The working directory". The live folder signal saw the same
+bare path, under no folder the intent names. Two subagents that each wrote `src/main.py` in their
+own checkouts also published one path, so the count and a file row disappeared.
+
+What stands. A relative path is still placed where the tool ran it, in that record's `cwd`. The
+result is then read relative to the session's directory, so a write outside it is counted in
+`outside_paths` and never published, as before. The session's directory is the first `cwd` at the
+head of the parent transcript, because a clipped read of the tail can begin after a `cd`. Where the
+head holds none, it is the first record read.
+
+Consequence, stated plainly. A subagent in an isolation worktree under the session directory, for
+example `.claude/worktrees/<name>/src/m.py`, now publishes with that prefix. The live estimate's
+folder share counts it as outside a named folder such as `src`, since the path no longer starts with
+`src`. That follows from keeping distinct checkouts distinct: two worktrees writing `src/m.py` are
+two files. A checkout outside the session directory is counted and not published, as any write
+outside it is. The share is not adjusted for worktrees here.
 
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 

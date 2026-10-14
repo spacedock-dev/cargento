@@ -3545,7 +3545,7 @@ class _ShellCall:
 class _ToolReportTally:
     """The full scan of one transcript's calls, and the entries chosen from it."""
 
-    def __init__(self, results: dict[str, _Result], session_dir: str = "") -> None:
+    def __init__(self, results: dict[str, _Result], session_dir: str) -> None:
         self.results = results
         # Where a written path is read from: not a record's `cwd`, which a `cd` moves.
         self.session_dir = session_dir
@@ -4308,10 +4308,10 @@ def _tally_of(
     unread: int,
     reads_from: float | None = None,
     *,
+    session_dir: str,
     named_unread: bool = False,
     parent_failed: bool = False,
     orphan_unread: bool = False,
-    session_dir: str = "",
 ) -> _ToolReportTally:
     """One tally over a parent's calls and its subagents', in call time order.
 

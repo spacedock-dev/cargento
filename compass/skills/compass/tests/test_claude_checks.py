@@ -11,6 +11,7 @@ transcript.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 import re
@@ -531,11 +532,11 @@ class WhatAReaderSeesOfTheFilesASessionWrote(ClaudeChecksTestCase):
     def test_a_write_after_a_cd_reads_relative_to_the_session_directory(self) -> None:
         self.session.bash("true", "", is_error=False)
         moved = self.enter("web/src")
-        self.session.edit(self.file("web/src/Consent.tsx"))
-        self.session.edit(str(Path(moved) / "Consent.test.tsx"))
+        self.session.edit(self.file("web/src/Panel.tsx"))
+        self.session.edit(str(Path(moved) / "Panel.test.tsx"))
         events, scan = self.read()
         self.assertEqual(
-            ["web/src/Consent.test.tsx", "web/src/Consent.tsx"],
+            ["web/src/Panel.test.tsx", "web/src/Panel.tsx"],
             sorted(event["title"] for event in events),
         )
         self.assertEqual(2, scan["written_paths"])
@@ -543,10 +544,10 @@ class WhatAReaderSeesOfTheFilesASessionWrote(ClaudeChecksTestCase):
 
     def test_a_relative_write_after_a_cd_is_placed_where_the_tool_ran_it(self) -> None:
         self.enter("web/src")
-        call_id = self.session.call("Edit", {"file_path": "Consent.tsx", "old_string": "a"})
+        call_id = self.session.call("Edit", {"file_path": "Panel.tsx", "old_string": "a"})
         self.session.result(call_id, "updated")
         events, _scan = self.read()
-        self.assertEqual(["web/src/Consent.tsx"], [event["title"] for event in events])
+        self.assertEqual(["web/src/Panel.tsx"], [event["title"] for event in events])
 
     def test_a_redirect_after_a_cd_reads_relative_to_the_session_directory(self) -> None:
         self.enter("web")
@@ -554,6 +555,26 @@ class WhatAReaderSeesOfTheFilesASessionWrote(ClaudeChecksTestCase):
         events, scan = self.read()
         self.assertEqual(["web/out.txt"], [e["title"] for e in events if e["subject"] == "write"])
         self.assertEqual(0, scan["outside_paths"])
+
+    def test_a_clipped_read_that_starts_after_the_cd_still_reads_from_the_head(self) -> None:
+        # The scan reads newest-first, so its first record can already carry the moved cwd.
+        self.session.bash("true", "x" * 4000, is_error=False)
+        moved = self.enter("web/src")
+        self.session.edit(str(Path(moved) / "Panel.tsx"))
+        self.session.save(self.path)
+        tail = sum(len(line) + 1 for line in self.path.read_bytes().splitlines()[-2:])
+        events, scan = project_context.claude_tool_reports(
+            self.config, str(self.path), SHORT, max_bytes=tail + 8
+        )
+        self.assertEqual(["web/src/Panel.tsx"], [event["title"] for event in events])
+        self.assertEqual(0, scan["shell_calls"])
+
+    def test_a_head_with_no_directory_falls_back_to_the_first_record_read(self) -> None:
+        self.config = dataclasses.replace(self.config, claude_cwd_scan_lines=0)
+        self.enter("web")
+        self.session.edit(self.file("web/Panel.tsx"))
+        events, _scan = self.read()
+        self.assertEqual(["web/Panel.tsx"], [event["title"] for event in events])
 
     def test_a_write_outside_the_session_directory_after_a_cd_is_counted_not_listed(self) -> None:
         self.enter("web/src")
@@ -1475,6 +1496,17 @@ class ACheckFrozenAtAMomentIsTheCheckAsItStoodThen(ClaudeChecksTestCase):
         self.assertEqual("failed", checks[0]["result"])
         self.assertEqual(failed, checks[0]["branch"]["record_id"])
         self.assertEqual(frozenset(), press.changed_after)
+
+    def test_a_write_after_a_cd_is_frozen_under_the_folder_the_session_began_in(self) -> None:
+        moved = self.cwd / "web" / "src"
+        moved.mkdir(parents=True)
+        self.session.cwd = str(moved)
+        self.session.edit(str(moved / "Panel.tsx"))  # 10 s, result 15 s
+
+        facts, _press = self.freeze(60)
+        self.assertEqual(
+            ["web/src/Panel.tsx"], [f["summary"] for f in facts if f.get("subject") == "write"]
+        )
 
     def test_a_run_whose_result_came_after_the_moment_had_no_result_then(self) -> None:
         self.session.bash("pytest", "5 passed", is_error=False)  # call 10 s, result 15 s

@@ -143,6 +143,31 @@ class TheLiveEstimateTest(_Replay):
             ["src/a.py"], [f["summary"] for f in seen[-1].facts if f.get("subject") == "write"]
         )
 
+    def test_the_second_estimate_of_a_session_that_then_changed_folder_keeps_its_directory(
+        self,
+    ) -> None:
+        # The second estimate resumes from a checkpoint of the first tally, which is built
+        # without the scan: it has to carry the session directory itself.
+        self.session.write(self.session.cwd + "/src/b.py")
+        self.estimate()
+        began = self.root / "work" / "billing"
+        (began / "src").mkdir(exist_ok=True)
+        self.session.cwd = str(began / "src")
+        self.session.write(self.session.cwd + "/a.py")
+        seen: list[levels.Evidence] = []
+        live_level = levels.live_level
+
+        def spy(evidence: levels.Evidence, intent: levels.Intent) -> levels.Level:
+            seen.append(evidence)
+            return live_level(evidence, intent)
+
+        with mock.patch.object(levels, "live_level", spy):
+            self.estimate()
+        self.assertEqual(
+            ["src/a.py", "src/b.py"],
+            sorted(f["summary"] for f in seen[-1].facts if f.get("subject") == "write"),
+        )
+
     def test_it_reads_not_enough_recorded_yet_with_too_little_recorded(self) -> None:
         # Only a prompt and a write: no check whose latest run passed.
         self.session.rows = self.session.rows[:1]
