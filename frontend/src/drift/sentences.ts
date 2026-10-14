@@ -85,8 +85,11 @@ export const NOT_ASKED =
   'This constraint was not put to the reading when it was made, so no verdict on it was asked for.';
 export const VERDICT_STATED =
   "The reading's explanation stated whether the work landed, which is a verdict the evidence read does not license, so its result was withdrawn.";
+/* Not "The check it cited": `reading._evidence_rules` empties the published cites whenever it withdraws a
+   verdict, so the page cannot tell a check that does not show the line from a write, or nothing, that was
+   cited instead. Owner, 2026-10-14. */
 export const CHECK_DOES_NOT_SHOW_IT =
-  'The check it cited does not show this: a departure needs its latest run failing, and a consistent its latest run passing with no change after it, both after the words you saved.';
+  'What it cited does not show this: a departure needs its latest run failing, and a consistent its latest run passing with no change after it, both after the words you saved.';
 export const CHANGED_AFTER_CHECK =
   'The check it cited passed, and a later command may have changed files, so it does not show this.';
 export const CHECK_READ_INCOMPLETE =
@@ -194,6 +197,11 @@ export const CORRECTION_UNDO_UNAVAILABLE =
 export const CORRECTION_PAINT_PAUSED =
   'Updates are paused while you edit this correction. Leave the box to show new work.';
 
+/* The owner's 2026-10-14 ruling: the Claude route runs under an acceptance, not a passed qualification. The
+   README's limits say it in these words, and `test_documentation` holds the two together. */
+export const CLAUDE_READER_LIMIT =
+  "The Claude reader's accuracy check has not passed, and its latest correction is unmeasured, so read a level as an account of the evidence, not a measurement.";
+
 export const LIVE_LEVEL_NAMES: Readonly<Record<string, string>> = {
   none_or_low: 'None or low',
   medium: 'Medium',
@@ -202,7 +210,8 @@ export const LIVE_LEVEL_NAMES: Readonly<Record<string, string>> = {
   not_enough: 'Not enough recorded yet',
 };
 export const LEVEL_SCALE: readonly string[] = ['none_or_low', 'medium', 'high', 'extreme'];
-export const LIVE_LINE = 'Reads checks and file paths, not what your intent says.';
+export const LIVE_LINE =
+  'Reads checks and file paths, not what your intent says. Files written by shell commands, such as a build, are not seen.';
 export const LIVE_HINT =
   'Shows a level after every turn, from checks and file paths, with no model call. The level shows here and in the header.';
 export const LIVE_SAVE = 'Save your intent to see a live estimate.';

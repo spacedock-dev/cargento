@@ -2322,3 +2322,27 @@ class ReaderStateInventoryTest(unittest.TestCase):
                 verdict, where = rows[lane]
                 self.assertTrue(verdict)
                 self.assertIn("#", where)
+
+
+class ClaudeReaderLimitIsSaidInTwoPlacesTest(unittest.TestCase):
+    """The README's limits line and the how-to popup say the Claude reader's limit in the same words.
+
+    The owner ruled on 2026-10-14 that the sentence goes in both, and the popup is a React page the
+    README cannot link a heading in, so only a comparison keeps the two from drifting apart.
+    """
+
+    ROOT = SERVER_PATH.parents[3]
+    SENTENCE = (
+        "The Claude reader's accuracy check has not passed, and its latest correction is "
+        "unmeasured, so read a level as an account of the evidence, not a measurement."
+    )
+
+    def test_the_readme_says_it(self) -> None:
+        readme = re.sub(r"\s+", " ", (self.ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn(self.SENTENCE, readme)
+
+    def test_the_how_to_popup_draws_the_constant_that_says_it(self) -> None:
+        sentences = (self.ROOT / "frontend/src/drift/sentences.ts").read_text(encoding="utf-8")
+        self.assertIn(f'CLAUDE_READER_LIMIT =\n  "{self.SENTENCE}"', sentences)
+        how_to = (self.ROOT / "frontend/src/intent/HowTo.tsx").read_text(encoding="utf-8")
+        self.assertIn("{CLAUDE_READER_LIMIT}", how_to)

@@ -71,6 +71,12 @@ describe('the Intent how-to', () => {
       );
       expect(popup.textContent).toContain('Compass never writes into sessions.');
       expect(popup.textContent).toContain('Not enough recorded yet');
+      expect(popup.querySelector('[data-next-intent-howto-settle]')?.textContent).toBe(
+        "Readings settle a command's latest unpiped run, failed or passed with nothing written after it. They cannot settle a folder limit; the live estimate weighs that.",
+      );
+      expect(popup.querySelector('[data-next-intent-howto-accuracy]')?.textContent).toBe(
+        "The Claude reader's accuracy check has not passed, and its latest correction is unmeasured, so read a level as an account of the evidence, not a measurement.",
+      );
       const node = popup;
       await page.poll(page.state.data);
       expect(screen.getByRole('dialog', { name: 'How Intent and drift works' })).toBe(node);

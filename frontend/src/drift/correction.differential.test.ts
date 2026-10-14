@@ -35,6 +35,20 @@ import { readingShape } from './shape';
 /* The correction's pure half, run next to the legacy page: the edit arithmetic that decides what an
    over-the-cap paste keeps, the text composed from the server's parts and the list's numbers, whether it is
    stale, and whether there is anything to steer from. */
+/* The one deliberate departure from what the retired page said (owner, 2026-10-14): every number reads
+   "(entry #n in Compass's activity list)" where it read "(#n in Compass)" on the first and "(#n)" after.
+   The recorded answer is compared through this projection, which turns the new wording back into the old
+   so the rest of the text, the placeholders dropped and the order stay held to the recording. See
+   docs/design-frontend-migration.md#held-to-recorded-answers. */
+function recordedNumbering(text: string): string {
+  let first = true;
+  return text.replace(/ \(entry #(\d+) in Compass's activity list\)/g, (_all, n: string) => {
+    const said = first ? ` (#${n} in Compass)` : ` (#${n})`;
+    first = false;
+    return said;
+  });
+}
+
 const legacy = loadLegacyDrift();
 legacy.lift([
   'NEXT_READING_DEPARTURE',
@@ -217,7 +231,7 @@ describe('the correction text, staleness and offer match the legacy page', () =>
       );
       if (
         legacy.call('nextCockpitCorrectionText', parts, numbers) !==
-        correctionText(parts as never, numbers)
+        recordedNumbering(correctionText(parts as never, numbers))
       ) {
         failures.push(`seed ${String(seed)} text`);
       }
