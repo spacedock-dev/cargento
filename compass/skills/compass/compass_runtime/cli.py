@@ -27,6 +27,7 @@ from compass_runtime import (
     notifications,
     observation,
     reading_policy,
+    reading_route,
     unasked,
 )
 from compass_runtime import annotations as annotation_store
@@ -52,6 +53,7 @@ JSON at /api/data.
 """
 
 LAUNCHER_PATH = Path(__file__).resolve().parents[1] / "server.py"
+TOOL_OUTPUT_ENV = "COMPASS_ALLOW_TOOL_OUTPUT"
 
 
 def collected_session_ids(application: aggregate.Application) -> frozenset[str]:
@@ -241,6 +243,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "refuse every model call for this run, "
             "overriding --observer-model and --unasked-readings"
+        ),
+    )
+    parser.add_argument(
+        "--allow-tool-output",
+        action="store_true",
+        help=(
+            "grant, for the destination Compass names, sending a Claude Code reading's checks and "
+            "written paths, so the first press asks only for the words; "
+            f"{TOOL_OUTPUT_ENV}=1 does the same; --no-observer-model refuses it"
         ),
     )
     parser.add_argument("--json", action="store_true", help="machine-readable --diagnose output")
@@ -452,8 +463,9 @@ def build_runtime(
     --diagnose, --status and --stop usable on a machine where serving would
     fail.
     """
+    environ = runtime_environ()
     config = runtime_config.build_runtime_config(
-        environ=runtime_environ(),
+        environ=environ,
         platform_name=sys.platform,
         os_name=os.name,
         launcher_path=launcher_path,
@@ -476,6 +488,7 @@ def build_runtime(
         # than on `observer_model_enabled`, which is also False when nobody
         # passed `--observer-model`, and the lane does not need that flag.
         unasked_enabled=args.unasked_readings and not args.no_observer_model,
+        tool_output_pre_grant=args.allow_tool_output or environ.get(TOOL_OUTPUT_ENV) == "1",
         ask_enabled=not args.no_ask,
         reach_enabled=not args.no_reach,
         reach_url=args.reach_url,
@@ -898,6 +911,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     except OSError as exc:
         runtime_io.diag(http_api.bind_error_message(exc, args.port, args.host), print)
         return 1
+
+    if config.tool_output_pre_grant:
+        # After the bind, so a refused start grants nothing, and before the fork, so the
+        # daemon's first press already finds it.
+        reading_policy.grant_tool_output(config, reading_route.destinations())
 
     announce_fd: int | None = None
     if args.daemon:

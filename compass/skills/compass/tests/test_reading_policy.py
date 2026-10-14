@@ -475,6 +475,81 @@ class AnAllowGivenBeforeToolOutputWasNamedDoesNotCoverIt(unittest.TestCase):
         self.assertFalse(reading_policy.tool_output_allowed(answer, "codex", "OpenAI"))
 
 
+class ALaunchTimeToolOutputGrantTest(unittest.TestCase):
+    """`--allow-tool-output` is the reader's consent to tool output, given at launch.
+
+    It writes the same row an Allow would, to the destinations Compass names, and
+    nothing else: the words still need an Allow, so no reading runs on it alone.
+    """
+
+    NAMED: ClassVar[dict[str, str]] = {"claude": "Anthropic", "codex": "OpenAI"}
+
+    def _config(self, **changes: Any) -> Any:
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        config, _ = make_runtime(state_dir=Path(home.name), state_home=home.name, **changes)
+        return config
+
+    def test_it_grants_each_named_destination_and_no_words_allow(self) -> None:
+        config = self._config(tool_output_pre_grant=True)
+        self.assertTrue(reading_policy.grant_tool_output(config, self.NAMED))
+        answer = reading_policy.status(config, now=100.0, provider="claude")
+        self.assertTrue(reading_policy.tool_output_allowed(answer, "claude", "Anthropic"))
+        self.assertTrue(reading_policy.tool_output_allowed(answer, "codex", "OpenAI"))
+        self.assertFalse(reading_policy.tool_output_allowed(answer, "claude", "OpenAI"))
+        # The words are still the reader's to allow, so the reading is not yet covered.
+        self.assertFalse(answer["consent"])
+        self.assertEqual("consent-required", answer["reason"])
+
+    def test_a_destination_compass_cannot_name_gets_no_grant(self) -> None:
+        config = self._config(tool_output_pre_grant=True)
+        self.assertTrue(reading_policy.grant_tool_output(config, {"claude": "", "codex": "OpenAI"}))
+        granted = reading_policy.status(config, now=100.0)["tool_output"]
+        self.assertEqual({"codex": ["OpenAI"]}, granted)
+
+    def test_it_writes_nothing_without_the_flag_or_under_the_model_refusal(self) -> None:
+        for changes in (
+            {"tool_output_pre_grant": False},
+            {"tool_output_pre_grant": True, "model_calls_disabled": True},
+        ):
+            with self.subTest(**changes):
+                config = self._config(**changes)
+                self.assertFalse(reading_policy.grant_tool_output(config, self.NAMED))
+                self.assertFalse(reading_policy.store_path(config).exists())
+
+    def test_turning_readings_off_or_forgetting_withdraws_it(self) -> None:
+        for revoke in ("off", "forget"):
+            with self.subTest(revoke=revoke):
+                config = self._config(tool_output_pre_grant=True)
+                reading_policy.grant_tool_output(config, self.NAMED)
+                if revoke == "off":
+                    reading_policy.set_consent(config, False, now=100.0)
+                else:
+                    reading_policy.forget(config, now=100.0)
+                self.assertEqual({}, reading_policy.status(config, now=100.0)["tool_output"])
+
+    def test_granting_again_is_idempotent_and_a_later_allow_still_needs_its_destination(
+        self,
+    ) -> None:
+        config = self._config(tool_output_pre_grant=True)
+        self.assertTrue(reading_policy.grant_tool_output(config, self.NAMED))
+        self.assertTrue(reading_policy.grant_tool_output(config, self.NAMED))
+        self.assertEqual(
+            {"claude": ["Anthropic"], "codex": ["OpenAI"]},
+            reading_policy.status(config, now=100.0)["tool_output"],
+        )
+        # An Allow for the words alone, at a destination that has since moved, covers no grant.
+        answer = reading_policy.set_consent(
+            config, True, now=100.0, provider="claude", destination="gw.corp.example"
+        )
+        self.assertFalse(reading_policy.tool_output_allowed(answer, "claude", "gw.corp.example"))
+
+    def test_a_store_that_cannot_be_read_takes_no_grant(self) -> None:
+        config = self._config(tool_output_pre_grant=True)
+        reading_policy.store_path(config).write_bytes(b"not a database")
+        self.assertFalse(reading_policy.grant_tool_output(config, self.NAMED))
+
+
 def reading_route_vendor(provider: str) -> str:
     return {"codex": "OpenAI", "claude": "Anthropic"}[provider]
 

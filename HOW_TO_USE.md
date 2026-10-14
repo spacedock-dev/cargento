@@ -433,6 +433,13 @@ Turn off readings revokes all of them. Twelve attempts are allowed in a rolling 
 hours; a refused check names when capacity under that limit becomes available again. Goal summaries
 in Console still require their separate startup flag and consent.
 
+A Claude Code reading is only as good as the checks it can see. The first press of Allow and analyze
+already grants tool output, which is a check's command, its result and the last 180 characters of its
+output, and the paths the session wrote, for the destination the disclosure names. To grant it when
+the dashboard starts, so the card asks only for the words, start it with `--allow-tool-output`, or set
+`COMPASS_ALLOW_TOOL_OUTPUT=1`. It grants nothing else and no reading runs until you allow the words.
+`--no-observer-model` refuses it, and Turn off readings and `--forget` clear it.
+
 `--forget` also clears reading permission without resetting its rolling spend budget. It deletes the local history store and the session-end store, removes the records of any
 session you discarded everything for, and exits. It belongs with `--status` and `--stop` rather
 than in the table below, because what it does is not undone by running the next command without it:

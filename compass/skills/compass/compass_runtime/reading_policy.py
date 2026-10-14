@@ -638,6 +638,33 @@ class GuardedModel:
         return self.model(prompt, output_cap_bytes=output_cap_bytes)
 
 
+def grant_tool_output(config: RuntimeConfig, destinations: Mapping[str, str]) -> bool:
+    """Record the reader's launch-time consent to tool output, as an Allow would.
+
+    `destinations` is each provider's `reading_route.destination` now. A provider
+    Compass cannot name gets no grant, as with an Allow. The row is kept like an
+    Allow's: "Turn off readings" and `--forget` clear it, and starting again without
+    the flag leaves it. It covers tool output only and writes no words Allow, so no
+    reading runs until the reader has allowed the words. Returns whether the store
+    took it.
+    """
+    if config.model_calls_disabled or not config.tool_output_pre_grant:
+        return False
+    named = [(name, where) for name, where in destinations.items() if name in PROVIDERS and where]
+    try:
+        with contextlib.closing(_connect(config, WRITE_WAIT_SEC)) as db:
+            db.execute("BEGIN IMMEDIATE")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS tool_output_permission (provider TEXT NOT NULL, "
+                "destination TEXT NOT NULL, PRIMARY KEY (provider, destination))"
+            )
+            db.executemany("INSERT OR IGNORE INTO tool_output_permission VALUES (?, ?)", named)
+            db.execute("COMMIT")
+    except (OSError, ValueError, RuntimeError, _SQL_ERROR):
+        return False
+    return True
+
+
 def forget(config: RuntimeConfig, *, now: float | None = None) -> bool:
     # Forgetting the answer cannot refill a rolling budget. No session content
     # is retained here, only the timestamps protecting the spend bound.

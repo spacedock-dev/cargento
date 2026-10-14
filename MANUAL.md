@@ -78,6 +78,7 @@ separate opt-ins. A model ID selects a reader, not permission to send content or
 | `--observer-model` | Offer Codex model goal summaries in Console. Off by default; requires its own disclosure consent in the browser. Does not enable unattended drift checks. |
 | `--claude-reading-model MODEL` | Explicit Claude model ID for Claude readings. Default: `claude-sonnet-5-5` (Sonnet 5.5). The admission floor is Sonnet 5: explicit Sonnet or Opus generation 5 or later IDs are accepted, such as `claude-sonnet-5`. Floating aliases, Haiku and older generations are rejected. An admitted ID must still be available through your Claude Code installation. |
 | `--unasked-readings` | Enable bounded Codex checks of annotated sessions without a fresh press; only departures are raised. Off by default. Spends model capacity and requires remembered Codex permission covering the current destination. Quiet hours can suppress checks. |
+| `--allow-tool-output` | Grant tool output at launch, for the destination Compass names: a Claude Code reading may then carry its checks (command, result and the last 180 characters of output) and the paths it wrote, without a second card. It grants nothing else: the first press still asks for the words, and the disclosure says tool output was allowed when the dashboard started. A destination Compass cannot name gets no grant. The grant is stored like an Allow: `Turn off readings` and `--forget` clear it, and starting again without the flag leaves it. `COMPASS_ALLOW_TOOL_OUTPUT=1` does the same. Overridden by `--no-observer-model`. |
 | `--no-observer-model`, `--no-harness-usage` | Equivalent names for refusing every model call for this run, including goal summaries, reader-requested analyses and unasked checks. Overrides both opt-ins above. |
 | `--no-usage` | Refuse vendor quota network fetches and quota pushed into Compass for this run, regardless of the stored dashboard setting. Quota recorded in harness-owned stores, such as Codex or Copilot, still appears. Does not disable model calls or reach nudges. |
 
@@ -153,6 +154,7 @@ owned by the installed harness, as explained in [Security](SECURITY.md#observer-
 | Variable | Effect |
 |---|---|
 | `COMPASS_HOME` | Move Compass's own state, logs and persistent stores. Default: `.compass` under your home directory. Does not relocate harness transcripts. Use the same value for start, stop, status and forget. |
+| `COMPASS_ALLOW_TOOL_OUTPUT` | Set to exactly `1` to start as `--allow-tool-output` does; any other value is ignored. `--no-observer-model` overrides it. |
 | `COMPASS_REACH_URL` | Reach endpoint when `--reach-url` is absent; takes precedence over the `reach_url` file in the Compass home. `--no-reach` overrides all sources. |
 | `COMPASS_QUIET_HOURS` | Quiet-hours window when `--quiet-hours` is absent; takes precedence over the `quiet_hours` file in the Compass home. `--no-quiet-hours` overrides all sources. |
 | `CLAUDE_CONFIG_DIR` | Claude configuration root; Compass searches `projects`, `tasks` and `teams` below it. |

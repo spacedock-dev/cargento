@@ -1631,6 +1631,14 @@ tool output was named does not cover it. What is built:
   the words and not for tool output to this destination, a press is refused `403
   tool-output-consent-required` and nothing is read. "Turn off readings" and `--forget` clear every
   grant. The press re-reads the grant inside the reading before admitting any check.
+- A launch-time grant is available to the reader who runs the dashboard: `--allow-tool-output`, or
+  `COMPASS_ALLOW_TOOL_OUTPUT=1`. After the bind it writes the same `tool_output_permission` row an
+  Allow would, for each provider whose destination `reading_route.destination` names, and for no
+  other (`reading_policy.grant_tool_output`). It writes no words Allow, so a press still asks for
+  the words and nothing is read on it alone. The disclosure says tool output was allowed when the
+  dashboard started, in place of "only after you allow it". `--no-observer-model` refuses it, the
+  row is cleared by "Turn off readings" and `--forget`, and starting again without the flag leaves
+  it, as it leaves an Allow. The Windows daemon respawn forwards the flag.
 - `reading_route.destination` names the destination as configured, or names nothing. For Claude
   Code: `Anthropic`; `Amazon Bedrock` or `Google Vertex AI` under `CLAUDE_CODE_USE_BEDROCK` or
   `CLAUDE_CODE_USE_VERTEX`; or the host and port of `ANTHROPIC_BASE_URL`, never its path, query or
