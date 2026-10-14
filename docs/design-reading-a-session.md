@@ -3754,7 +3754,8 @@ calls below on the issue; the rest follow the analysis.
   there because the record read no longer reaches back that far, the list says so rather than
   calling a later entry #1. A window at the save time is typed words with no earlier message, and
   nothing is expected there.
-- Numbers are stable only while entries arrive at the end. Four things renumber every entry after
+- Until 2026-10-14, numbers were stable only while entries arrived at the end
+  ([superseded](#amended-2026-10-14-owner-an-entry-keeps-its-number)). Four things renumbered every entry after
   the one that moved: a check re-runs, because the check tracker publishes one entry per check keyed
   by its latest run; a file is written again, because the latest write is kept; the listing of at
   most twelve checks and files reshuffles, because failures are kept first and a new one can evict a
@@ -3800,6 +3801,43 @@ calls below on the issue; the rest follow the analysis.
   an entry is one fact, so "2 files" and other per-turn counts are not drawn. Your message reads
   "You · Prompt", the agent's entries "Agent", and Compass's own summary of the session "Compass's
   summary", never the agent.
+
+#### Amended 2026-10-14 (owner): an entry keeps its number
+
+The bullet on stable numbers above is superseded for a Claude Code session whose own context has loaded. The owner
+ruled that numbering counts the session, not the page: #1 is the oldest message of the session and
+#n the newest, so a number is fixed and does not move. The server publishes
+the position and the page draws it.
+
+- A message is numbered by its rank among every message in the session, oldest first, ordered by
+  time with the fact id breaking a tie, the order the page draws them in. It reads `#41`.
+- A check or file takes the number of the message it follows and its place after that message:
+  `#41.1`, `#41.2`. The label sorts `#41` before `#41.1` before `#42`. The place counts every
+  check and file the transcript read holds, listed or not, so the listing of twelve evicting one
+  leaves a gap and moves nothing after it. A check that runs again keeps the place of its first call,
+  and a file written again keeps the place of its first write. This is why a re-run check can sit
+  out of order on the screen: the list is still drawn by time, and the label is where the entry first
+  appeared.
+- The correction carries the same label: "A check failed at 13:58 (entry #41.2 in Compass's
+  activity list)." The server counts a placeholder at its widest, now `#999999.9999`, so a
+  correction within a few characters of the 2,000 cap is refused slightly earlier than before.
+- Numbers survive a poll that displaces a check or file, a check that runs again, and Show more.
+  A correction composed before Show more still names an entry the list can find afterwards.
+- Where no fixed number exists the page counts what it holds from the oldest, as before, and says
+  "Numbers count from the oldest entry loaded.": every other harness, and a Claude Code session
+  until its own context has loaded, because the project context carries none for a session that is
+  not the focus. An entry in the window that the server numbered nothing for (a workflow fact)
+  is drawn without a number rather than with a wrong one.
+- The anchor sentence for a window that opens where no entry sits is not drawn with fixed numbers,
+  since #1 is no longer the first entry after the window.
+- Held as known limits. A message written late with an earlier time lands in the middle of the
+  order and moves the ones after it, which a resumed transcript can do and nothing else does. The
+  check tally reads the newest 8 MiB of the session's transcripts, so where a gap spans that edge
+  the oldest entries' places can change. A message index that cannot finish reading inside its
+  allowance publishes no numbers at all, never a partial rank, and the page counts what it holds
+  for that read. The first request on a long session pays one forward pass, measured at 0.18
+  seconds for a generated 63 MB transcript, and later requests read only what the transcript
+  gained. [The paging record](design-session-record-pages.md#fixed-positions) owns the index.
 
 ### What the direction-adoption server build decided, 2026-09-27
 

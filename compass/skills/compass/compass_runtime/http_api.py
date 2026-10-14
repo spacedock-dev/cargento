@@ -26,6 +26,7 @@ from compass_runtime import (
     correction,
     departures,
     dismissals,
+    entry_numbers,
     levels,
     live_estimate,
     notifications,
@@ -375,6 +376,30 @@ def _outdated_route(route: runtime_reading_route.Route) -> runtime_reading_route
 def _latest_revision(entry: annotation_store.Annotation | None) -> int:
     """The number of an entry's latest revision, or 0 where it holds none."""
     return entry["revisions"][-1]["n"] if entry and entry["revisions"] else 0
+
+
+def _with_message_ordinals(
+    application: Any, result: dict[str, Any], focus: tuple[str, str]
+) -> dict[str, Any]:
+    """The focused session's message facts, each carrying its fixed number.
+
+    The checks and files carry theirs from the tally. Both are published for the focused session
+    only, which is the one whose page numbers its list. Copies, because the facts can be shared with
+    a cache.
+    """
+    semantic = result.get("semantic")
+    if not isinstance(semantic, dict) or not isinstance(semantic.get("facts"), list):
+        return result
+    path = runtime_observer.resolve_transcript(
+        application.config, application.state, focus[0], focus[1]
+    )
+    if not path:
+        return result
+    index = entry_numbers.message_index(application.config, application.state, path, *focus)
+    if index is None:
+        return result
+    facts = entry_numbers.with_message_ordinals(index, semantic["facts"])
+    return {**result, "semantic": {**semantic, "facts": facts}}
 
 
 def _with_levels(
@@ -1212,6 +1237,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
         # `copied_corrections` cites).
         result = copied_corrections.mark(result, collected["sessions"])
         if focus is not None:
+            result = _with_message_ordinals(application, result, focus)
             result = _with_levels(application, result, collected["sessions"], focus, project)
             if parse_qs(url.query).get("prompts", ["0"])[0] == "1":
                 result = _with_prompt_choices(
@@ -1264,6 +1290,7 @@ class _RequestHandler(BaseHTTPRequestHandler):
             }
         ]
         result = record_pages.empty(harness, sid, "unavailable")
+        index = None
         if len(matching) == 1:
             path = runtime_observer.resolve_transcript(
                 application.config, application.state, harness, sid
@@ -1277,8 +1304,16 @@ class _RequestHandler(BaseHTTPRequestHandler):
                 limit=limit,
                 before=query.get("before", [None])[0],
             )
+            # After the page is read, so the index reaches at least as far as the page does.
+            if path and result["entries"]:
+                index = entry_numbers.message_index(
+                    application.config, application.state, path, harness, sid
+                )
         marked = copied_corrections.mark({"semantic": {"facts": result["entries"]}}, matching)
         result["entries"] = marked["semantic"]["facts"]
+        if index is not None:
+            # Each message's fixed number (DRC-4897), so a page of any age numbers it the same way.
+            result["entries"] = entry_numbers.with_message_ordinals(index, result["entries"])
         result = runtime_project_context.for_page(result)
         self._send(
             json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(),

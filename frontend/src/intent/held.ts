@@ -50,7 +50,7 @@ export interface PromptList {
 export interface DirectionLine {
   readonly recordOrigin?: boolean;
   readonly factId: string;
-  readonly n: number | null;
+  readonly n: string | null;
   readonly later: boolean;
   opening?: boolean;
   error?: string;

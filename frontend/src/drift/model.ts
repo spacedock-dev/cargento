@@ -49,7 +49,7 @@ export interface DriftModel {
   readonly source: WorkSource;
   /** The full set, never the displayed window: a citation resolves against what the payload holds. */
   readonly entries: readonly WorkEntry[];
-  readonly numbers: ReadonlyMap<string, number>;
+  readonly numbers: ReadonlyMap<string, string>;
   readonly byId: ReadonlyMap<string, WorkEntry>;
   readonly generated: number;
   readonly limit: string;

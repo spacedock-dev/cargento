@@ -26,12 +26,14 @@ export function activityRow(
     beforeLastChange: false,
     changedAfter: false,
     readIncomplete: false,
+    ordinal: null,
+    ordinalSub: null,
     source: 'transcript',
     ...extra,
   };
   return {
     entry,
-    n,
+    n: String(n),
     head: { report: toolReportLine(entry), ...toolReportParts(entry) },
     flags,
     source: 'transcript',

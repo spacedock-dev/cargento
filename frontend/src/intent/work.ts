@@ -44,6 +44,10 @@ export interface WorkEntry {
   readonly beforeLastChange: boolean;
   readonly changedAfter: boolean;
   readonly readIncomplete: boolean;
+  /** The server's fixed number for a message, or for the message a check or file follows. */
+  readonly ordinal: number | null;
+  /** A check or file's place after that message; null for a message. */
+  readonly ordinalSub: number | null;
   readonly source: string;
 }
 
@@ -61,6 +65,12 @@ function order(left: Row, right: Row): number {
   const a = String(left['fact_id'] || '');
   const b = String(right['fact_id'] || '');
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/* A published position is a whole number, 0 or more (a check before any message follows message 0), or
+   absent. Anything else is read as no position, never as one. */
+function positiveInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 export function workEntries(session: Row, semantic: unknown): WorkEntry[] {
@@ -94,6 +104,8 @@ export function workEntries(session: Row, semantic: unknown): WorkEntry[] {
         beforeLastChange: fact['before_last_change'] === true,
         changedAfter: fact['changed_after'] === true,
         readIncomplete: fact['read_incomplete'] === true,
+        ordinal: positiveInteger(fact['ordinal']),
+        ordinalSub: positiveInteger(fact['ordinal_sub']),
         source: [evidence['source'], evidence['confidence']]
           .map((value) => String(value == null ? '' : value).trim())
           .filter(Boolean)
@@ -113,6 +125,8 @@ export interface WorkSource {
   readonly lineRequests?: Row | null;
   readonly shown?: number;
   readonly total?: number;
+  /** Every entry carries the server's fixed number: the session's own context has loaded and published them. */
+  readonly ordinals?: boolean;
   readonly scanned?: number | null;
   readonly omitted?: number;
 }
@@ -140,7 +154,16 @@ export function workSource(
   const semantic = isRecord(data['semantic']) ? data['semantic'] : {};
   const facts = Array.isArray(semantic['facts']) ? semantic['facts'].filter(isRecord) : [];
   const merged = new Map(facts.map((fact) => [String(fact['fact_id'] || ''), fact]));
-  for (const fact of record?.entries ?? []) merged.set(fact.fact_id, fact);
+  for (const fact of record?.entries ?? []) {
+    /* The record wins a conflict, but a page read while the server's message index was still building
+       carries no number, and the context's fixed one is not replaced by none. */
+    const held = merged.get(fact.fact_id);
+    const kept = held?.['ordinal'];
+    merged.set(
+      fact.fact_id,
+      fact.ordinal == null && typeof kept === 'number' ? { ...fact, ordinal: kept } : fact,
+    );
+  }
   const all = workEntries(session, record ? { facts: [...merged.values()] } : data['semantic']);
   const entries = all;
   const others = all.filter((row) => row.type !== 'tool_report');
@@ -160,6 +183,10 @@ export function workSource(
       (row as Row)['sid'] === session['sid'],
   );
   const lineRequests = requestRows.length === 1 ? (requestRows[0] ?? null) : null;
+  /* Fixed numbers are published with the session's own context and the record pages. The project context carries
+     none for a session that is not the focus, so until that context has loaded a list is numbered by what it
+     holds, as every harness without fixed numbers still is. */
+  const ordinals = Boolean(focused?.data) && all.some((row) => row.ordinal !== null);
   if (entries.length) {
     return {
       entries,
@@ -169,6 +196,7 @@ export function workSource(
       state: 'read',
       shown: others.length,
       total: otherTotal,
+      ordinals,
     };
   }
   if (record?.status === 'error' || (record?.status === 'stale' && record.error) || entry?.error)
@@ -270,39 +298,78 @@ export function olderEntriesRemain(
 export interface EntryNumbering {
   readonly all: readonly WorkEntry[];
   readonly opened: number | null;
-  readonly numbers: ReadonlyMap<WorkEntry, number>;
+  /** A number as the reader reads it after the "#": `41` for a message, `41.2` for a check or file. */
+  readonly numbers: ReadonlyMap<WorkEntry, string>;
   readonly earlier: readonly WorkEntry[];
   readonly untimed: readonly WorkEntry[];
+  /** Entries inside the window that a session with fixed numbers published no number for. */
+  readonly unnumbered: readonly WorkEntry[];
+  /** Numbers are the server's, fixed for the session, and not a count of what the page holds. */
+  readonly ordinals: boolean;
+}
+
+/* A message's number is its rank in the session, and a check or file's is the message it follows and its place
+   after that message, so the label is `41` or `41.2`. */
+export function entryLabel(entry: Pick<WorkEntry, 'ordinal' | 'ordinalSub'>): string | null {
+  if (entry.ordinal === null) return null;
+  return entry.ordinalSub === null
+    ? String(entry.ordinal)
+    : `${String(entry.ordinal)}.${String(entry.ordinalSub)}`;
+}
+
+/* Labels in the order they read down the list: `41` before `41.1` before `41.2` before `42`, and plain counted
+   numbers by value. */
+export function labelOrder(left: string, right: string): number {
+  const a = left.split('.').map(Number);
+  const b = right.split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    // A message is its own number and sorts before the entries that follow it: 41 before 41.1.
+    const diff = (a[i] ?? 0) - (b[i] ?? 0);
+    if (diff) return diff;
+  }
+  return 0;
 }
 
 /* The numbers, recomputed from the fact ids on every render and never stored. Over the full set, never the
    listed rows, for the reason citations resolve against it. An untimed entry cannot be placed in a window,
-   so it is counted and not numbered. */
+   so it is counted and not numbered.
+
+   Where the server publishes fixed numbers (the session's own context has loaded, and its entries carry
+   them) each entry is labelled with its own, so a number never moves when a check displaces another, a check
+   runs again, or Show more loads an older page. Everywhere else a number is the entry's place among those the
+   page holds, counted from the oldest, as it always was. docs/design-reader-state.md#the-inventory owns this. */
 export function entryNumbering(
   session: Row,
-  source: Pick<WorkSource, 'all' | 'entries'> | null,
+  source: Pick<WorkSource, 'all' | 'entries' | 'ordinals'> | null,
   payload: Row,
 ): EntryNumbering {
   const all = (source && (source.all || source.entries)) || [];
   const opened = entryWindow(session, payload);
-  const numbers = new Map<WorkEntry, number>();
+  const ordinals = source?.ordinals === true;
+  const numbers = new Map<WorkEntry, string>();
   const earlier: WorkEntry[] = [];
   const untimed: WorkEntry[] = [];
+  const unnumbered: WorkEntry[] = [];
   for (const entry of all) {
     const at = nextNumber(entry.at);
     if (at === null || at <= 0) untimed.push(entry);
     else if (opened !== null && at < opened) earlier.push(entry);
-    else numbers.set(entry, numbers.size + 1);
+    else if (!ordinals) numbers.set(entry, String(numbers.size + 1));
+    else {
+      const label = entryLabel(entry);
+      if (label === null) unnumbered.push(entry);
+      else numbers.set(entry, label);
+    }
   }
-  return { all, opened, numbers, earlier, untimed };
+  return { all, opened, numbers, earlier, untimed, unnumbered, ordinals };
 }
 
 /* Fact id to its number, for the panel's "#<n>" to read rather than recount. */
 export function entryNumbers(
   session: Row,
-  source: Pick<WorkSource, 'all' | 'entries'> | null,
+  source: Pick<WorkSource, 'all' | 'entries' | 'ordinals'> | null,
   payload: Row,
-): Map<string, number> {
+): Map<string, string> {
   const { numbers } = entryNumbering(session, source, payload);
   return new Map([...numbers].map(([entry, n]) => [String(entry.id || ''), n]));
 }

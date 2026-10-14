@@ -19,7 +19,16 @@ from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from . import claude_data, events, observer, records, semantic_history, spacedock, transcripts
+from . import (
+    claude_data,
+    entry_numbers,
+    events,
+    observer,
+    records,
+    semantic_history,
+    spacedock,
+    transcripts,
+)
 from . import io as runtime_io
 from . import sessions as runtime_sessions
 from . import state as runtime_state
@@ -3672,7 +3681,16 @@ class _ToolReportTally:
         if path is None:
             self.scan["outside_paths"] += 1
             return
-        self.writes[path] = {"at": at, "record_id": call_id, "tool": tool, "worker": worker}
+        previous = self.writes.get(path)
+        self.writes[path] = {
+            "at": at,
+            "record_id": call_id,
+            "tool": tool,
+            "worker": worker,
+            # The first write of this path, which is where its fixed position sits: the entry is the
+            # latest write, so its own time moves each time the file is written again.
+            "first_at": min(previous["first_at"], at) if previous else at,
+        }
 
     def _add_shell(
         self,
@@ -3920,7 +3938,7 @@ class _ToolReportTally:
                 histories[key].extend(histories.pop(identity))
         return list(histories.items())
 
-    def entries(self, sid: str) -> list[dict[str, Any]]:
+    def entries(self, sid: str, index: Any = None) -> list[dict[str, Any]]:
         histories = self._histories()
         candidates = self._ranked(histories)
         for entry in candidates:
@@ -3939,8 +3957,27 @@ class _ToolReportTally:
                 row["subject"] == "launch" for row in candidates[TOOL_REPORT_MAX_ENTRIES:]
             ),
         )
+        # A fixed position for every check, file and launch the transcript holds, counted whether
+        # or not the listing keeps it: evicting one leaves a gap and moves no number after it. A
+        # failed check a later pass covers, and one that has only run in the background, leave the
+        # candidates but keep their place, or the entries after them would move when it happened.
+        counted = {row["_key"]: row["_first_at"] for row in candidates}
+        for identity, runs in self.runs.items():
+            counted.setdefault(f"check:{identity}", min(run["at"] for run in runs))
+        positions = (
+            entry_numbers.tool_positions(index, counted.items()) if index is not None else {}
+        )
         return [
-            {**{k: v for k, v in row.items() if k != "rank"}, "harness": "claude", "sid": sid}
+            {
+                **{k: v for k, v in row.items() if k not in {"rank", "_key", "_first_at"}},
+                "harness": "claude",
+                "sid": sid,
+                **(
+                    {"ordinal": position[0], "ordinal_sub": position[1]}
+                    if (position := positions.get(row["_key"])) is not None
+                    else {}
+                ),
+            }
             for row in listed
         ]
 
@@ -3952,7 +3989,16 @@ class _ToolReportTally:
             if entry is None:
                 entry = self._check_entry(history)
                 self._entry_cache[identity] = entry
-            candidates.append(entry)
+            # Its own first run, not the merged history's: a failed run another pass covers joins
+            # that pass's history, and the covered run's earlier time must not move the pass's
+            # position.
+            candidates.append(
+                {
+                    **entry,
+                    "_key": f"check:{identity}",
+                    "_first_at": min(run["at"] for run in self.runs[identity]),
+                }
+            )
         candidates.extend(
             {
                 "kind": "path_written",
@@ -3962,11 +4008,16 @@ class _ToolReportTally:
                 "title": records.safe_text(path, TOOL_REPORT_PATH_CHARS),
                 "source": f"Claude {'subagent ' if write['worker'] else ''}{write['tool']} call",
                 "rank": _WRITE_RANK,
+                "_key": f"write:{path}",
+                "_first_at": write["first_at"],
                 **({"worker_kind": write["worker"]} if write["worker"] else {}),
             }
             for path, write in self.writes.items()
         )
-        candidates.extend({**launch, "rank": 4} for launch in self.launches.values())
+        candidates.extend(
+            {**launch, "rank": 4, "_key": f"launch:{call_id}", "_first_at": launch["at"]}
+            for call_id, launch in self.launches.items()
+        )
         # Item 4, amended 2026-10-04: failed, then passed, then written paths,
         # then no recorded result, newest first within each. The page shows the
         # kept ones in time order (orchestrator, 2026-09-24).
@@ -4679,6 +4730,7 @@ def claude_tool_reports(
     *,
     max_bytes: int | None = None,
     window_start: float | _WindowNotRequested | None = _WINDOW_NOT_REQUESTED,
+    index_provider: Callable[[], Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """The listed checks and written paths, and the full-scan counts behind them,
     a subagent's included and labelled.
@@ -4687,7 +4739,9 @@ def claude_tool_reports(
     [DEC-23](docs/design-reading-a-session.md#dec-23-a-claude-code-sessions-record-of-its-checks-may-show-the-work)
     """
     tally = _claude_tally(config, transcript_path, max_bytes=max_bytes)
-    entries = tally.entries(sid)
+    # Asked for after the tally has read. A message written meanwhile is later than every entry the
+    # tally read, so it cannot belong to the position of one of them.
+    entries = tally.entries(sid, index_provider() if index_provider is not None else None)
     if not isinstance(window_start, _WindowNotRequested):
         tally.scan["window_start"] = window_start
         tally.scan["window_written_paths"] = sum(
@@ -5605,12 +5659,24 @@ def _assessment_window_start(session: Mapping[str, Any]) -> float | None:
     return _window_start(fallback)
 
 
+def _index_provider(
+    config: RuntimeConfig, state: RuntimeState, transcript_path: str, harness: str, sid: str
+) -> Callable[[], entry_numbers.MessageIndex | None]:
+    """The session's message index, asked for when its entries are counted rather than when read."""
+
+    def provide() -> entry_numbers.MessageIndex | None:
+        return entry_numbers.message_index(config, state, transcript_path, harness, sid)
+
+    return provide
+
+
 def _session_work_evidence(
     config: RuntimeConfig,
     transcript_path: str,
     session: Mapping[str, Any],
     events: list[dict[str, Any]],
     tool_report_scans: list[dict[str, Any]],
+    index_provider: Callable[[], Any] | None = None,
 ) -> dict[str, int]:
     """Pi's demonstrated results and Claude Code's checks, appended for `collect`.
 
@@ -5623,7 +5689,11 @@ def _session_work_evidence(
     events.extend(rows)
     if harness == "claude":
         report_rows, scan = claude_tool_reports(
-            config, transcript_path, sid, window_start=_assessment_window_start(session)
+            config,
+            transcript_path,
+            sid,
+            window_start=_assessment_window_start(session),
+            index_provider=index_provider,
         )
         events.extend(report_rows)
         tool_report_scans.append({**identity, **scan})
@@ -6797,6 +6867,8 @@ def _semantic_fact_from_event(
         "count",
         "completed_at",
         "last_activity_at",
+        "ordinal",
+        "ordinal_sub",
         READER_WORDS_FIELD,
         AGENT_WORDS_FIELD,
         AGENT_WORDS_TOTAL_FIELD,
@@ -8258,8 +8330,15 @@ def collect(  # noqa: PLR0913 - the press's window rides beside the focus it bel
             )
             or reached
         )
+        # Fixed positions are published for the focused session only: its message index is one pass
+        # over its whole transcript, and no other session's page asks for it.
         work_support = _session_work_evidence(
-            config, transcript_path, session, events, tool_report_scans
+            config,
+            transcript_path,
+            session,
+            events,
+            tool_report_scans,
+            _index_provider(config, state, transcript_path, harness, sid) if is_focused else None,
         )
         backfill_rows, signature = _incremental_history_events(
             config, state, history_project, transcript_path, harness, sid, now=now

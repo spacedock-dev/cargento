@@ -37,7 +37,7 @@ function WholeList({
   numbers,
 }: {
   readonly pending: readonly WorkEntry[];
-  readonly numbers: ReadonlyMap<string, number>;
+  readonly numbers: ReadonlyMap<string, string>;
 }) {
   const { ctx, session } = usePanel();
   const key = compatSessKey(session);

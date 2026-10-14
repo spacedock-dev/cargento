@@ -52,6 +52,20 @@ function tag(value: unknown): string {
   return Object.prototype.toString.call(value).slice(8, -1);
 }
 
+/* Fields the retired page never had. A recorded answer is keyed by the arguments it was given, so a field
+   added since must not reach the key: the legacy code is handed the shape it was recorded against. */
+const LATER_FIELDS = new Set(['ordinal', 'ordinalSub', 'ordinals']);
+
+export function withoutLaterFields(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutLaterFields);
+  if (typeof value !== 'object' || value === null || tag(value) !== 'Object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (!LATER_FIELDS.has(key)) out[key] = withoutLaterFields(item);
+  }
+  return out;
+}
+
 /* `callbacks` is for an argument: a function the legacy code is handed (a label builder) cannot be stored, so
    its source stands for it in the key. It is never allowed in an answer. */
 export function encode(value: unknown, callbacks = false): unknown {
@@ -313,7 +327,7 @@ export function legacyHarness<T extends object>(kind: string, spec: HarnessSpec 
 
   const invoke = (name: string, args: unknown[]): unknown => {
     arrive();
-    const encodedArgs = JSON.stringify(recordedName(encode(args, true), true));
+    const encodedArgs = JSON.stringify(recordedName(encode(withoutLaterFields(args), true), true));
     const isPure = pure.has(name);
     const key = keyFor(name, encodedArgs, !isPure);
     const result = answer(key, name);

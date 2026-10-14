@@ -2,6 +2,7 @@ import { nextNumber } from '../api/bootstrap';
 import {
   conflictCandidates,
   entryNumbering,
+  labelOrder,
   laterDirections,
   personAuthored,
   workAbsence,
@@ -284,7 +285,7 @@ export function evidenceOwn(payload: Row, harness: string, sent = true): string 
 
 export interface WorkRow {
   readonly entry: WorkEntry;
-  readonly n: number | null;
+  readonly n: string | null;
   /** A check's or a file's own line, or the actor and the type's word. */
   readonly head:
     | {
@@ -314,6 +315,16 @@ export interface CheckRunModel {
 }
 export type FoldedItem = { readonly kind: 'row'; readonly row: WorkRow } | CheckRunModel;
 
+/* The lowest and highest number in a folded run. A check is labelled where it first ran and drawn where it
+   last did, so the ends of the drawn run are not always its lowest and highest. */
+function runRange(rows: readonly WorkRow[]): string {
+  const labels = rows
+    .map((row) => row.n)
+    .filter((n): n is string => n !== null)
+    .sort(labelOrder);
+  return `#${String(labels[0])} to #${String(labels.at(-1))}`;
+}
+
 /* Cited and failed evidence stays reachable without a disclosure. Runs are formed in drawn order,
    never time-sorted a second time. docs/design-reader-state.md#the-inventory owns their oldest-id key. */
 export function foldRuns(
@@ -342,7 +353,7 @@ export function foldRuns(
         range:
           first.n === null || last.n === null
             ? 'Entries not numbered in this view'
-            : `#${String(last.n)} to #${String(first.n)}`,
+            : runRange(pending),
         at: first.at === last.at ? first.at : `${first.at.replace(/ ago$/, '')} to ${last.at}`,
       });
     }
@@ -380,6 +391,8 @@ export interface WorkList {
   readonly bound: string;
   readonly reads: boolean;
   readonly limit: string;
+  /** Numbers are the server's fixed ones, not a count of the entries loaded. */
+  readonly ordinals: boolean;
 }
 
 export interface WorkListInput {
@@ -396,7 +409,7 @@ export interface WorkListInput {
 export function workList(input: WorkListInput): WorkList {
   const { session, payload, source, annotation, cited } = input;
   const numbering = entryNumbering(session, source, payload);
-  const { all, numbers, earlier, untimed, opened } = numbering;
+  const { all, numbers, earlier, untimed, unnumbered: noNumber, opened, ordinals } = numbering;
   const annotate = payload['annotate'] === true;
   const ann = annotate ? annotation : null;
   const later = new Set(laterDirections(ann, all, session, input.draft));
@@ -408,8 +421,16 @@ export function workList(input: WorkListInput): WorkList {
   const numbered = all.filter((entry) => numbers.has(entry));
   const isCited = (entry: WorkEntry): boolean => cited.has(entry.id);
   const isRevealed = (entry: WorkEntry): boolean => Boolean(input.revealed?.has(entry.id));
+  /* An entry a fixed-number session published no number for (a workflow fact, say) is still in the window, so it
+     is drawn, without a number and with its time, as a cited earlier entry is. */
+  const unnumberedHere = new Set(noNumber);
   const entries = all.filter(
-    (entry) => numbers.has(entry) || isCited(entry) || isRevealed(entry) || open.has(entry),
+    (entry) =>
+      numbers.has(entry) ||
+      unnumberedHere.has(entry) ||
+      isCited(entry) ||
+      isRevealed(entry) ||
+      open.has(entry),
   );
   const turnOf = lastTurn(session, all);
   const rows = entries.map((entry): WorkRow => {
@@ -468,8 +489,13 @@ export function workList(input: WorkListInput): WorkList {
   );
   const saved = nextNumber(annotation?.['at']);
   const expected = opened !== null && (promptSource || (saved !== null && opened < saved));
+  // Fixed numbers do not start at the window, so there is no "#1" for the window's opening to explain.
   const anchor =
-    ann && expected && numbers.size && !all.some((entry) => nextNumber(entry.at) === opened)
+    ann &&
+    expected &&
+    !ordinals &&
+    numbers.size &&
+    !all.some((entry) => nextNumber(entry.at) === opened)
       ? earlier.length
         ? 'No entry in the record read here sits where your intent’s window opens, so #1 is the first entry after that point.'
         : 'The record read here no longer reaches back to where your intent’s window opens, so #1 is the first entry it holds after that point.'
@@ -521,6 +547,7 @@ export function workList(input: WorkListInput): WorkList {
     bound,
     reads,
     limit,
+    ordinals,
   };
 }
 

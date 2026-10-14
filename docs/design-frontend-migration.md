@@ -61,6 +61,14 @@ recorded once and the React page stays held to the recording:
   `frontend/e2e/support/golden.mjs`. A key is the step name plus its label, an unread key fails the
   run, and a reading taken twice fails it. Several keys still contain the words "legacy page" or "both
   pages" because that text is the step name the key was recorded under.
+- Entry numbers are labels, whole or dotted (`41`, `41.2`), where the retired page counted whole
+  numbers, and a session entry now carries the server's `ordinal` and `ordinal_sub`. The recorded
+  answers are keyed by call arguments, and the retired page was never handed those fields, so the
+  harness drops the named fields (`withoutLaterFields` in `frontend/test/legacy_goldens.ts`) from
+  every argument before it hashes one, and the differential tests give the retired functions their
+  recorded whole-number maps while the new code reads the same numbers as text. Without fixed numbers
+  a label is the count the retired page made, so every recorded answer still agrees. No recording was
+  remade.
 - The recordings cannot be remade. A changed generator, input, step or label has no recorded answer
   and fails. A deliberate departure from a recorded behaviour is an edit to the test that says so and an
   entry under the surface's deviations below, so the departure is a recorded fact rather than a
@@ -999,9 +1007,10 @@ opened from a record page keeps its words in the existing intent store across le
 returning. Discarding record pages does not prove that its older source entry is gone; reconciliation
 waits for that entry or the record start, without retaining the old page. Every loaded timed entry
 in the intent window is listed, together with cited or revealed entries and open later directions.
-The former twenty general rows and ten agent messages are retired. Loading older entries in the
-window recomputes every number, oldest first. After another page, the list says "Numbers count
-from the oldest entry loaded." The full merged set remains available for citations.
+The former twenty general rows and ten agent messages are retired. Where the server
+publishes fixed numbers, each entry is drawn with its own and loading older entries renumbers nothing;
+where it does not, loading older entries in the window recomputes every number, oldest first, and the list
+says "Numbers count from the oldest entry loaded." The full merged set remains available for citations.
 
 Focus remains on Show more after an append. If it disappears, focus reaches the first new row,
 or the boundary sentence when the page added no visible row, without scrolling. A later focus

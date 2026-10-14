@@ -89,7 +89,16 @@ def _same_file(info: os.stat_result, device: int, inode: int, size: int, mtime: 
     )
 
 
-def _fact(config: RuntimeConfig, raw: bytes, harness: str, sid: str) -> dict[str, Any] | None:
+def _fact(
+    config: RuntimeConfig, raw: bytes, harness: str, sid: str, *, title_only: bool = False
+) -> dict[str, Any] | None:
+    """The message fact one line holds, or None.
+
+    `title_only` stops short of masking the whole message text, which only the press reads. The
+    fact id hashes the title and never that text, so the id is the same either way, and the
+    fixed-number index, which runs on every collection, must not pay for a 256 KiB single-word
+    message the way a page may.
+    """
     try:
         record = json.loads(raw)
     except (ValueError, RecursionError):
@@ -98,7 +107,11 @@ def _fact(config: RuntimeConfig, raw: bytes, harness: str, sid: str) -> dict[str
     kind, fact_type = "steer", "user_message"
     if event is None:
         event = project_context._agent_message_event(  # noqa: SLF001
-            config, record, harness, sid, text_cap=len(raw)
+            config,
+            record,
+            harness,
+            sid,
+            **({} if title_only else {"text_cap": len(raw)}),
         )
         kind, fact_type = "agent_say", "agent_message"
     if event is None:

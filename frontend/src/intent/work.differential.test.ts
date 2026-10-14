@@ -4,6 +4,7 @@ import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { annotationOf } from './annotation';
 import { intentDraft } from '../sessions/intent';
 import { genSession, mulberry32, pick, type Rng } from './generate.test.helper';
+import { withoutLaterFields } from '../../test/legacy_goldens';
 import { loadLegacyIntent } from './legacy.test.helper';
 import {
   baselineAt,
@@ -145,10 +146,13 @@ describe('the observed record and the later directions read as the legacy page r
       note(`state:${mine.state}`);
       if (mine.state === 'read' && (mine.total ?? 0) > WORK_ROWS_PROBE) note('windowed');
       const found = [
-        firstDifference(canonical(projectRecordedLoadedSource(theirs)), canonical(mine)),
+        firstDifference(
+          canonical(projectRecordedLoadedSource(theirs)),
+          canonical(withoutLaterFields(mine)),
+        ),
         firstDifference(
           canonical(legacy.call('nextCockpitWorkAbsence', theirs)),
-          canonical(workAbsence(mine)),
+          canonical(withoutLaterFields(workAbsence(mine))),
         ),
       ].find((message) => message !== null);
       if (found) {
@@ -182,11 +186,19 @@ describe('the observed record and the later directions read as the legacy page r
         const again = [
           firstDifference(
             canonical(later),
-            canonical(laterDirections(annotation, all as never, forSession, drafted as never)),
+            canonical(
+              withoutLaterFields(
+                laterDirections(annotation, all as never, forSession, drafted as never),
+              ),
+            ),
           ),
           firstDifference(
             canonical(open),
-            canonical(conflictCandidates(annotation, all as never, forSession, drafted as never)),
+            canonical(
+              withoutLaterFields(
+                conflictCandidates(annotation, all as never, forSession, drafted as never),
+              ),
+            ),
           ),
           firstDifference(
             canonical(baseline),
@@ -207,13 +219,14 @@ describe('the observed record and the later directions read as the legacy page r
       legacy.run('nextData = {...nextData, annotate: true};');
       const numbered = legacy.call<Map<string, number>>('nextCockpitEntryNumbers', session, theirs);
       const payload = { annotate: true };
+      // The retired page counted with whole numbers; without fixed numbers a label is that count as text.
       const minePairs = [
         ...entryNumbers(
           { ...session, annotation_window_start: session['annotation_window_start'] },
           mine,
           payload,
         ),
-      ];
+      ].map(([id, label]) => [id, Number(label)]);
       if (JSON.stringify([...numbered]) !== JSON.stringify(minePairs))
         failures.push(
           `seed ${String(seed)} numbers: ${JSON.stringify([...numbered]).slice(0, 80)} vs ${JSON.stringify(minePairs).slice(0, 80)}`,

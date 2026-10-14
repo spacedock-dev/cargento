@@ -3478,7 +3478,7 @@ already accepts on loopback.
 The `proto/operator-cockpit` branch adds project context and an optional read-only terminal.
 `GET /api/project-context` reads bounded transcript and workflow evidence, stores semantic history
 under the configured state directory, and can invoke the installed Codex CLI for a derived goal.
-`GET /api/session-record` uses the same loopback and bounded project/session guards, returns the same redacted message titles as project-context, and exposes no fields or content classes the page could not already read.
+`GET /api/session-record` uses the same loopback and bounded project/session guards, returns the same redacted message titles as project-context, and exposes no fields or content classes the page could not already read. Each message also carries its fixed number, read from an in-memory index of every message's time and fact id in the transcript (at most 16 transcripts, never written to disk, nothing a person wrote); the index adds no field the page could not derive from the record it already reads, and a read that cannot finish inside its allowance publishes no numbers.
 This is separate from quota fetching and from the session-history switch. The prototype retains
 its own semantic-history store; `--forget` deletes the session-history and session-end stores,
 removes the discard records in the annotation store, and reaches nothing else.

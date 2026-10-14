@@ -47,9 +47,10 @@ REASON_TOO_LONG = "too-long"
 # What a placeholder can become on the page: " (entry #n in Compass's activity list)", on every
 # number drawn (owner, 2026-10-14; it was "(#n in Compass)" on the first and "(#n)" after). A
 # bare "#n" or "#n in Compass" is a reference an agent that has never seen Compass cannot place.
-# Counted at six digits, so the page's text never passes the cap whatever it numbers; a
+# A check or file's number is the message it follows and its place after it ("41.2"). Counted at
+# six digits and four, so the page's text never passes the cap whatever it numbers; a
 # correction within a few characters of 2,000 is refused slightly early instead.
-NUMBER_MAX_CHARS = len(" (entry #999999 in Compass's activity list)")
+NUMBER_MAX_CHARS = len(" (entry #999999.9999 in Compass's activity list)")
 
 _DEPARTED = "departed"
 _CONSISTENT = "consistent"

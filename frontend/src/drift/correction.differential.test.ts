@@ -50,6 +50,10 @@ function recordedNumbering(text: string): string {
 }
 
 const legacy = loadLegacyDrift();
+
+/* The retired page numbered with whole numbers and was recorded that way; the page now reads a label. */
+const labels = (numbers: ReadonlyMap<string, number>): ReadonlyMap<string, string> =>
+  new Map([...numbers].map(([id, n]) => [id, String(n)]));
 legacy.lift([
   'NEXT_READING_DEPARTURE',
   'NEXT_READING_CONSISTENT',
@@ -231,7 +235,7 @@ describe('the correction text, staleness and offer match the legacy page', () =>
       );
       if (
         legacy.call('nextCockpitCorrectionText', parts, numbers) !==
-        recordedNumbering(correctionText(parts as never, numbers))
+        recordedNumbering(correctionText(parts as never, labels(numbers)))
       ) {
         failures.push(`seed ${String(seed)} text`);
       }
@@ -318,7 +322,7 @@ describe('the correction text, staleness and offer match the legacy page', () =>
           shape,
           session: session as never,
           entries,
-          numbers,
+          numbers: labels(numbers),
           scan: source.scan,
           generated: 1000,
         });
