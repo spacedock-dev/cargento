@@ -20,8 +20,8 @@ let polls = 0;
 export async function forcePoll(page) {
   const sequence = ++polls;
   const marker = `[poll:${sequence}]`;
-  // Like the fluidity driver's fixture title: a completed GET can be discarded, and store acceptance
-  // can precede display. Stamp after the scripted backend so correction fixtures keep their overlays.
+  // A completed GET can be discarded, and store acceptance can precede display. Stamp after the
+  // scripted backend so correction fixtures keep their overlays.
   await page.evaluate(
     ({ marker }) => {
       const original = globalThis.fetch;
