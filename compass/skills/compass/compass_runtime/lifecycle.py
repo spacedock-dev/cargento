@@ -681,8 +681,9 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
     forwarded without an edit here. --daemon is the one deliberate
     omission, since the child is an ordinary foreground run that happens to own
     no console and forwarding the flag would re-spawn forever. No opt-in
-    (`--observer-model`, `--unasked-readings`) is forwarded; one that ever is
-    travels with `--no-observer-model`, which the derivation always carries.
+    (`--observer-model`, `--unasked-readings`) is forwarded, except `--allow-tool-output`:
+    a launch-time consent that a Windows daemon would otherwise drop without a word.
+    It travels with `--no-observer-model`, which the derivation always carries.
     """
     argv = [
         sys.executable,
@@ -693,6 +694,8 @@ def spawn_argv(config: RuntimeConfig, args: argparse.Namespace) -> list[str]:
         str(args.window_hours),
     ]
     argv.extend(_opt_out_argv(args))
+    if config.tool_output_pre_grant:
+        argv.append("--allow-tool-output")
     if config.claude_reading_model != runtime_config.CLAUDE_READING_DEFAULT_MODEL:
         argv.extend(["--claude-reading-model", config.claude_reading_model])
     reach_url = getattr(args, "reach_url", None)

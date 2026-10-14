@@ -32,7 +32,7 @@ from compass_runtime import (
 from compass_runtime import annotations as annotation_store
 
 from .reading_pins import named_machine, named_platform
-from .support import make_runtime
+from .support import make_config, make_runtime
 
 HARNESSES = ("claude", "codex", "pi", "gemini")
 STATES = ("usable", "missing", "unqualified")
@@ -818,6 +818,43 @@ def _named(harness: str, installed: set[str]) -> dict[str, Any]:
                 harness, binary_resolver=_resolver(installed), environ={}, root=Path("/x")
             )
         )
+
+
+class AToolOutputGrantGivenAtLaunchIsDisclosedAsSuch(unittest.TestCase):
+    """With `--allow-tool-output` the disclosure may not say tool output waits for an Allow."""
+
+    def _route(self, **changes: Any) -> dict[str, Any]:
+        config = make_config(**changes)
+        with named_platform():
+            return dict(
+                reading_route.resolve(
+                    "claude",
+                    binary_resolver=_resolver({"claude"}),
+                    environ={},
+                    root=Path("/x"),
+                    config=config,
+                )
+            )
+
+    def test_the_sentence_says_it_was_allowed_when_the_dashboard_started(self) -> None:
+        route = self._route(tool_output_pre_grant=True)
+        self.assertIn("Tool output, allowed when this dashboard started:", route["tool_output"])
+        self.assertNotIn("only after you allow it", route["disclosure"])
+        # What is sent is unchanged: the same four facts follow the lead.
+        for fact in ("a check's command", "180 characters", "paths of the files it wrote"):
+            self.assertIn(fact, route["tool_output"])
+        self.assertIn(route["tool_output"], route["disclosure_parts"])
+
+    def test_without_the_flag_the_wording_is_unchanged(self) -> None:
+        route = self._route(tool_output_pre_grant=False)
+        self.assertIn("Tool output, only after you allow it:", route["tool_output"])
+        self.assertNotIn("started", route["tool_output"])
+
+    def test_no_destination_means_no_tool_output_whatever_the_flag_says(self) -> None:
+        with mock.patch.object(reading_route, "destination", return_value=""):
+            route = self._route(tool_output_pre_grant=True)
+        self.assertEqual("", route["destination"])
+        self.assertIn("Tool output is not sent", route["tool_output"])
 
 
 class TheDisclosureIsAShortListThatKeepsEveryFact(unittest.TestCase):

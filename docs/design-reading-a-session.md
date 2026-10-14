@@ -2666,6 +2666,35 @@ the same day). The reading's own byte bound keeps the same order after the reade
 with no recorded result never takes a pass's or a write's place in the prompt either. Everything
 else in item 4 stands: every answer about checks still comes from the full scan.
 
+### Amended 2026-10-14: the reader who runs the dashboard may grant tool output at launch
+
+Item 7 admits tool output only under a grant for a named destination, written by an Allow whose
+disclosure named it. That stands. The amendment adds a second writer of the same row: the person who
+starts the dashboard may pass `--allow-tool-output`, or set `COMPASS_ALLOW_TOOL_OUTPUT=1`, and after
+the bind Compass writes the grant for each provider whose destination it can name
+(`reading_policy.grant_tool_output`). It writes no words Allow, so no reading runs on it alone, and
+the disclosure says tool output was allowed when the dashboard started instead of "only after you
+allow it". `--no-observer-model` refuses it, "Turn off readings" and `--forget` clear it, and the
+Windows respawn forwards it.
+
+Why a launch flag. A reader who found on a first walk that most lines read "Can't tell" had tool
+output already granted: one press of "Allow and analyze" writes both. A default needs a reader who
+chose it, and launching the dashboard with the flag is that choice, made once by the person who owns
+the machine, for the destination Compass names on that machine.
+
+Rejected, each because it sends the checks and written paths of a session to a vendor without the
+reader having accepted a disclosure that names them:
+
+- Upgrading a words-only Allow to cover tool output. An Allow given before tool output was named
+  would widen after the fact, which item 7 forbids ("an answer saved before tool output was named
+  never covers tool output").
+- Granting from the first run with no card. The first press would send command lines, output tails
+  and written paths with nothing accepted.
+
+The row outlives the flag, as an Allow's does: starting again without it does not withdraw the grant.
+A grant that should end with the run would need a store entry that records how it was written, which
+was not built.
+
 ## DEC-24: your intent is a drafted goal and a checklist, and a correction is yours to copy
 
 Amended 2026-10-11 by [DEC-27](#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result): item 3's Expected outcome is one optional empty line by default, and the Direction question's summary shrinks to one line while Keep keeps its two presses.

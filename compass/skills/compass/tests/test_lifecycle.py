@@ -2283,6 +2283,35 @@ class EveryOptOutReachesTheWindowsChildTest(unittest.TestCase):
         self.assertTrue(self._config(parent).model_calls_disabled)
         self.assertTrue(self._config(self._child(parent)).model_calls_disabled)
 
+    def test_allow_tool_output_reaches_the_config_by_flag_or_environment(self) -> None:
+        parser = cli.build_parser()
+        self.assertFalse(self._config(parser.parse_args([])).tool_output_pre_grant)
+        flagged = parser.parse_args(["--allow-tool-output"])
+        self.assertTrue(self._config(flagged).tool_output_pre_grant)
+        with mock.patch.dict(os.environ, {cli.TOOL_OUTPUT_ENV: "1"}):
+            self.assertTrue(self._config(parser.parse_args([])).tool_output_pre_grant)
+        # Only an exact 1 is consent: a stray "yes" or "true" in an environment is not.
+        for value in ("yes", "true", "0", ""):
+            with (
+                self.subTest(value=value),
+                mock.patch.dict(os.environ, {cli.TOOL_OUTPUT_ENV: value}),
+            ):
+                self.assertFalse(self._config(parser.parse_args([])).tool_output_pre_grant)
+
+    def test_the_model_refusal_outranks_the_tool_output_grant(self) -> None:
+        parser = cli.build_parser()
+        for refusal in ("--no-observer-model", "--no-harness-usage"):
+            with self.subTest(refusal=refusal):
+                args = parser.parse_args(["--allow-tool-output", refusal])
+                self.assertFalse(self._config(args).tool_output_pre_grant)
+                self.assertFalse(self._config(self._child(args)).tool_output_pre_grant)
+
+    def test_a_windows_daemon_keeps_the_tool_output_grant_and_only_when_given(self) -> None:
+        parser = cli.build_parser()
+        parent = parser.parse_args(["--allow-tool-output"])
+        self.assertTrue(self._config(self._child(parent)).tool_output_pre_grant)
+        self.assertFalse(self._config(self._child(parser.parse_args([]))).tool_output_pre_grant)
+
     def test_an_opt_in_never_travels_without_the_model_refusal_beside_it(self) -> None:
         parser = cli.build_parser()
         opt_ins = [["--observer-model"], ["--unasked-readings"], []]
