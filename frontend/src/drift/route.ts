@@ -248,3 +248,16 @@ export function promptReadingRefusal(
   }
   return readingRefusal(payload, annotation) || routeRefusal(payload, session);
 }
+
+/* The server's own parts, a short list in its order and unreworded: in the consent step, and idle in the
+   "What is sent" popover, so the two cannot differ. A route from before the parts were published shows its
+   whole disclosure as one item. */
+export function disclosureParts(
+  route: Row | null | undefined,
+  provider: string,
+  disclosure: string,
+): string[] {
+  const parts = route?.['disclosure_parts'];
+  if (provider && Array.isArray(parts) && parts.length) return parts.map(String);
+  return provider && disclosure ? [disclosure] : [];
+}

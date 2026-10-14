@@ -10,6 +10,7 @@ import {
   PiCheckCircle,
   PiCircle,
   PiClockCounterClockwise,
+  PiInfo,
   PiListChecks,
   PiWarning,
   PiXCircle,
@@ -22,6 +23,7 @@ export type IconName =
   | 'stale'
   | 'earlier-failed'
   | 'checks'
+  | 'info'
   | 'expand';
 
 const ICONS = {
@@ -31,6 +33,7 @@ const ICONS = {
   stale: PiClockCounterClockwise,
   'earlier-failed': PiWarning,
   checks: PiListChecks,
+  info: PiInfo,
   expand: PiCaretRight,
 } as const;
 

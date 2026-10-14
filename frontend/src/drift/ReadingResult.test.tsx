@@ -217,6 +217,26 @@ describe('a finding jump', () => {
     ).toBe(jumps[1]);
   });
 
+  it('tints the entries a finding cites so they stand apart from the rest of the list', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+    const page = mountDrift({ session: stored(), facts: FACTS });
+    await page.settle();
+    await page.settle();
+    const rows = () => [...document.querySelectorAll<HTMLElement>('[data-next-entry-id]')];
+    expect(rows().some((row) => row.hasAttribute('data-next-cited'))).toBe(false);
+    await press(byAction('finding-jump'));
+    const cited = rows().filter((row) => row.hasAttribute('data-next-cited'));
+    expect(cited.length).toBeGreaterThan(0);
+    for (const row of cited) {
+      expect(row.querySelector('[data-next-finding-entry]')).not.toBeNull();
+      expect(row.className).toContain('var(--accent)');
+    }
+    for (const row of rows().filter((entry) => !cited.includes(entry))) {
+      expect(row.className).not.toContain('var(--accent)');
+    }
+  });
+
   it('discards a selection when its citations vanish, even if they return in the same reading', async () => {
     HTMLElement.prototype.scrollIntoView = vi.fn();
     window.matchMedia = vi.fn().mockReturnValue({ matches: true });

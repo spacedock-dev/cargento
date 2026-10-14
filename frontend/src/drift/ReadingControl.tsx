@@ -10,7 +10,15 @@ import { useDisplayed } from '../shell/context';
 import { askForReading, cancelReading, readingNotNow, readingOff } from './actions';
 import { useDrift } from './context';
 import type { Board } from './flip';
-import { anyConsent, budgetLine, needsAllow, readingJob, routeRefusal, withheldAge } from './route';
+import {
+  anyConsent,
+  budgetLine,
+  disclosureParts,
+  needsAllow,
+  readingJob,
+  routeRefusal,
+  withheldAge,
+} from './route';
 import {
   absenceAttr,
   BACKGROUND,
@@ -27,6 +35,39 @@ import { Why } from './Why';
 
 export const REFUSED_ID = 'next-cockpit-reading-refused';
 export const DISCLOSURE_ID = 'next-cockpit-reading-disclosure';
+
+/* An item that opens with its own label ("Sent:", "To:", "Tool output, only after you allow it:") draws the
+   label in weight and the rest after it, so the list reads as a short form to scan rather than as one
+   paragraph. The words are the server's, unchanged and in order. */
+const PART_LABEL = /^([A-Z][A-Za-z' ,]{1,40}?):\s+(\S[\s\S]*)$/;
+
+export function DisclosureParts({
+  parts,
+  id,
+}: {
+  readonly parts: readonly string[];
+  readonly id: string;
+}) {
+  return (
+    <ul className="next-cockpit-reading-parts" id={id}>
+      {parts.map((part, index) => {
+        const labelled = parts.length > 1 ? PART_LABEL.exec(part) : null;
+        return (
+          <li key={index}>
+            {labelled ? (
+              <>
+                <strong className="font-semibold text-foreground">{`${labelled[1] ?? ''}:`}</strong>
+                {` ${labelled[2] ?? ''}`}
+              </>
+            ) : (
+              part
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 /* The attempt count beside the control, worded the same in every state: short to the eye, and the whole
    sentence to a screen reader, which the short form is hidden from. */
@@ -195,19 +236,8 @@ export function ReadingControl({
   /* The server's own parts, a short list in its order and unreworded: in the consent step, and idle in the
      "What is sent" popover, so the two cannot differ. A route from before the parts were published shows its
      whole disclosure as one item. */
-  const parts: string[] =
-    provider && Array.isArray(route?.['disclosure_parts']) && route['disclosure_parts'].length
-      ? (route['disclosure_parts'] as unknown[]).map(String)
-      : provider && disclosure
-        ? [disclosure]
-        : [];
-  const partsList = parts.length ? (
-    <ul className="next-cockpit-reading-parts" id={DISCLOSURE_ID}>
-      {parts.map((part, index) => (
-        <li key={index}>{part}</li>
-      ))}
-    </ul>
-  ) : null;
+  const parts = disclosureParts(route, provider, disclosure);
+  const partsList = parts.length ? <DisclosureParts parts={parts} id={DISCLOSURE_ID} /> : null;
   /* What an analysis will read, under the control, and only where a press could read it: a provider, no
      refusal beside it, saved words, and words given before any observed end, which the server withholds by
      the same time the later-direction floor does. */

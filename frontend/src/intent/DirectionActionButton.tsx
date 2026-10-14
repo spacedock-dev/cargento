@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { ActionButton, type ActionButtonProps } from './ActionButton';
+import { FeedbackHint } from './FeedbackHint';
 import { useHeldVersion, useIntentCtx } from './useIntent';
 
 export function DirectionActionButton({
@@ -16,11 +17,7 @@ export function DirectionActionButton({
         {...props}
         describes={[props.describes, message ? id : ''].filter(Boolean).join(' ')}
       />
-      {message ? (
-        <p id={id} className="next-cockpit-reading-why" data-next-action-feedback>
-          {message}
-        </p>
-      ) : null}
+      {message ? <FeedbackHint id={id} message={message} /> : null}
     </div>
   );
 }

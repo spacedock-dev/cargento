@@ -177,7 +177,14 @@ export function WorkListView() {
                 return (
                   <div
                     key={entry.id}
-                    className="next-cockpit-work-row"
+                    className={
+                      finding?.citedIds.includes(entry.id)
+                        ? /* The entries a reading rests on, found at a glance: a tint across the row and an accent
+                             edge, over the rule line every row has. The important marks beat the row's own border. */
+                          'next-cockpit-work-row !border-l-[3px] !border-l-[var(--accent)] !pl-[7px] rounded-r-control bg-[color-mix(in_srgb,var(--accent)_13%,transparent)]'
+                        : 'next-cockpit-work-row'
+                    }
+                    {...(finding?.citedIds.includes(entry.id) ? { 'data-next-cited': '' } : {})}
                     role="listitem"
                     data-next-cockpit-work-type={type}
                     {...(row.n === null ? {} : { 'data-next-entry': String(row.n) })}

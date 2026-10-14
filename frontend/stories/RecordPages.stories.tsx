@@ -368,6 +368,30 @@ export const ReadingNamesEntriesItHasNotLoaded: Story = {
   },
 };
 
+/* The entries a reading cites are found at a glance: pressing "Show cited entries" tints each cited row,
+   so it stands apart from the list around it. Read from the computed style, since a tint is only visible. */
+export const CitedEntriesAreTinted: Story = {
+  render: () => <SessionRecordExample intent reading />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Show 50 older entries' }));
+    await waitFor(() =>
+      expect(canvasElement.querySelectorAll('[data-next-entry-id]')).toHaveLength(100),
+    );
+    const row = () => canvasElement.querySelector('[data-next-entry-id="e5"]') as HTMLElement;
+    const background = (node: HTMLElement) => getComputedStyle(node).backgroundColor;
+    await expect(row()).not.toHaveAttribute('data-next-cited');
+    const plain = background(row());
+    await userEvent.click(await canvas.findByRole('button', { name: /^Show cited entries/ }));
+    await waitFor(() => expect(row()).toHaveAttribute('data-next-cited'));
+    await expect(background(row())).not.toBe(plain);
+    await expect(getComputedStyle(row()).borderLeftWidth).toBe('3px');
+    // An entry nobody cited keeps the plain row.
+    const other = canvasElement.querySelector('[data-next-entry-id="e60"]') as HTMLElement;
+    await expect(other).not.toHaveAttribute('data-next-cited');
+  },
+};
+
 /* A page left open while its session writes. The board's context reaches back over the newest 400 KB of the
    transcript only, so an entry that arrives after the page opened and then leaves that tail used to drop off
    the list, and every number above it moved. The page now reads the newest page again when the session's
