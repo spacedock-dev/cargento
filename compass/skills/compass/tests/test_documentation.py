@@ -800,7 +800,7 @@ class DocumentedCaptureFiguresTest(unittest.TestCase):
         # itself, which is the drift DRC-4193 exists to close.
         for relative in (
             "compass/skills/compass/statusline_hook.py",
-            "docs/plans/event-driven-session-observation.md",
+            "docs/design-event-driven-observation.md",
         ):
             with self.subTest(source=relative):
                 self.assertIn(claim, self.unwrapped(relative))

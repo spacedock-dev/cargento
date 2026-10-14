@@ -2,7 +2,7 @@
 
 Recorded payload **shapes** from real harness sessions, kept as the evidence behind the adapter
 semantics gate in
-[`../plans/event-driven-session-observation.md`](../plans/event-driven-session-observation.md).
+[`../design-event-driven-observation.md`](../design-event-driven-observation.md).
 A gate that says "measured" should be able to show its measurement.
 
 Most files here are hook payloads. One is not: `claude/usage-endpoint-macos.jsonl` records the shape

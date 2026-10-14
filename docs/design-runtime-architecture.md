@@ -18,7 +18,7 @@ importing no runtime module so that `state` can own them without inverting R-2. 
 as the envelope and reducer layer beneath them, and `observation.py` as the coordinator that drives
 it. The loopback ingress route and bundled event hook now feed that coordinator. The remaining
 adapter and rollout work lives in
-[`plans/event-driven-session-observation.md`](plans/event-driven-session-observation.md).
+[`design-event-driven-observation.md`](design-event-driven-observation.md).
 
 ## The problem these decisions answer
 
