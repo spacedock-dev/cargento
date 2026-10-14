@@ -51,6 +51,14 @@ disabled and pending states, and the transitions a reader can trigger. A `play` 
 roles and accessible names to assert keyboard operation, visible words, native field behavior, focus
 return and layout stability. Assert the result of an action rather than a class name.
 
+A story that is about a whole page state rather than one component mounts the real page over a scripted
+backend. `frontend/stories/Drift.stories.tsx` does this for the Intent and drift card, one story per
+stage, harness limit and route reason, on the shared harness in `drift.scenario.tsx`. Its route fixtures
+live in `drift.reasons.ts`. `drift.reasons.test.ts` (run by `pnpm test`) imports the producer's
+`reading_route.REASONS` and the phases a running reading publishes with Python 3.11 or newer, and fails
+when a reason has no fixture or no exported story or a phase is reworded. It does not skip without Python;
+set `COMPASS_TEST_PYTHON` to name one. Add the story with the reason.
+
 After changing a component or view, update its story. Run `pnpm build:storybook`, then
 `pnpm test:stories`. The tests run in pinned Chromium with one worker, fail on console and page
 errors or external requests, and check the static manager and preview offline. Stories have a separate
