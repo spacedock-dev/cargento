@@ -414,8 +414,9 @@ by a `--stop` issued with no `COMPASS_HOME` at all, and its state file was clean
 the process removes its own on the way out.
 
 To analyze drift, press **Analyze drift** on the session page, then read the disclosure and
-choose **Allow and analyze**. With no saved goal, the check adopts the latest permitted Claude Code
-or Codex prompt. **Use your prompt** beside the goal lists up to five of your own prompts from the
+choose **Allow and analyze**. With no saved goal, the check adopts the goal drafted from your first
+permitted Claude Code or Codex prompt, or from your latest prompt where no first prompt with a time
+is published. **Use your prompt** beside the goal lists up to five of your own prompts from the
 session; choosing one fills the goal box without saving it, and **Save intent** saves it. You
 can also type your own goal. Adopted words say "from your prompt", and editing them makes a typed
 goal. An unavailable prompt time means you must type a goal instead. The permission is remembered across tabs and restarts
