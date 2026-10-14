@@ -234,6 +234,16 @@ export function entryWindow(session: Row, payload: Row): number | null {
   return opened !== null && opened > 0 ? opened : null;
 }
 
+/* The session's activity as the board last published it: the number that changes when its record may have
+   grown. A row that publishes none changes with the board itself, so the record is read again for every
+   revision rather than never. */
+export function activityStamp(session: Row, generated: number): number {
+  const stamps = ['last_activity', 'own_activity', 'work_activity']
+    .map((field) => nextNumber(session[field]))
+    .filter((value): value is number => value !== null);
+  return stamps.length ? Math.max(...stamps) : generated;
+}
+
 /* Where Show more stops: the record already holds an entry from before the intent's window opened, so
    everything since it opened is listed. */
 export function recordPastWindow(record: RecordEntry | undefined, opened: number | null): boolean {

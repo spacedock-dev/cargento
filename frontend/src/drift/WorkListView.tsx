@@ -14,7 +14,7 @@ import { useControlledDisclosureState } from '../controls/useDisclosureState';
 import { Why } from './Why';
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { contextKey } from '../api/identity';
-import { entryWindow, recordPastWindow } from '../intent/work';
+import { activityStamp, entryWindow, recordPastWindow } from '../intent/work';
 import { useDisplayed, useShell } from '../shell/context';
 import { ShowMore } from './ShowMore';
 
@@ -70,6 +70,15 @@ export function WorkListView() {
     if (!harness || !sid) return;
     return runtime.openRecord({ projectKey: model.projectKey, focus: { harness, sid } });
   }, [runtime, model.projectKey, harness, sid]);
+  /* The newest page again whenever the session's published activity changes: the opening read is a snapshot,
+     and the board's context only reaches back over the newest 400 KB of the transcript, so without this an
+     entry that arrives and then leaves that tail is held nowhere and drops off the list, taking every number
+     above it along. docs/design-reader-state.md#the-inventory owns the lifetime. */
+  const stamp = activityStamp(model.session, model.generated);
+  useEffect(() => {
+    if (!harness || !sid) return;
+    void runtime.refreshRecord({ projectKey: model.projectKey, focus: { harness, sid } }, stamp);
+  }, [runtime, model.projectKey, harness, sid, stamp]);
   const panel = useRef<HTMLDivElement>(null);
   const jumped = useRef<object | null>(null);
   const pagingFocus = useRef<{ button: HTMLElement; before: ReadonlySet<string> } | null>(null);

@@ -366,3 +366,86 @@ describe('a reader paging a session record', () => {
     expect(rows()).toHaveLength(0);
   });
 });
+
+/* A page left open while its session keeps writing. The board's context reaches back over the newest 400 KB
+   of the transcript only, so what it carries for a busy session is a moving tail, and an entry that arrives
+   after the page opened and then leaves that tail is in no loaded page. Measured on a working session: the list
+   rose from 66 to 74 entries and fell back to 66, eight entries lost, every number above them shifted. */
+describe('a reader leaving a session page open while it writes', () => {
+  const message = (n: number) =>
+    fact(`m${String(n)}`, 1000 + n, {
+      type: 'agent_message',
+      by: 'agent',
+      summary: `Message ${String(n)}`,
+    });
+  const world = (count: number) => ({
+    record: Array.from({ length: count }, (_, n) => message(n)),
+    tail: 3,
+  });
+  const mountLive = (live: ReturnType<typeof world>) =>
+    mountDrift({
+      session: { ...session, last_activity: 1000 },
+      routes: {
+        [path]: () =>
+          json(
+            pageBody({
+              entries: [...live.record].reverse(),
+              next: null,
+              reached_start: true,
+            }),
+          ),
+        '/api/project-context': () =>
+          json({
+            semantic: { facts: live.record.slice(-live.tail) },
+            sources: { work: { tool_reports: [] } },
+          }),
+      },
+    });
+  const board = (page: ReturnType<typeof mountLive>, stamp: number) => {
+    const data = page.state.data as { sessions: Record<string, unknown>[] };
+    return {
+      ...data,
+      generated: 1100 + stamp,
+      sessions: [{ ...data.sessions[0], last_activity: 1000 + stamp }],
+    };
+  };
+  const numbers = () =>
+    Object.fromEntries(rows().map((row) => [row.dataset['nextEntryId'], row.dataset['nextEntry']]));
+
+  it('keeps every entry it showed when the board tail moves past them, and no number moves', async () => {
+    const live = world(10);
+    const page = mountLive(live);
+    await page.settle();
+    expect(rows()).toHaveLength(10);
+    live.tail = 5;
+    for (let n = 10; n < 15; n += 1) live.record.push(message(n));
+    await page.poll(board(page, 1));
+    await page.settle();
+    expect(rows()).toHaveLength(15);
+    const before = numbers();
+    live.tail = 1;
+    await page.poll(board(page, 2));
+    await page.settle();
+    expect(rows()).toHaveLength(15);
+    expect(numbers()).toEqual(before);
+    expect(before['m12']).toBe('13');
+  });
+
+  it('reads the newest page when the session wrote and not when it did not', async () => {
+    const live = world(10);
+    const page = mountLive(live);
+    await page.settle();
+    expect(page.gets(path)).toBe(1);
+    await page.poll(board(page, 0));
+    await page.settle();
+    expect(page.gets(path)).toBe(1);
+    live.record.push(message(10));
+    await page.poll(board(page, 1));
+    await page.settle();
+    expect(page.gets(path)).toBe(2);
+    await page.poll(board(page, 1));
+    await page.settle();
+    expect(page.gets(path)).toBe(2);
+    expect(rows()[0]?.dataset['nextEntryId']).toBe('m10');
+  });
+});
