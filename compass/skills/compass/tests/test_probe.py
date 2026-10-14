@@ -1,7 +1,7 @@
 """The coarse probe's mutation corpus and its cost budget.
 
 This module is the Phase 2 coarse-probe gate from
-`docs/plans/event-driven-session-observation.md`. The gate says: do not use the
+`docs/design-event-driven-observation.md`. The gate says: do not use the
 probe to reduce scans until its mutation corpus has no false negatives on
 supported local filesystems, and its cost passes on all three OSes.
 

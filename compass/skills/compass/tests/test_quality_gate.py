@@ -61,8 +61,8 @@ git() {
         for name in (
             "captures/README.md",
             "design-credential-redaction.md",
+            "design-event-driven-observation.md",
             "design-reader-state.md",
-            "plans/event-driven-session-observation.md",
             "promise-map.md",
         ):
             with self.subTest(name=name):

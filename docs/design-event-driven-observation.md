@@ -1,24 +1,21 @@
-# Plan: event-driven session observation
+# Design: event-driven session observation
 
-Status, as of 2026-09-05: Phases 0 through 3 have shipped. Phase 4, optional managed sessions, is
-unshipped and was never filed as an issue. The Phase 0 collector fixes, the two quota opt-out repairs
-and the benchmark landed with tests, and its four gates carry verdicts: the coarse probe and the
-adapter semantics are measured, the latter for the four harnesses that have adapters; selective reuse
-is undecided from the one machine measured rather than failed; operational rollout is unreached.
-Phase 1's materialized snapshot and SSE, Phase 2's ingress, coordinator and bundled hooks, and Phase
-3's Codex adapter are all in the runtime.
+Status: Phases 0 through 3 have shipped, and this file began as the plan and is now the design record
+of the work. The Phase 0 collector fixes, the two quota opt-out repairs and the benchmark landed with
+tests, and its four gates carry verdicts: the coarse probe and the adapter semantics are measured, the
+latter for the four harnesses that have adapters; selective reuse is undecided from the one machine
+measured rather than failed; operational rollout is unreached. Phase 1's materialized snapshot and SSE,
+Phase 2's ingress, coordinator and bundled hooks, and Phase 3's Codex adapter are all in the runtime.
+Phase 4, optional managed sessions, is unshipped, was never filed as an issue and is not planned.
 
-This paragraph previously said phases 1 through 4 were unshipped while also saying Phase 2 had
-shipped, which is what a status line patched in place rather than re-read turns into.
-
-What remains before this file can be deleted: fold the durable rationale into a `docs/design-*.md`
-owner, specifically the ACP, filesystem-watcher and OpenTelemetry findings, and decide whether Phase
-4 is still wanted. Everything below the Phase 0 section that is not marked shipped is a problem
-statement and an option survey rather than a commitment.
+Everything below the Phase 0 section that is not marked shipped is a problem statement and an option
+survey rather than a commitment. The ACP, filesystem-watcher and OpenTelemetry findings, and the
+reasons `PreToolUse` is not a needs-input source, are the rejected alternatives this record exists to
+keep.
 
 Which runtime file owns what, and the inward-only dependency rule any new module must respect, is
-owned by [`design-runtime-architecture.md`](../design-runtime-architecture.md). The per-harness
-store formats are owned by the shipped [`SKILL.md`](../../compass/skills/compass/SKILL.md). This
+owned by [`design-runtime-architecture.md`](design-runtime-architecture.md). The per-harness
+store formats are owned by the shipped [`SKILL.md`](../compass/skills/compass/SKILL.md). This
 file records the August 2026 investigation into replacing request-driven session polling with
 lower-latency collection.
 
@@ -362,8 +359,8 @@ sufficient as the source of truth:
 
 The last two objections are objections to a *native* watcher, not to a cheap one. Compass's runtime
 has a deliberate stdlib-only, no-dependencies contract; the Python floor is owned by
-[`COMPATIBILITY.md`](../../COMPATIBILITY.md) and the implementation constraint by
-[`CONTRIBUTING.md`](../../CONTRIBUTING.md). A watcher library would overturn that contract and three
+[`COMPATIBILITY.md`](../COMPATIBILITY.md) and the implementation constraint by
+[`CONTRIBUTING.md`](../CONTRIBUTING.md). A watcher library would overturn that contract and three
 native backends would be substantial maintenance. The coarse probe described above needs
 neither. It captures most of the latency win at a fraction of the surface area. Every notification,
 from a probe or a native watcher, remains a hint followed by reconciliation.
@@ -426,7 +423,7 @@ any count next to a harness list here is part of the list.
 | Copilot CLI | Plugin-bundled, repo (`.github/hooks/*.json`) or user command hooks | ACP server via `--acp`, transport unverified | Deferred; probe baseline |
 | OpenCode | A project or user plugin file, measured on 1.18.20: `permission.asked` and `permission.replied` both carry a joinable `sessionID`, and no store table records a standing request. Shared server SSE where safely discoverable and authenticated | Native ACP mode | Plugin is the proven path; an existing-server topology is still untested |
 | Cursor CLI | Plugin-installed hooks, with ordinary local-CLI coverage requiring fixtures | Listed in the ACP agent directory; the installed cursor-agent 2026.07.23 help advertises no ACP entry point, so the mode is unverified. Opt-in `--output-format stream-json` in print mode | Deferred; probe baseline |
-| Goose | Plugin command hooks, auto-discovered from `~/.agents/plugins/<name>/hooks/hooks.json`. Goose registered all eleven event names offered to it and seven of them were observed firing, both lists in [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl). They bound a turn and nothing else: no hook fires while a tool confirmation stands, and the store records nothing either | Goose ACP server/API | Turn boundaries are reachable; a needs-input signal is a measured blank |
+| Goose | Plugin command hooks, auto-discovered from `~/.agents/plugins/<name>/hooks/hooks.json`. Goose registered all eleven event names offered to it and seven of them were observed firing, both lists in [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](captures/goose/tool-confirmation-1.47.0-macos.jsonl). They bound a turn and nothing else: no hook fires while a tool confirmation stands, and the store records nothing either | Goose ACP server/API | Turn boundaries are reachable; a needs-input signal is a measured blank |
 | Factory Droid | User or plugin command hooks (documented, summarised by category) | ACP listed in the agent directory, mode unverified | Deferred; probe baseline |
 
 Claude, Codex, Antigravity, Gemini, OpenCode and Goose rows are backed by captures under
@@ -505,7 +502,7 @@ Two things that misled the verification, worth writing down because both look li
    Diagnosing this needed the guards instrumented from inside a real hook invocation.
 
 **Semantics are now measured too, for everything a headless turn reaches.** Evidence:
-[`docs/captures/claude/`](../captures/claude/), from Claude Code 2.1.222 on macOS. Five sessions, 38
+[`docs/captures/claude/`](captures/claude/), from Claude Code 2.1.222 on macOS. Five sessions, 38
 hook invocations, five complete turns.
 
 The route matters, because the one this document originally proposed would have failed. Isolating the
@@ -635,7 +632,7 @@ Revisit it if the floor itself ever moves.
 The first adapter gate in this project to be cleared by evidence rather than waived. Captured from a
 real `codex exec` session, codex-cli 0.146.0 on macOS, against an isolated `CODEX_HOME` so nothing of
 the user's configuration was touched. The records are kept in
-[`../captures/`](../captures/README.md).
+[`../captures/`](captures/README.md).
 
 `hooks.json` accepts the same schema as Claude's `settings.json` hooks, PascalCase event names and
 all: `{"hooks": {"<Event>": [{"matcher": ..., "hooks": [{"type": "command", "command": ...}]}]}}`.
@@ -770,7 +767,7 @@ with the plugin; the status line gives state and is opt-in.**
 #### `PreToolUse` is not a Needs-input source, and here is why nobody should retry it
 
 The paragraph above is superseded on the firing question by
-[`../captures/antigravity/hooks-schema-1.1.19-macos.jsonl`](../captures/antigravity/hooks-schema-1.1.19-macos.jsonl):
+[`../captures/antigravity/hooks-schema-1.1.19-macos.jsonl`](captures/antigravity/hooks-schema-1.1.19-macos.jsonl):
 the hooks do fire once `hooks.json` carries its name wrapper, nine invocations in one interactive
 turn. What has not changed is the conclusion for a permission wait, and the reasons are worth
 writing down so the route is not walked twice.
@@ -795,7 +792,7 @@ not. `matcher` is a regex, so an unanchored `ask_question` is not an exact match
 
 Two negatives, and the first one was recorded wrongly twice before it was measured
 properly. Evidence:
-[`docs/captures/codex/permission-hook-0.146.0-macos.jsonl`](../captures/codex/permission-hook-0.146.0-macos.jsonl).
+[`docs/captures/codex/permission-hook-0.146.0-macos.jsonl`](captures/codex/permission-hook-0.146.0-macos.jsonl).
 
 **No task-completed event. That half holds.** `TaskCompleted` is absent from the
 0.146.0 binary's hook-event enum, which reads `PreToolUse`, `PermissionRequest`,
@@ -857,7 +854,7 @@ product decision rather than a missing measurement. Driven interactively on 0.14
 the event fires, its payload matches the nine keys predicted below, `behavior: allow`
 skips the approval prompt outright, `behavior: deny` refuses the call, and Codex
 holds the hook open (honoured at 25 s on allow, 70 s on deny) rather than timing out.
-See [`../captures/codex/permission-hook-interactive-0.149.0-macos.jsonl`](../captures/codex/permission-hook-interactive-0.149.0-macos.jsonl).
+See [`../captures/codex/permission-hook-interactive-0.149.0-macos.jsonl`](captures/codex/permission-hook-interactive-0.149.0-macos.jsonl).
 The `exec` finding above stands and is narrower than it reads: `codex exec` pins the
 policy, so nothing asks under `exec`. That is a property of the mode, not of the
 event. Note also that `approval_policy = "untrusted"`, which the runs above passed,
@@ -964,7 +961,7 @@ untestable invariant is one a later change drops silently. That is precisely how
 defect arrived through the working overlay.
 
 `subagent_start` and `subagent_stop` are real, and are now **measured** as well.
-Evidence: [`docs/captures/codex/subagents-0.146.0-macos.jsonl`](../captures/codex/subagents-0.146.0-macos.jsonl).
+Evidence: [`docs/captures/codex/subagents-0.146.0-macos.jsonl`](captures/codex/subagents-0.146.0-macos.jsonl).
 
 The claim above this paragraph used to read that `codex exec` exposes no way to
 spawn a subagent, and that a prompt asking for one hangs until the timeout. That
@@ -1010,7 +1007,7 @@ decision now, not for want of a payload.
 
 Captured from two real `agy --print` sessions, 37 status-line pushes, with the recorder wired through
 `settings.json` and the file restored afterwards. Records are in
-[`../captures/`](../captures/README.md). This measurement corrected claims made earlier in this
+[`../captures/`](captures/README.md). This measurement corrected claims made earlier in this
 document from Google's documentation, and bounded what a print-mode capture can say about the rest,
 which is why it is written out rather than summarised.
 
@@ -1031,7 +1028,7 @@ push.
    schema.
 
    **Settled since, positively**, in
-   [`../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl):
+   [`../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl):
    all three fields arrive. `tool_confirmation_pending` carries `true` for as long as a tool
    confirmation stands, beside a fourth `agent_state`, `tool_use`. Whether a flagged push is keyable
    was recorded in one of the five gate arms only, the one whose recorder wrote id verdicts: all
@@ -1098,7 +1095,7 @@ in part, and Copilot's is a documentation read with no capture and no adapter:
 - [Factory hooks](https://docs.factory.ai/reference/hooks-reference) include session lifecycle,
   prompts, notifications, stops, subagent stops, and tool events. Factory documents notification
   cases for permission waits and idle input waits. Partly measured on droid 0.202.0 in
-  [`../captures/droid/notification-0.202.0-macos.jsonl`](../captures/droid/notification-0.202.0-macos.jsonl):
+  [`../captures/droid/notification-0.202.0-macos.jsonl`](captures/droid/notification-0.202.0-macos.jsonl):
   hooks register from a project-scope `.factory/hooks.json` and fire before the account gate, so
   `SessionStart` and `SessionEnd` payload shapes and the session identity are settled, and both of
   `collectors/droid.py`'s candidate keys agree on a 36-character id. The notification vocabulary is
@@ -1125,7 +1122,7 @@ bounded loopback request, and must not make an unavailable dashboard visible as 
 
 #### Gemini CLI adapter semantics: MEASURED, and the harness is not legacy
 
-Evidence: [`docs/captures/gemini/`](../captures/gemini/), from Gemini CLI 0.53.1 on macOS.
+Evidence: [`docs/captures/gemini/`](captures/gemini/), from Gemini CLI 0.53.1 on macOS.
 
 **The premise was wrong before the payloads were.** This document and the collector both described the
 Gemini store as legacy. Gemini CLI 0.53.1 published on 2026-07-31, nightly builds were still landing
@@ -1257,7 +1254,7 @@ Goose's [official documentation](https://block.github.io/goose/) describes CLI, 
 server modes. The paragraph that stood here concluded from those topologies that nothing could
 attach passively to an already-running ordinary CLI session; that is no longer true, and the way it
 stopped being true is worth keeping. Goose auto-discovers a plugin's `hooks/hooks.json` under
-`~/.agents/plugins/`, and [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](../captures/goose/tool-confirmation-1.47.0-macos.jsonl)
+`~/.agents/plugins/`, and [`../captures/goose/tool-confirmation-1.47.0-macos.jsonl`](captures/goose/tool-confirmation-1.47.0-macos.jsonl)
 records goose 1.47.0 registering all eleven event names a probe plugin offered it, seven of them
 observed firing from an ordinary interactive session and carrying the whole ten-character
 `sessions.id` the collector already keys on. What that route does not reach is
@@ -1683,7 +1680,7 @@ harness-wide reconciliation on its own.
 
 Today a page adds `usage=1` to `/api/data` only after the user has enabled the feature and answered
 the disclosure. That request may schedule a vendor quota fetch behind its existing floor and
-in-flight gates. [`SECURITY.md`](../../SECURITY.md) publishes the resulting property: with the feature
+in-flight gates. [`SECURITY.md`](../SECURITY.md) publishes the resulting property: with the feature
 off, nothing is fetched or retained, and no polling happens while no dashboard page is connected.
 
 Phase 0 repaired the two existing violations of that contract: Windows daemon respawn now carries
@@ -1731,7 +1728,7 @@ The plan must therefore include:
   lifecycle fields actually consumed, and drops account email and unrelated state before transport;
 - `--diagnose` listing installed adapters with the Compass version that wrote them.
 
-[`SECURITY.md`](../../SECURITY.md) now names all three written paths: the server's two, and
+[`SECURITY.md`](../SECURITY.md) now names all three written paths: the server's two, and
 `statusline_hook.py`'s deduplication memo, which its invariant 2 had always described while the
 lifecycle section still said two. The shipped ingress capability needs no path, being a per-process
 HMAC key held in memory, but a stable shim or an edited harness config would add one, so amend
@@ -1782,7 +1779,7 @@ an event-driven path-disclosure field.
 
 ## Security and privacy requirements
 
-The refactor must preserve both invariants in [`SECURITY.md`](../../SECURITY.md). The requirements
+The refactor must preserve both invariants in [`SECURITY.md`](../SECURITY.md). The requirements
 below are how this design satisfies them.
 
 - Reuse the current Host, Origin, and fetch-site checks.
@@ -1877,7 +1874,7 @@ The collector fixes from [Make collection cheaper](#make-collection-cheaper) hav
 parked-parent and nested-workflow equivalence tests, and they changed every number above. The two
 quota opt-out defects are fixed as well: `--no-usage` now reaches the respawned Windows daemon, and a
 pushed status-line receipt has its quota fields dropped before storage when server-side usage is off.
-[`SECURITY.md`](../../SECURITY.md) documents the resulting behavior, so no exposure remains open
+[`SECURITY.md`](../SECURITY.md) documents the resulting behavior, so no exposure remains open
 against the published contract.
 
 The gates are independent. Verdicts, one per gate:
@@ -2074,7 +2071,7 @@ produce.
   from its minimal lifecycle envelope. No confirmation, task-count or pending-input field appeared
   in the 37 print-mode pushes, because all three are `omitempty` and that mode can raise none of the
   states they report. The interactive capture
-  [`../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl)
+  [`../captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl`](captures/antigravity/statusline-confirmation-1.1.19-macos.jsonl)
   reached all three. Needs input still is not available from this path, for a different reason: the
   status line is a repeating render whose ordinary `working` and `idle` pushes would retire the wait,
   which needs a precedence rule in the reducer that does not exist yet. It is not available from the

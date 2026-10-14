@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 # The bar the event-driven plan sets for building per-harness dirty invalidation.
-# Owned by docs/plans/event-driven-session-observation.md; change it there first.
+# Owned by docs/design-event-driven-observation.md; change it there first.
 SELECTIVE_REUSE_BAR = 0.25
 
 # The dashboard runtime is not an installed package. server.py imports it with

@@ -79,8 +79,8 @@ session action. Granting consent alone sends nothing, and passive refreshes rema
 prompt cap and the local dispatch and terminal trust boundaries belong to
 [SECURITY.md](../SECURITY.md#observer-model-calls).
 
-The [import review and captures](probes/project-cockpit/DESIGN_REVIEW.md) predate this reconciliation.
-They record the original design, including the truncation and absence states that prompted it.
+The import review and captures that preceded this reconciliation are no longer kept. They recorded the
+original design, including the truncation and absence states that prompted it.
 
 ## NUI-1: promotion leaves one precomputed page
 
