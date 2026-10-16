@@ -1,7 +1,7 @@
 import { SampleBeside, SampleMark } from '../sample/SampleMark';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { nextNumber } from '../api/bootstrap';
 import { contextKey } from '../api/identity';
 import { useDisplayed } from '../shell/context';
@@ -32,14 +32,21 @@ import {
   CLAUSE_UNRETAINED,
   DEPARTURE,
   NOT_REACHED,
-  READING_DEFINITION,
+  READ_INTENT,
+  READ_MODEL,
+  READ_NEVER,
+  READ_NOT_READ,
+  READ_SCOPE,
+  READ_SESSION,
+  READ_SUMMARY,
   RESULT_CANT_TELL,
   RESULT_DEPARTS,
   RESULT_MARK_UNSAVED,
   RESULT_MARKED,
   RESULT_NOT_ACCURATE,
+  RESULT_NOT_ACCURATE_HINT,
   RESULT_NOTHING_FOUND,
-  SCOPE,
+  RESULT_UNMARK,
   unloadedCites,
 } from './sentences';
 import type { SteerSlot } from './ReadingControl';
@@ -293,29 +300,66 @@ function ResultWorkView() {
 
 /* Not accurate: a token on this reading, posted with the reading's time so a newer one is never marked by a
    tab drawn before it. Pressed again it takes the mark back. It is never sent anywhere else and never counted.
-   The mark and `aria-pressed` derive from the payload: a store that did not take the press draws unmarked and
-   says so, rather than showing a mark nothing holds. */
+   The mark derives from the payload: a store that did not take the press draws unmarked and says so, rather
+   than showing a mark nothing holds. Both states say, beside the control, what the mark does, because what it
+   changes (the level and Steer back) is drawn far above it. The press holds the control where the reader
+   pressed it: the level and Steer back leave the column above, and the page would otherwise jump. */
+const HOLD_MS = 10_000;
+
 function ResultFoot() {
   const { ctx, model } = useDrift();
   const readAt = nextNumber(model.raw?.['read_at']);
-  if (readAt === null || !model.annotate) return null;
   const marked = model.annotation?.['not_accurate'] === true;
+  const foot = useRef<HTMLDivElement>(null);
+  const held = useRef<{ top: number; from: boolean; at: number } | null>(null);
+  useLayoutEffect(() => {
+    const hold = held.current;
+    const node = foot.current;
+    if (!hold || !node || hold.from === marked) return;
+    held.current = null;
+    if (Date.now() - hold.at > HOLD_MS) return;
+    const moved = node.getBoundingClientRect().top - hold.top;
+    if (moved) window.scrollBy(0, moved);
+  }, [marked]);
+  if (readAt === null || !model.annotate) return null;
+  const unsaved = ctx.drift.notAccurate.has(model.key);
+  const control = (
+    <ActionButton
+      weight="quiet"
+      label={marked ? RESULT_UNMARK : RESULT_NOT_ACCURATE}
+      busyLabel="Saving…"
+      pendingKey={`not-accurate:${model.key}`}
+      action="not-accurate"
+      arg={String(readAt)}
+      focusKey={`not-accurate:${model.key}`}
+      onPress={() => {
+        if (!model.identity) return;
+        const top = foot.current?.getBoundingClientRect().top;
+        held.current = top === undefined ? null : { top, from: marked, at: Date.now() };
+        void markNotAccurate(ctx, model.identity, readAt, marked);
+      }}
+    />
+  );
   return (
-    <div className="next-cockpit-result-foot">
-      <ActionButton
-        weight="quiet"
-        label={RESULT_NOT_ACCURATE}
-        busyLabel="Saving…"
-        pendingKey={`not-accurate:${model.key}`}
-        action="not-accurate"
-        arg={String(readAt)}
-        ariaPressed={marked}
-        focusKey={`not-accurate:${model.key}`}
-        onPress={() => {
-          if (model.identity) void markNotAccurate(ctx, model.identity, readAt, marked);
-        }}
-      />
-      {ctx.drift.notAccurate.has(model.key) ? (
+    <div
+      ref={foot}
+      className="next-cockpit-result-foot"
+      data-next-result-mark={marked ? 'marked' : 'unmarked'}
+    >
+      {marked ? (
+        <>
+          <p className="next-cockpit-reading-why" role="status">
+            {RESULT_MARKED}
+          </p>
+          {control}
+        </>
+      ) : (
+        <>
+          {control}
+          <p className="next-cockpit-reading-why">{RESULT_NOT_ACCURATE_HINT}</p>
+        </>
+      )}
+      {unsaved ? (
         <p className="next-cockpit-reading-why" role="status">
           {RESULT_MARK_UNSAVED}
         </p>
@@ -324,47 +368,132 @@ function ResultFoot() {
   );
 }
 
-/* What it read, one click away: the revision it read and when, the words it read against, the definition, the
-   model stamp, the baseline's source and the cutoff. Revision and times are about the reading, never about
-   the work. */
-function Baseline({ shape, extra }: { readonly shape: Shape; readonly extra: ReactNode }) {
-  const { model } = useDrift();
-  if (shape.revisionRead === null) {
-    return extra ? (
-      <Why name="reading-baseline" summary="What it read">
-        {extra}
-      </Why>
-    ) : null;
-  }
-  /* One sentence either way. With no time it read "Revision 2, when it was typed was not recorded."; adopted
-     words were saved rather than typed, so their missing time is the save's. */
-  const typed =
-    shape.revisionReadAt !== null
-      ? `, ${shape.promptSource ? 'saved' : 'typed'} ${fmtDur(Math.max(0, model.generated - shape.revisionReadAt))} ago`
-      : ` (${shape.promptSource ? 'save time' : 'time'} not recorded)`;
-  /* Both times where they differ: typed words read work from the reader's latest message before the save.
-     Adopted words already name their prompt above. */
-  const opened =
-    !shape.promptSource &&
-    shape.windowStart !== null &&
-    shape.revisionReadAt !== null &&
-    shape.windowStart < shape.revisionReadAt
-      ? `; reads work from your message ${fmtDur(Math.max(0, model.generated - shape.windowStart))} ago`
-      : '';
+/* The cutoff is composed by the producer as sentences; one item per sentence reads faster than the run. */
+function readSentences(text: string): string[] {
+  return text
+    .split(/(?<=\.)\s+(?=[A-Z0-9])/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function ReadSection({
+  name,
+  title,
+  meta,
+  children,
+}: {
+  readonly name: string;
+  readonly title: string;
+  readonly meta?: string;
+  readonly children: ReactNode;
+}) {
   return (
-    <Why name="reading-baseline" summary="What it read">
-      <p className="next-cockpit-reading-why">{`Revision ${String(shape.revisionRead)}${typed}${opened}.`}</p>
-      {extra}
-      {shape.readClauses.map(([label, clause]) => (
-        <div key={label} className="next-cockpit-reading-criterion-clause">
-          <span className="next-cockpit-source">{label}</span>
-          {clause ? (
-            <span className="next-cockpit-reading-clause">{clause}</span>
-          ) : (
-            <span className="next-cockpit-reading-clause-absent">{CLAUSE_UNRETAINED}</span>
-          )}
-        </div>
-      ))}
+    <section className="flex flex-col gap-[4px]" data-next-read-section={name}>
+      <h4 className="m-0 text-label font-semibold uppercase tracking-[.07em] text-[var(--ink-label)] [font-family:var(--mono)]">
+        {title}
+      </h4>
+      {meta ? <p className="next-cockpit-reading-stamp m-0">{meta}</p> : null}
+      {children}
+    </section>
+  );
+}
+
+const READ_LIST =
+  'm-0 flex list-disc flex-col gap-[4px] pl-[18px] text-body leading-[1.5] text-muted-foreground [font-family:var(--sans)]';
+
+/* The shape labels each line it read in capitals ("TYPED GOAL", "EXPECTED OUTCOME · LINE 2"); this says the
+   same thing in a sentence's case, numbering an outcome line only when there is more than one. */
+function intentLabel(label: string, lines: number): string {
+  if (label.includes('GOAL')) return 'Goal';
+  const n = /LINE (\d+)$/.exec(label)?.[1];
+  return n && lines > 1 ? `Expected outcome ${n}` : 'Expected outcome';
+}
+
+/* What it read, one click away: the model, the intent it read against (which revision, when and where it came
+   from), how much of the session it read, and what it never reads. Revision and times are about the reading,
+   never about the work. */
+function Baseline({ shape, arrived }: { readonly shape: Shape; readonly arrived: string }) {
+  const { model } = useDrift();
+  const cap = nextNumber(model.payload['annotate_cap']);
+  /* With no time it said "time not recorded"; adopted words were saved rather than typed, so their missing
+     time is the save's. */
+  const meta =
+    shape.revisionRead === null
+      ? ''
+      : [
+          `Version ${String(shape.revisionRead)}`,
+          shape.revisionReadAt !== null
+            ? `${shape.promptSource ? 'saved' : 'typed'} ${fmtDur(Math.max(0, model.generated - shape.revisionReadAt))} ago`
+            : `${shape.promptSource ? 'save time' : 'time'} not recorded`,
+          shape.promptSource ? 'drafted from your prompt' : '',
+          /* Both times where they differ: typed words read work from the reader's latest message before the
+             save. Adopted words already name their prompt. */
+          !shape.promptSource &&
+          shape.windowStart !== null &&
+          shape.revisionReadAt !== null &&
+          shape.windowStart < shape.revisionReadAt
+            ? `reads work from your message ${fmtDur(Math.max(0, model.generated - shape.windowStart))} ago`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
+  const lines = shape.readClauses.filter(([label]) => intentLabel(label, 0) !== 'Goal').length;
+  const session = [
+    READ_SCOPE[shape.scope] ?? shape.scopeText,
+    ...readSentences(shape.cutoff),
+    arrived,
+  ].filter(Boolean);
+  return (
+    <Why name="reading-baseline" summary={READ_SUMMARY}>
+      <div className="flex flex-col gap-[12px]" data-next-read>
+        {shape.stamp ? (
+          <ReadSection name="model" title={READ_MODEL}>
+            <p className="next-cockpit-reading-stamp m-0">{shape.stamp}</p>
+          </ReadSection>
+        ) : null}
+        {shape.readClauses.length ? (
+          <ReadSection name="intent" title={READ_INTENT} meta={meta}>
+            <ul className={READ_LIST}>
+              {shape.readClauses.map(([label, clause]) => {
+                const name = intentLabel(label, lines);
+                const cut =
+                  name === 'Goal' && shape.promptSource && cap !== null && clause.length >= cap;
+                return (
+                  <li key={label}>
+                    <span className="font-semibold text-foreground">{name}</span>{' '}
+                    {clause ? (
+                      <span className="text-foreground">{`“${clause}”`}</span>
+                    ) : (
+                      <span className="next-cockpit-reading-clause-absent">
+                        {CLAUSE_UNRETAINED}
+                      </span>
+                    )}
+                    {cut ? (
+                      <span>
+                        {shape.coverage?.goal_source === 'whole'
+                          ? ` Shown cut at ${String(cap)} characters; the analysis read the whole prompt, up to 1,000 characters.`
+                          : ` Cut at ${String(cap)} characters.`}
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </ReadSection>
+        ) : null}
+        {session.length ? (
+          <ReadSection name="session" title={READ_SESSION}>
+            <ul className={READ_LIST}>
+              {session.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </ReadSection>
+        ) : null}
+        <ReadSection name="not-read" title={READ_NOT_READ}>
+          <p className="next-cockpit-reading-why">{READ_NEVER}</p>
+        </ReadSection>
+      </div>
     </Why>
   );
 }
@@ -397,21 +526,6 @@ export function ReadingResult({
   const lines = shape.criteria.filter((row) => isOutcomeLine(row.key));
   /* What the agent claimed, after the intent it is independent of, under its own heading. */
   const claimed = claimsDrawn(shape);
-  const read = (
-    <>
-      <p className="next-cockpit-define">{READING_DEFINITION}</p>
-      <p className="next-cockpit-reading-why">{SCOPE}</p>
-      {shape.stamp ? <p className="next-cockpit-reading-stamp">{shape.stamp}</p> : null}
-      {shape.promptSource ? (
-        <p className="next-cockpit-reading-why">Baseline from your prompt.</p>
-      ) : null}
-      {shape.scopeText ? <p className="next-cockpit-reading-why">{shape.scopeText}</p> : null}
-      {arrived ? <p className="next-cockpit-reading-why">{arrived}</p> : null}
-      {/* The cutoff was the departures section's, which no longer repeats the reading: "raised nothing" is
-          worth only the evidence read. */}
-      {shape.cutoff ? <p className="next-cockpit-reading-why">{shape.cutoff}</p> : null}
-    </>
-  );
   /* A current result keeps the disclosure and accounting without a second run control.
      [DEC-27](../../../docs/design-reading-a-session.md#dec-27-the-first-view-of-a-session-is-the-goal-analyze-drift-and-the-result)
      A direction question owns the sole run path while it stands. */
@@ -444,9 +558,6 @@ export function ReadingResult({
           ) : null}
           {callout}
         </Card>
-      ) : null}
-      {annotation['not_accurate'] === true ? (
-        <p className="next-cockpit-result-marked">{RESULT_MARKED}</p>
       ) : null}
       {answer ? (
         <ResultAnswer
@@ -491,7 +602,7 @@ export function ReadingResult({
       <ResultWorkView />
       {foot ? <div className="next-cockpit-result-press">{foot}</div> : null}
       <ResultFoot />
-      <Baseline shape={shape} extra={read} />
+      <Baseline shape={shape} arrived={arrived} />
     </div>
   );
 }

@@ -141,7 +141,7 @@ class ReadingPolicyTest(unittest.TestCase):
 
     def test_rolling_cap_expires_at_the_oldest_spend_not_midnight(self) -> None:
         reading_policy.set_consent(self.config, True, now=100.0)
-        for offset in range(12):
+        for offset in range(reading_policy.DAILY_CAP):
             self.assertEqual("", reading_policy.reserve(self.config, now=100.0 + offset)["reason"])
         refused = reading_policy.reserve(self.config, now=150.0)
         self.assertEqual("daily-cap", refused["reason"])
@@ -149,14 +149,15 @@ class ReadingPolicyTest(unittest.TestCase):
         self.assertEqual("", reading_policy.reserve(self.config, now=86500.0)["reason"])
         self.assertEqual("daily-cap", reading_policy.reserve(self.config, now=86500.0)["reason"])
 
-    def test_concurrent_clients_cannot_admit_more_than_twelve(self) -> None:
+    def test_concurrent_clients_cannot_admit_more_than_the_cap(self) -> None:
         reading_policy.set_consent(self.config, True, now=100.0)
+        cap = reading_policy.DAILY_CAP
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
             results = list(
-                pool.map(lambda _: reading_policy.reserve(self.config, now=100.0), range(24))
+                pool.map(lambda _: reading_policy.reserve(self.config, now=100.0), range(2 * cap))
             )
-        self.assertEqual(12, sum(result["reason"] == "" for result in results))
-        self.assertEqual(12, reading_policy.status(self.config, now=100.0)["used"])
+        self.assertEqual(cap, sum(result["reason"] == "" for result in results))
+        self.assertEqual(cap, reading_policy.status(self.config, now=100.0)["used"])
 
     def test_known_missing_cli_reserves_nothing(self) -> None:
         reading_policy.set_consent(self.config, True, now=100.0)
@@ -248,10 +249,13 @@ class ReadingPolicyTest(unittest.TestCase):
     def test_separate_processes_share_the_same_admission_bound(self) -> None:
         reading_policy.set_consent(self.config, True, now=100.0)
         with concurrent.futures.ProcessPoolExecutor(max_workers=4) as pool:
-            results = list(pool.map(_reserve_in_process, [self.home.name] * 24))
+            results = list(
+                pool.map(_reserve_in_process, [self.home.name] * (2 * reading_policy.DAILY_CAP))
+            )
         # Every reason, not two counts: on a Windows runner three presses came
         # back neither admitted nor capped, and the counts could not say why.
-        self.assertEqual({"": 12, "daily-cap": 12}, collections.Counter(results))
+        cap = reading_policy.DAILY_CAP
+        self.assertEqual({"": cap, "daily-cap": cap}, collections.Counter(results))
 
     def test_a_reservation_waits_out_a_write_that_outlasts_a_read(self) -> None:
         # DRC-4707: a press refused as store-unavailable while under the cap,
@@ -351,7 +355,7 @@ class PermissionIsPerProviderTest(unittest.TestCase):
     def test_the_rolling_cap_is_shared_across_providers(self) -> None:
         for provider in ("codex", "claude"):
             reading_policy.set_consent(self.config, True, now=100.0, provider=provider)
-        for index in range(12):
+        for index in range(reading_policy.DAILY_CAP):
             provider = ("codex", "claude")[index % 2]
             self.assertEqual(
                 "", reading_policy.reserve(self.config, now=100.0, provider=provider)["reason"]

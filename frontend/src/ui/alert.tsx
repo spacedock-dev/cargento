@@ -23,6 +23,8 @@ const alertVariants = cva('block', {
         'max-w-[var(--measure)] text-muted-foreground [font-family:var(--sans)] text-body font-normal leading-[1.55]',
       'drift-nudge':
         'px-[12px] py-[10px] border border-solid border-[var(--amber)] rounded-control text-foreground text-body leading-[1.5]',
+      'reading-cap':
+        'sticky top-0 z-20 flex min-h-8 items-center px-[12px] py-[6px] [border-left:3px_solid_var(--clay)] bg-card text-foreground text-body font-medium leading-[1.4] shadow-[0_1px_0_var(--rule)]',
     },
   },
   defaultVariants: { variant: 'answer-failure' },

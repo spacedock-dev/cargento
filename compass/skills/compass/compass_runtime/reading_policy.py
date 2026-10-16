@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .config import RuntimeConfig
 
 DAY_SEC = 86_400.0
-DAILY_CAP = 12
+DAILY_CAP = 100
 # How long the job ledger keeps the id each charge was made for (DRC-4713).
 # Far past `DAY_SEC`, because the budget reads only `spends`: a restart more
 # than a day after a crash must still find the row, or it would call a charged

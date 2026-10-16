@@ -13,7 +13,6 @@ import { useDrift } from './context';
 import type { Board } from './flip';
 import {
   anyConsent,
-  budgetLine,
   disclosureParts,
   needsAllow,
   readingJob,
@@ -80,12 +79,6 @@ export function ReadingCount({ count }: { readonly count: number }) {
       <span className="next-visually-hidden">{`${short} recorded for this session.`}</span>
     </p>
   );
-}
-
-export function BudgetLine() {
-  const { model } = useDrift();
-  const line = budgetLine(model.payload);
-  return line ? <p className="next-cockpit-reading-budget">{line}</p> : null;
 }
 
 /* Turn off readings, busy state and all, drawn only while some receiver's permission is on record. */
@@ -261,7 +254,6 @@ export function ReadingControl({
   /* Only from a published annotation: with the store off there is no count to read, and "0 requests" would be
      a default standing in for one. */
   const counted = annotation ? <ReadingCount count={count} /> : null;
-  const budget = <BudgetLine />;
   /* What the last press or withdrawal came to, announced. Every arm prints it: a failed "Turn off readings"
      that says nothing leaves the reader believing a permission is gone that is still on record. */
   const answered = request?.message && !request.refusal ? String(request.message) : '';
@@ -286,7 +278,6 @@ export function ReadingControl({
         <JobBox job={job} running={running} />
         {said(answered)}
         {counted}
-        {budget}
       </>
     );
   }
@@ -422,7 +413,6 @@ export function ReadingControl({
         {lead ? null : steers}
         {accounts}
         {counted}
-        {budget}
         {aboutWhy}
       </>
     );
@@ -469,7 +459,6 @@ export function ReadingControl({
       {inert ? null : counted}
       {accounts}
       <SampleBeside id="sent">{sent}</SampleBeside>
-      {budget}
     </>
   );
 }

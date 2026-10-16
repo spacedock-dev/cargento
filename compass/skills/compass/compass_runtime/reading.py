@@ -2044,7 +2044,7 @@ def _not_read(earlier: int, untimed: int, after_stop: int) -> str:
             f"{_entries(after_stop)} after the last observed stop "
             f"{'was' if after_stop == 1 else 'were'} not read"
         )
-    return "".join(f"; {clause}" for clause in clauses)
+    return "".join(f" {clause[0].upper()}{clause[1:]}." for clause in clauses)
 
 
 def cutoff_text(
@@ -2080,25 +2080,18 @@ def cutoff_text(
     unread_checks = int(measured.get("unread_checks") or 0)
     left_out = _not_read(earlier, untimed, after_stop)
     empty = (
-        f"No entry in the observed record was read{left_out}."
+        "No entry in the observed record was read."
         if not total
-        else f"None of the {_entries(total)} after your words could be read{left_out}."
+        else f"None of the {_entries(total)} after your intent could be read."
     )
     mix = _cutoff_mix(selected)
-    stamped = [row["at"] for row in selected if row["at"] > 0]
-    if not stamped:
-        window = "none of them carrying a usable time"
-    else:
-        hours = max(0, int((now - min(stamped)) // 3600))
-        window = f"the oldest about {hours}h ago" if hours else "all within the last hour"
-        if len(stamped) != len(selected):
-            window += f", {len(selected) - len(stamped)} carrying no usable time"
+    window = _cutoff_window(selected, now)
     partial = tail_truncated is True and tail_start is not None and tail_start > window_start > 0
     tail_note = (
-        "The message tail starts "
-        f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(tail_start))}; "
+        " The message tail starts "
+        f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(tail_start))}, so "
         f"about {max(1, math.ceil((tail_start - window_start) / 60))} min at the start "
-        "of the window were outside it."
+        "of the window were not read."
         if partial
         else ""
     )
@@ -2110,13 +2103,12 @@ def cutoff_text(
             f" {early} agent message{'s' if early != 1 else ''} that closed an earlier turn "
             f"{'were' if early != 1 else 'was'} kept."
         )
+    read = _cutoff_read(len(selected), total, partial=partial)
     opening = (
-        f"Read {len(selected)} entries. " + tail_note
-        if partial
-        else f"Read {len(selected)} of the {_entries(total)} available after your words."
+        f"{read}: {mix}. {window}{tail_note}{left_out}"
+        if selected
+        else empty + tail_note + left_out
     )
-    if not selected:
-        opening = empty + (" " + tail_note if partial else "")
     omissions = []
     if tail_truncated is True and measured.get("tail_start") is None:
         # The page says this too. A read that stopped before the window with nothing in it to name
@@ -2131,11 +2123,40 @@ def cutoff_text(
         omissions.append(
             f"{unread_checks} check{'s' if unread_checks != 1 else ''} had no room in the prompt"
         )
-    return (
-        opening.rstrip(".") + left_out + f". Of those read, {window}: {mix}."
-        if selected
-        else opening
-    ) + (" " + "; ".join(omissions) + "." if omissions else "")
+    if not omissions:
+        return opening
+    tail = "; ".join(omissions)
+    return f"{opening} {tail[0].upper()}{tail[1:]}."
+
+
+def _cutoff_window(selected: Sequence[LedgerEntry], now: float) -> str:
+    """How old the entries read are, as a sentence."""
+    stamped = [row["at"] for row in selected if row["at"] > 0]
+    one = len(selected) == 1
+    if not stamped:
+        return "It has no usable time." if one else "None of them has a usable time."
+    hours = max(0, int((now - min(stamped)) // 3600))
+    window = (
+        ("It is" if one else "The oldest is") + f" from about {hours}h ago"
+        if hours
+        else ("It is" if one else "All are") + " from within the last hour"
+    )
+    if len(stamped) != len(selected):
+        window += f"; {len(selected) - len(stamped)} have no usable time"
+    return window + "."
+
+
+def _cutoff_read(read: int, total: int, *, partial: bool) -> str:
+    """The cutoff's opening clause: how many of the entries after the intent were read."""
+    if partial:
+        return f"Read {_entries(read)}"
+    if read == total:
+        return (
+            f"Read all {total} entries after your intent"
+            if total > 1
+            else ("Read the 1 entry after your intent")
+        )
+    return f"Read {read} of the {_entries(total)} after your intent"
 
 
 def _cutoff_mix(selected: Sequence[LedgerEntry]) -> str:
@@ -2145,27 +2166,29 @@ def _cutoff_mix(selected: Sequence[LedgerEntry]) -> str:
             subject, result = row.get("subject"), row.get("result")
             name = (
                 (
-                    "passed"
+                    "passed check"
                     if result == "passed"
-                    else "failed"
+                    else "failed check"
                     if result == "failed"
-                    else "run with no recorded result"
+                    else "check with no recorded result"
                 )
                 if subject == CHECK_SUBJECT
-                else ("file written" if subject == WRITE_SUBJECT else "launch")
+                else ("file write" if subject == WRITE_SUBJECT else "launch")
             )
         elif row["author"] == AUTHOR_PERSON:
-            name = "you wrote"
+            name = "from you"
         elif row["author"] == AUTHOR_DERIVED:
-            name = "Compass derived"
+            name = "derived by Compass"
         else:
-            name = "message the agent wrote" if row["type"] == AGENT_MESSAGE_TYPE else "agent event"
+            name = "message from the agent" if row["type"] == AGENT_MESSAGE_TYPE else "agent event"
         counts[name] = counts.get(name, 0) + 1
     plurals = {
-        "message the agent wrote": "messages the agent wrote",
+        "message from the agent": "messages from the agent",
         "agent event": "agent events",
-        "run with no recorded result": "runs with no recorded result",
-        "file written": "files written",
+        "passed check": "passed checks",
+        "failed check": "failed checks",
+        "check with no recorded result": "checks with no recorded result",
+        "file write": "file writes",
         "launch": "launches",
     }
     return ", ".join(

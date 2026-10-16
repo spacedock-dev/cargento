@@ -17,6 +17,7 @@ import {
   DriftPill,
   DriftProvider,
   DeparturesSection,
+  ReadingCapBanner,
   WorkListView,
 } from '../drift';
 import { DriftSlot } from './DriftSlot';
@@ -284,6 +285,7 @@ export function SessionDetail({ route, data, session }: SessionDetailProps): Rea
       {...(state ? { 'data-next-session-state': state.token } : {})}
       data-tone={observed.tone}
     >
+      <ReadingCapBanner payload={payload} />
       <DriftProvider session={session} payload={payload} project={route.project}>
         {observed.isNeeds || observed.askKnown ? (
           <Header

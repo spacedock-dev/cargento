@@ -138,7 +138,7 @@ describe('Not accurate acts on the state the card showed', () => {
     const page = mountDrift({ session, facts: FACTS, routes });
     await page.settle();
     await page.settle();
-    expect(byAction('not-accurate')?.getAttribute('aria-pressed')).toBe('false');
+    expect(byAction('not-accurate')?.textContent).toBe('Mark as inaccurate');
     await hold(page);
     await page.poll(later({}, { annotation_not_accurate: true }));
     await act(async () => {

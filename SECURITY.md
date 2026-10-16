@@ -1141,10 +1141,10 @@ separate browser consent. The explicit model off switch overrides both permissio
 
 The same SQLite store holds only that answer, model-attempt timestamps and, for 30 days, the
 random id of the job each attempt was charged to, never session ids or content. A transaction reserves
-one of twelve reader-requested attempts in a rolling twenty-four hours before the model starts. Eligibility checks and a known missing CLI spend nothing; a failed
+one of 100 reader-requested attempts in a rolling twenty-four hours before the model starts. Eligibility checks and a known missing CLI spend nothing; a failed
 or timed-out attempt keeps its reservation because the provider may already have spent capacity.
 Concurrent processes share the transaction bound. A denied or corrupt store fails closed. The page
-reports the cap and the earliest time another attempt can be admitted. Turning permission off,
+reports the cap, once it is spent, and the earliest time another attempt can be admitted. Turning permission off,
 back on, or forgetting it does not erase unexpired spend timestamps or refill the budget.
 
 The store is created owner-only; SQLite is required for this permission path. Deleting the file
@@ -1187,7 +1187,7 @@ An answer saved before the split reads as the Codex answer it was. "Turn off rea
 `--forget` revoke every provider at once. So does an older build's Turn off, which knows only the
 legacy Codex row: triggers in the store's own schema clear every other provider's answer and every
 tool-output grant whenever that row is written as off, so a rollback and re-upgrade cannot bring a
-Claude Code answer back. The twelve-attempt cap is shared between providers, so a
+Claude Code answer back. The 100-attempt cap is shared between providers, so a
 second provider cannot double it, and a spent budget is reported as `daily-cap` ahead of a missing
 answer, whichever provider the status names.
 
@@ -3716,7 +3716,7 @@ event ingress: the harm is a side effect on the operator's Codex balance rather 
 about a session, and what holds it is the same-origin check and the refusal of a document
 navigation, neither of which a local process sends headers for. A local process can grant the
 remembered answer too, including the tool-output grant for the destination the board names, which
-sends a Claude Code session's checks only to the reader's own configured vendor. The rolling cap of twelve attempts across tabs and processes bounds that
+sends a Claude Code session's checks only to the reader's own configured vendor. The rolling cap of 100 attempts across tabs and processes bounds that
 exposure. One reading per session may be in flight, and the explicit model off switch refuses all
 calls. The
 route reads nothing back to the caller beyond the job it started or found running, which the payload

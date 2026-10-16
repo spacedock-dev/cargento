@@ -135,9 +135,33 @@ export const RESULT_CLAIM_TAIL = "The record read is the board's recent tail.";
 export const RESULT_DEPARTS = 'Departs from your intent';
 export const RESULT_NOTHING_FOUND =
   'Nothing found against what it read. This is not a check that the work was done.';
-export const RESULT_NOT_ACCURATE = 'Not accurate?';
-export const RESULT_MARKED = 'You marked this analysis not accurate.';
-export const RESULT_MARK_UNSAVED = 'Your mark was not saved. Press Not accurate? again to retry.';
+/* The mark is a local flag on this one analysis. Each state says what the press does and what changed, beside
+   the control, because both effects (the level and Steer back) are drawn far above it. */
+export const RESULT_NOT_ACCURATE = 'Mark as inaccurate';
+export const RESULT_NOT_ACCURATE_HINT =
+  'Stops this analysis from setting the drift level or Steer back. Nothing is sent or re-run.';
+export const RESULT_MARKED =
+  'Marked inaccurate. This analysis no longer sets the drift level or Steer back.';
+export const RESULT_UNMARK = 'Undo';
+export const RESULT_MARK_UNSAVED = 'Your mark was not saved. Try again.';
+export const LEVEL_HIDDEN_MARKED =
+  'Drift level hidden because you marked this analysis inaccurate.';
+
+/* What it read: the model, the intent it read against, how much of the session it read, and what it never
+   reads. Headings and short items rather than one paragraph of caveats. */
+export const READ_SUMMARY = 'What the analysis read';
+export const READ_MODEL = 'Model';
+export const READ_INTENT = 'Your intent';
+export const READ_SESSION = 'The session';
+export const READ_NOT_READ = 'Not read';
+export const READ_NEVER =
+  'Files, diffs, test results, git or gh output, connected tools, or your screen. The model only sees what is on this page.';
+export const READ_SCOPE: Readonly<Record<string, string>> = {
+  final: 'Everything up to the session’s end.',
+  'mid-flight': 'The work so far. The session was still running.',
+  'last-turn': 'Everything up to the last finished turn.',
+  withdrawn: 'The session end this analysis relied on is no longer reported.',
+};
 export const READING_FINISHED = 'The analysis finished. Its result is in the Drift section.';
 
 export const STEER_BY_HAND = 'Raised to you and nowhere else.';

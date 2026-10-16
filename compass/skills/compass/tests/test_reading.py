@@ -1542,38 +1542,21 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
             entry(id="a", at=NOW - 60.0, type="agent_message"),
             entry(id="b", at=NOW - 60.0, type="agent_message"),
         )
-        for counts, opening in (
-            (
-                {"earlier": 2},
-                "Read 2 of the 3 entries available after your words; 2 earlier entries were not read. ",
-            ),
-            (
-                {"earlier": 1},
-                "Read 2 of the 3 entries available after your words; 1 earlier entry was not read. ",
-            ),
-            (
-                {"untimed": 1},
-                "Read 2 of the 3 entries available after your words; 1 untimed entry was not read. ",
-            ),
-            (
-                {"earlier": 2, "untimed": 1},
-                (
-                    "Read 2 of the 3 entries available after your words; 2 earlier "
-                    "and 1 untimed entries were not read. "
-                ),
-            ),
-            (
-                {"after_stop": 2},
-                (
-                    "Read 2 of the 3 entries available after your words; 2 entries after the "
-                    "last observed stop were not read. "
-                ),
-            ),
+        head = (
+            "Read 2 of the 3 entries after your intent: 2 messages from the agent. "
+            "All are from within the last hour."
+        )
+        for counts, clauses in (
+            ({"earlier": 2}, " 2 earlier entries were not read."),
+            ({"earlier": 1}, " 1 earlier entry was not read."),
+            ({"untimed": 1}, " 1 untimed entry was not read."),
+            ({"earlier": 2, "untimed": 1}, " 2 earlier and 1 untimed entries were not read."),
+            ({"after_stop": 2}, " 2 entries after the last observed stop were not read."),
             (
                 {"earlier": 1, "after_stop": 1},
                 (
-                    "Read 2 of the 3 entries available after your words; 1 earlier entry was not read; "
-                    "1 entry after the last observed stop was not read. "
+                    " 1 earlier entry was not read. "
+                    "1 entry after the last observed stop was not read."
                 ),
             ),
         ):
@@ -1586,16 +1569,14 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
                     untimed=counts.get("untimed", 0),
                     after_stop=counts.get("after_stop", 0),
                 )
-                self.assertTrue(sentence.startswith(opening + "Of those read, "), sentence)
-        self.assertTrue(
-            reading.cutoff_text(rows[:1], 1, NOW, earlier=1).startswith(
-                "Read 1 of the 1 entry available after your words; 1 earlier entry was not read. "
-            )
+                self.assertEqual(head + clauses, sentence)
+        self.assertEqual(
+            reading.cutoff_text(rows[:1], 1, NOW, earlier=1),
+            "Read the 1 entry after your intent: 1 message from the agent. "
+            "It is from within the last hour. 1 earlier entry was not read.",
         )
         plain = reading.cutoff_text(rows, 2, NOW)
-        self.assertTrue(
-            plain.startswith("Read 2 of the 2 entries available after your words. "), plain
-        )
+        self.assertTrue(plain.startswith("Read all 2 entries after your intent: "), plain)
         self.assertNotIn("not read", plain)
 
     def test_a_reader_is_told_when_the_reading_rests_on_nobody_but_the_agent(self) -> None:
@@ -1603,14 +1584,14 @@ class WhatTheReaderIsToldTheReadingCovered(unittest.TestCase):
             entry(id="a", at=NOW - 60.0, type="agent_message"),
             entry(id="b", at=NOW - 60.0, type="agent_message"),
         )
-        self.assertIn("2 messages the agent wrote", reading.cutoff_text(rows, 2, NOW))
+        self.assertIn("2 messages from the agent", reading.cutoff_text(rows, 2, NOW))
         mixed = (
             person_entry(at=NOW - 60.0),
             entry(id="b", at=NOW - 60.0, type="agent_message"),
             derived_entry(at=NOW - 60.0),
         )
         sentence = reading.cutoff_text(mixed, 3, NOW)
-        self.assertIn("1 you wrote", sentence)
+        self.assertIn("1 from you", sentence)
         self.assertIn("Compass", sentence)
 
 
@@ -1996,7 +1977,7 @@ class WhatOnePressActuallyCostsAndProduces(unittest.TestCase):
         self.assertEqual(3, assessment["revision_read"])
         self.assertEqual(reading.SCOPE_MID_FLIGHT, assessment["scope"])
         self.assertEqual(reading.SCOPE_TEXT[reading.SCOPE_MID_FLIGHT], assessment["scope_text"])
-        self.assertIn("Read 1 of the 1 entry available after your words", assessment["cutoff"])
+        self.assertIn("Read the 1 entry after your intent", assessment["cutoff"])
         self.assertEqual({reading.CONSTRAINT_GOAL}, set(assessment["criteria"]))
 
     def test_a_reading_of_an_ended_session_records_the_end_it_rested_on(self) -> None:

@@ -666,7 +666,7 @@ class HistoricalReplayTest(unittest.TestCase):
         for absent in ("REVIEWER ONLY", "FUTURE VERIFIER"):
             self.assertNotIn(absent, self.model.prompts[0])
         local = json.loads(self.result.read_text())
-        self.assertIn("all within the last hour", local["cases"][self.case["id"]]["cutoff"])
+        self.assertIn("within the last hour", local["cases"][self.case["id"]]["cutoff"])
         committed = self.summary.read_text()
         for absent in ("FROZEN evidence", "REVIEWER ONLY", "row_snapshot", "producer_facts"):
             self.assertNotIn(absent, committed)

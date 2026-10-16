@@ -4230,10 +4230,12 @@ decisions below follow that ruling and the DRC-4702 decisions of the same date.
   words, every one of them after the session's last observed stop, as a resumed turn the row has
   not caught up with leaves it: "Everything after your words came after the session's last
   observed stop, so there is nothing finished to read yet."
-- The cutoff sentence counts each set honestly (owner, 2026-09-27): "Read 2 of the 3 entries
-  after your words; 1 earlier and 1 untimed entries were not read; 1 entry after the last observed
-  stop was not read." Each clause appears only when its count is not zero, in the singular for
-  one, and the time and author mix follow in their own sentence, "Of those read, ...".
+- The cutoff sentence counts each set honestly (owner, 2026-09-27). Each clause appears only when
+  its count is not zero, in the singular for one. Reworded 2026-10-16 in plain sentences, with the
+  same counts: "Read 2 of the 3 entries after your intent: 1 from you, 1 message from the agent.
+  The oldest is from about 2h ago. 1 earlier and 1 untimed entries were not read. 1 entry after the
+  last observed stop was not read." The page lists each sentence as its own item under What the
+  analysis read.
 
 #### Amended 2026-10-04 (owner): disclose measured reading coverage
 
@@ -4524,6 +4526,30 @@ old numbering ([the recorded departure](design-frontend-migration.md#held-to-rec
 
 The triggers in item 7 are unchanged. The [DEC-23 amendment of the same day](#amended-2026-10-14-owner-a-write-outside-a-named-folder-does-not-settle-a-line)
 records that a recorded write outside a named folder is not one of them, and why.
+
+### Amended 2026-10-16 (owner): the budget, the mark and what it read
+
+The reader-requested cap rose from 12 to 100 attempts per rolling 24 hours. The unasked lane keeps
+its own cap of 12. The "N of 12 left today" line beside Analyze is gone: under the cap the count was
+noise. Once the cap is spent, a banner sticks to the top of the session page and names the limit
+and the local time the oldest attempt ages out. The refusal under Analyze uses the same words. It
+says "you can analyze again at" rather than "it resets at", because a rolling window frees one
+attempt at that time, not all of them.
+
+"Not accurate?" became "Mark as inaccurate". Before the press, a line beside it says what the mark
+does. After it, a status beside the control says what changed, the control reads "Undo", and the
+level's slot says the level is hidden because of the mark. Before, the only change near the
+button was its pressed state, while the level and Steer back vanished far above it and the column
+jumped. The press now holds the control where it was pressed. The wording says the analysis "no
+longer sets" the level or Steer back rather than that Steer back is hidden: a failed check after
+the reader's last message still offers Steer back on its own, and the first draft said otherwise.
+
+"What it read" became "What the analysis read", with four headings: the model, the intent (its
+version, when it was saved, where it came from, each line quoted), the session, and what is never
+read. The session list draws the scope from its token and gives each cutoff sentence its own item.
+The reading definition and the long scope paragraph left this panel, since the page states both
+elsewhere. The cutoff is reworded at the producer in plain sentences with the same counts
+(see [what the window build decided](#what-the-window-build-decided-2026-09-27)). A reading stored before the change keeps the sentence it was stored with.
 
 ### What the result build decided, 2026-09-28
 
