@@ -573,7 +573,10 @@ try {
     const marked = await compare('not accurate', (g) =>
       stored(g, { session: { annotation_not_accurate: true } }),
     );
-    assert.match(marked.text, /You marked this analysis not accurate/);
+    assert.match(
+      marked.text,
+      /Marked inaccurate\. This analysis no longer sets the drift level or Steer back/,
+    );
     const withheld = await compare('withheld', (g) =>
       claude(g, {
         session: {

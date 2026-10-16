@@ -73,7 +73,9 @@ describe('a stored reading', () => {
     ).toBeNull();
     expect(byAction('reading-ask')).toBeNull();
     expect(textOf('[data-next-result]')).toContain('1 model request');
-    expect(textOf('.next-cockpit-reading-budget')).toBe('9 of 10 left today');
+    // Under the cap the budget is not mentioned anywhere.
+    expect(document.body.textContent).not.toMatch(/left today/);
+    expect(document.querySelector('[data-next-reading-cap]')).toBeNull();
   });
 
   it('withholds a verdict that cites nothing it can resolve, never softening it', async () => {
@@ -344,6 +346,8 @@ describe('a finding jump', () => {
   });
 });
 
+const foot = () => document.querySelector('[data-next-result-mark]') as HTMLElement | null;
+
 describe('Not accurate', () => {
   it('derives its mark from the payload and never from the press', async () => {
     const page = mountDrift({
@@ -356,7 +360,12 @@ describe('Not accurate', () => {
     await page.settle();
     await page.settle();
     const mark = byAction('not-accurate') as HTMLElement;
-    expect(mark.getAttribute('aria-pressed')).toBe('false');
+    expect(mark.textContent).toBe('Mark as inaccurate');
+    // Before the press, the reader is told what it does.
+    expect(foot()?.getAttribute('data-next-result-mark')).toBe('unmarked');
+    expect(foot()?.textContent).toContain(
+      'Stops this analysis from setting the drift level or Steer back. Nothing is sent or re-run.',
+    );
     await press(mark);
     await page.settle();
     const posts = page.state.requests.filter(
@@ -369,10 +378,11 @@ describe('Not accurate', () => {
       not_accurate: true,
       read_at: 1000,
     });
-    // The store did not take it: still unmarked, and said so.
-    expect(byAction('not-accurate')?.getAttribute('aria-pressed')).toBe('false');
-    expect(textOf('.next-cockpit-result-foot')).toContain('Your mark was not saved.');
-    // Marked on the board, it draws marked, and the sentence is the board's.
+    // The store did not take it: still unmarked, and said so beside the control.
+    expect(foot()?.getAttribute('data-next-result-mark')).toBe('unmarked');
+    expect(foot()?.textContent).toContain('Your mark was not saved. Try again.');
+    // Marked on the board, it draws marked: what changed is said beside the control, the control undoes it,
+    // and the level's own slot says why it is gone.
     await page.poll({
       ...(page.state.data as object),
       generated: 1100,
@@ -383,9 +393,68 @@ describe('Not accurate', () => {
         },
       ],
     });
-    expect(byAction('not-accurate')?.getAttribute('aria-pressed')).toBe('true');
-    expect(textOf('.next-cockpit-result-marked')).toBe('You marked this analysis not accurate.');
-    // A level is not drawn from a reading marked not accurate.
+    expect(foot()?.getAttribute('data-next-result-mark')).toBe('marked');
+    expect(byAction('not-accurate')?.textContent).toBe('Undo');
+    expect(textOf('[data-next-result-mark] [role="status"]')).toBe(
+      'Marked inaccurate. This analysis no longer sets the drift level or Steer back.',
+    );
     expect(document.querySelector('[data-next-drift-level]')).toBeNull();
+    expect(textOf('[data-next-drift-marked]')).toBe(
+      'Drift level hidden because you marked this analysis inaccurate.',
+    );
+    // Undo posts the mark back off.
+    await press(byAction('not-accurate') as HTMLElement);
+    await page.settle();
+    const undo = page.state.requests.filter(
+      (r) => r.method === 'POST' && r.path === '/api/annotate',
+    );
+    expect(undo.at(-1)?.body).toMatchObject({ not_accurate: false, read_at: 1000 });
+  });
+});
+
+describe('What the analysis read', () => {
+  it('groups the model, the intent, the session and what is never read under headings', async () => {
+    const page = mountDrift({
+      session: stored({
+        annotation_assessment: {
+          ...ASSESSMENT,
+          scope: 'final',
+          stamp: 'claude-sonnet-5-5 · read at 09:38',
+          cutoff:
+            'Read all 4 entries after your intent: 1 from you, 3 messages from the agent. The oldest is from about 13h ago.',
+        },
+      }),
+      facts: FACTS,
+    });
+    await page.settle();
+    await page.settle();
+    const read = document.querySelector('[data-next-read]') as HTMLElement;
+    expect(read).not.toBeNull();
+    const section = (name: string) =>
+      read.querySelector(`[data-next-read-section="${name}"]`) as HTMLElement;
+    expect(section('model').textContent).toContain('claude-sonnet-5-5 · read at 09:38');
+    const intent = section('intent');
+    expect(intent.querySelector('h4')?.textContent).toBe('Your intent');
+    expect(intent.textContent).toContain('Version 3');
+    expect([...intent.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'Goal “Ship the queue”',
+      'Expected outcome “Tests pass”',
+    ]);
+    expect([...section('session').querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'Everything up to the session’s end.',
+      'Read all 4 entries after your intent: 1 from you, 3 messages from the agent.',
+      'The oldest is from about 13h ago.',
+    ]);
+    expect(section('not-read').textContent).toContain('Files, diffs, test results');
+    // The retired wording is gone.
+    for (const retired of [
+      'A reading is one model pass',
+      'What it reads is the evidence on this page',
+      'Baseline from your prompt',
+      'GOAL FROM YOUR PROMPT',
+      'Revision 3',
+    ]) {
+      expect(read.textContent).not.toContain(retired);
+    }
   });
 });

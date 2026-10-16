@@ -7,3 +7,4 @@ export { useDrift } from './context';
 export { DriftPill } from './DriftLevelView';
 export { DeparturesSection } from './Departures';
 export { WorkListView } from './WorkListView';
+export { ReadingCapBanner } from './ReadingCapBanner';

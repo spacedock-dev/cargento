@@ -60,6 +60,15 @@ export const DriftNudge: Story = {
     await expect(canvas.getByRole('status')).toHaveTextContent(args.children as string);
   },
 };
+export const ReadingCap: Story = {
+  args: { variant: 'reading-cap', children: 'Alert reading-cap' },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const alert = canvas.getByRole('status');
+    await expect(alert).toHaveTextContent(args.children as string);
+    await expect(getComputedStyle(alert).position).toBe('sticky');
+  },
+};
 export const Silent: Story = {
   args: { announce: false, children: 'Quiet notice' },
   play: async ({ canvasElement }) => {

@@ -3019,12 +3019,12 @@ class ReadingRouteTest(unittest.TestCase):
     def test_daily_limit_refuses_before_call_and_reports_the_release_time(self) -> None:
         config, state = self._runtime()
         with self._counting_model() as calls, self._serving(self._app(config, state)) as port:
-            for _ in range(12):
+            for _ in range(reading_policy.DAILY_CAP):
                 status, _ = self._post(port, self._press(allow=True, words_destination=""))
                 self.assertEqual(202, status)
             status, body = self._post(port, self._press(allow=True, words_destination=""))
         self.assertEqual(429, status)
-        self.assertEqual(12, len(calls))
+        self.assertEqual(reading_policy.DAILY_CAP, len(calls))
         self.assertEqual(1_700_086_500.0, json.loads(body)["reading"]["retry_at"])
 
     @staticmethod
@@ -3671,7 +3671,7 @@ class ReadingRouteTest(unittest.TestCase):
         config, state = self._runtime()
 
         def exhaust() -> None:
-            for _ in range(12):
+            for _ in range(reading_policy.DAILY_CAP):
                 reading_policy.reserve(config, now=1_700_000_100.0)
 
         with (

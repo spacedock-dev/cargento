@@ -782,10 +782,12 @@ class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
             ]
         )
         self.assertTrue(
-            assessment["cutoff"].startswith(
-                "Read 2 of the 2 entries available after your words; 1 earlier and 1 untimed entries were "
-                "not read; 1 entry after the last observed stop was not read. Of those read, "
-            ),
+            assessment["cutoff"].startswith("Read all 2 entries after your intent: "),
+            assessment["cutoff"],
+        )
+        self.assertIn(
+            " 1 earlier and 1 untimed entries were not read. "
+            "1 entry after the last observed stop was not read.",
             assessment["cutoff"],
         )
 
@@ -800,16 +802,16 @@ class AReadingCitesNothingFromBeforeItsWindowTest(_PressCase):
             ]
         )
         self.assertTrue(
-            assessment["cutoff"].startswith(
-                "Read 2 of the 2 entries available after your words; 2 earlier entries were not read."
-            ),
+            assessment["cutoff"].startswith("Read all 2 entries after your intent: "),
             assessment["cutoff"],
         )
+        self.assertIn(" 2 earlier entries were not read.", assessment["cutoff"])
         assessment, _why, _spent = self.produce([_message("m1", PROMPT), _check(PROMPT + 60)])
         self.assertTrue(
-            assessment["cutoff"].startswith("Read 2 of the 2 entries available after your words. "),
+            assessment["cutoff"].startswith("Read all 2 entries after your intent: "),
             assessment["cutoff"],
         )
+        self.assertNotIn("not read", assessment["cutoff"])
 
     def resolve(self, entries: list[reading.LedgerEntry], cites: list[int]) -> Any:
         return reading.resolve(

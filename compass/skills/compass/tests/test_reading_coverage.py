@@ -178,16 +178,16 @@ class TheCutoffNamesKindsAndOmissions(unittest.TestCase):
             producer.person_entry(),
         )
         text = reading.cutoff_text(rows, len(rows), producer.NOW)
-        self.assertIn("1 message the agent wrote", text)
+        self.assertIn("1 message from the agent", text)
         for words in (
-            "1 passed",
-            "1 failed",
-            "1 run with no recorded result",
-            "1 file written",
+            "1 passed check",
+            "1 failed check",
+            "1 check with no recorded result",
+            "1 file write",
             "1 launch",
         ):
             self.assertIn(words, text)
-        self.assertNotIn("6 the agent wrote", text)
+        self.assertNotIn("6 messages from the agent", text)
 
     def test_a_partial_tail_names_the_missing_interval_instead_of_a_false_total(self) -> None:
         rows = (producer.entry(type="agent_message", at=producer.NOW - 60),)
@@ -200,7 +200,7 @@ class TheCutoffNamesKindsAndOmissions(unittest.TestCase):
         )
         self.assertIn("78 min", text)
         self.assertIn("message tail", text)
-        self.assertNotIn("of the 1 entry after your words", text)
+        self.assertNotIn("of the 1 entry after your intent", text)
 
     def test_listing_omissions_are_the_window_count_not_the_session_wide_more(self) -> None:
         text = reading.cutoff_text(
@@ -260,7 +260,7 @@ class TheCutoffNamesKindsAndOmissions(unittest.TestCase):
             "passed",
             "failed",
             "no recorded result",
-            "file written",
+            "file write",
             "launch",
             "unlisted",
             "no room",

@@ -85,6 +85,8 @@ export interface Scenario {
   readonly work?: Record<string, unknown>;
   /** The route for this harness, where a story is about a machine that is not the healthy one. */
   readonly route?: Record<string, unknown>;
+  /** Whether `POST /api/annotate` keeps a Not accurate mark, as the store does, so the next board carries it. */
+  readonly keepsMarks?: boolean;
 }
 
 export const fact = (
@@ -152,6 +154,7 @@ function DriftScenario({ scenario }: { readonly scenario: Scenario }) {
     const clock = createFakeClock();
     const history = fakeRouterEnvironment(`#n=session:demo:${harness}:s1`);
     let generation = 1000;
+    let marked: boolean | null = null;
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
     return createShell({
       env: createFakeEnvironment({ clock }),
@@ -161,7 +164,14 @@ function DriftScenario({ scenario }: { readonly scenario: Scenario }) {
       search: '',
       doc: null,
       reducedMotion: () => true,
-      fetch: async (url) => {
+      fetch: async (url, init) => {
+        if (scenario.keepsMarks && url.startsWith('/api/annotate')) {
+          const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+          if (typeof body['not_accurate'] === 'boolean') {
+            marked = body['not_accurate'];
+            return json({ ok: true, outcome: 'stored', persisted: true });
+          }
+        }
         if (url.startsWith('/api/data'))
           return json({
             generated: generation++,
@@ -184,6 +194,7 @@ function DriftScenario({ scenario }: { readonly scenario: Scenario }) {
                 reading_eligibility: ELIGIBLE,
                 ...(scenario.unsaved ? {} : SAVED),
                 ...(scenario.session ?? {}),
+                ...(marked === null ? {} : { annotation_not_accurate: marked }),
               },
             ],
           });

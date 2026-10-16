@@ -281,7 +281,7 @@
       "method": "GET",
       "name": "data-empty",
       "route": "/api/data",
-      "sha256": "c1c5fab89eeff7e83e1d49d10b8098370776158124d1e8068f56eba5ba9ebe50",
+      "sha256": "2d83ca9f50b21c9effcb3a2eb4ada9a216abb4584a832165f4dd45609b41e7ce",
       "status": 200
     },
     {
@@ -302,35 +302,35 @@
       "method": "GET",
       "name": "data-healthy",
       "route": "/api/data",
-      "sha256": "891bbfd02f4e7d37effad26b56a373f987a7684b62679f2ae595807fdc1fdf7a",
+      "sha256": "b8e817804ae2a9b2a555a6ebaa5f80140f4acc4e51b3d8871f73aefca4d6c37e",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-identity-collisions",
       "route": "/api/data",
-      "sha256": "91de59a4af5d6db2804f6e46618fdbff101c4baeeff36fabba3a65bcdbc16b1f",
+      "sha256": "d676b7a573aaeb6770bd0a9cb749f20572c8d38c5706f4a0501890706af348b7",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-restarted-build",
       "route": "/api/data",
-      "sha256": "881c07665227e9fd8d47e1a9b84c7dbecce08282bb4a49349f9ef5368ea9205a",
+      "sha256": "634a2235e94e8705cd4f5f0384984c40bcdc0c2fd9f77790fdccb7284ce57e68",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-show-all",
       "route": "/api/data",
-      "sha256": "681a84c27e2f3e7a79560c4d2937a5b5715e81f97f2a6d62ef9580c6b474d424",
+      "sha256": "bddc8dcb6d926e3c4765421cfeab16c93afd48f6fd984b8f4d47f8a8937a3011",
       "status": 200
     },
     {
       "method": "GET",
       "name": "data-unavailable",
       "route": "/api/data",
-      "sha256": "c0f523e72f274be4323bec884fc22715a8d5bbaa8bdd777dd71b015d15772f64",
+      "sha256": "320ee453accb8c6f438b6a11e73d1f34f85438101205d69592610f118985f216",
       "status": 200
     },
     {
@@ -512,7 +512,7 @@
       "method": "POST",
       "name": "reading-consent-required",
       "route": "/api/reading",
-      "sha256": "bf496e830624a0a15742c8f7bc109694bbae4535193d285013bbd9b3116a44b1",
+      "sha256": "218dcfd1b6d44e41b109dca2f1615cac259675ebeb7650ec1a7b51c778d3c1f7",
       "status": 403
     },
     {

@@ -9,7 +9,7 @@ import { canonical, firstDifference } from '../observed/legacy.test.helper';
 import { loadLegacyDrift } from './legacy.test.helper';
 import {
   anyConsent,
-  budgetLine,
+  capReset,
   eligibility,
   needsAllow,
   policyReason,
@@ -69,7 +69,6 @@ legacy.lift(['fmtDur'], 'next-cockpit-compat.js');
 
 const CASES = 80;
 const SEEDS = CASES;
-const plain = (html: string): string => html.replace(/<[^>]*>/g, '').replace(/\s+/g, '');
 
 function genPayload(rnd: Rng): Record<string, unknown> {
   const policy = pick(rnd, [
@@ -167,13 +166,31 @@ describe('the route, consent and refusals read as the legacy page reads them', (
         annotation,
       };
       const route = readingRoute(payload as never, session as never);
+      /* Deviation: the spent budget is worded as the session page's banner words it, with the reset as a
+         local time rather than a full date. */
+      const policy = payload['reading'] as Record<string, unknown> | null | undefined;
+      const retry = typeof policy?.['retry_at'] === 'number' ? policy['retry_at'] : null;
+      const capped = (text: string) =>
+        text
+          .replace(
+            'The daily reading limit is reached. Wait for the next update.',
+            'Analysis limit reached. Wait for the next update.',
+          )
+          .replace(
+            /The daily reading limit is reached\. Try again after [^.]*\./,
+            retry === null
+              ? ''
+              : `Analysis limit reached. You can analyze again at ${capReset(retry, Date.now())}.`,
+          );
       const same = (name: string, theirs: unknown, mine: unknown) => {
         const found = firstDifference(
           canonical(
             typeof theirs === 'string'
-              ? theirs.replace(
-                  "Last turn isn't recorded as finished. Run another turn to open Analyze.",
-                  'Analyze opens while this session runs.',
+              ? capped(
+                  theirs.replace(
+                    "Last turn isn't recorded as finished. Run another turn to open Analyze.",
+                    'Analyze opens while this session runs.',
+                  ),
                 )
               : theirs,
           ),
@@ -229,11 +246,9 @@ describe('the route, consent and refusals read as the legacy page reads them', (
         legacy.call('nextReadingJob', session),
         readingJob(payload as never, session as never),
       );
-      same(
-        'budget',
-        plain(legacy.call<string>('nextReadingBudgetLine')),
-        plain(budgetLine(payload as never) ? `<p>${budgetLine(payload as never)}</p>` : ''),
-      );
+      /* The budget line is no longer drawn: the spent budget is the session page's banner, and under the cap
+         nothing is said. The legacy call stays in the recorded sequence, which chains every call. */
+      legacy.call<string>('nextReadingBudgetLine');
       same(
         'states',
         legacy.call('nextCockpitReadingStates', annotation, null),

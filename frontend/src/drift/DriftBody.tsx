@@ -10,7 +10,6 @@ import { offeredDirection, steerOffer, steerTrigger, type SteerOffer } from './c
 import { DriftLevelView } from './DriftLevelView';
 import { readingBoard } from './flip';
 import {
-  BudgetLine,
   DISCLOSURE_ID,
   DisclosureParts,
   ReadingControl,
@@ -171,7 +170,7 @@ function TriggerLine({ offer }: { readonly offer: SteerOffer }) {
 /* The question before the press, in the Analyze control's place while a later direction is unsettled: Keep is
    then the stage's one primary. The question is the Intent step's; this adds the Analyze step's side of it: the
    reading Keep may start, the box a running analysis draws above it, Turn off readings beside it, and the
-   disclosure, the count, the budget and the refusal under it. */
+   disclosure, the count and the refusal under it. */
 function QuestionWithAnalysis({
   board,
   primary,
@@ -229,7 +228,6 @@ function QuestionWithAnalysis({
             </Why>
           ) : null}
           {annotation ? <ReadingCount count={count} /> : null}
-          <BudgetLine />
           {!edited && reason ? <RefusedLine board={board} request={request} /> : null}
         </>
       }

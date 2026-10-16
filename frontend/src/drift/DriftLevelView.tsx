@@ -10,6 +10,7 @@ import { routeRefusal } from './route';
 import {
   HARNESS_LIMIT,
   WORK_HARNESSES,
+  LEVEL_HIDDEN_MARKED,
   LEVEL_SCALE,
   LIVE_LEVEL_NAMES,
   LIVE_LINE,
@@ -144,6 +145,15 @@ export function DriftLevelView() {
   const running = Boolean(model.job);
   const level = found && 'level' in found ? found : null;
   if (model.drafted || !level || !level.label) {
+    /* A marked analysis contributes no level. Its slot says so, so the reader who marked it sees why the
+       meter is gone, where the meter was. */
+    if (!model.drafted && annotation?.['not_accurate'] === true && readingStored(annotation)) {
+      return (
+        <p className="next-session-drift-limit" data-next-drift-marked>
+          {LEVEL_HIDDEN_MARKED}
+        </p>
+      );
+    }
     const unchecked =
       model.annotate &&
       annotation &&

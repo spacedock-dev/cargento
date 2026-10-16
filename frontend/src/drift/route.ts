@@ -142,7 +142,7 @@ export function routeRefusal(payload: Row, session: Row): string {
   return route['provider'] ? '' : String(route['note'] || ROUTE_UNREAD);
 }
 
-export function policyReason(policy: unknown): string {
+export function policyReason(policy: unknown, nowMs: number = Date.now()): string {
   if (!isRecord(policy)) return MODEL_UNREAD;
   if (policy['reason'] === 'run-disabled') return MODEL_OFF;
   if (policy['reason'] === 'store-unavailable') {
@@ -151,8 +151,8 @@ export function policyReason(policy: unknown): string {
   if (policy['reason'] === 'daily-cap') {
     const at = nextNumber(policy['retry_at']);
     return at === null
-      ? 'The daily reading limit is reached. Wait for the next update.'
-      : `The daily reading limit is reached. Try again after ${new Date(at * 1000).toLocaleString()}.`;
+      ? 'Analysis limit reached. Wait for the next update.'
+      : `Analysis limit reached. You can analyze again at ${capReset(at, nowMs)}.`;
   }
   return '';
 }
@@ -165,19 +165,44 @@ export function readingJob(payload: Row, session: Row): Row | null {
   return isRecord(job) && typeof job['id'] === 'string' ? job : null;
 }
 
-export function budgetLine(payload: Row): string {
+/* The analysis budget is published so a reader who has spent it can be told, and only then: under the cap
+   the count is noise. Rolling, so `retry_at` is when the oldest analysis in the window ages out and one
+   more may run. */
+export interface ReadingCap {
+  readonly limit: number;
+  /** Epoch seconds, or null when the server did not publish one. */
+  readonly retryAt: number | null;
+}
+
+export function readingCap(payload: Row): ReadingCap | null {
   const policy = payload['reading'];
-  if (!isRecord(policy)) return '';
+  if (!isRecord(policy)) return null;
   const { used, limit } = policy;
-  if (
-    !Number.isInteger(used) ||
-    !Number.isInteger(limit) ||
-    (used as number) < 0 ||
-    (limit as number) <= 0
-  ) {
-    return '';
-  }
-  return `${String(Math.max(0, (limit as number) - (used as number)))} of ${String(limit)} left today`;
+  const counted =
+    Number.isInteger(used) && Number.isInteger(limit) && (limit as number) > 0
+      ? (used as number) >= (limit as number)
+      : false;
+  if (policy['reason'] !== 'daily-cap' && !counted) return null;
+  return {
+    limit: Number.isInteger(limit) && (limit as number) > 0 ? (limit as number) : 0,
+    retryAt: nextNumber(policy['retry_at']),
+  };
+}
+
+/* "09:38", or "09:38 tomorrow" when it falls on the next local day. The window is 24 hours, so it is never
+   further out than that. */
+export function capReset(retryAt: number, nowMs: number): string {
+  const at = new Date(retryAt * 1000);
+  const time = at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return at.toDateString() === new Date(nowMs).toDateString() ? time : `${time} tomorrow`;
+}
+
+export function capLine(cap: ReadingCap, nowMs: number): string {
+  const limit = cap.limit ? `${String(cap.limit)} drift analyses` : 'drift analyses';
+  const head = `You’ve reached the limit of ${limit} for the past 24 hours.`;
+  return cap.retryAt === null
+    ? head
+    : `${head} You can analyze again at ${capReset(cap.retryAt, nowMs)}.`;
 }
 
 /* A discard record satisfies the nothing-typed arm too, and the wider answer is the less true of the two, so

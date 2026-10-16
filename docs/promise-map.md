@@ -77,7 +77,7 @@ turn, based on recorded checks and file paths rather than the meaning of your in
 shows its level, each outcome line against the recorded work and what the agent said with its
 source, where files were written, and why a result is stale. Recorded checks and file paths include subagent work, labelled
 as such.
-Reader-requested readings are capped at twelve attempts per rolling twenty-four hours. With no saved
+Reader-requested readings are capped at 100 attempts per rolling twenty-four hours. With no saved
 goal, a check adopts the goal drafted from your first Claude Code or Codex prompt (your latest
 where no first one with a time is published); the goal field also offers your latest prompt.
 Adopted words are marked, and missing source times refuse adoption.
